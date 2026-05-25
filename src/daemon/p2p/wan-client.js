@@ -416,6 +416,13 @@ export class WanClientManager {
         }
 
         data = { success: true, message: 'Pairing confirmed.' };
+      } else if (route === '/unpair') {
+        const { peerId } = body;
+        db.removePeer(peerId);
+        if (typeof this.p2pEngine.onPeerUpdate === 'function') {
+          this.p2pEngine.onPeerUpdate();
+        }
+        data = { success: true, message: 'Unpaired successfully.' };
       } else if (route === '/ping') {
         data = { status: 'ok', deviceName: db.getSettings().deviceName, deviceType: db.getSettings().deviceType };
       } else {

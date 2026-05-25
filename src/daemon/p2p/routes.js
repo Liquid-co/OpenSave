@@ -49,6 +49,15 @@ export function registerExpressRoutes(app, p2pEngine) {
     res.status(200).json({ status: 'pending', message: 'Pairing request received. Waiting for host approval.' });
   });
 
+  app.post('/api/p2p/unpair', (req, res) => {
+    const { peerId } = req.body;
+    db.removePeer(peerId);
+    if (typeof p2pEngine.onPeerUpdate === 'function') {
+      p2pEngine.onPeerUpdate();
+    }
+    res.status(200).json({ success: true, message: 'Unpaired successfully.' });
+  });
+
   app.get('/api/p2p/manifest/:gameId', (req, res) => {
     const { gameId } = req.params;
     const game = db.getGame(gameId);

@@ -734,16 +734,14 @@ app.post('/api/peers/reject', (req, res) => {
 });
 
 // Remove pairing
-app.delete('/api/peers/:peerId', (req, res) => {
+app.delete('/api/peers/:peerId', async (req, res) => {
   const { peerId } = req.params;
-  db.removePeer(peerId);
-  broadcast('peers-update', {
-    paired: db.getPeers(),
-    discovered: p2pEngine.getDiscoveredPeers(),
-    requests: p2pEngine.getPairingRequests(),
-    wanRoom: p2pEngine.getWanRoomStatus()
-  });
-  res.json({ success: true });
+  try {
+    await p2pEngine.unpairPeer(peerId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ----------------------------------------------------

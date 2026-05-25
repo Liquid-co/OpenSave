@@ -205,6 +205,26 @@ class P2PEngine {
     }
   }
 
+  async unpairPeer(peerId) {
+    const peers = db.getPeers();
+    const peer = peers[peerId];
+    if (!peer) return;
+
+    // Remove locally first so the UI updates instantly
+    db.removePeer(peerId);
+    if (typeof this.onPeerUpdate === 'function') {
+      this.onPeerUpdate();
+    }
+
+    // Inform the remote peer of the unpairing
+    try {
+      const localPeerId = this.getLocalPeerId();
+      await this.p2pRequest(peer, '/unpair', 'POST', { peerId: localPeerId });
+    } catch (err) {
+      console.warn(`[P2P] Could not notify peer ${peerId} of unpairing:`, err.message);
+    }
+  }
+
   async syncGame(gameId) {
     return this.syncEngine.syncGame(gameId);
   }
