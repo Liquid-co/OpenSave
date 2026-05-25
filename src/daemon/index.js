@@ -159,6 +159,13 @@ app.post('/api/settings', (req, res) => {
     if (req.body.autoDeleteBackups !== undefined) updateData.autoDeleteBackups = !!req.body.autoDeleteBackups;
     if (req.body.autoDeleteDays !== undefined) updateData.autoDeleteDays = Math.max(1, parseInt(req.body.autoDeleteDays, 10) || 30);
     if (req.body.autoSyncOnTrack !== undefined) updateData.autoSyncOnTrack = !!req.body.autoSyncOnTrack;
+    if (req.body.customScanPaths !== undefined) {
+      if (Array.isArray(req.body.customScanPaths)) {
+        updateData.customScanPaths = req.body.customScanPaths.map(p => path.resolve(p));
+      } else {
+        updateData.customScanPaths = [];
+      }
+    }
 
     const updated = db.updateSettings(updateData);
     const settings = db.getSettings();
@@ -346,12 +353,14 @@ app.delete('/api/games/:gameId', (req, res) => {
 // Update game launch and configuration settings
 app.patch('/api/games/:gameId', (req, res) => {
   const { gameId } = req.params;
-  const { appId, exePath, coverUrl, savePath } = req.body;
+  const { appId, exePath, coverUrl, savePath, autoSync, maxSnapshots } = req.body;
   try {
     const fields = {};
     if (appId !== undefined) fields.appId = appId ? appId.trim() : '';
     if (exePath !== undefined) fields.exePath = exePath ? exePath.trim() : '';
     if (coverUrl !== undefined) fields.coverUrl = coverUrl ? coverUrl.trim() : '';
+    if (autoSync !== undefined) fields.autoSync = !!autoSync;
+    if (maxSnapshots !== undefined) fields.maxSnapshots = Math.max(0, parseInt(maxSnapshots, 10) || 0);
     if (savePath !== undefined && savePath) {
       fields.savePath = path.resolve(savePath);
       // Update watcher if path changed
@@ -804,6 +813,10 @@ app.delete('/api/peers/:peerId', async (req, res) => {
 // ----------------------------------------------------
 p2pEngine.registerRoutes(app);
 
+p2pEngine.onSyncProgress = (gameId, progress) => {
+  broadcast('sync-progress', { gameId, ...progress });
+};
+
 // ----------------------------------------------------
 // ENGINE BROADCAST SYNC HOOKS
 // ----------------------------------------------------
@@ -811,6 +824,13 @@ p2pEngine.registerRoutes(app);
 // an automatic save snapshot, it calls this to trigger P2P syncing to all online peers!
 watcherEngine.setSyncCallback((gameId, snapshot) => {
   broadcast('games-update', db.getGames());
+  
+  const game = db.getGame(gameId);
+  if (game && game.autoSync === false) {
+    console.log(`[Watcher Sync Hook] Auto-sync disabled for game ${game.name}. Skipping peer sync.`);
+    return;
+  }
+  
   broadcast('sync-start', { gameId, message: 'Auto-syncing changed files with peers...' });
   
   p2pEngine.syncGame(gameId)

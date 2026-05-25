@@ -13,6 +13,7 @@ class P2PEngine {
     this.activeSyncs = {}; // gameId -> boolean
     this.activeConflicts = {}; // gameId -> { peer, localSnap, remoteSnap }
     this.onPeerUpdate = null;
+    this.onSyncProgress = null;
 
     this.peerGameStates = {}; // peerId -> { [gameId]: { latestSnapshotId, latestSnapshotTime, activeBranch, manifestHash } }
     this.pingInterval = null;

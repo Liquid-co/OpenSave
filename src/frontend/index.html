@@ -672,6 +672,20 @@
               <small>Sync backup ZIPs older than this will be deleted automatically once per day when the daemon runs.</small>
             </div>
 
+            <h3 class="settings-section-title" style="margin-top:24px;">🔎 Game Scanner Settings</h3>
+            <div class="form-group">
+              <label>Custom Scan Directories</label>
+              <div id="custom-scan-paths-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+                <!-- Dynamically populated custom scan paths -->
+              </div>
+              <div class="input-row">
+                <input type="text" id="input-new-scan-path" placeholder="e.g. D:\SteamLibrary\steamapps\compatdata" style="flex:1;">
+                <button type="button" id="btn-browse-scan-path" class="btn-secondary btn-sm" style="white-space:nowrap;">Browse...</button>
+                <button type="button" id="btn-add-scan-path" class="btn-primary btn-sm" style="white-space:nowrap;">Add Path</button>
+              </div>
+              <small>Additional folder directories where SaveSync will search for emulator, custom, or repack game saves.</small>
+            </div>
+
             <div class="form-actions">
               <button type="submit" class="btn-primary">Save Settings</button>
             </div>
@@ -764,6 +778,21 @@
           <button id="btn-drawer-sync" class="btn-accent">⚡ Sync Now</button>
           <button id="btn-drawer-snapshot" class="btn-primary">📸 Save Snapshot</button>
         </div>
+
+        <!-- Sync Progress Bar Overlay -->
+        <div id="drawer-sync-progress-container" class="hidden" style="width:100%; margin-top:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px 14px; border-radius:8px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-2);">
+            <span id="drawer-sync-progress-status">Syncing files...</span>
+            <span id="drawer-sync-progress-speed" style="font-weight:600; color:var(--cyan);">0 KB/s</span>
+          </div>
+          <div style="width:100%; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+            <div id="drawer-sync-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, var(--emerald), var(--cyan)); transition:width 0.2s ease;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-3);">
+            <span id="drawer-sync-progress-details">0.0 MB / 0.0 MB</span>
+            <span id="drawer-sync-progress-percent">0%</span>
+          </div>
+        </div>
       </header>
 
       <div class="drawer-grid">
@@ -785,7 +814,7 @@
           </div>
 
           <div class="drawer-card">
-            <h4>Launch Configuration</h4>
+            <h4>Launch &amp; Sync Configuration</h4>
             <form id="form-game-launch-settings" style="display:flex; flex-direction:column; gap:10px;">
               <div class="form-group" style="margin-bottom:0;">
                 <label for="drawer-game-appid" style="font-size:11px;">Steam App ID</label>
@@ -801,6 +830,18 @@
               <div class="form-group" style="margin-bottom:0;">
                 <label for="drawer-game-coverurl" style="font-size:11px;">Custom Cover Image URL</label>
                 <input type="text" id="drawer-game-coverurl" placeholder="https://..." style="padding:6px 10px; font-size:12px;">
+              </div>
+              <div class="toggle-row" style="margin-top:4px; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="drawer-game-autosync" checked style="width:auto; margin:0;">
+                <label for="drawer-game-autosync" style="font-size:11px; cursor:pointer; font-weight:600; display:flex; flex-direction:column; gap:2px; margin:0;">
+                  Auto-Sync Saves
+                  <span style="font-weight:400; color:var(--text-muted); font-size:10px;">Automatically sync saves when changes are detected.</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="drawer-game-maxsnapshots" style="font-size:11px;">Snapshot Retention Limit</label>
+                <input type="number" id="drawer-game-maxsnapshots" min="0" placeholder="Default: 5 (0 for unlimited)" style="padding:6px 10px; font-size:12px;">
+                <small style="font-size:10px; color:var(--text-muted);">Max backups kept per branch (prunes oldest first).</small>
               </div>
               <button type="submit" class="btn-secondary btn-sm" style="width:100%; font-size:11px; padding:6px; margin-top:4px;">Save Configuration</button>
             </form>

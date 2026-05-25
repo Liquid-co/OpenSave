@@ -202,6 +202,9 @@ export class SyncEngine {
 
       log('event', 'Detected changes', `Remote save on "${peer.name}" has newer/different files. Pulling ${filesToPull.length} file(s)...`);
 
+      // Pre-calculate total bytes to pull across all files and cache different blocks mapping
+      let totalBytesToPull = 0;
+      const fileDifferentBlocksMap = new Map();
       for (const relPath of filesToPull) {
         const remoteFileMeta = remoteFiles[relPath];
         let differentBlocks = [];
@@ -221,6 +224,20 @@ export class SyncEngine {
             }
           }
         }
+        fileDifferentBlocksMap.set(relPath, differentBlocks);
+
+        for (const index of differentBlocks) {
+          const blockMeta = remoteFileMeta.blocks[index];
+          totalBytesToPull += blockMeta ? blockMeta.length : 64 * 1024;
+        }
+      }
+
+      let bytesPulled = 0;
+      const pullStart = Date.now();
+
+      for (const relPath of filesToPull) {
+        const remoteFileMeta = remoteFiles[relPath];
+        const differentBlocks = fileDifferentBlocksMap.get(relPath) || [];
 
         log('event', 'Fetching blocks', `Fetching ${differentBlocks.length} block(s) for file: ${relPath}`);
 
@@ -237,7 +254,24 @@ export class SyncEngine {
           for (const block of blockData.blocks) {
             bytesReceived += block.length;
           }
+          bytesPulled += bytesReceived;
           await this.throttle(bytesReceived, isWan);
+
+          // Calculate speed and progress
+          const elapsedTime = Date.now() - pullStart;
+          const speedBytesPerSec = bytesPulled / (elapsedTime / 1000) || 0;
+          const percentage = totalBytesToPull > 0 ? Math.min(100, Math.round((bytesPulled / totalBytesToPull) * 100)) : 100;
+
+          // Broadcast sync progress
+          if (typeof this.p2pEngine.onSyncProgress === 'function') {
+            this.p2pEngine.onSyncProgress(gameId, {
+              peerName: peer.name,
+              bytesTransferred: bytesPulled,
+              totalBytes: totalBytesToPull,
+              speedBytesPerSec,
+              percentage
+            });
+          }
         }
 
         // Patch file

@@ -17,6 +17,7 @@ let activeGameId = null;
 let discoveredSavesList = [];
 let activeConflictData = null;
 let pendingRollbackSnapId = null;
+let localCustomScanPaths = [];
 
 // ============================================================
 // DOM REFS
@@ -122,6 +123,18 @@ const drawerGameExepath  = document.getElementById('drawer-game-exepath');
 const btnBrowseGameExe   = document.getElementById('btn-browse-game-exe');
 const drawerGameCoverurl = document.getElementById('drawer-game-coverurl');
 
+const customScanPathsList = document.getElementById('custom-scan-paths-list');
+const inputNewScanPath = document.getElementById('input-new-scan-path');
+const btnBrowseScanPath = document.getElementById('btn-browse-scan-path');
+const btnAddScanPath = document.getElementById('btn-add-scan-path');
+
+const drawerSyncProgressContainer = document.getElementById('drawer-sync-progress-container');
+const drawerSyncProgressStatus = document.getElementById('drawer-sync-progress-status');
+const drawerSyncProgressSpeed = document.getElementById('drawer-sync-progress-speed');
+const drawerSyncProgressBar = document.getElementById('drawer-sync-progress-bar');
+const drawerSyncProgressDetails = document.getElementById('drawer-sync-progress-details');
+const drawerSyncProgressPercent = document.getElementById('drawer-sync-progress-percent');
+
 // ============================================================
 // INIT
 // ============================================================
@@ -196,6 +209,8 @@ function navigateTo(viewId) {
     }
     if (settingsAutoDeleteDays) settingsAutoDeleteDays.value = appState.settings.autoDeleteDays || '30';
     if (settingsAutoSyncOnTrack) settingsAutoSyncOnTrack.checked = appState.settings.autoSyncOnTrack !== false;
+    localCustomScanPaths = [...(appState.settings.customScanPaths || [])];
+    renderCustomScanPaths();
     syncWanControls();
     toggleRelayContainers(settingsHostRelay.checked);
     loadRelayIps();
@@ -284,12 +299,52 @@ function handleWebSocketMessage(message) {
       statSyncStatus.className = 'stat-pill-val text-warning';
       showToast(data.message || 'Syncing saves...', 'info');
       updateConsoleDevices();
-      // Flash devices tab to indicate an active sync with a peer
       flashDevicesTab();
+      if (activeGameId === data.gameId) {
+        if (btnDrawerSync) {
+          btnDrawerSync.disabled = true;
+          btnDrawerSync.textContent = '⚡ Syncing...';
+        }
+        if (drawerSyncProgressContainer) {
+          drawerSyncProgressContainer.classList.remove('hidden');
+          drawerSyncProgressStatus.textContent = 'Connecting to peer...';
+          drawerSyncProgressSpeed.textContent = '0 KB/s';
+          drawerSyncProgressBar.style.width = '0%';
+          drawerSyncProgressDetails.textContent = 'Calculating...';
+          drawerSyncProgressPercent.textContent = '0%';
+        }
+      }
+      break;
+    case 'sync-progress':
+      const speedStr = (data.speedBytesPerSec > 1024 * 1024) 
+        ? `${(data.speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s` 
+        : `${(data.speedBytesPerSec / 1024).toFixed(1)} KB/s`;
+      statSyncStatus.textContent = `Syncing (${data.percentage}%)`;
+      if (activeGameId === data.gameId) {
+        if (btnDrawerSync) {
+          btnDrawerSync.disabled = true;
+          btnDrawerSync.textContent = `⚡ Syncing (${data.percentage}%)`;
+        }
+        if (drawerSyncProgressContainer) {
+          drawerSyncProgressContainer.classList.remove('hidden');
+          drawerSyncProgressStatus.textContent = `Syncing with ${data.peerName}...`;
+          drawerSyncProgressSpeed.textContent = speedStr;
+          drawerSyncProgressBar.style.width = `${data.percentage}%`;
+          drawerSyncProgressDetails.textContent = `${(data.bytesTransferred / 1024 / 1024).toFixed(2)} MB / ${(data.totalBytes / 1024 / 1024).toFixed(2)} MB`;
+          drawerSyncProgressPercent.textContent = `${data.percentage}%`;
+        }
+      }
       break;
     case 'sync-complete':
       statSyncStatus.textContent = 'Idle';
       statSyncStatus.className = 'stat-pill-val text-success';
+      if (btnDrawerSync) {
+        btnDrawerSync.disabled = false;
+        btnDrawerSync.textContent = '⚡ Sync Now';
+      }
+      if (drawerSyncProgressContainer) {
+        drawerSyncProgressContainer.classList.add('hidden');
+      }
       let conflictPeer = null;
       if (data.result && data.result.peersSynced) {
         conflictPeer = data.result.peersSynced.find(p => p.status === 'conflict');
@@ -305,6 +360,13 @@ function handleWebSocketMessage(message) {
     case 'sync-error':
       statSyncStatus.textContent = 'Error';
       statSyncStatus.className = 'stat-pill-val text-danger';
+      if (btnDrawerSync) {
+        btnDrawerSync.disabled = false;
+        btnDrawerSync.textContent = '⚡ Sync Now';
+      }
+      if (drawerSyncProgressContainer) {
+        drawerSyncProgressContainer.classList.add('hidden');
+      }
       showToast(`Sync failed: ${data.error}`, 'error');
       updateConsoleDevices();
       break;
@@ -405,7 +467,8 @@ function setupEventListeners() {
       syncBackupsDir,
       autoDeleteBackups,
       autoDeleteDays,
-      autoSyncOnTrack
+      autoSyncOnTrack,
+      customScanPaths: localCustomScanPaths
     });
     await loadRelayIps();
   });
@@ -429,6 +492,31 @@ function setupEventListeners() {
     } catch (e) {}
   });
 
+
+  // Custom scan path bindings
+  btnBrowseScanPath?.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/browse-directory');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.path && inputNewScanPath) {
+          inputNewScanPath.value = data.path;
+        }
+      }
+    } catch (e) {}
+  });
+
+  btnAddScanPath?.addEventListener('click', () => {
+    if (!inputNewScanPath) return;
+    const p = inputNewScanPath.value.trim();
+    if (p) {
+      if (!localCustomScanPaths.includes(p)) {
+        localCustomScanPaths.push(p);
+        renderCustomScanPaths();
+      }
+      inputNewScanPath.value = '';
+    }
+  });
 
   // Scanner
   btnRunScan.addEventListener('click', runDirectoryScan);
@@ -668,15 +756,23 @@ function setupEventListeners() {
     const appId = drawerGameAppid.value.trim();
     const exePath = drawerGameExepath.value.trim();
     const coverUrl = drawerGameCoverurl.value.trim();
+    const drawerGameAutosync = document.getElementById('drawer-game-autosync');
+    const drawerGameMaxsnapshots = document.getElementById('drawer-game-maxsnapshots');
+    const autoSync = drawerGameAutosync ? drawerGameAutosync.checked : true;
+    const maxSnapshots = drawerGameMaxsnapshots ? parseInt(drawerGameMaxsnapshots.value, 10) || 0 : 5;
 
     try {
       const res = await fetch(`/api/games/${activeGameId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appId, exePath, coverUrl })
+        body: JSON.stringify({ appId, exePath, coverUrl, autoSync, maxSnapshots })
       });
       if (res.ok) {
         showToast('Launch configuration updated!', 'success');
+        const updatedGame = await res.json();
+        appState.games[activeGameId] = updatedGame;
+        renderGames();
+        renderDrawerDetails();
       } else {
         const err = await res.json();
         showToast(err.error || 'Failed to save configuration', 'error');
@@ -1461,6 +1557,11 @@ function renderDrawerDetails() {
   if (drawerGameAppid) drawerGameAppid.value = game.appId || '';
   if (drawerGameExepath) drawerGameExepath.value = game.exePath || '';
   if (drawerGameCoverurl) drawerGameCoverurl.value = game.coverUrl || '';
+  
+  const drawerGameAutosync = document.getElementById('drawer-game-autosync');
+  const drawerGameMaxsnapshots = document.getElementById('drawer-game-maxsnapshots');
+  if (drawerGameAutosync) drawerGameAutosync.checked = game.autoSync !== false;
+  if (drawerGameMaxsnapshots) drawerGameMaxsnapshots.value = (game.maxSnapshots !== undefined) ? game.maxSnapshots : 5;
 
   // Show or hide launch button based on launch config state
   if (btnDrawerLaunch) {
@@ -1806,6 +1907,31 @@ function updateConsoleDevices() {
     }
   }
 }
+
+// Custom Scan Paths Renderer & Handlers
+function renderCustomScanPaths() {
+  if (!customScanPathsList) return;
+  customScanPathsList.innerHTML = '';
+  if (localCustomScanPaths.length === 0) {
+    customScanPathsList.innerHTML = `<div style="font-size:12px; color:var(--text-3); font-style:italic;">No custom scan paths configured.</div>`;
+    return;
+  }
+  localCustomScanPaths.forEach((p, idx) => {
+    const item = document.createElement('div');
+    item.className = 'custom-path-item';
+    item.style = 'display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--border); padding:6px 10px; border-radius:6px; font-size:12px; margin-bottom: 4px;';
+    item.innerHTML = `
+      <span style="font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:400px;" title="${p}">${p}</span>
+      <button type="button" class="btn-peer-action btn-danger" style="padding:2px 6px; background:rgba(239,68,68,0.15); color:var(--red);" onclick="removeCustomScanPath(${idx})">Remove</button>
+    `;
+    customScanPathsList.appendChild(item);
+  });
+}
+
+window.removeCustomScanPath = (idx) => {
+  localCustomScanPaths.splice(idx, 1);
+  renderCustomScanPaths();
+};
 
 // ============================================================
 // BOOT

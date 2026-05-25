@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import db from './db.js';
 
 // Substitute Windows environment variables in paths
 export function resolvePath(winPath) {
@@ -182,6 +183,113 @@ export async function scanInstalledSaves() {
         }
       }
     } catch (e) {}
+  }
+
+  // 3. GOG & Epic Games Saved Games and My Games wrapper folders
+  const wrapPaths = [
+    { id: 'epic-savedgames', name: 'Epic / Saved Games', path: '%USERPROFILE%/Saved Games' },
+    { id: 'gog-mygames', name: 'GOG / My Games', path: '%USERPROFILE%/Documents/My Games' }
+  ];
+
+  for (const w of wrapPaths) {
+    try {
+      const resolved = resolvePath(w.path);
+      if (fs.existsSync(resolved)) {
+        const files = fs.readdirSync(resolved);
+        for (const file of files) {
+          const fullSubPath = path.join(resolved, file);
+          if (fs.statSync(fullSubPath).isDirectory()) {
+            discovered.push({
+              id: `${w.id}-${file.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+              name: file,
+              type: 'game',
+              savePath: fullSubPath
+            });
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 4. Unreal Engine Saves (Epic Games / local AppData)
+  const localAppData = resolvePath('%LOCALAPPDATA%');
+  if (fs.existsSync(localAppData)) {
+    try {
+      const dirs = fs.readdirSync(localAppData);
+      for (const dir of dirs) {
+        const checkPath = path.join(localAppData, dir, 'Saved', 'SaveGames');
+        if (fs.existsSync(checkPath) && fs.statSync(checkPath).isDirectory()) {
+          const files = fs.readdirSync(checkPath);
+          if (files.length > 0) {
+            discovered.push({
+              id: `ue-${dir.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+              name: `${dir} (Epic/Unreal Save)`,
+              type: 'game',
+              savePath: checkPath
+            });
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 5. Custom Scan Paths from settings
+  const settings = db.getSettings();
+  const customPaths = settings.customScanPaths || [];
+  for (const customPath of customPaths) {
+    try {
+      const resolved = path.resolve(customPath);
+      if (fs.existsSync(resolved)) {
+        const files = fs.readdirSync(resolved);
+        const pathBasename = path.basename(resolved);
+        for (const file of files) {
+          const fullSubPath = path.join(resolved, file);
+          if (fs.statSync(fullSubPath).isDirectory()) {
+            discovered.push({
+              id: `custom-${pathBasename.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${file.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+              name: file,
+              type: 'game',
+              savePath: fullSubPath
+            });
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 6. Name-to-AppID matching index for popular games
+  const popularGameNameToAppId = {};
+  for (const [appId, pName] of Object.entries(POPULAR_STEAM_GAMES)) {
+    popularGameNameToAppId[pName.toLowerCase()] = appId;
+  }
+  popularGameNameToAppId['elden ring'] = '1245620';
+  popularGameNameToAppId['cyberpunk 2077'] = '1091500';
+  popularGameNameToAppId['the witcher 3'] = '292030';
+  popularGameNameToAppId['witcher 3'] = '292030';
+  popularGameNameToAppId['hades'] = '1145360';
+  popularGameNameToAppId['hades ii'] = '1145350';
+  popularGameNameToAppId['hades 2'] = '1145350';
+  popularGameNameToAppId['terraria'] = '105600';
+  popularGameNameToAppId['sekiro'] = '814380';
+  popularGameNameToAppId['stardew valley'] = '413150';
+  popularGameNameToAppId['fallout 4'] = '377160';
+  popularGameNameToAppId['red dead redemption 2'] = '1174180';
+
+  // Apply auto name-to-AppID mapping to games without AppID
+  for (const item of discovered) {
+    if (!item.appId) {
+      const nameKey = item.name.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim();
+      if (popularGameNameToAppId[nameKey]) {
+        item.appId = popularGameNameToAppId[nameKey];
+      } else {
+        for (const [pName, pId] of Object.entries(popularGameNameToAppId)) {
+          if (nameKey.includes(pName) || pName.includes(nameKey)) {
+            item.appId = pId;
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Resolve AppIDs to real game names in parallel

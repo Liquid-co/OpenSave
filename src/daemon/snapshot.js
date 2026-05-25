@@ -100,6 +100,22 @@ export function createSnapshot(gameId, comment = '', isSystemAuto = false) {
   }
   branches[game.activeBranch].snapshots.push(snapshotMetadata);
   
+  // Enforce custom snapshot retention limit per game (defaults to 5)
+  const maxSnapshots = (game.maxSnapshots !== undefined) ? game.maxSnapshots : 5;
+  if (maxSnapshots > 0 && branches[game.activeBranch].snapshots.length > maxSnapshots) {
+    const numToDelete = branches[game.activeBranch].snapshots.length - maxSnapshots;
+    const deletedSnaps = branches[game.activeBranch].snapshots.splice(0, numToDelete);
+    for (const snap of deletedSnaps) {
+      try {
+        if (fs.existsSync(snap.zipPath)) {
+          fs.unlinkSync(snap.zipPath);
+        }
+      } catch (err) {
+        console.error(`[Snapshot] Failed to delete pruned snapshot file ${snap.zipPath}:`, err.message);
+      }
+    }
+  }
+  
   db.updateGame(gameId, { branches });
 
   console.log(`[Snapshot] Created "${snapshotId}" for game "${game.name}" on branch "${game.activeBranch}" (${(sizeBytes / 1024).toFixed(1)} KB)`);

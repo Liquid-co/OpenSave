@@ -34,6 +34,7 @@ const defaultState = {
     autoDeleteBackups: false,
     autoDeleteDays: 30,
     autoSyncOnTrack: true,
+    customScanPaths: [],
     relayUrl: CLOUD_RELAY_URL,
     syncCode: '',
     hostRelay: false,
@@ -114,6 +115,8 @@ class Database {
       name,
       savePath: path.resolve(savePath),
       activeBranch: 'main',
+      autoSync: true,
+      maxSnapshots: 5,
       branches: {
         main: {
           name: 'main',
