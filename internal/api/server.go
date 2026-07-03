@@ -64,11 +64,15 @@ func (s *Server) peersPayload() map[string]any {
 			discovered = append(discovered, d)
 		}
 	}
+	// WAN room members appear in the discovered list alongside LAN ones.
+	for _, d := range s.Daemon.P2P.Wan.DiscoveredWanPeers() {
+		discovered = append(discovered, d)
+	}
 	return map[string]any{
 		"peers":           peerMap,
 		"discoveredPeers": discovered,
 		"pairingRequests": s.Daemon.P2P.Pairing.PendingRequests(),
-		"wanRoom":         nil, // Phase 3
+		"wanRoom":         s.Daemon.P2P.Wan.Status(),
 		"conflicts":       s.Daemon.P2P.Sync.ActiveConflicts(),
 	}
 }

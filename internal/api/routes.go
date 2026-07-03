@@ -75,11 +75,23 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	prevSyncCode := ""
+	prevRelayURL := ""
+	if prev, err := s.Daemon.Store.GetSettings(); err == nil {
+		prevSyncCode, prevRelayURL = prev.SyncCode, prev.RelayURL
+	}
+
 	if err := s.Daemon.Store.UpdateSettings(current); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	updated, _ := s.Daemon.Store.GetSettings()
+
+	// Relay/room changes take effect immediately.
+	if updated.SyncCode != prevSyncCode || updated.RelayURL != prevRelayURL {
+		s.Daemon.P2P.Wan.Connect()
+	}
+
 	writeJSON(w, http.StatusOK, updated)
 }
 

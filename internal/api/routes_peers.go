@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,6 +21,35 @@ func (s *Server) peerRoutes(r chi.Router) {
 
 	r.Post("/api/games/{gameId}/sync", s.handleSyncGame)
 	r.Post("/api/games/{gameId}/resolve-conflict", s.handleResolveConflict)
+
+	r.Get("/api/wan/status", s.handleWanStatus)
+	r.Get("/api/relay/health", s.handleRelayHealth)
+}
+
+func (s *Server) handleWanStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.Daemon.P2P.Wan.Status())
+}
+
+// handleRelayHealth probes the configured relay's /health endpoint
+// (converting ws(s):// to http(s):// like the JS daemon did).
+func (s *Server) handleRelayHealth(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.Daemon.Store.GetSettings()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpURL := strings.Replace(strings.Replace(settings.RelayURL, "wss://", "https://", 1), "ws://", "http://", 1)
+
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(httpURL + "/health")
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"reachable": false, "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	var health map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&health)
+	writeJSON(w, http.StatusOK, map[string]any{"reachable": resp.StatusCode == http.StatusOK, "health": health})
 }
 
 func (s *Server) handleListPeers(w http.ResponseWriter, r *http.Request) {
@@ -29,11 +60,22 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Address string `json:"address"`
 		Port    int    `json:"port"`
+		PeerID  string `json:"peerId"` // WAN room member — pair through the relay
 	}
-	if err := readJSON(r, &body); err != nil || body.Address == "" {
-		writeError(w, http.StatusBadRequest, "address is required")
+	if err := readJSON(r, &body); err != nil || (body.Address == "" && body.PeerID == "") {
+		writeError(w, http.StatusBadRequest, "address or peerId is required")
 		return
 	}
+
+	if body.PeerID != "" && (body.Address == "" || body.Address == "relay") {
+		if err := s.Daemon.P2P.InitiatePairWan(r.Context(), body.PeerID); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "pending"})
+		return
+	}
+
 	if body.Port == 0 {
 		body.Port = 8383
 	}

@@ -32,6 +32,7 @@ type Engine struct {
 	Sync      *syncengine.Engine
 	Pairing   *pairing.Manager
 	Discovery *discovery.Manager
+	Wan       *WanClient
 	Log       func(level, msg string)
 
 	// OnPeerUpdate fires whenever peer/pairing state changes (dashboard
@@ -88,14 +89,17 @@ func (e *Engine) StartDiscovery() error {
 	return e.Discovery.Start()
 }
 
-// Stop shuts down discovery (and, in later phases, the WAN client).
+// Stop shuts down discovery and the WAN client.
 func (e *Engine) Stop() {
 	if e.Discovery != nil {
 		e.Discovery.Stop()
 	}
+	if e.Wan != nil {
+		e.Wan.Disconnect()
+	}
 }
 
-// New assembles a P2P engine around the LAN transport.
+// New assembles a P2P engine with LAN + WAN transports routed per peer.
 func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) *Engine {
 	e := &Engine{
 		Store:     s,
@@ -103,7 +107,11 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 		Pairing:   pairing.New(),
 		Log:       logf,
 	}
-	e.Sync = syncengine.New(s, snaps, &lanTransport{})
+	e.Wan = newWanClient(e)
+	e.Sync = syncengine.New(s, snaps, &routingTransport{
+		lan: &lanTransport{},
+		wan: &wanTransport{wan: e.Wan},
+	})
 	e.Sync.Log = logf
 	return e
 }
@@ -237,6 +245,28 @@ func (e *Engine) InitiatePair(ctx context.Context, address string, port int) err
 	return nil
 }
 
+// InitiatePairWan sends a handshake to a room member through the relay.
+func (e *Engine) InitiatePairWan(ctx context.Context, peerID string) error {
+	settings, err := e.Store.GetSettings()
+	if err != nil {
+		return err
+	}
+	// "relay" is the JS grace-window key for WAN-initiated handshakes.
+	e.Pairing.RecordSent(peerID, "relay")
+
+	_, err = e.Wan.Request(ctx, peerID, "/handshake", "POST", map[string]any{
+		"peerId":     settings.NodeID,
+		"deviceName": settings.DeviceName,
+		"deviceType": settings.DeviceType,
+		"port":       settings.Port,
+	})
+	if err != nil {
+		return fmt.Errorf("WAN handshake to %s: %w", peerID, err)
+	}
+	e.Log("info", fmt.Sprintf("WAN pairing request sent to %s — waiting for their approval", peerID))
+	return nil
+}
+
 // ApprovePairing accepts a pending incoming handshake: persists the peer
 // and sends approve-confirm back to them.
 func (e *Engine) ApprovePairing(ctx context.Context, peerID string) error {
@@ -256,12 +286,17 @@ func (e *Engine) ApprovePairing(ctx context.Context, peerID string) error {
 		return err
 	}
 
-	if err := postApproveConfirm(ctx, req.Address, req.Port, map[string]any{
+	confirmBody := map[string]any{
 		"peerId":     settings.NodeID,
 		"deviceName": settings.DeviceName,
 		"deviceType": settings.DeviceType,
 		"port":       settings.Port,
-	}); err != nil {
+	}
+	if req.IsWan || req.Address == "relay" {
+		if _, err := e.Wan.Request(ctx, req.PeerID, "/approve-confirm", "POST", confirmBody); err != nil {
+			e.Log("warn", fmt.Sprintf("WAN approve-confirm to %s failed (peer saved anyway): %v", req.DeviceName, err))
+		}
+	} else if err := postApproveConfirm(ctx, req.Address, req.Port, confirmBody); err != nil {
 		e.Log("warn", fmt.Sprintf("approve-confirm to %s failed (peer saved anyway): %v", req.DeviceName, err))
 	}
 
