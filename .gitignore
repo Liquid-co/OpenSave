@@ -1,0 +1,25 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+/dist/
+/build/
+
+# Test artifacts
+*.test
+*.out
+coverage.html
+
+# Wails
+cmd/opensave-app/frontend/dist/
+cmd/opensave-app/frontend/node_modules/
+cmd/opensave-app/build/bin/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
