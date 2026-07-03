@@ -5,6 +5,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/opensave/opensave/internal/config"
 	"github.com/opensave/opensave/internal/logging"
+	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
@@ -24,6 +26,9 @@ type Options struct {
 	// HomeOverride uses a custom data directory instead of ~/.opensave
 	// (tests and portable installs).
 	HomeOverride string
+	// DisableDiscovery skips UDP LAN discovery (tests pair peers manually
+	// and don't want broadcast traffic).
+	DisableDiscovery bool
 }
 
 // Daemon is the assembled core. Access subsystems directly for operations
@@ -34,10 +39,14 @@ type Daemon struct {
 	Snapshots *snapshot.Manager
 	Watcher   *watcher.Engine
 	Scanner   *presets.Scanner
+	P2P       *p2p.Engine
 	Log       *logging.Logger
 
-	// OnGameChanged fires after a watcher-triggered auto-snapshot; Phase 2
-	// connects this to P2P sync. May be reassigned before Start.
+	opts Options
+
+	// OnGameChanged fires after a watcher-triggered auto-snapshot (in
+	// addition to the built-in P2P sync kick). May be reassigned before
+	// Start.
 	OnGameChanged func(gameID string)
 }
 
@@ -80,6 +89,8 @@ func New(opts Options) (*Daemon, error) {
 		Snapshots: snaps,
 		Log:       log,
 		Scanner:   presets.NewScanner(paths.AppCacheFile),
+		P2P:       p2p.New(s, snaps, log.Log),
+		opts:      opts,
 	}
 
 	d.Watcher = watcher.New(watcher.Callbacks{
@@ -96,6 +107,14 @@ func New(opts Options) (*Daemon, error) {
 			return err
 		},
 		OnChanged: func(gameID string) {
+			// Watcher-detected save change: push it to online peers.
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+				defer cancel()
+				if _, err := d.P2P.SyncGame(ctx, gameID); err != nil {
+					d.Log.Log("info", fmt.Sprintf("post-snapshot sync for %s: %v", gameID, err))
+				}
+			}()
 			if d.OnGameChanged != nil {
 				d.OnGameChanged(gameID)
 			}
@@ -120,12 +139,19 @@ func (d *Daemon) Start() error {
 			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
 		}
 	}
+	if !d.opts.DisableDiscovery {
+		if err := d.P2P.StartDiscovery(); err != nil {
+			d.Log.Log("warn", fmt.Sprintf("LAN discovery unavailable: %v", err))
+		}
+	}
+
 	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
 	return nil
 }
 
 // Stop shuts the daemon down cleanly.
 func (d *Daemon) Stop() {
+	d.P2P.Stop()
 	d.Watcher.Stop()
 	d.Store.Close()
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/logging"
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -46,14 +47,76 @@ func (s *Server) BroadcastGamesUpdate() {
 	s.Hub.Broadcast("games-update", s.gamesPayload())
 }
 
-// Start listens on 127.0.0.1:<port> (port 0 picks a free one) and serves
-// until Stop. Returns the bound address.
+// BroadcastPeersUpdate pushes the full peer/pairing state.
+func (s *Server) BroadcastPeersUpdate() {
+	s.Hub.Broadcast("peers-update", s.peersPayload())
+}
+
+func (s *Server) peersPayload() map[string]any {
+	peers, _ := s.Daemon.Store.ListPeers()
+	peerMap := map[string]any{}
+	for _, p := range peers {
+		peerMap[p.ID] = p
+	}
+	discovered := []any{}
+	if s.Daemon.P2P.Discovery != nil {
+		for _, d := range s.Daemon.P2P.Discovery.DiscoveredPeers() {
+			discovered = append(discovered, d)
+		}
+	}
+	return map[string]any{
+		"peers":           peerMap,
+		"discoveredPeers": discovered,
+		"pairingRequests": s.Daemon.P2P.Pairing.PendingRequests(),
+		"wanRoom":         nil, // Phase 3
+		"conflicts":       s.Daemon.P2P.Sync.ActiveConflicts(),
+	}
+}
+
+// wireSyncProgress forwards sync engine progress into the dashboard WS,
+// using the same message types the JS daemon broadcast.
+func (s *Server) wireSyncProgress() {
+	sync := s.Daemon.P2P.Sync
+	sync.Progress.OnSyncStart = func(gameID string, ev syncengine.ProgressEvent) {
+		s.Hub.Broadcast("sync-start", map[string]any{"gameId": gameID, "data": ev})
+	}
+	sync.Progress.OnSyncProgress = func(gameID string, ev syncengine.ProgressEvent) {
+		s.Hub.Broadcast("sync-progress", map[string]any{"gameId": gameID, "data": ev})
+	}
+	sync.Progress.OnSyncComplete = func(gameID string, ev syncengine.ProgressEvent) {
+		s.Hub.Broadcast("sync-complete", map[string]any{"gameId": gameID, "data": ev})
+		s.BroadcastGamesUpdate()
+	}
+	sync.Progress.OnSyncError = func(gameID string, ev syncengine.ProgressEvent) {
+		s.Hub.Broadcast("sync-error", map[string]any{"gameId": gameID, "data": ev})
+	}
+	sync.Progress.OnConflict = func(gameID string) {
+		s.BroadcastPeersUpdate()
+	}
+}
+
+// Start listens on 0.0.0.0:<port> (port 0 picks a free one) and serves
+// until Stop. Dashboard routes are localhost-guarded per-request; the
+// /api/p2p/* peer protocol is LAN-reachable behind its own paired-peer
+// guard. Returns the bound address.
 func (s *Server) Start(port int) (string, error) {
 	r := chi.NewRouter()
-	r.Use(localhostOnly)
-	s.routes(r)
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	// Dashboard/CLI surface: localhost only.
+	r.Group(func(r chi.Router) {
+		r.Use(localhostOnly)
+		s.routes(r)
+	})
+
+	// Peer-to-peer protocol: LAN-reachable, guarded by requirePairedPeer
+	// inside RegisterRoutes.
+	s.Daemon.P2P.RegisterRoutes(r)
+
+	// Peer/dashboard state changes push live updates.
+	s.Daemon.P2P.OnPeerUpdate = s.BroadcastPeersUpdate
+	s.wireSyncProgress()
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
@@ -101,17 +164,11 @@ func isLoopback(host string) bool {
 // with Phase 2 — empty placeholders keep the shape stable).
 func (s *Server) initPayload() any {
 	settings, _ := s.Daemon.Store.GetSettings()
-	games := s.gamesPayload()
-	return map[string]any{
-		"settings":        settings,
-		"games":           games,
-		"peers":           map[string]any{},
-		"discoveredPeers": []any{},
-		"pairingRequests": []any{},
-		"wanRoom":         nil,
-		"conflicts":       []any{},
-		"logHistory":      s.Daemon.Log.History(),
-	}
+	payload := s.peersPayload()
+	payload["settings"] = settings
+	payload["games"] = s.gamesPayload()
+	payload["logHistory"] = s.Daemon.Log.History()
+	return payload
 }
 
 // gamesPayload returns every game with its branches+snapshots nested the

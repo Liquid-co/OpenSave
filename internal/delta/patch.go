@@ -124,6 +124,43 @@ func hashFileWhole(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// ReadBlocks returns the requested block indices from a file, chunked at
+// blockSize. Serves the P2P /blocks route: peers request only the indices
+// that differ.
+func ReadBlocks(filePath string, blockIndices []int, blockSize int) ([]BlockSource, error) {
+	if blockSize <= 0 {
+		blockSize = defaultBlockSize
+	}
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	var out []BlockSource
+	for _, idx := range blockIndices {
+		offset := int64(idx) * int64(blockSize)
+		if offset >= info.Size() {
+			continue
+		}
+		length := int64(blockSize)
+		if offset+length > info.Size() {
+			length = info.Size() - offset
+		}
+		buf := make([]byte, length)
+		if _, err := f.ReadAt(buf, offset); err != nil && err != io.EOF {
+			return nil, fmt.Errorf("read block %d: %w", idx, err)
+		}
+		out = append(out, BlockSource{Index: idx, Data: buf})
+	}
+	return out, nil
+}
+
 // clearReadOnlyIfSet mirrors fs.chmodSync(path, 0o666): on Windows this
 // clears FILE_ATTRIBUTE_READONLY (the only bit os.Chmod affects there), on
 // POSIX it grants owner/group/other read+write. Errors are intentionally
