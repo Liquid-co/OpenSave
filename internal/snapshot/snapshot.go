@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/opensave/opensave/internal/store"
@@ -36,6 +37,17 @@ type Manager struct {
 // New creates a snapshot Manager.
 func New(s *store.Store) *Manager {
 	return &Manager{Store: s, now: time.Now}
+}
+
+// ParseExportEntryName splits a "gameId__branch__snapId.zip" entry name
+// (the .sscb export / cloud upload naming scheme) into its parts.
+func ParseExportEntryName(name string) (gameID, branch, snapID string, ok bool) {
+	name = strings.TrimSuffix(name, ".zip")
+	parts := strings.SplitN(name, "__", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 var branchNameRe = regexp.MustCompile(`[^a-z0-9_-]`)

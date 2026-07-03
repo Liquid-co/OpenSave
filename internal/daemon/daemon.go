@@ -1,0 +1,225 @@
+// Package daemon wires OpenSave's subsystems together: storage (with
+// legacy import on first launch), the snapshot manager, the file watcher,
+// and the local REST/WebSocket API. P2P and cloud attach here in later
+// phases.
+package daemon
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/opensave/opensave/internal/config"
+	"github.com/opensave/opensave/internal/logging"
+	"github.com/opensave/opensave/internal/presets"
+	"github.com/opensave/opensave/internal/snapshot"
+	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/store/legacyimport"
+	"github.com/opensave/opensave/internal/watcher"
+)
+
+// Options tune daemon construction; the zero value is production behavior.
+type Options struct {
+	// HomeOverride uses a custom data directory instead of ~/.opensave
+	// (tests and portable installs).
+	HomeOverride string
+}
+
+// Daemon is the assembled core. Access subsystems directly for operations
+// (d.Store, d.Snapshots, ...).
+type Daemon struct {
+	Paths     config.Paths
+	Store     *store.Store
+	Snapshots *snapshot.Manager
+	Watcher   *watcher.Engine
+	Scanner   *presets.Scanner
+	Log       *logging.Logger
+
+	// OnGameChanged fires after a watcher-triggered auto-snapshot; Phase 2
+	// connects this to P2P sync. May be reassigned before Start.
+	OnGameChanged func(gameID string)
+}
+
+// New builds the daemon: resolves paths, runs the one-time legacy JSON
+// import if needed, opens the store, and constructs (but does not start)
+// the subsystems.
+func New(opts Options) (*Daemon, error) {
+	var paths config.Paths
+	var err error
+	if opts.HomeOverride != "" {
+		paths, err = config.ResolveAt(opts.HomeOverride)
+	} else {
+		paths, err = config.Resolve()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("resolve paths: %w", err)
+	}
+
+	if legacyimport.Needed(paths.LegacyDB, paths.SQLiteDB) {
+		if err := legacyimport.Run(paths.LegacyDB, paths.SQLiteDB, paths.MigrationLog); err != nil {
+			return nil, fmt.Errorf("legacy database import failed (your JSON data is untouched): %w", err)
+		}
+	}
+
+	s, err := store.Open(paths.SQLiteDB)
+	if err != nil {
+		return nil, fmt.Errorf("open store: %w", err)
+	}
+	if err := s.EnsureDefaultSettings(paths.HomeDir, paths.BackupsDir); err != nil {
+		s.Close()
+		return nil, fmt.Errorf("initialize settings: %w", err)
+	}
+
+	log := logging.New()
+	snaps := snapshot.New(s)
+
+	d := &Daemon{
+		Paths:     paths,
+		Store:     s,
+		Snapshots: snaps,
+		Log:       log,
+		Scanner:   presets.NewScanner(paths.AppCacheFile),
+	}
+
+	d.Watcher = watcher.New(watcher.Callbacks{
+		GetLastManifestHash: func(gameID string) (string, error) {
+			game, err := s.GetGame(gameID)
+			if err != nil {
+				return "", err
+			}
+			return game.LastManifestHash, nil
+		},
+		SetLastManifestHash: s.SetLastManifestHash,
+		CreateSnapshot: func(gameID string) error {
+			_, err := snaps.Create(gameID, "", true)
+			return err
+		},
+		OnChanged: func(gameID string) {
+			if d.OnGameChanged != nil {
+				d.OnGameChanged(gameID)
+			}
+		},
+		Log: log.Log,
+	})
+
+	return d, nil
+}
+
+// Start begins watching every tracked game with auto-sync enabled.
+func (d *Daemon) Start() error {
+	games, err := d.Store.ListGames()
+	if err != nil {
+		return err
+	}
+	for _, game := range games {
+		if !game.AutoSync {
+			continue
+		}
+		if err := d.Watcher.Watch(game.ID, game.SavePath); err != nil {
+			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
+		}
+	}
+	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
+	return nil
+}
+
+// Stop shuts the daemon down cleanly.
+func (d *Daemon) Stop() {
+	d.Watcher.Stop()
+	d.Store.Close()
+}
+
+// TrackGame adds a new game, takes its initial snapshot (when the save
+// location already has content), and starts watching it.
+func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
+	if game.ID == "" {
+		game.ID = store.SlugifyGameID(game.Name)
+	}
+	if game.ID == "" {
+		return store.Game{}, fmt.Errorf("game name %q produces an empty id", game.Name)
+	}
+	game.AutoSync = true
+	if game.ActiveBranch == "" {
+		game.ActiveBranch = "main"
+	}
+	if game.MaxSnapshots == 0 {
+		game.MaxSnapshots = 5
+	}
+
+	if err := d.Store.CreateGame(game); err != nil {
+		return store.Game{}, err
+	}
+
+	if _, err := d.Snapshots.Create(game.ID, "Initial snapshot", true); err != nil {
+		d.Log.Log("warn", fmt.Sprintf("initial snapshot for %q failed: %v", game.Name, err))
+	}
+
+	if err := d.Watcher.Watch(game.ID, game.SavePath); err != nil {
+		d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
+	}
+
+	d.Log.Log("success", fmt.Sprintf("now tracking %q at %q", game.Name, game.SavePath))
+	created, err := d.Store.GetGame(game.ID)
+	if err != nil {
+		return store.Game{}, err
+	}
+	return created, nil
+}
+
+// EnsureImportedSnapshot registers a snapshot restored from an .sscb
+// backup: creates the branch if missing and inserts the metadata row
+// unless that snapshot id is already known (idempotent re-imports).
+func (d *Daemon) EnsureImportedSnapshot(gameID, branch, snapID, zipPath string, sizeBytes int64) error {
+	if _, err := d.Store.GetSnapshot(snapID); err == nil {
+		return nil // already registered
+	}
+
+	branches, err := d.Store.ListBranches(gameID)
+	if err != nil {
+		return err
+	}
+	haveBranch := false
+	for _, b := range branches {
+		if b == branch {
+			haveBranch = true
+			break
+		}
+	}
+	if !haveBranch {
+		if err := d.Store.CreateBranch(gameID, branch); err != nil {
+			return err
+		}
+	}
+
+	// snap_<ms> ids carry their creation time; reconstruct the timestamp
+	// so imported snapshots sort correctly against existing ones.
+	ts := snapIDToTimestamp(snapID)
+	return d.Store.CreateSnapshot(store.Snapshot{
+		ID:           snapID,
+		GameID:       gameID,
+		BranchName:   branch,
+		Timestamp:    ts,
+		Comment:      "Imported from backup",
+		IsSystemAuto: true,
+		ZipPath:      zipPath,
+		SizeBytes:    sizeBytes,
+	})
+}
+
+func snapIDToTimestamp(snapID string) string {
+	msStr := strings.TrimPrefix(snapID, "snap_")
+	ms, err := strconv.ParseInt(msStr, 10, 64)
+	if err != nil {
+		return time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	}
+	return time.UnixMilli(ms).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+// UntrackGame stops watching and removes a game. Snapshot zip files on
+// disk are intentionally kept (they're the user's backups); only metadata
+// is removed — same as the JS app.
+func (d *Daemon) UntrackGame(gameID string) error {
+	d.Watcher.Unwatch(gameID)
+	return d.Store.DeleteGame(gameID)
+}

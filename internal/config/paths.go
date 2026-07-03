@@ -26,11 +26,12 @@ const (
 // Paths holds every filesystem location OpenSave needs, resolved once at
 // startup relative to the user's home directory.
 type Paths struct {
-	HomeDir     string
-	LegacyDB    string
-	SQLiteDB    string
-	BackupsDir  string
+	HomeDir      string
+	LegacyDB     string
+	SQLiteDB     string
+	BackupsDir   string
 	MigrationLog string
+	AppCacheFile string // Steam AppID->name cache
 }
 
 // Resolve migrates the legacy ~/.savesync directory to ~/.opensave if needed
@@ -41,7 +42,16 @@ func Resolve() (Paths, error) {
 	if err != nil {
 		return Paths{}, fmt.Errorf("resolve home dir: %w", err)
 	}
+	return resolveWithin(home)
+}
 
+// ResolveAt uses dataDir directly as the OpenSave home directory (tests
+// and portable installs) — no legacy .savesync migration is attempted.
+func ResolveAt(dataDir string) (Paths, error) {
+	return buildPaths(dataDir)
+}
+
+func resolveWithin(home string) (Paths, error) {
 	oldHome := filepath.Join(home, oldHomeDirName)
 	newHome := filepath.Join(home, homeDirName)
 
@@ -58,20 +68,25 @@ func Resolve() (Paths, error) {
 		}
 	}
 
-	if err := os.MkdirAll(newHome, 0o777); err != nil {
+	return buildPaths(newHome)
+}
+
+func buildPaths(homeDir string) (Paths, error) {
+	if err := os.MkdirAll(homeDir, 0o777); err != nil {
 		return Paths{}, fmt.Errorf("create home dir: %w", err)
 	}
-	backupsDir := filepath.Join(newHome, backupsDirName)
+	backupsDir := filepath.Join(homeDir, backupsDirName)
 	if err := os.MkdirAll(backupsDir, 0o777); err != nil {
 		return Paths{}, fmt.Errorf("create backups dir: %w", err)
 	}
 
 	return Paths{
-		HomeDir:      newHome,
-		LegacyDB:     filepath.Join(newHome, LegacyDBFileName),
-		SQLiteDB:     filepath.Join(newHome, SQLiteFileName),
+		HomeDir:      homeDir,
+		LegacyDB:     filepath.Join(homeDir, LegacyDBFileName),
+		SQLiteDB:     filepath.Join(homeDir, SQLiteFileName),
 		BackupsDir:   backupsDir,
-		MigrationLog: filepath.Join(newHome, "migration.log"),
+		MigrationLog: filepath.Join(homeDir, "migration.log"),
+		AppCacheFile: filepath.Join(homeDir, "steam-app-cache.json"),
 	}, nil
 }
 

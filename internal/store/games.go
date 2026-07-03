@@ -4,7 +4,23 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 )
+
+var (
+	gameIDInvalidRe  = regexp.MustCompile(`[^a-z0-9]`)
+	gameIDCollapseRe = regexp.MustCompile(`-+`)
+)
+
+// SlugifyGameID derives a clean game id from a display name, matching the
+// JS app's rule: lowercase, non-alphanumerics to hyphens, collapsed and
+// trimmed.
+func SlugifyGameID(name string) string {
+	id := gameIDInvalidRe.ReplaceAllString(strings.ToLower(name), "-")
+	id = gameIDCollapseRe.ReplaceAllString(id, "-")
+	return strings.Trim(id, "-")
+}
 
 // ErrNotFound is returned by single-row lookups when no matching row exists.
 var ErrNotFound = errors.New("not found")
