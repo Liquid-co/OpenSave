@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opensave/opensave/internal/cloud"
 	"github.com/opensave/opensave/internal/config"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/p2p"
@@ -40,6 +41,7 @@ type Daemon struct {
 	Watcher   *watcher.Engine
 	Scanner   *presets.Scanner
 	P2P       *p2p.Engine
+	Cloud     *cloud.Service
 	Log       *logging.Logger
 
 	opts Options
@@ -90,7 +92,18 @@ func New(opts Options) (*Daemon, error) {
 		Log:       log,
 		Scanner:   presets.NewScanner(paths.AppCacheFile),
 		P2P:       p2p.New(s, snaps, log.Log),
+		Cloud:     cloud.New(s, log.Log),
 		opts:      opts,
+	}
+
+	// Every new snapshot mirrors to the configured cloud provider in the
+	// background; failures are logged, never fatal.
+	snaps.OnUpload = func(zipPath, remoteFileName string) {
+		if err := d.Cloud.Upload(zipPath, remoteFileName); err != nil {
+			if !strings.Contains(err.Error(), "not enabled") {
+				log.Log("error", fmt.Sprintf("cloud upload of %s failed: %v", remoteFileName, err))
+			}
+		}
 	}
 
 	d.Watcher = watcher.New(watcher.Callbacks{

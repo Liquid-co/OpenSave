@@ -35,6 +35,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Get("/api/presets/scan", s.handlePresetScan)
 
 	s.peerRoutes(r)
+	s.cloudRoutes(r)
 
 	r.Get("/ws", s.Hub.ServeHTTP)
 }
