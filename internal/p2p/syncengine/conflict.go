@@ -1,0 +1,138 @@
+package syncengine
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/snapshot"
+)
+
+// ResolveConflict applies the user's chosen resolution to an active
+// conflict:
+//
+//   - keep-local:   trigger the peer to pull our state; nothing changes here.
+//   - keep-remote:  overwrite local files with the peer's current state.
+//   - merge-branch: park the remote state on a new "conflict-<peer>-<id>"
+//     branch so both versions survive; the user can switch
+//     between them later.
+//
+// Resolution never forces the remote peer's state directly — keep-local
+// just sends a pull trigger and lets the peer's own engine handle it.
+func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution string) (branchName string, err error) {
+	e.mu.Lock()
+	conflict := e.activeConflicts[gameID]
+	e.mu.Unlock()
+	if conflict == nil || conflict.Peer.ID != peerID {
+		return "", fmt.Errorf("no active conflict for game %q and peer %q", gameID, peerID)
+	}
+	peer := conflict.Peer
+
+	switch resolution {
+	case "keep-local":
+		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep LOCAL — triggering %q to pull", gameID, peer.Name))
+		e.Transport.TriggerPeerPull(peer, gameID)
+		e.clearConflict(gameID)
+		return "", nil
+
+	case "keep-remote":
+		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep REMOTE — overwriting local", gameID))
+		if err := e.overwriteLocalWithRemote(ctx, gameID, peer, "Resolved conflict: Overwrite with remote"); err != nil {
+			return "", err
+		}
+		e.clearConflict(gameID)
+		return "", nil
+
+	case "merge-branch":
+		branchName = fmt.Sprintf("conflict-%s-%s",
+			snapshot.CleanBranchName(peer.Name),
+			lastN(fmt.Sprintf("%d", time.Now().UnixMilli()), 4))
+		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep BOTH — remote goes to branch %q", gameID, branchName))
+
+		if _, err := e.Snapshots.CreateBranch(gameID, branchName); err != nil {
+			return "", err
+		}
+		if err := e.Snapshots.SwitchBranch(gameID, branchName); err != nil {
+			return "", err
+		}
+		if err := e.overwriteLocalWithRemote(ctx, gameID, peer, "Diverged save state from peer: "+peer.Name); err != nil {
+			return "", err
+		}
+		e.clearConflict(gameID)
+		return branchName, nil
+
+	default:
+		return "", fmt.Errorf("invalid conflict resolution %q", resolution)
+	}
+}
+
+func (e *Engine) clearConflict(gameID string) {
+	e.mu.Lock()
+	delete(e.activeConflicts, gameID)
+	e.mu.Unlock()
+	if e.Progress.OnConflict != nil {
+		e.Progress.OnConflict(gameID) // state changed; let the UI refresh
+	}
+}
+
+// overwriteLocalWithRemote makes the local save byte-identical to the
+// peer's current state: delete local-only files, pull every added/changed
+// file, then mirror the peer's latest snapshot.
+func (e *Engine) overwriteLocalWithRemote(ctx context.Context, gameID string, peer Peer, mirrorComment string) error {
+	game, err := e.Store.GetGame(gameID)
+	if err != nil {
+		return err
+	}
+
+	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{Name: game.Name, SavePath: game.SavePath})
+	if err != nil {
+		return fmt.Errorf("fetch remote manifest: %w", err)
+	}
+	localManifest, err := delta.BuildManifest(game.SavePath)
+	if err != nil {
+		return err
+	}
+
+	// Local-only files are deleted (remote is the source of truth here).
+	for relPath := range localManifest.Files {
+		if _, onRemote := remoteData.Manifest.Files[relPath]; onRemote {
+			continue
+		}
+		if !delta.IsSafePath(game.SavePath, relPath) {
+			continue
+		}
+		full := filepath.Join(game.SavePath, filepath.FromSlash(relPath))
+		_ = os.Chmod(full, 0o666)
+		_ = os.Remove(full)
+	}
+
+	// Pull everything that's new or different.
+	var filesToPull []string
+	for relPath, remoteFile := range remoteData.Manifest.Files {
+		if localFile, ok := localManifest.Files[relPath]; ok && localFile.Hash == remoteFile.Hash {
+			continue
+		}
+		filesToPull = append(filesToPull, relPath)
+	}
+
+	if len(filesToPull) > 0 {
+		if err := e.pullFiles(ctx, peer, gameID, game, localManifest, remoteData, filesToPull); err != nil {
+			return err
+		}
+	} else if remoteData.LatestSnapshot != nil {
+		// Nothing to transfer but still record the shared history entry.
+		e.recordMirrorSnapshot(gameID, game, peer, *remoteData.LatestSnapshot,
+			fmt.Sprintf("Synced from peer: %s (%s)", peer.Name, mirrorComment))
+	}
+	return nil
+}
+
+func lastN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}
