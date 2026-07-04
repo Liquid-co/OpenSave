@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -56,12 +57,21 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	settings, err := s.Daemon.Store.GetSettings()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, settings)
+	writeJSON(w, http.StatusOK, s.settingsWire())
+}
+
+// cloudSyncPatch mirrors the JS settings.cloudSync sub-object on writes.
+// Pointer fields distinguish "omitted" from zero values.
+type cloudSyncPatch struct {
+	Enabled             *bool             `json:"enabled"`
+	Provider            *string           `json:"provider"`
+	URL                 *string           `json:"url"`
+	Username            *string           `json:"username"`
+	Password            *string           `json:"password"`
+	Headers             *string           `json:"headers"`
+	FolderID            *string           `json:"folderId"`
+	CustomClientIDs     map[string]string `json:"customClientIds"`
+	CustomClientSecrets map[string]string `json:"customClientSecrets"`
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -70,11 +80,29 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Decode over the current settings so omitted fields keep their values
-	// (the JS app's {...current, ...new} merge semantics).
-	if err := readJSON(r, &current); err != nil {
+
+	// Read the raw body once: settings fields decode over the current
+	// values (the JS {...current, ...new} merge semantics); cloudSync is
+	// peeled off and applied to the cloud config separately.
+	var raw json.RawMessage
+	if err := readJSON(r, &raw); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if err := json.Unmarshal(raw, &current); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var withCloud struct {
+		CloudSync *cloudSyncPatch `json:"cloudSync"`
+	}
+	_ = json.Unmarshal(raw, &withCloud)
+	if patch := withCloud.CloudSync; patch != nil {
+		if err := s.applyCloudPatch(patch); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	prevSyncCode := ""
 	prevRelayURL := ""
@@ -93,7 +121,54 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		s.Daemon.P2P.Wan.Connect()
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, s.settingsWire())
+}
+
+// applyCloudPatch merges a cloudSync write into the cloud config row,
+// preserving stored OAuth tokens (the UI never sends them back).
+func (s *Server) applyCloudPatch(patch *cloudSyncPatch) error {
+	cfg, err := s.Daemon.Store.GetCloudConfig()
+	if err != nil {
+		return err
+	}
+	if patch.Enabled != nil {
+		cfg.Enabled = *patch.Enabled
+	}
+	if patch.Provider != nil {
+		cfg.Provider = *patch.Provider
+	}
+	if patch.URL != nil {
+		cfg.URL = *patch.URL
+	}
+	if patch.Username != nil {
+		cfg.Username = *patch.Username
+	}
+	if patch.Password != nil {
+		cfg.Password = *patch.Password
+	}
+	if patch.Headers != nil {
+		cfg.HeadersJSON = *patch.Headers
+	}
+	if patch.FolderID != nil {
+		cfg.FolderID = *patch.FolderID
+	}
+	if patch.CustomClientIDs != nil {
+		if cfg.CustomClientIDs == nil {
+			cfg.CustomClientIDs = map[string]string{}
+		}
+		for k, v := range patch.CustomClientIDs {
+			cfg.CustomClientIDs[k] = v
+		}
+	}
+	if patch.CustomClientSecrets != nil {
+		if cfg.CustomClientSecrets == nil {
+			cfg.CustomClientSecrets = map[string]string{}
+		}
+		for k, v := range patch.CustomClientSecrets {
+			cfg.CustomClientSecrets[k] = v
+		}
+	}
+	return s.Daemon.Store.UpdateCloudConfig(cfg)
 }
 
 func (s *Server) handleListGames(w http.ResponseWriter, r *http.Request) {

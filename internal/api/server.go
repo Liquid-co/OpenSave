@@ -146,12 +146,21 @@ func (s *Server) Stop() {
 
 // localhostOnly rejects any request that didn't originate from the local
 // machine — the dashboard API must never be reachable from the network.
-// (P2P peer routes get their own paired-peer middleware in Phase 2.)
+// Local requests get permissive CORS headers: the Wails webview runs at
+// its own origin (http://wails.localhost) and would otherwise be blocked
+// from calling the daemon.
 func localhostOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil || !isLoopback(host) {
 			writeError(w, http.StatusForbidden, "external access denied")
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -164,15 +173,48 @@ func isLoopback(host string) bool {
 }
 
 // initPayload is the full-state dump sent to a dashboard client on WS
-// connect, matching the JS "init" message shape (peers/conflicts arrive
-// with Phase 2 — empty placeholders keep the shape stable).
+// connect, matching the JS "init" message shape.
 func (s *Server) initPayload() any {
-	settings, _ := s.Daemon.Store.GetSettings()
 	payload := s.peersPayload()
-	payload["settings"] = settings
+	payload["settings"] = s.settingsWire()
 	payload["games"] = s.gamesPayload()
 	payload["logHistory"] = s.Daemon.Log.History()
 	return payload
+}
+
+// settingsWire returns settings in the JS wire shape: the flat settings
+// fields plus a nested cloudSync object. OAuth tokens are masked — the
+// frontend only needs userEmail to show the connected account.
+func (s *Server) settingsWire() map[string]any {
+	settings, err := s.Daemon.Store.GetSettings()
+	if err != nil {
+		return map[string]any{}
+	}
+	raw, _ := json.Marshal(settings)
+	var out map[string]any
+	_ = json.Unmarshal(raw, &out)
+
+	cloud, err := s.Daemon.Store.GetCloudConfig()
+	if err == nil {
+		out["cloudSync"] = map[string]any{
+			"enabled":             cloud.Enabled,
+			"provider":            cloud.Provider,
+			"url":                 cloud.URL,
+			"username":            cloud.Username,
+			"password":            cloud.Password,
+			"headers":             cloud.HeadersJSON,
+			"folderId":            cloud.FolderID,
+			"customClientIds":     cloud.CustomClientIDs,
+			"customClientSecrets": cloud.CustomClientSecrets,
+			"tokens": map[string]any{
+				"accessToken":  "", // never shipped to the UI
+				"refreshToken": "",
+				"expiryTime":   cloud.ExpiryTimeMs,
+				"userEmail":    cloud.UserEmail,
+			},
+		}
+	}
+	return out
 }
 
 // gamesPayload returns every game with its branches+snapshots nested the

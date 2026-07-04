@@ -9,11 +9,11 @@ import (
 // Peer identifies a sync counterpart. Address "relay" (or IsWan) means the
 // peer is reachable only through the WAN relay.
 type Peer struct {
-	ID      string
-	Name    string
-	Address string
-	Port    int
-	IsWan   bool
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	IsWan   bool   `json:"isWan"`
 }
 
 // Wan reports whether traffic to this peer goes through the relay.
