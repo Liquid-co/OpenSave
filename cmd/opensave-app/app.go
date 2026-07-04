@@ -13,11 +13,12 @@ import (
 // App is the Wails-bound bridge between the webview frontend and the
 // embedded daemon. Methods on it are callable from JS.
 type App struct {
-	ctx    context.Context
-	daemon *daemon.Daemon
-	server *api.Server
-	addr   string
-	bootErr string
+	ctx        context.Context
+	daemon     *daemon.Daemon
+	server     *api.Server
+	addr       string
+	bootErr    string
+	reallyQuit bool
 }
 
 // NewApp creates the App shell (daemon boots in startup).
@@ -69,9 +70,12 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.addr = addr
 	d.Log.Log("info", "desktop app connected to daemon at "+addr)
+
+	a.startTray()
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopTray()
 	if a.server != nil {
 		a.server.Stop()
 	}

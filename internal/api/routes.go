@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/sysintegration"
 )
 
 // routes registers the Phase 1 endpoint surface. Peer/cloud/p2p routes
@@ -106,8 +107,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	prevSyncCode := ""
 	prevRelayURL := ""
+	prevStartOnBoot := false
 	if prev, err := s.Daemon.Store.GetSettings(); err == nil {
-		prevSyncCode, prevRelayURL = prev.SyncCode, prev.RelayURL
+		prevSyncCode, prevRelayURL, prevStartOnBoot = prev.SyncCode, prev.RelayURL, prev.StartOnBoot
 	}
 
 	if err := s.Daemon.Store.UpdateSettings(current); err != nil {
@@ -119,6 +121,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// Relay/room changes take effect immediately.
 	if updated.SyncCode != prevSyncCode || updated.RelayURL != prevRelayURL {
 		s.Daemon.P2P.Wan.Connect()
+	}
+	// Start-on-boot toggling registers/unregisters with the OS.
+	if updated.StartOnBoot != prevStartOnBoot {
+		if err := sysintegration.SetAutostart(updated.StartOnBoot); err != nil {
+			s.Daemon.Log.Log("warn", "start-on-boot change failed: "+err.Error())
+		}
 	}
 
 	writeJSON(w, http.StatusOK, s.settingsWire())

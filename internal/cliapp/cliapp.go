@@ -4,16 +4,19 @@
 package cliapp
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/sysintegration/upnp"
 )
 
 const usage = `OpenSave — P2P game save sync
@@ -28,6 +31,7 @@ Usage:
   opensave checkout <gameId> <name>      Switch branch
   opensave remove <gameId>               Stop tracking a game
   opensave daemon start [--port N]       Run the daemon (REST API + watcher)
+  opensave upnp <port> [--delete]        Forward (or remove) a router port via UPnP
 `
 
 // Run dispatches CLI arguments; returns a process exit code.
@@ -41,6 +45,9 @@ func Run(args []string) int {
 
 	if cmd == "daemon" {
 		return runDaemon(rest)
+	}
+	if cmd == "upnp" {
+		return cmdUpnp(rest)
 	}
 
 	d, err := daemon.New(daemon.Options{})
@@ -121,6 +128,44 @@ func runDaemon(args []string) int {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
 	fmt.Println("\nshutting down...")
+	return 0
+}
+
+func cmdUpnp(args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: opensave upnp <port> [--delete]")
+		return 1
+	}
+	port := 0
+	fmt.Sscanf(args[0], "%d", &port)
+	if port <= 0 || port > 65535 {
+		fmt.Fprintf(os.Stderr, "invalid port %q\n", args[0])
+		return 1
+	}
+	remove := len(args) > 1 && args[1] == "--delete"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if remove {
+		if err := upnp.Remove(ctx, port); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Printf("Removed UPnP mapping for port %d\n", port)
+		return 0
+	}
+
+	externalIP, err := upnp.Forward(ctx, port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+	fmt.Printf("Port %d forwarded via UPnP", port)
+	if externalIP != "" {
+		fmt.Printf(" — external address %s:%d", externalIP, port)
+	}
+	fmt.Println()
 	return 0
 }
 

@@ -1,0 +1,83 @@
+name: Release builds
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+      - name: Build Windows app (NSIS installer + portable exe)
+        working-directory: cmd/opensave-app
+        run: wails build -nsis
+      - name: Build CLI + relay
+        run: |
+          go build -ldflags="-s -w" -o dist/opensave-cli.exe ./cmd/opensave-cli
+          go build -ldflags="-s -w" -o dist/opensave-relay.exe ./cmd/opensave-relay
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            cmd/opensave-app/build/bin/*
+            dist/*
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Wails + GTK/WebKit toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+      - name: Build Linux app
+        working-directory: cmd/opensave-app
+        run: wails build -tags webkit2_41
+      - name: Build CLI + relay, assemble tar.gz
+        run: |
+          go build -ldflags="-s -w" -o dist/opensave-cli ./cmd/opensave-cli
+          go build -ldflags="-s -w" -o dist/opensave-relay ./cmd/opensave-relay
+          mkdir -p opensave-linux
+          cp cmd/opensave-app/build/bin/OpenSave opensave-linux/opensave
+          cp dist/opensave-cli dist/opensave-relay opensave-linux/
+          tar -czf opensave-linux-amd64.tar.gz opensave-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: opensave-linux-amd64.tar.gz
+
+  relay-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build relay image
+        run: docker build -f relay/Dockerfile -t opensave-relay .
+
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go test ./... -race -timeout 600s

@@ -19,6 +19,7 @@ func (s *Server) peerRoutes(r chi.Router) {
 	r.Delete("/api/peers/{peerId}", s.handleDeletePeer)
 	r.Post("/api/peers/probe", s.handleProbePeer)
 
+	r.Post("/api/games/sync-all", s.handleSyncAll)
 	r.Post("/api/games/{gameId}/sync", s.handleSyncGame)
 	r.Post("/api/games/{gameId}/resolve-conflict", s.handleResolveConflict)
 
@@ -162,6 +163,31 @@ func (s *Server) handleProbePeer(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Body.Close()
 	writeJSON(w, http.StatusOK, map[string]any{"reachable": resp.StatusCode == http.StatusOK})
+}
+
+// handleSyncAll triggers a sync of every tracked game (used by the Steam
+// Deck plugin's one-button flow).
+func (s *Server) handleSyncAll(w http.ResponseWriter, r *http.Request) {
+	games, err := s.Daemon.Store.ListGames()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	results := map[string]any{}
+	for _, g := range games {
+		if !g.AutoSync {
+			results[g.ID] = map[string]string{"status": "skipped", "reason": "autoSync disabled"}
+			continue
+		}
+		res, err := s.Daemon.P2P.SyncGame(r.Context(), g.ID)
+		if err != nil {
+			results[g.ID] = map[string]string{"status": "error", "error": err.Error()}
+			continue
+		}
+		results[g.ID] = res
+	}
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 func (s *Server) handleSyncGame(w http.ResponseWriter, r *http.Request) {

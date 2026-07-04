@@ -267,6 +267,53 @@ func TestBackupExportImportRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDeckyPluginContract exercises the exact three endpoints the Steam
+// Deck (Decky Loader) plugin calls — its wire contract must never break.
+func TestDeckyPluginContract(t *testing.T) {
+	ts := startTestServer(t)
+
+	// GET /api/status
+	resp, body := ts.do(t, http.MethodGet, "/api/status", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/api/status = %d", resp.StatusCode)
+	}
+	for _, key := range []string{"settings", "gameCount", "peerCount"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("/api/status missing %q", key)
+		}
+	}
+
+	// GET /api/games — must be a map keyed by game id.
+	if err := os.WriteFile(filepath.Join(ts.saveDir, "s.sav"), []byte("x"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	ts.do(t, http.MethodPost, "/api/games", map[string]string{"name": "Deck Game", "savePath": ts.saveDir})
+	resp, body = ts.do(t, http.MethodGet, "/api/games", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/api/games = %d", resp.StatusCode)
+	}
+	if _, ok := body["deck-game"]; !ok {
+		t.Errorf("/api/games should be keyed by game id, got keys %v", keysOf(body))
+	}
+
+	// POST /api/games/sync-all — succeeds even with no online peers.
+	resp, body = ts.do(t, http.MethodPost, "/api/games/sync-all", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/api/games/sync-all = %d (%v)", resp.StatusCode, body)
+	}
+	if _, ok := body["results"]; !ok {
+		t.Error("/api/games/sync-all missing results")
+	}
+}
+
+func keysOf(m map[string]json.RawMessage) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func TestPresetScanEndpoint(t *testing.T) {
 	ts := startTestServer(t)
 	// Hermetic: point the scanner away from the real machine.
