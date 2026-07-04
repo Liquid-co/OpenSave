@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/sysintegration"
@@ -222,6 +223,10 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	game.ID = gameID // id is not client-mutable
+	// Setting an AppID (e.g. after editing a game) picks up cover art.
+	if game.CoverURL == "" {
+		game.CoverURL = daemon.SteamCoverURL(game.AppID)
+	}
 
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())

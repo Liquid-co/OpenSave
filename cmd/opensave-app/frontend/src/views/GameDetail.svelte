@@ -92,6 +92,9 @@
 {:else}
   <div class="head">
     <button class="btn icon back" on:click={() => navigate('home')} title="Back">←</button>
+    {#if game.coverUrl}
+      <img class="head-cover" src={game.coverUrl} alt="" on:error={(e) => e.currentTarget.remove()} />
+    {/if}
     <div class="title-block">
       <h2 class="page-title">{game.name}</h2>
       <div class="sub">
@@ -219,6 +222,13 @@
   }
   .back {
     font-size: 1rem;
+  }
+  .head-cover {
+    height: 52px;
+    aspect-ratio: 460 / 215;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border);
   }
   .title-block {
     flex: 1;

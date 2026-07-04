@@ -124,6 +124,15 @@
       <div class="scan-list">
         {#each scanResults as item (item.id)}
           <div class="scan-item">
+            {#if item.appId}
+              <img
+                class="scan-thumb"
+                src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${item.appId}/capsule_231x87.jpg`}
+                alt=""
+                loading="lazy"
+                on:error={(e) => e.currentTarget.remove()}
+              />
+            {/if}
             <div class="scan-info">
               <div class="scan-name">{item.name}</div>
               <div class="scan-path" title={item.savePath}>{item.savePath}</div>
@@ -162,15 +171,23 @@
   <div class="grid">
     {#each $gameList as game (game.id)}
       <button class="card game-card" on:click={() => navigate('game', { gameId: game.id })}>
-        <div class="gc-name">{game.name}</div>
-        <div class="gc-meta">
-          branch <strong>{game.activeBranch}</strong>
-          · {Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0)} snapshots
+        <div class="gc-cover">
+          {#if game.coverUrl}
+            <img src={game.coverUrl} alt="" loading="lazy" on:error={(e) => e.currentTarget.remove()} />
+          {/if}
+          <div class="gc-cover-fallback"><span>{game.name}</span></div>
         </div>
-        <div class="gc-path" title={game.savePath}>{game.savePath}</div>
-        {#if $syncActivity[game.id]?.state === 'running'}
-          <div class="gc-sync">syncing… {$syncActivity[game.id].percentage ?? 0}%</div>
-        {/if}
+        <div class="gc-body">
+          <div class="gc-name">{game.name}</div>
+          <div class="gc-meta">
+            branch <strong>{game.activeBranch}</strong>
+            · {Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0)} snapshots
+          </div>
+          <div class="gc-path" title={game.savePath}>{game.savePath}</div>
+          {#if $syncActivity[game.id]?.state === 'running'}
+            <div class="gc-sync">syncing… {$syncActivity[game.id].percentage ?? 0}%</div>
+          {/if}
+        </div>
       </button>
     {/each}
   </div>
@@ -244,6 +261,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
   }
+  .scan-thumb {
+    width: 62px;
+    height: 24px;
+    object-fit: cover;
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
   .scan-info {
     flex: 1;
     min-width: 0;
@@ -295,10 +319,48 @@
     cursor: pointer;
     color: var(--text);
     transition: border-color 0.12s, transform 0.12s;
+    padding: 0;
+    overflow: hidden;
   }
   .game-card:hover {
     border-color: var(--border-strong);
     transform: translateY(-1px);
+  }
+  .gc-cover {
+    position: relative;
+    aspect-ratio: 460 / 175;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .gc-cover img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+  }
+  .gc-cover-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: linear-gradient(135deg, rgba(138, 99, 244, 0.16), rgba(138, 99, 244, 0.04));
+  }
+  .gc-cover-fallback span {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    text-align: center;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .gc-body {
+    padding: 14px 16px;
   }
   .gc-name {
     font-weight: 600;

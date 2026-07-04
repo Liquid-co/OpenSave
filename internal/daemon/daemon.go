@@ -145,6 +145,14 @@ func (d *Daemon) Start() error {
 		return err
 	}
 	for _, game := range games {
+		// Backfill cover art for games tracked before covers existed (or
+		// migrated from the JS app without one).
+		if game.CoverURL == "" {
+			if cover := SteamCoverURL(game.AppID); cover != "" {
+				game.CoverURL = cover
+				_ = d.Store.UpdateGame(game)
+			}
+		}
 		if !game.AutoSync {
 			continue
 		}
@@ -172,6 +180,20 @@ func (d *Daemon) Stop() {
 	d.Store.Close()
 }
 
+// SteamCoverURL returns Steam's CDN header art for an AppID ("" when the
+// id isn't numeric). No API key needed; the CDN serves these publicly.
+func SteamCoverURL(appID string) string {
+	if appID == "" {
+		return ""
+	}
+	for _, c := range appID {
+		if c < '0' || c > '9' {
+			return ""
+		}
+	}
+	return "https://cdn.cloudflare.steamstatic.com/steam/apps/" + appID + "/header.jpg"
+}
+
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
@@ -187,6 +209,9 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	}
 	if game.MaxSnapshots == 0 {
 		game.MaxSnapshots = 5
+	}
+	if game.CoverURL == "" {
+		game.CoverURL = SteamCoverURL(game.AppID)
 	}
 
 	if err := d.Store.CreateGame(game); err != nil {
