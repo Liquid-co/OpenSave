@@ -4,10 +4,14 @@
   const colors = { info: 'var(--text-dim)', warn: 'var(--warn)', error: 'var(--danger)', success: 'var(--success)' };
   const fmtTime = (t) => new Date(t).toLocaleTimeString();
 
-  let container;
-  $: if (container && $logEntries.length) {
-    // Stick to the bottom as new entries arrive.
-    queueMicrotask(() => (container.scrollTop = container.scrollHeight));
+  // Stick to the bottom as new entries arrive. Implemented as an action
+  // (node is a local, uninstrumented reference): assigning scrollTop on a
+  // bind:this variable would $$invalidate it and loop the reactive flush
+  // forever, freezing the app.
+  function autoscroll(node, _count) {
+    const toBottom = () => queueMicrotask(() => (node.scrollTop = node.scrollHeight));
+    toBottom();
+    return { update: toBottom };
   }
 </script>
 
@@ -15,7 +19,7 @@
   <h2 class="page-title">Activity</h2>
 </div>
 
-<div class="card log" bind:this={container}>
+<div class="card log" use:autoscroll={$logEntries.length}>
   {#if $logEntries.length === 0}
     <div class="empty"><h3>Nothing yet</h3><p>Sync events, snapshots, and warnings show up here.</p></div>
   {:else}
