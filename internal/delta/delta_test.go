@@ -2,10 +2,55 @@ package delta
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// TestManifestUnmarshalsJSFractionalMtimes reproduces the exact payload
+// shape the original Node daemon sends: fs.statSync().mtimeMs values are
+// FRACTIONAL floats. Decoding these must not fail (cross-version sync
+// broke on this in the field).
+func TestManifestUnmarshalsJSFractionalMtimes(t *testing.T) {
+	jsPayload := `{
+		"timestamp": "2026-07-05T19:22:45.872Z",
+		"latestMtime": 1783279365872.0251,
+		"files": {
+			"slot1.sav": {
+				"size": 26,
+				"hash": "abc",
+				"blocks": [{"index": 0, "hash": "abc", "length": 26}],
+				"blockSize": 65536,
+				"mtime": 1783279365872.0251
+			}
+		},
+		"dirs": ["config"]
+	}`
+
+	var m Manifest
+	if err := json.Unmarshal([]byte(jsPayload), &m); err != nil {
+		t.Fatalf("JS manifest must decode: %v", err)
+	}
+	if int64(m.LatestMtime) != 1783279365872 {
+		t.Errorf("LatestMtime = %d, want truncated 1783279365872", int64(m.LatestMtime))
+	}
+	if int64(m.Files["slot1.sav"].MtimeMs) != 1783279365872 {
+		t.Errorf("file mtime = %d, want truncated 1783279365872", int64(m.Files["slot1.sav"].MtimeMs))
+	}
+
+	// And our own marshaling must emit whole integers JS can compare.
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out, []byte(".0251")) {
+		t.Error("marshaled manifest must not contain fractional mtimes")
+	}
+	if !bytes.Contains(out, []byte(`"latestMtime":1783279365872`)) {
+		t.Errorf("marshaled manifest missing integer latestMtime: %s", out)
+	}
+}
 
 func TestBlockSizeFor(t *testing.T) {
 	cases := []struct {

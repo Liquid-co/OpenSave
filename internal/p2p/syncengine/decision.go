@@ -32,8 +32,8 @@ func DetectConflict(local, remote delta.Manifest, lastSyncTimeMs int64) bool {
 	if lastSyncTimeMs == 0 {
 		return len(local.Files) > 0 && len(remote.Files) > 0
 	}
-	localModified := local.LatestMtime > lastSyncTimeMs+clockSkewToleranceMs
-	remoteModified := remote.LatestMtime > lastSyncTimeMs+clockSkewToleranceMs
+	localModified := int64(local.LatestMtime) > lastSyncTimeMs+clockSkewToleranceMs
+	remoteModified := int64(remote.LatestMtime) > lastSyncTimeMs+clockSkewToleranceMs
 	return localModified && remoteModified
 }
 

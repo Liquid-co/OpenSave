@@ -242,11 +242,11 @@ func (e *Engine) persistLineage(gameID, peerID string, manifest delta.Manifest) 
 }
 
 func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.Manifest, remoteData ManifestResponse) {
-	localSnap := SnapshotInfo{ID: "current", Timestamp: time.UnixMilli(localManifest.LatestMtime).UTC().Format(time.RFC3339), Comment: "Current active saves"}
+	localSnap := SnapshotInfo{ID: "current", Timestamp: time.UnixMilli(int64(localManifest.LatestMtime)).UTC().Format(time.RFC3339), Comment: "Current active saves"}
 	if latest, err := e.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		localSnap = SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
 	}
-	remoteSnap := SnapshotInfo{ID: "remote-current", Timestamp: time.UnixMilli(remoteData.Manifest.LatestMtime).UTC().Format(time.RFC3339), Comment: "Current peer saves"}
+	remoteSnap := SnapshotInfo{ID: "remote-current", Timestamp: time.UnixMilli(int64(remoteData.Manifest.LatestMtime)).UTC().Format(time.RFC3339), Comment: "Current peer saves"}
 	if remoteData.LatestSnapshot != nil {
 		remoteSnap = *remoteData.LatestSnapshot
 	}
@@ -393,7 +393,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 			return fmt.Errorf("patch %s: %w", relPath, err)
 		}
 		if remoteFile.MtimeMs > 0 {
-			mtime := time.UnixMilli(remoteFile.MtimeMs)
+			mtime := time.UnixMilli(int64(remoteFile.MtimeMs))
 			_ = os.Chtimes(localFilePath, mtime, mtime)
 		}
 		e.Log("info", "file updated: "+relPath)

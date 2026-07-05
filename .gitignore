@@ -11,8 +11,10 @@
 *.out
 coverage.html
 
-# Wails
-cmd/opensave-app/frontend/dist/
+# Wails — ignore built frontend output but keep a placeholder so
+# `go build ./...` works on a fresh clone (go:embed needs the dir).
+cmd/opensave-app/frontend/dist/*
+!cmd/opensave-app/frontend/dist/.gitkeep
 cmd/opensave-app/frontend/node_modules/
 cmd/opensave-app/build/bin/
 

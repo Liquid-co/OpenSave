@@ -12,11 +12,11 @@ func manifest(latestMtime int64, files map[string]delta.FileEntry, dirs ...strin
 	if files == nil {
 		files = map[string]delta.FileEntry{}
 	}
-	return delta.Manifest{LatestMtime: latestMtime, Files: files, Dirs: dirs}
+	return delta.Manifest{LatestMtime: delta.Milli(latestMtime), Files: files, Dirs: dirs}
 }
 
 func fileEntry(hash string, mtime int64) delta.FileEntry {
-	return delta.FileEntry{Hash: hash, MtimeMs: mtime, BlockSize: 65536}
+	return delta.FileEntry{Hash: hash, MtimeMs: delta.Milli(mtime), BlockSize: 65536}
 }
 
 func set(items ...string) map[string]struct{} {

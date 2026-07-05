@@ -7,10 +7,12 @@ package delta
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -43,20 +45,41 @@ type Block struct {
 	Length int    `json:"length"`
 }
 
+// Milli is a millisecond timestamp. It unmarshals from any JSON number —
+// the original JS daemon sends Node's fractional mtimeMs values
+// (e.g. 1783279365872.0251), which would fail to decode into a plain
+// int64 — and marshals back as a whole integer.
+type Milli int64
+
+// UnmarshalJSON accepts integers and floats, truncating fractions.
+func (m *Milli) UnmarshalJSON(b []byte) error {
+	var f float64
+	if err := json.Unmarshal(b, &f); err != nil {
+		return err
+	}
+	*m = Milli(f)
+	return nil
+}
+
+// MarshalJSON emits a plain integer.
+func (m Milli) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatInt(int64(m), 10)), nil
+}
+
 // FileEntry is one file's record inside a Manifest.
 type FileEntry struct {
 	Size      int64   `json:"size"`
 	Hash      string  `json:"hash"`
 	Blocks    []Block `json:"blocks"`
 	BlockSize int     `json:"blockSize"`
-	MtimeMs   int64   `json:"mtime"`
+	MtimeMs   Milli   `json:"mtime"`
 }
 
 // Manifest is the full tree snapshot of a tracked save folder (or single
 // file), keyed by path relative to the save root.
 type Manifest struct {
 	Timestamp   time.Time            `json:"timestamp"`
-	LatestMtime int64                `json:"latestMtime"`
+	LatestMtime Milli                `json:"latestMtime"`
 	Files       map[string]FileEntry `json:"files"`
 	Dirs        []string             `json:"dirs"`
 }
@@ -111,7 +134,7 @@ func HashFile(path string) (FileEntry, error) {
 		Hash:      hex.EncodeToString(whole.Sum(nil)),
 		Blocks:    blocks,
 		BlockSize: blockSize,
-		MtimeMs:   info.ModTime().UnixMilli(),
+		MtimeMs:   Milli(info.ModTime().UnixMilli()),
 	}, nil
 }
 
