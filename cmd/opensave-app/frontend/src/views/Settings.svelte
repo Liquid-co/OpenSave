@@ -44,6 +44,11 @@
     if (dir) draft.backupsDir = dir;
   }
 
+  async function pickSyncBackupsDir() {
+    const dir = await native.selectDirectory('Select pre-sync safety backups folder');
+    if (dir) draft.syncBackupsDir = dir;
+  }
+
   // Relay hosting: fetch LAN IPs / public IP to share with friends.
   let relayInfo = null;
   async function loadRelayInfo() {
@@ -71,6 +76,7 @@
 
   {#if tab === 'general'}
     <div class="card">
+      <h3 class="section-title">🖥️ Device identity</h3>
       <div class="field">
         <label for="s-name">Device name — how other devices see you</label>
         <input id="s-name" bind:value={draft.deviceName} />
@@ -85,13 +91,26 @@
         </select>
         <span class="hint">Shown to other devices when they discover you.</span>
       </div>
+      <div class="field">
+        <label for="s-node">Device ID</label>
+        <input id="s-node" value={draft.nodeId ?? ''} readonly class="mono" />
+        <span class="hint">This device's unique network identifier (read-only).</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title">🚀 Startup</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.startOnBoot} />
         Start OpenSave when the computer starts
       </label>
+      <p class="hint" style="margin-top: 6px;">
+        Launches minimized to the system tray so syncing runs in the background.
+      </p>
     </div>
   {:else if tab === 'sync'}
     <div class="card">
+      <h3 class="section-title">🔄 Sync behavior</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.autoSyncOnTrack} />
         Sync a game immediately when it's first tracked
@@ -111,14 +130,19 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="card-title">🌐 Internet relay hosting</h3>
-      <p class="hint" style="margin-bottom: 14px;">
-        Host a relay on this machine so friends connect directly to you instead of the public relay.
-      </p>
+      <h3 class="section-title">🌐 Internet relay</h3>
+      <div class="field">
+        <label for="s-relay-url">WebSocket relay URL</label>
+        <input id="s-relay-url" bind:value={draft.relayUrl} placeholder="wss://opensave-relay.onrender.com" />
+        <span class="hint">The relay that carries syncs across the internet. Join a room from <strong>Internet Sync</strong>.</span>
+      </div>
       <label class="check">
         <input type="checkbox" bind:checked={draft.hostRelay} on:change={() => draft.hostRelay && loadRelayInfo()} />
         Host a WAN relay server on this device
       </label>
+      <p class="hint" style="margin-top: 6px;">
+        Lets friends connect directly to you instead of the public relay.
+      </p>
       {#if draft.hostRelay}
         <div class="field" style="margin-top: 12px;">
           <label for="s-relay-port">Relay hosting port</label>
@@ -138,16 +162,30 @@
     </div>
   {:else if tab === 'storage'}
     <div class="card">
+      <h3 class="section-title">🗄️ Snapshot storage</h3>
       <div class="field">
         <label for="s-backups">Snapshots folder</label>
         <div class="path-row">
           <input id="s-backups" bind:value={draft.backupsDir} />
           <button class="btn" on:click={pickBackupsDir}>Browse</button>
         </div>
+        <span class="hint">Where version-history snapshots (ZIP archives) are stored.</span>
       </div>
+      <div class="field">
+        <label for="s-sync-backups">Pre-sync safety backups folder</label>
+        <div class="path-row">
+          <input id="s-sync-backups" bind:value={draft.syncBackupsDir} placeholder="Default: ~/.opensave/backups" />
+          <button class="btn" on:click={pickSyncBackupsDir}>Browse</button>
+        </div>
+        <span class="hint">A safety copy of your save is taken here before every incoming sync, so a bad sync is always reversible.</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title">🧹 Retention</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.autoDeleteBackups} />
-        Auto-delete old sync backups
+        Auto-delete old pre-sync backups
       </label>
       {#if draft.autoDeleteBackups}
         <div class="field" style="margin-top: 10px;">
@@ -162,9 +200,13 @@
           </select>
         </div>
       {/if}
+    </div>
 
-      <div class="field" style="margin-top: 16px;">
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title">🔎 Game scanner</h3>
+      <div class="field" style="margin-bottom: 0;">
         <label for="s-scan-paths">Extra folders to auto-scan</label>
+        <span class="hint">Auto-scan already checks Steam and common emulators — add custom libraries here.</span>
         {#each draft.customScanPaths ?? [] as p, i}
           <div class="rule-row">
             <span class="rule-path" title={p}>{p}</span>
@@ -176,13 +218,17 @@
     </div>
   {:else}
     <div class="card">
-      <div class="field">
-        <label for="s-port">Daemon port (restart required)</label>
+      <h3 class="section-title">⚙️ Network</h3>
+      <div class="field" style="margin-bottom: 0;">
+        <label for="s-port">Daemon port</label>
         <input id="s-port" type="number" bind:value={draft.port} />
+        <span class="hint">The local API + LAN peer port. Changing it requires a restart.</span>
       </div>
+    </div>
 
-      <div class="field">
-        <label for="s-rules">Cross-platform path translation rules</label>
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title">🔀 Cross-platform path translation</h3>
+      <div class="field" style="margin-bottom: 0;">
         <span class="hint">
           Rewrites a peer's save paths to local conventions, e.g. "C:\Users\me\Saves" → "/home/deck/saves".
         </span>
@@ -263,6 +309,23 @@
     font-size: 1rem;
     font-weight: 600;
     margin-bottom: 4px;
+  }
+  .section-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .mono {
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  input[readonly] {
+    opacity: 0.75;
+    cursor: default;
   }
   .share-banner {
     margin-top: 12px;
