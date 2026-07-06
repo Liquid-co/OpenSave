@@ -13,6 +13,23 @@
   let busy = false;
   let browsing = null; // {snapshotId, files}
 
+  // Editable per-game configuration (loaded from the game, saved via PATCH).
+  let cfg = null;
+  $: if (game && (cfg === null || cfg._id !== game.id)) {
+    cfg = {
+      _id: game.id,
+      appId: game.appId ?? '',
+      exePath: game.exePath ?? '',
+      coverUrl: game.coverUrl ?? '',
+      autoSync: game.autoSync ?? true,
+      maxSnapshots: game.maxSnapshots ?? 5
+    };
+  }
+
+  // Cloud explorer state.
+  let cloudSnaps = null;
+  let cloudLoading = false;
+
   $: branches = game ? Object.values(game.branches ?? {}) : [];
   $: allSnapshots = branches
     .flatMap((b) => (b.snapshots ?? []).map((s) => ({ ...s, branch: b.name })))
@@ -70,13 +87,55 @@
     navigate('home');
   }
 
-  async function launch() {
-    if (game.appId) {
-      native.openExternal(`steam://run/${game.appId}`);
-    } else if (game.exePath) {
-      toast('Launching…');
-      api.post(`/api/games/${game.id}/launch`).catch((e) => toast(e.message, 'error'));
+  // ── Configuration ────────────────────────────────────────────────
+  const saveConfig = () =>
+    run('Configuration saved', () =>
+      api.patch(`/api/games/${game.id}`, {
+        appId: cfg.appId,
+        exePath: cfg.exePath,
+        coverUrl: cfg.coverUrl,
+        autoSync: cfg.autoSync,
+        maxSnapshots: Number(cfg.maxSnapshots)
+      })
+    );
+
+  async function browseExe() {
+    const file = await native.selectFile('Select the game executable');
+    if (file) cfg.exePath = file;
+  }
+
+  // ── Cloud explorer ───────────────────────────────────────────────
+  async function loadCloudSnaps() {
+    cloudLoading = true;
+    cloudSnaps = null;
+    try {
+      cloudSnaps = await api.get(`/api/cloud/snapshots/${game.id}`);
+    } catch (e) {
+      toast(e.message, 'error');
+      cloudSnaps = [];
+    } finally {
+      cloudLoading = false;
     }
+  }
+
+  $: if (game && tab === 'cloud' && cloudSnaps === null && !cloudLoading) loadCloudSnaps();
+
+  const restoreCloud = (snap) => {
+    if (!confirm(`Download and restore cloud snapshot ${snap.snapshotId} over your current save?`)) return;
+    return run('Restored from cloud', async () => {
+      await api.post(`/api/cloud/restore/${game.id}`, { fileName: snap.name });
+    });
+  };
+
+  const uploadToCloud = () =>
+    run('Uploaded to cloud', async () => {
+      const res = await api.post(`/api/cloud/sync-local/${game.id}`);
+      toast(`Uploaded ${res.uploaded}, skipped ${res.skipped}`, 'success');
+      await loadCloudSnaps();
+    });
+
+  async function launchGame() {
+    await run('Launching…', () => api.post(`/api/games/${game.id}/launch`));
   }
 
   let editPath = false;
@@ -106,7 +165,7 @@
     </div>
     <div class="head-actions">
       {#if game.appId || game.exePath}
-        <button class="btn" on:click={launch}>▶ Launch</button>
+        <button class="btn" disabled={busy} on:click={launchGame}>▶ Launch</button>
       {/if}
       <button class="btn primary" disabled={busy} on:click={syncNow}>⟳ Sync now</button>
     </div>
@@ -127,6 +186,8 @@
   <div class="pill-tabs tabs">
     <button class:active={tab === 'snapshots'} on:click={() => (tab = 'snapshots')}>Snapshots</button>
     <button class:active={tab === 'branches'} on:click={() => (tab = 'branches')}>Branches</button>
+    <button class:active={tab === 'cloud'} on:click={() => (tab = 'cloud')}>☁️ Cloud</button>
+    <button class:active={tab === 'config'} on:click={() => (tab = 'config')}>Configuration</button>
     <button class:active={tab === 'danger'} on:click={() => (tab = 'danger')}>Manage</button>
   </div>
 
@@ -201,6 +262,93 @@
     <p class="branch-hint">
       Switching branches snapshots your current save first, then restores the other branch's latest state.
     </p>
+  {:else if tab === 'cloud'}
+    <div class="card">
+      <div class="cloud-head">
+        <div>
+          <h3>☁️ Cloud snapshots for {game.name}</h3>
+          <p class="cloud-sub">Snapshots backed up to your configured cloud provider.</p>
+        </div>
+        <div class="cloud-actions">
+          <button class="btn small" disabled={busy} on:click={loadCloudSnaps}>↻ Refresh</button>
+          <button class="btn small primary" disabled={busy} on:click={uploadToCloud}>↑ Upload local snapshots</button>
+        </div>
+      </div>
+
+      {#if cloudLoading}
+        <div class="cloud-loading"><span class="cspin"></span> Loading cloud snapshots…</div>
+      {:else if !cloudSnaps || cloudSnaps.length === 0}
+        <div class="cloud-empty">
+          <p>No cloud snapshots for this game yet.</p>
+          <p class="cloud-hint">
+            Enable a provider in <button class="linklike" on:click={() => navigate('cloud')}>Cloud Backup</button>,
+            then use “Upload local snapshots”.
+          </p>
+        </div>
+      {:else}
+        <table class="cloud-table">
+          <thead>
+            <tr><th>Branch</th><th>Date</th><th>Size</th><th></th></tr>
+          </thead>
+          <tbody>
+            {#each cloudSnaps as snap (snap.name)}
+              <tr>
+                <td><span class="badge offline">{snap.branch}</span></td>
+                <td class="mono">{new Date(snap.createdTime).toLocaleString()}</td>
+                <td class="mono">{fmtSize(snap.sizeBytes)}</td>
+                <td class="right">
+                  <button class="btn small primary" disabled={busy} on:click={() => restoreCloud(snap)}>Restore</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+    </div>
+  {:else if tab === 'config'}
+    {#if cfg}
+      <div class="card config-card">
+        <div class="config-cover">
+          {#if cfg.coverUrl}
+            <img src={cfg.coverUrl} alt="" on:error={(e) => (e.currentTarget.style.display = 'none')} />
+          {:else}
+            <div class="config-cover-fallback">🎮</div>
+          {/if}
+        </div>
+        <div class="config-fields">
+          <h3>Launch &amp; sync configuration</h3>
+          <div class="field">
+            <label for="c-appid">Steam App ID</label>
+            <input id="c-appid" placeholder="e.g. 1091500" bind:value={cfg.appId} />
+            <span class="hint">Used to launch via Steam and fetch cover art automatically.</span>
+          </div>
+          <div class="field">
+            <label for="c-exe">Executable path (non-Steam)</label>
+            <div class="path-row">
+              <input id="c-exe" placeholder="Browse to the game .exe" bind:value={cfg.exePath} />
+              <button class="btn" on:click={browseExe}>Browse</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="c-cover">Custom cover image URL</label>
+            <input id="c-cover" placeholder="https://…  (great for emulator games)" bind:value={cfg.coverUrl} />
+            <span class="hint">Leave blank to auto-use Steam art from the App ID. Paste any image URL for emulators.</span>
+          </div>
+          <label class="check">
+            <input type="checkbox" bind:checked={cfg.autoSync} />
+            Auto-sync saves when changes are detected
+          </label>
+          <div class="field" style="margin-top: 12px;">
+            <label for="c-max">Snapshot retention limit</label>
+            <input id="c-max" type="number" min="0" bind:value={cfg.maxSnapshots} />
+            <span class="hint">Max snapshots kept per branch (0 = unlimited). Oldest are pruned first.</span>
+          </div>
+          <div class="config-save">
+            <button class="btn primary" disabled={busy} on:click={saveConfig}>Save configuration</button>
+          </div>
+        </div>
+      </div>
+    {/if}
   {:else}
     <div class="card">
       <h3>Stop tracking</h3>
@@ -366,5 +514,145 @@
     color: var(--text-dim);
     font-size: 0.88rem;
     margin: 8px 0 14px;
+  }
+
+  /* Cloud explorer */
+  .cloud-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .cloud-sub {
+    font-size: 0.82rem;
+    color: var(--text-faint);
+    margin-top: 3px;
+  }
+  .cloud-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .cloud-loading,
+  .cloud-empty {
+    padding: 30px 10px;
+    text-align: center;
+    color: var(--text-faint);
+  }
+  .cloud-hint {
+    font-size: 0.82rem;
+    margin-top: 6px;
+  }
+  .linklike {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+  }
+  .cspin {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--accent-soft);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .cloud-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .cloud-table th {
+    text-align: left;
+    color: var(--text-faint);
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cloud-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cloud-table tr:last-child td {
+    border-bottom: none;
+  }
+  .cloud-table .mono {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .cloud-table .right {
+    text-align: right;
+  }
+
+  /* Configuration panel */
+  .config-card {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .config-cover {
+    flex-shrink: 0;
+    width: 160px;
+    aspect-ratio: 460 / 215;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .config-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .config-cover-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+  }
+  .config-fields {
+    flex: 1;
+    min-width: 0;
+  }
+  .config-fields h3 {
+    margin-bottom: 14px;
+  }
+  .config-fields .field {
+    margin-bottom: 14px;
+  }
+  .config-fields .check {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .config-fields .check input {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+  }
+  .config-save {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+  @media (max-width: 720px) {
+    .config-card {
+      flex-direction: column;
+    }
+    .config-cover {
+      width: 100%;
+    }
   }
 </style>

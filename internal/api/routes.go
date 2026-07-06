@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/daemon"
@@ -31,6 +32,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Post("/api/games/{gameId}/branch", s.handleCreateBranch)
 	r.Post("/api/games/{gameId}/branch/switch", s.handleSwitchBranch)
+	r.Post("/api/games/{gameId}/launch", s.handleLaunchGame)
 
 	r.Post("/api/backup/export", s.handleBackupExport)
 	r.Post("/api/backup/restore", s.handleBackupRestore)
@@ -230,8 +232,10 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	game.ID = gameID // id is not client-mutable
-	// Setting an AppID (e.g. after editing a game) picks up cover art.
-	if game.CoverURL == "" {
+	// Cover art: a user-set custom URL is always kept. An empty cover, or
+	// a previously auto-generated Steam cover, is (re)derived from the
+	// AppID — so changing the AppID refreshes the art.
+	if game.CoverURL == "" || isSteamCover(game.CoverURL) {
 		game.CoverURL = daemon.SteamCoverURL(game.AppID)
 	}
 
@@ -252,6 +256,12 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 
 	s.BroadcastGamesUpdate()
 	writeJSON(w, http.StatusOK, s.gamePayload(game))
+}
+
+// isSteamCover reports whether a cover URL is an auto-generated Steam CDN
+// header image (as opposed to a user's custom cover).
+func isSteamCover(url string) bool {
+	return strings.Contains(url, "steamstatic.com/steam/apps/")
 }
 
 func (s *Server) handleUntrackGame(w http.ResponseWriter, r *http.Request) {
