@@ -204,6 +204,18 @@ func (s *Service) getOrRefreshAccessToken(provider string) (string, error) {
 		tok, err = s.postTokenForm(s.tokenURL(provider), form)
 	}
 	if err != nil {
+		// A dead refresh token (revoked, expired, or password-changed) can
+		// never be recovered by retrying — the only fix is a fresh sign-in.
+		// Wipe the stored credentials so the UI stops claiming "connected"
+		// and prompts the user to reconnect, and return a plain message.
+		if isInvalidGrant(err) {
+			cfg.AccessToken = ""
+			cfg.RefreshToken = ""
+			cfg.ExpiryTimeMs = 0
+			cfg.UserEmail = ""
+			_ = s.Store.UpdateCloudConfig(cfg)
+			return "", fmt.Errorf("your %s session has expired — reconnect under Cloud Backup to sign in again", providerLabel(provider))
+		}
 		return "", fmt.Errorf("failed to refresh token: %w", err)
 	}
 
@@ -216,6 +228,31 @@ func (s *Service) getOrRefreshAccessToken(provider string) (string, error) {
 		return "", err
 	}
 	return tok.AccessToken, nil
+}
+
+// isInvalidGrant reports whether a token error is Google/Dropbox/Microsoft's
+// "the refresh token is permanently dead" signal.
+func isInvalidGrant(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "invalid_grant") ||
+		strings.Contains(msg, "token has been expired or revoked") ||
+		strings.Contains(msg, "expired_token")
+}
+
+// providerLabel returns a human-friendly provider name for messages.
+func providerLabel(provider string) string {
+	switch provider {
+	case "google_drive":
+		return "Google Drive"
+	case "dropbox":
+		return "Dropbox"
+	case "onedrive":
+		return "OneDrive"
+	}
+	return provider
 }
 
 func (s *Service) tokenURL(provider string) string {

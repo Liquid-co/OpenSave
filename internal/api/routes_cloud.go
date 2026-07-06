@@ -26,9 +26,62 @@ func (s *Server) cloudRoutes(r chi.Router) {
 	r.Post("/api/auth/callback", s.handleAuthCallback)
 	r.Post("/api/auth/disconnect", s.handleAuthDisconnect)
 
+	r.Get("/api/cloud/browse", s.handleCloudBrowse)
 	r.Get("/api/cloud/snapshots/{gameId}", s.handleCloudSnapshots)
 	r.Post("/api/cloud/restore/{gameId}", s.handleCloudRestore)
 	r.Post("/api/cloud/sync-local/{gameId}", s.handleCloudSyncLocal)
+}
+
+// handleCloudBrowse lists every cloud snapshot the provider holds, grouped
+// by game, so the UI can present a browsable explorer rather than a flat
+// per-game list. Games with no cloud snapshots are omitted.
+func (s *Server) handleCloudBrowse(w http.ResponseWriter, r *http.Request) {
+	files, err := s.Daemon.Cloud.List()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	type remoteSnap struct {
+		cloud.CloudFile
+		Branch     string `json:"branch"`
+		SnapshotID string `json:"snapshotId"`
+	}
+	type gameGroup struct {
+		GameID    string       `json:"gameId"`
+		GameName  string       `json:"gameName"`
+		Count     int          `json:"count"`
+		TotalSize int64        `json:"totalSize"`
+		Snapshots []remoteSnap `json:"snapshots"`
+	}
+
+	groups := map[string]*gameGroup{}
+	order := []string{}
+	for _, f := range files {
+		gameID, branch, snapID, ok := snapshot.ParseExportEntryName(f.Name)
+		if !ok {
+			continue
+		}
+		g, exists := groups[gameID]
+		if !exists {
+			name := gameID
+			if game, err := s.Daemon.Store.GetGame(gameID); err == nil && game.Name != "" {
+				name = game.Name
+			}
+			g = &gameGroup{GameID: gameID, GameName: name}
+			groups[gameID] = g
+			order = append(order, gameID)
+		}
+		g.Snapshots = append(g.Snapshots, remoteSnap{CloudFile: f, Branch: branch, SnapshotID: snapID})
+		g.Count++
+		g.TotalSize += f.SizeBytes
+	}
+
+	out := make([]*gameGroup, 0, len(order))
+	for _, id := range order {
+		out = append(out, groups[id])
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleAuthStart begins a PKCE flow: returns the provider authorize URL

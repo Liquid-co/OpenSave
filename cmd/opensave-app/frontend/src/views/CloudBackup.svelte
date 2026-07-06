@@ -7,8 +7,10 @@
   let busy = false;
   let authCode = '';
   let authInProgress = false;
-  let selectedGame = '';
-  let cloudFiles = null;
+  let cloudGames = null; // grouped explorer data (null = not loaded yet)
+  let openGame = null; // gameId of the expanded group
+  let browsing = false;
+  let uploadGame = ''; // game selected for pushing local snapshots up
 
   const providers = [
     { id: 'google_drive', label: 'Google Drive', oauth: true, img: 'cloud/googledrive.png' },
@@ -104,38 +106,50 @@
     if (dir) config.url = dir;
   }
 
+  // A cloud call that fails on expired credentials means the daemon has
+  // just wiped the dead tokens — reload so the "connected" badge flips to
+  // "sign in" instead of lying about a working connection.
+  function handleCloudError(e) {
+    toast(e.message, 'error');
+    if (/expired|reconnect|not authenticated|re-auth/i.test(e.message)) load();
+  }
+
   async function browseCloud() {
-    if (!selectedGame) return;
-    cloudFiles = null;
+    browsing = true;
+    cloudGames = null;
     try {
-      cloudFiles = await api.get(`/api/cloud/snapshots/${selectedGame}`);
+      cloudGames = await api.get('/api/cloud/browse');
     } catch (e) {
-      toast(e.message, 'error');
+      handleCloudError(e);
+    } finally {
+      browsing = false;
     }
   }
 
-  const restoreCloud = async (file) => {
+  const toggleGame = (id) => (openGame = openGame === id ? null : id);
+
+  const restoreCloud = async (gameId, file) => {
     if (!confirm(`Restore ${file.snapshotId} from the cloud over your current save?`)) return;
     busy = true;
     try {
-      await api.post(`/api/cloud/restore/${selectedGame}`, { fileName: file.name });
+      await api.post(`/api/cloud/restore/${gameId}`, { fileName: file.name });
       toast('Restored from cloud', 'success');
     } catch (e) {
-      toast(e.message, 'error');
+      handleCloudError(e);
     } finally {
       busy = false;
     }
   };
 
-  const uploadLocal = async () => {
-    if (!selectedGame) return;
+  const uploadLocal = async (gameId) => {
     busy = true;
     try {
-      const res = await api.post(`/api/cloud/sync-local/${selectedGame}`);
+      const res = await api.post(`/api/cloud/sync-local/${gameId}`);
       toast(`Uploaded ${res.uploaded}, skipped ${res.skipped}`, 'success');
-      browseCloud();
+      await browseCloud();
+      openGame = gameId;
     } catch (e) {
-      toast(e.message, 'error');
+      handleCloudError(e);
     } finally {
       busy = false;
     }
@@ -199,7 +213,7 @@
         <button
           class="provider-card"
           class:active={config.provider === p.id}
-          on:click={() => { config.provider = p.id; cloudFiles = null; }}
+          on:click={() => { config.provider = p.id; cloudGames = null; openGame = null; }}
         >
           <div class="provider-icon">
             {#if p.img}
@@ -299,34 +313,62 @@
     </div>
   </div>
 
-  <h3 class="section">Browse cloud snapshots</h3>
+  <div class="section-head">
+    <h3 class="section">Browse cloud snapshots</h3>
+    <button class="btn small" disabled={browsing} on:click={browseCloud}>
+      {browsing ? 'Loading…' : cloudGames ? 'Refresh' : 'Browse cloud'}
+    </button>
+  </div>
   <div class="card">
+    <!-- Push a game's local snapshots up (games with nothing in the cloud
+         yet won't appear in the explorer below until they're uploaded). -->
     <div class="browse-row">
-      <select bind:value={selectedGame}>
-        <option value="">Select a game…</option>
+      <select bind:value={uploadGame}>
+        <option value="">Upload a game's local snapshots…</option>
         {#each $gameList as g}
           <option value={g.id}>{g.name}</option>
         {/each}
       </select>
-      <button class="btn" disabled={!selectedGame} on:click={browseCloud}>List cloud snapshots</button>
-      <button class="btn" disabled={!selectedGame || busy} on:click={uploadLocal}>Upload local snapshots</button>
+      <button class="btn" disabled={!uploadGame || busy} on:click={() => uploadLocal(uploadGame)}>
+        Upload to cloud
+      </button>
     </div>
-    {#if cloudFiles}
-      {#if cloudFiles.length === 0}
-        <p class="quiet" style="margin-top: 12px;">No cloud snapshots for this game yet.</p>
-      {:else}
-        <div class="cloud-list">
-          {#each cloudFiles as f (f.name)}
-            <div class="cloud-row">
-              <div class="cloud-info">
-                <div class="cloud-name">{f.snapshotId} <span class="badge offline">{f.branch}</span></div>
-                <div class="cloud-meta">{fmtSize(f.sizeBytes)} · {new Date(f.createdTime).toLocaleString()}</div>
+
+    {#if browsing && !cloudGames}
+      <p class="quiet" style="margin-top: 14px;">Reading cloud storage…</p>
+    {:else if cloudGames && cloudGames.length === 0}
+      <p class="quiet" style="margin-top: 14px;">No snapshots in the cloud yet. Upload a game above to get started.</p>
+    {:else if cloudGames}
+      <div class="explorer">
+        {#each cloudGames as g (g.gameId)}
+          <div class="game-group" class:open={openGame === g.gameId}>
+            <button class="group-head" on:click={() => toggleGame(g.gameId)}>
+              <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
+              </svg>
+              <span class="group-name">{g.gameName}</span>
+              <span class="group-meta">{g.count} snapshot{g.count === 1 ? '' : 's'} · {fmtSize(g.totalSize)}</span>
+            </button>
+            {#if openGame === g.gameId}
+              <div class="cloud-list">
+                {#each g.snapshots as f (f.name)}
+                  <div class="cloud-row">
+                    <div class="cloud-info">
+                      <div class="cloud-name">{f.snapshotId} <span class="badge offline">{f.branch}</span></div>
+                      <div class="cloud-meta">{fmtSize(f.sizeBytes)} · {new Date(f.createdTime).toLocaleString()}</div>
+                    </div>
+                    <button class="btn small primary" disabled={busy} on:click={() => restoreCloud(g.gameId, f)}>
+                      Restore
+                    </button>
+                  </div>
+                {/each}
               </div>
-              <button class="btn small primary" disabled={busy} on:click={() => restoreCloud(f)}>Restore</button>
-            </div>
-          {/each}
-        </div>
-      {/if}
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="quiet" style="margin-top: 14px;">Click <strong>Browse cloud</strong> to see every snapshot stored in the cloud, grouped by game.</p>
     {/if}
   </div>
 
@@ -522,6 +564,64 @@
   .section {
     margin: 22px 0 10px;
   }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 22px 0 10px;
+  }
+  .section-head .section {
+    margin: 0;
+  }
+  .explorer {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .game-group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .game-group.open {
+    border-color: var(--border-strong);
+  }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s;
+  }
+  .group-head:hover {
+    background: var(--bg-active);
+  }
+  .chev {
+    color: var(--text-faint);
+    flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .game-group.open .chev {
+    transform: rotate(90deg);
+  }
+  .group-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    flex: 1;
+  }
+  .group-meta {
+    font-size: 0.76rem;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
   .browse-row {
     display: flex;
     gap: 10px;
@@ -536,10 +636,10 @@
     outline: none;
   }
   .cloud-list {
-    margin-top: 12px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    padding: 0 12px 12px;
   }
   .cloud-row {
     display: flex;

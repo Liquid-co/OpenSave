@@ -234,6 +234,46 @@ func TestGoogleDriveProviderWithTokenRefresh(t *testing.T) {
 	}
 }
 
+// TestRefreshInvalidGrantClearsTokens verifies that a permanently-dead
+// refresh token (Google's invalid_grant) wipes the stored credentials so
+// the UI stops showing "connected" and the user is told to reconnect.
+func TestRefreshInvalidGrantClearsTokens(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"invalid_grant","error_description":"Token has been expired or revoked."}`)
+	}))
+	defer proxy.Close()
+
+	svc, s := newTestService(t)
+	settings, _ := s.GetSettings()
+	settings.RelayURL = strings.Replace(proxy.URL, "http://", "ws://", 1)
+	if err := s.UpdateSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	setCloudConfig(t, s, func(c *store.CloudConfig) {
+		c.Enabled = true
+		c.Provider = "google_drive"
+		c.AccessToken = "at-expired"
+		c.RefreshToken = "rt-dead"
+		c.ExpiryTimeMs = time.Now().UnixMilli() - 1000 // forces a refresh
+		c.UserEmail = "player@example.com"
+	})
+
+	err := svc.Upload(writeTempZip(t, "data"), "game__main__snap_1.zip")
+	if err == nil {
+		t.Fatal("expected upload to fail on dead refresh token")
+	}
+	if !strings.Contains(err.Error(), "expired") || !strings.Contains(err.Error(), "reconnect") {
+		t.Errorf("error should tell the user to reconnect, got: %v", err)
+	}
+
+	// Dead credentials must be wiped so the UI shows "disconnected".
+	cfg, _ := s.GetCloudConfig()
+	if cfg.AccessToken != "" || cfg.RefreshToken != "" || cfg.UserEmail != "" || cfg.ExpiryTimeMs != 0 {
+		t.Errorf("dead tokens should be cleared, got %+v", cfg)
+	}
+}
+
 func TestDropboxProvider(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/2/files/list_folder" {
