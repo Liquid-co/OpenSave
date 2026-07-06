@@ -64,11 +64,17 @@
         class:active={$view.name === 'game' && $view.params.gameId === game.id}
         on:click={() => navigate('game', { gameId: game.id })}
       >
-        {#if game.coverUrl}
-          <img src={game.coverUrl} alt="" />
-        {:else}
-          <div class="cover-fallback">{initials(game.name)}</div>
-        {/if}
+        <span class="thumb">
+          <span class="cover-fallback">{initials(game.name)}</span>
+          {#if game.coverUrl}
+            <img
+              src={game.coverUrl}
+              alt=""
+              on:load={(e) => (e.currentTarget.style.display = '')}
+              on:error={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          {/if}
+        </span>
         <span class="game-name">{game.name}</span>
         {#if $syncActivity[game.id]?.state === 'running'}
           <span class="spin" title="Syncing"></span>
@@ -235,15 +241,24 @@
     background: var(--bg-active);
     color: var(--text);
   }
-  .game img,
-  .cover-fallback {
+  .thumb {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+  .thumb img {
+    position: absolute;
+    inset: 0;
     width: 24px;
     height: 24px;
     border-radius: 6px;
     object-fit: cover;
-    flex-shrink: 0;
   }
   .cover-fallback {
+    position: absolute;
+    inset: 0;
+    border-radius: 6px;
     background: var(--bg-active);
     color: var(--text-faint);
     display: flex;

@@ -1,9 +1,13 @@
 <script>
   import { native } from '../lib/api.js';
+  import logoUrl from '../assets/logo.svg';
 </script>
 
 <div class="titlebar" role="banner" style="--wails-draggable: drag" on:dblclick={() => native.toggleMaximise()}>
-  <div class="title">OpenSave</div>
+  <div class="brand">
+    <img class="logo" src={logoUrl} alt="" draggable="false" />
+    <span class="title">OpenSave</span>
+  </div>
   <div class="controls" style="--wails-draggable: no-drag">
     <button on:click={() => native.minimise()} title="Minimise" aria-label="Minimise">
       <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5.5" x2="9" y2="5.5" stroke="currentColor" stroke-width="1.2"/></svg>
@@ -25,8 +29,18 @@
     justify-content: space-between;
     background: var(--bg-sidebar);
     border-bottom: 1px solid var(--border);
-    padding-left: 14px;
+    padding-left: 10px;
     flex-shrink: 0;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
   }
   .title {
     font-size: 0.8rem;

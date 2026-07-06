@@ -3,6 +3,7 @@
   import { initApi, connectWS } from './lib/api.js';
   import { applyMessage, wsConnected, view } from './lib/stores.js';
 
+  import logoUrl from './assets/logo.svg';
   import TitleBar from './components/TitleBar.svelte';
   import Sidebar from './components/Sidebar.svelte';
   import StatusBar from './components/StatusBar.svelte';
@@ -46,6 +47,7 @@
   <div class="body">
     {#if bootError}
       <div class="boot-error">
+        <img class="boot-logo" src={logoUrl} alt="OpenSave" />
         <h2>OpenSave failed to start</h2>
         <p>{bootError}</p>
       </div>
@@ -55,7 +57,10 @@
         <svelte:component this={views[$view.name] ?? Home} params={$view.params} />
       </main>
     {:else}
-      <div class="boot-loading">Starting OpenSave…</div>
+      <div class="boot-loading">
+        <img class="boot-logo pulse" src={logoUrl} alt="OpenSave" />
+        <span>Starting OpenSave…</span>
+      </div>
     {/if}
   </div>
   <StatusBar />
@@ -94,5 +99,18 @@
     color: var(--danger);
     max-width: 480px;
     text-align: center;
+  }
+  .boot-logo {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    margin-bottom: 6px;
+  }
+  .pulse {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.45; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1); }
   }
 </style>

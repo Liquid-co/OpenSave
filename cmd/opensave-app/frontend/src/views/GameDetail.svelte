@@ -13,6 +13,18 @@
   let busy = false;
   let browsing = null; // {snapshotId, files}
 
+  // GameDetail is reused (not remounted) when navigating between games, so
+  // reset per-game view state whenever the game id changes — otherwise the
+  // previous game's cloud list / open file browser would leak across.
+  let loadedFor = null;
+  $: if (params.gameId !== loadedFor) {
+    loadedFor = params.gameId;
+    tab = 'snapshots';
+    browsing = null;
+    cloudSnaps = null;
+    cloudLoading = false;
+  }
+
   // Editable per-game configuration (loaded from the game, saved via PATCH).
   let cfg = null;
   $: if (game && (cfg === null || cfg._id !== game.id)) {
@@ -152,7 +164,13 @@
   <div class="head">
     <button class="btn icon back" on:click={() => navigate('home')} title="Back">←</button>
     {#if game.coverUrl}
-      <img class="head-cover" src={game.coverUrl} alt="" on:error={(e) => e.currentTarget.remove()} />
+      <img
+        class="head-cover"
+        src={game.coverUrl}
+        alt=""
+        on:load={(e) => (e.currentTarget.style.display = '')}
+        on:error={(e) => (e.currentTarget.style.display = 'none')}
+      />
     {/if}
     <div class="title-block">
       <h2 class="page-title">{game.name}</h2>

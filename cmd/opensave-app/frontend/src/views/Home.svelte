@@ -65,6 +65,10 @@
     scanResults = null;
   }
 
+  function onKeydown(e) {
+    if (e.key === 'Escape' && scanOpen) closeScan();
+  }
+
   $: trackedPaths = new Set($gameList.map((g) => (g.savePath ?? '').toLowerCase()));
   $: filteredResults = (scanResults ?? []).filter((r) => {
     if (trackedPaths.has((r.savePath ?? '').toLowerCase())) return false;
@@ -138,6 +142,8 @@
   const typeIcon = (t) => (t === 'emulator' ? '🕹️' : t === 'repack' ? '📦' : '🎮');
 </script>
 
+<svelte:window on:keydown={onKeydown} />
+
 <div class="head">
   <h2 class="page-title">Home</h2>
   <div class="head-actions">
@@ -155,12 +161,12 @@
     <div class="row">
       <div class="field grow">
         <label for="g-name">Game name</label>
-        <input id="g-name" placeholder="e.g. Elden Ring" bind:value={newName} />
+        <input id="g-name" placeholder="e.g. Elden Ring" bind:value={newName} on:keydown={(e) => e.key === 'Enter' && addGame()} />
       </div>
       <div class="field grow2">
         <label for="g-path">Save folder or file</label>
         <div class="path-row">
-          <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={newPath} />
+          <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={newPath} on:keydown={(e) => e.key === 'Enter' && addGame()} />
           <button class="btn" on:click={pickFolder}>Browse</button>
         </div>
       </div>
@@ -288,7 +294,13 @@
       <button class="card game-card" on:click={() => navigate('game', { gameId: game.id })}>
         <div class="gc-cover">
           {#if game.coverUrl}
-            <img src={game.coverUrl} alt="" loading="lazy" on:error={(e) => e.currentTarget.remove()} />
+            <img
+              src={game.coverUrl}
+              alt=""
+              loading="lazy"
+              on:load={(e) => (e.currentTarget.style.display = '')}
+              on:error={(e) => (e.currentTarget.style.display = 'none')}
+            />
           {/if}
           <div class="gc-cover-fallback"><span>{game.name}</span></div>
         </div>
