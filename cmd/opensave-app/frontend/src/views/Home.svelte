@@ -132,8 +132,10 @@
 
   $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online');
   const typeLabels = { emulator: 'Emulator', repack: 'Repack', game: 'Game' };
-  const capsuleUrl = (appId) =>
-    `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/capsule_231x87.jpg`;
+  // Vertical Steam library box-art (portrait) for the cover grid.
+  const portraitUrl = (appId) =>
+    `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`;
+  const typeIcon = (t) => (t === 'emulator' ? '🕹️' : t === 'repack' ? '📦' : '🎮');
 </script>
 
 <div class="head">
@@ -200,28 +202,47 @@
         </div>
 
         <div class="scan-modal-list">
-          {#each filteredResults as item (item.id)}
-            <label class="scan-row" class:sel={selected.has(item.id)}>
-              <input type="checkbox" checked={selected.has(item.id)} on:change={() => toggleSelect(item.id)} />
-              <div class="scan-thumb-box">
-                {#if item.appId}
-                  <img src={capsuleUrl(item.appId)} alt="" loading="lazy" on:error={(e) => (e.currentTarget.style.display = 'none')} />
-                {:else}
-                  <span class="scan-thumb-fallback">{item.type === 'emulator' ? '🕹️' : item.type === 'repack' ? '📦' : '🎮'}</span>
-                {/if}
+          <div class="scan-grid">
+            {#each filteredResults as item (item.id)}
+              <div
+                class="cover-tile"
+                class:sel={selected.has(item.id)}
+                on:click={() => toggleSelect(item.id)}
+                role="button"
+                tabindex="0"
+                title={item.savePath}
+              >
+                <div class="cover-art">
+                  {#if item.appId}
+                    <img
+                      src={portraitUrl(item.appId)}
+                      alt={item.name}
+                      loading="lazy"
+                      on:error={(e) => (e.currentTarget.style.display = 'none')}
+                    />
+                  {/if}
+                  <div class="cover-fallback">
+                    <span class="cover-emoji">{typeIcon(item.type)}</span>
+                    <span class="cover-fallback-name">{item.name}</span>
+                  </div>
+
+                  {#if selected.has(item.id)}
+                    <div class="cover-check">✓</div>
+                  {/if}
+                  <span class="cover-type">{typeLabels[item.type] ?? item.type}</span>
+
+                  <div class="cover-hover">
+                    <button class="btn small primary" on:click|stopPropagation={() => trackDetected(item)}>Track</button>
+                  </div>
+                </div>
+                <div class="cover-name" title={item.name}>{item.name}</div>
               </div>
-              <div class="scan-info">
-                <div class="scan-name">{item.name}</div>
-                <div class="scan-path" title={item.savePath}>{item.savePath}</div>
+            {:else}
+              <div class="scan-empty">
+                {scanCounts.all === 0 ? 'Nothing detected. You can still track any folder manually.' : 'No matches for this filter.'}
               </div>
-              <span class="badge offline">{typeLabels[item.type] ?? item.type}</span>
-              <button class="btn small primary" on:click|preventDefault={() => trackDetected(item)}>Track</button>
-            </label>
-          {:else}
-            <div class="scan-empty">
-              {scanCounts.all === 0 ? 'Nothing detected. You can still track any folder manually.' : 'No matches for this filter.'}
-            </div>
-          {/each}
+            {/each}
+          </div>
         </div>
 
         <div class="scan-modal-foot">
@@ -430,69 +451,130 @@
   .scan-modal-list {
     flex: 1;
     overflow-y: auto;
-    padding: 0 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    padding: 4px 22px 8px;
   }
-  .scan-row {
-    display: flex;
-    align-items: center;
-    gap: 13px;
-    padding: 9px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+  .scan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .cover-tile {
     cursor: pointer;
+    outline: none;
   }
-  .scan-row:hover {
-    border-color: var(--border-strong);
-  }
-  .scan-row.sel {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-  .scan-row input[type='checkbox'] {
-    accent-color: var(--accent);
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-  .scan-thumb-box {
-    width: 66px;
-    height: 30px;
-    flex-shrink: 0;
-    border-radius: 5px;
+  .cover-art {
+    position: relative;
+    aspect-ratio: 600 / 900;
+    border-radius: 10px;
     overflow: hidden;
     background: var(--bg-active);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    border: 2px solid transparent;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
   }
-  .scan-thumb-box img {
+  .cover-tile:hover .cover-art {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  }
+  .cover-tile.sel .cover-art {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .cover-art img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    z-index: 2;
   }
-  .scan-thumb-fallback {
-    font-size: 1rem;
+  /* No App ID (no img) or a failed image (hidden on error) reveals the
+     gradient fallback sitting underneath at a lower z-index. */
+  .cover-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px;
+    text-align: center;
+    background: linear-gradient(160deg, rgba(138, 99, 244, 0.22), rgba(138, 99, 244, 0.04));
   }
-  .scan-info {
-    flex: 1;
-    min-width: 0;
+  .cover-emoji {
+    font-size: 2.2rem;
   }
-  .scan-name {
-    font-weight: 600;
+  .cover-fallback-name {
+    font-weight: 700;
     font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
-  .scan-path {
-    font-size: 0.75rem;
-    color: var(--text-faint);
+  .cover-check {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 3;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+  .cover-type {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text-dim);
+    backdrop-filter: blur(2px);
+  }
+  .cover-hover {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 12px;
+    opacity: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent 55%);
+    transition: opacity 0.12s;
+  }
+  .cover-tile:hover .cover-hover {
+    opacity: 1;
+  }
+  .cover-name {
+    margin-top: 7px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .cover-tile.sel .cover-name {
+    color: var(--text);
+  }
   .scan-empty {
+    grid-column: 1 / -1;
     text-align: center;
     color: var(--text-faint);
     padding: 50px 20px;
