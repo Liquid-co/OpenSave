@@ -109,8 +109,11 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	prevSyncCode := ""
 	prevRelayURL := ""
 	prevStartOnBoot := false
+	prevHostRelay := false
+	prevRelayPort := 0
 	if prev, err := s.Daemon.Store.GetSettings(); err == nil {
 		prevSyncCode, prevRelayURL, prevStartOnBoot = prev.SyncCode, prev.RelayURL, prev.StartOnBoot
+		prevHostRelay, prevRelayPort = prev.HostRelay, prev.RelayPort
 	}
 
 	if err := s.Daemon.Store.UpdateSettings(current); err != nil {
@@ -128,6 +131,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		if err := sysintegration.SetAutostart(updated.StartOnBoot); err != nil {
 			s.Daemon.Log.Log("warn", "start-on-boot change failed: "+err.Error())
 		}
+	}
+	// Host-relay toggle / port change starts or stops the in-process relay.
+	if updated.HostRelay != prevHostRelay || updated.RelayPort != prevRelayPort {
+		s.Daemon.P2P.ApplyRelayHosting(updated.HostRelay, updated.RelayPort)
 	}
 
 	writeJSON(w, http.StatusOK, s.settingsWire())

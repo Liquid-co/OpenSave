@@ -169,6 +169,11 @@ func (d *Daemon) Start() error {
 	// Join the WAN relay room if a sync code is configured (no-op without one).
 	d.P2P.Wan.Connect()
 
+	// Host an in-process relay if enabled.
+	if settings, err := d.Store.GetSettings(); err == nil {
+		d.P2P.ApplyRelayHosting(settings.HostRelay, settings.RelayPort)
+	}
+
 	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
 	return nil
 }

@@ -11,13 +11,26 @@
   let cloudFiles = null;
 
   const providers = [
-    { id: 'local', label: 'Local folder', oauth: false },
-    { id: 'webdav', label: 'WebDAV', oauth: false },
-    { id: 'webhook', label: 'Webhook', oauth: false },
-    { id: 'google_drive', label: 'Google Drive', oauth: true },
-    { id: 'dropbox', label: 'Dropbox', oauth: true },
-    { id: 'onedrive', label: 'OneDrive', oauth: true }
+    { id: 'google_drive', label: 'Google Drive', oauth: true, img: 'cloud/googledrive.png' },
+    { id: 'onedrive', label: 'OneDrive', oauth: true, img: 'cloud/onedrive.png' },
+    { id: 'dropbox', label: 'Dropbox', oauth: true, img: 'cloud/dropbox.png' },
+    { id: 'local', label: 'Local Folder', oauth: false, icon: 'folder' },
+    { id: 'webdav', label: 'WebDAV Server', oauth: false, icon: 'cloud' },
+    { id: 'webhook', label: 'HTTP Webhook', oauth: false, icon: 'webhook' }
   ];
+
+  const iconPaths = {
+    folder: 'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z',
+    cloud: 'M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z',
+    webhook: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM12 10H8v2h4v-2zm4 4h-8v2h8v-2z'
+  };
+
+  function providerStatus(id) {
+    if (!config) return '';
+    if (config.provider === id && config.tokens?.userEmail) return config.tokens.userEmail;
+    if (['google_drive', 'onedrive', 'dropbox'].includes(id)) return 'Click to sign in';
+    return 'Not configured';
+  }
 
   onMount(load);
 
@@ -180,10 +193,23 @@
       </label>
     </div>
 
-    <div class="pill-tabs" style="margin: 16px 0;">
+    <label class="provider-label">Select cloud storage provider</label>
+    <div class="provider-grid">
       {#each providers as p}
-        <button class:active={config.provider === p.id} on:click={() => { config.provider = p.id; cloudFiles = null; }}>
-          {p.label}
+        <button
+          class="provider-card"
+          class:active={config.provider === p.id}
+          on:click={() => { config.provider = p.id; cloudFiles = null; }}
+        >
+          <div class="provider-icon">
+            {#if p.img}
+              <img src={p.img} alt={p.label} />
+            {:else}
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d={iconPaths[p.icon]} /></svg>
+            {/if}
+          </div>
+          <div class="provider-name">{p.label}</div>
+          <div class="provider-status">{providerStatus(p.id)}</div>
         </button>
       {/each}
     </div>
@@ -251,6 +277,21 @@
           <input id="cb-folderid" bind:value={config.folderId} />
         </div>
       {/if}
+
+      <div class="oauth-config">
+        <div class="oauth-config-head">🛠️ Custom OAuth Client ID <span class="optional">(optional)</span></div>
+        <p class="oauth-config-note">
+          Google Drive and Dropbox include built-in credentials — sign in with zero setup. For OneDrive, or to use
+          your own registered app, enter a Client ID. Takes effect on next sign-in.
+        </p>
+        <input
+          placeholder="Leave blank to use built-in credentials"
+          value={config.customClientIds?.[config.provider] ?? ''}
+          on:input={(e) => {
+            config.customClientIds = { ...(config.customClientIds ?? {}), [config.provider]: e.currentTarget.value };
+          }}
+        />
+      </div>
     {/if}
 
     <div class="actions">
@@ -352,6 +393,101 @@
   .switch input:checked + span::before {
     transform: translateX(20px);
     background: #fff;
+  }
+  .provider-label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin: 18px 0 10px;
+  }
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .provider-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 16px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s, transform 0.12s;
+    text-align: center;
+  }
+  .provider-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+  }
+  .provider-card.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .provider-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .provider-icon img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+  }
+  .provider-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .provider-status {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+  }
+  .provider-card.active .provider-status {
+    color: var(--accent);
+  }
+  .oauth-config {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.01);
+  }
+  .oauth-config-head {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+  }
+  .oauth-config .optional {
+    font-weight: 400;
+    color: var(--text-faint);
+    font-size: 0.75rem;
+  }
+  .oauth-config-note {
+    font-size: 0.76rem;
+    color: var(--text-faint);
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .oauth-config input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    color: var(--text);
+    outline: none;
   }
   .two {
     display: grid;

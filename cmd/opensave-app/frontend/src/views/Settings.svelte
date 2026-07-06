@@ -43,6 +43,16 @@
     const dir = await native.selectDirectory('Select snapshots storage folder');
     if (dir) draft.backupsDir = dir;
   }
+
+  // Relay hosting: fetch LAN IPs / public IP to share with friends.
+  let relayInfo = null;
+  async function loadRelayInfo() {
+    try {
+      relayInfo = await api.get('/api/relay/ips');
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
 </script>
 
 <div class="head">
@@ -68,9 +78,12 @@
       <div class="field">
         <label for="s-type">Device type</label>
         <select id="s-type" bind:value={draft.deviceType}>
-          <option value="desktop">Desktop / laptop</option>
-          <option value="deck">Steam Deck / handheld</option>
+          <option value="desktop">Desktop (Windows / macOS / Linux PC)</option>
+          <option value="deck">Steam Deck (SteamOS handheld)</option>
+          <option value="handheld">Handheld (ROG Ally / Legion Go / emulator)</option>
+          <option value="mobile">Companion (mobile device)</option>
         </select>
+        <span class="hint">Shown to other devices when they discover you.</span>
       </div>
       <label class="check">
         <input type="checkbox" bind:checked={draft.startOnBoot} />
@@ -84,10 +97,44 @@
         Sync a game immediately when it's first tracked
       </label>
       <div class="field" style="margin-top: 14px;">
-        <label for="s-limit">Internet upload/download limit (KB/s, 0 = unlimited)</label>
-        <input id="s-limit" type="number" min="0" bind:value={draft.speedLimit} />
+        <label for="s-limit">Internet bandwidth limit</label>
+        <select id="s-limit" bind:value={draft.speedLimit}>
+          <option value={0}>Unlimited (max speed)</option>
+          <option value={100}>100 KB/s (very low)</option>
+          <option value={500}>500 KB/s (medium)</option>
+          <option value={1024}>1 MB/s (high)</option>
+          <option value={5120}>5 MB/s (very high)</option>
+          <option value={10240}>10 MB/s (ultra)</option>
+        </select>
         <span class="hint">Only applies to relay (internet) syncs — LAN is never throttled.</span>
       </div>
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="card-title">🌐 Internet relay hosting</h3>
+      <p class="hint" style="margin-bottom: 14px;">
+        Host a relay on this machine so friends connect directly to you instead of the public relay.
+      </p>
+      <label class="check">
+        <input type="checkbox" bind:checked={draft.hostRelay} on:change={() => draft.hostRelay && loadRelayInfo()} />
+        Host a WAN relay server on this device
+      </label>
+      {#if draft.hostRelay}
+        <div class="field" style="margin-top: 12px;">
+          <label for="s-relay-port">Relay hosting port</label>
+          <input id="s-relay-port" type="number" bind:value={draft.relayPort} />
+          <span class="hint">Forward this TCP port on your router so friends on the internet can reach you.</span>
+        </div>
+        <button class="btn small" on:click={loadRelayInfo}>Show my addresses to share</button>
+        {#if relayInfo}
+          <div class="share-banner">
+            <div class="share-title">📡 Share these with your friend</div>
+            <div class="share-row"><span>LAN IPs:</span> {relayInfo.lanIps?.join(', ') || '—'}</div>
+            <div class="share-row"><span>Public IP:</span> {relayInfo.publicIp || 'unavailable'}</div>
+            <div class="share-row"><span>Relay port:</span> {relayInfo.relayPort}</div>
+          </div>
+        {/if}
+      {/if}
     </div>
   {:else if tab === 'storage'}
     <div class="card">
@@ -104,8 +151,15 @@
       </label>
       {#if draft.autoDeleteBackups}
         <div class="field" style="margin-top: 10px;">
-          <label for="s-days">Delete backups older than (days)</label>
-          <input id="s-days" type="number" min="1" bind:value={draft.autoDeleteDays} />
+          <label for="s-days">Retention period</label>
+          <select id="s-days" bind:value={draft.autoDeleteDays}>
+            <option value={7}>7 days</option>
+            <option value={14}>14 days</option>
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+          </select>
         </div>
       {/if}
 
@@ -204,6 +258,32 @@
   }
   .arrow {
     color: var(--text-faint);
+  }
+  .card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .share-banner {
+    margin-top: 12px;
+    background: rgba(138, 99, 244, 0.06);
+    border: 1px solid rgba(138, 99, 244, 0.28);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 0.82rem;
+  }
+  .share-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .share-row {
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+  .share-row span {
+    color: var(--text-faint);
+    display: inline-block;
+    width: 78px;
   }
   .save-bar {
     display: flex;

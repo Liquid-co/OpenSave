@@ -106,6 +106,13 @@ func (s *Server) wireSyncProgress() {
 func (s *Server) Start(port int) (string, error) {
 	r := chi.NewRouter()
 
+	// CORS + preflight handling must be a TOP-LEVEL middleware: chi answers
+	// an unmatched method (the browser's OPTIONS preflight) with 405 before
+	// group middleware runs, so handling it inside the group would never
+	// fire — which silently blocked every POST/PATCH/DELETE from the
+	// webview with "Failed to fetch".
+	r.Use(corsLocalhost)
+
 	// Dashboard/CLI surface: localhost only.
 	r.Group(func(r chi.Router) {
 		r.Use(localhostOnly)
@@ -144,23 +151,34 @@ func (s *Server) Stop() {
 	}
 }
 
+// corsLocalhost adds permissive CORS headers for local requests and
+// answers preflight OPTIONS directly (204). The Wails webview runs at its
+// own origin (http://wails.localhost), so without this the browser blocks
+// every non-simple request. Runs at the top level so the OPTIONS preflight
+// is handled before chi's per-route method matching returns 405.
+func corsLocalhost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err == nil && isLoopback(host) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // localhostOnly rejects any request that didn't originate from the local
 // machine — the dashboard API must never be reachable from the network.
-// Local requests get permissive CORS headers: the Wails webview runs at
-// its own origin (http://wails.localhost) and would otherwise be blocked
-// from calling the daemon.
 func localhostOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil || !isLoopback(host) {
 			writeError(w, http.StatusForbidden, "external access denied")
-			return
-		}
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)

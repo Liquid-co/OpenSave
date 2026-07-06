@@ -33,6 +33,7 @@ type Engine struct {
 	Pairing   *pairing.Manager
 	Discovery *discovery.Manager
 	Wan       *WanClient
+	RelayHost *RelayHost
 	Log       func(level, msg string)
 
 	// OnPeerUpdate fires whenever peer/pairing state changes (dashboard
@@ -89,13 +90,23 @@ func (e *Engine) StartDiscovery() error {
 	return e.Discovery.Start()
 }
 
-// Stop shuts down discovery and the WAN client.
+// Stop shuts down discovery, the WAN client, and any hosted relay.
 func (e *Engine) Stop() {
 	if e.Discovery != nil {
 		e.Discovery.Stop()
 	}
 	if e.Wan != nil {
 		e.Wan.Disconnect()
+	}
+	if e.RelayHost != nil {
+		e.RelayHost.Stop()
+	}
+}
+
+// ApplyRelayHosting starts/stops the in-process relay to match settings.
+func (e *Engine) ApplyRelayHosting(enabled bool, port int) {
+	if e.RelayHost != nil {
+		e.RelayHost.Apply(enabled, port)
 	}
 }
 
@@ -108,6 +119,7 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 		Log:       logf,
 	}
 	e.Wan = newWanClient(e)
+	e.RelayHost = NewRelayHost(logf)
 	e.Sync = syncengine.New(s, snaps, &routingTransport{
 		lan: &lanTransport{},
 		wan: &wanTransport{wan: e.Wan},

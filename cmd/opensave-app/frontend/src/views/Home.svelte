@@ -246,11 +246,12 @@
     margin-bottom: 10px;
   }
   .scan-list {
-    max-height: 300px;
+    max-height: min(60vh, 620px);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    padding-right: 4px;
   }
   .scan-item {
     display: flex;

@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -25,6 +27,44 @@ func (s *Server) peerRoutes(r chi.Router) {
 
 	r.Get("/api/wan/status", s.handleWanStatus)
 	r.Get("/api/relay/health", s.handleRelayHealth)
+	r.Get("/api/relay/ips", s.handleRelayIPs)
+}
+
+// handleRelayIPs returns this machine's LAN addresses and public IP, plus
+// the LAN sync PIN — the info a self-hoster shares with friends.
+func (s *Server) handleRelayIPs(w http.ResponseWriter, r *http.Request) {
+	lanIPs := []string{}
+	if ifaces, err := net.Interfaces(); err == nil {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			addrs, _ := iface.Addrs()
+			for _, addr := range addrs {
+				if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
+					lanIPs = append(lanIPs, ipNet.IP.String())
+				}
+			}
+		}
+	}
+
+	// Public IP is best-effort; a timeout just yields "".
+	publicIP := ""
+	client := http.Client{Timeout: 4 * time.Second}
+	if resp, err := client.Get("https://api.ipify.org"); err == nil {
+		defer resp.Body.Close()
+		if body, err := io.ReadAll(io.LimitReader(resp.Body, 64)); err == nil {
+			publicIP = strings.TrimSpace(string(body))
+		}
+	}
+
+	settings, _ := s.Daemon.Store.GetSettings()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"lanIps":    lanIPs,
+		"publicIp":  publicIP,
+		"relayPort": settings.RelayPort,
+		"syncCode":  settings.SyncCode,
+	})
 }
 
 func (s *Server) handleWanStatus(w http.ResponseWriter, r *http.Request) {

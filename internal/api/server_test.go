@@ -76,6 +76,39 @@ func (ts *testServer) do(t *testing.T, method, path string, body any) (*http.Res
 	return resp, decoded
 }
 
+// TestCORSPreflight guards the bug where the browser's OPTIONS preflight
+// for a POST/PATCH/DELETE returned 405 (no CORS headers), silently
+// blocking every mutating request from the Wails webview.
+func TestCORSPreflight(t *testing.T) {
+	ts := startTestServer(t)
+
+	for _, path := range []string{"/api/games", "/api/settings", "/api/peers/pair"} {
+		req, err := http.NewRequest(http.MethodOptions, ts.base+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Origin", "http://wails.localhost")
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		req.Header.Set("Access-Control-Request-Headers", "content-type")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("preflight %s: %v", path, err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("preflight %s status = %d, want 204", path, resp.StatusCode)
+		}
+		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Errorf("preflight %s Allow-Origin = %q, want *", path, got)
+		}
+		if got := resp.Header.Get("Access-Control-Allow-Methods"); got == "" {
+			t.Errorf("preflight %s missing Allow-Methods", path)
+		}
+	}
+}
+
 func TestStatusEndpoint(t *testing.T) {
 	ts := startTestServer(t)
 	resp, body := ts.do(t, http.MethodGet, "/api/status", nil)

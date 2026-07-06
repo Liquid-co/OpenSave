@@ -1,2 +1,0 @@
-# Placeholder so go:embed all:frontend/dist compiles before the frontend
-# is built. `npm run build` replaces this directory's contents.
