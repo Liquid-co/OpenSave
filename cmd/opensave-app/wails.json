@@ -8,5 +8,12 @@
   "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "OpenSave"
+  },
+  "info": {
+    "companyName": "OpenSave",
+    "productName": "OpenSave",
+    "productVersion": "2.0.0",
+    "copyright": "Copyright © 2026 Siva Prakash & OpenSave contributors",
+    "comments": "Peer-to-peer game save sync"
   }
 }

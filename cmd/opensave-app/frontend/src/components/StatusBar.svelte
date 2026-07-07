@@ -1,5 +1,17 @@
 <script>
+  import { onMount } from 'svelte';
   import { wsConnected, syncActivity, wanRoom, peers } from '../lib/stores.js';
+  import { native } from '../lib/api.js';
+  import AboutModal from './AboutModal.svelte';
+
+  let version = '2.0.0';
+  let showAbout = false;
+  onMount(async () => {
+    try {
+      const info = await native.appInfo();
+      if (info?.version) version = info.version;
+    } catch {}
+  });
 
   $: running = Object.entries($syncActivity).filter(([, s]) => s.state === 'running');
   $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online').length;
@@ -7,6 +19,10 @@
     ? `Syncing ${running.length} game${running.length > 1 ? 's' : ''}…`
     : 'No syncs in progress';
 </script>
+
+{#if showAbout}
+  <AboutModal onClose={() => (showAbout = false)} />
+{/if}
 
 <footer>
   <div class="left">
@@ -21,7 +37,7 @@
       <span class="wan">relay: {$wanRoom.roomCode}</span>
     {/if}
     <span>{onlinePeers} peer{onlinePeers === 1 ? '' : 's'} online</span>
-    <span class="ver">OpenSave v2.0.0</span>
+    <button class="ver" on:click={() => (showAbout = true)} title="About OpenSave">OpenSave v{version}</button>
   </div>
 </footer>
 
@@ -53,5 +69,17 @@
   }
   .ver {
     opacity: 0.7;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 0.76rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 5px;
+  }
+  .ver:hover {
+    opacity: 1;
+    background: var(--bg-hover);
+    color: var(--text-dim);
   }
 </style>

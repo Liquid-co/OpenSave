@@ -207,7 +207,7 @@
       </label>
     </div>
 
-    <label class="provider-label">Select cloud storage provider</label>
+    <div class="provider-label">Select cloud storage provider</div>
     <div class="provider-grid">
       {#each providers as p}
         <button

@@ -10,6 +10,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// AppVersion is the single source of truth for the app version shown in
+// the UI. Keep it in sync with wails.json's info.productVersion (which
+// drives the Windows executable/installer metadata).
+const AppVersion = "2.0.0"
+
 // App is the Wails-bound bridge between the webview frontend and the
 // embedded daemon. Methods on it are callable from JS.
 type App struct {
@@ -81,6 +86,18 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.daemon != nil {
 		a.daemon.Stop()
+	}
+}
+
+// AppInfo returns static app metadata for the About dialog / status bar.
+func (a *App) AppInfo() map[string]string {
+	return map[string]string{
+		"name":      "OpenSave",
+		"version":   AppVersion,
+		"tagline":   "Peer-to-peer game save sync",
+		"license":   "MIT",
+		"copyright": "© 2026 Siva Prakash & OpenSave contributors",
+		"tech":      "Go + Wails",
 	}
 }
 

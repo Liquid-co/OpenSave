@@ -181,7 +181,7 @@
 {/if}
 
 {#if scanOpen}
-  <div class="scan-overlay" on:click|self={closeScan} role="presentation">
+  <div class="scan-overlay" on:click|self={closeScan} on:keydown={(e) => e.key === 'Escape' && closeScan()} role="presentation">
     <div class="scan-modal">
       <div class="scan-modal-head">
         <div>
@@ -214,6 +214,7 @@
                 class="cover-tile"
                 class:sel={selected.has(item.id)}
                 on:click={() => toggleSelect(item.id)}
+                on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleSelect(item.id))}
                 role="button"
                 tabindex="0"
                 title={item.savePath}
@@ -283,9 +284,17 @@
 </div>
 
 {#if $gameList.length === 0}
-  <div class="empty">
-    <h3>Your library is empty</h3>
-    <p>Run an auto-scan to find emulator and game saves, or track any folder manually.</p>
+  <div class="welcome">
+    <div class="welcome-icon">🎮</div>
+    <h3>Welcome to OpenSave</h3>
+    <p>Keep your game saves in sync across every device — no accounts, no cloud lock-in. Start by finding your saves:</p>
+    <div class="welcome-actions">
+      <button class="btn primary" on:click={scan} disabled={scanning}>
+        {scanning ? 'Scanning…' : '🔍 Auto-scan for saves'}
+      </button>
+      <button class="btn" on:click={() => (showAdd = true)}>+ Track a folder manually</button>
+    </div>
+    <p class="welcome-hint">Then open <strong>Devices</strong> to pair another PC or Steam Deck, or <strong>Cloud Backup</strong> to mirror snapshots online.</p>
   </div>
 {:else}
   <h3 class="section">Library</h3>
@@ -620,6 +629,42 @@
   .stat-label {
     color: var(--text-faint);
     font-size: 0.82rem;
+  }
+
+  .welcome {
+    text-align: center;
+    max-width: 520px;
+    margin: 40px auto;
+    padding: 40px 28px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .welcome-icon {
+    font-size: 3rem;
+    margin-bottom: 10px;
+  }
+  .welcome h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .welcome p {
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .welcome-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 22px 0 6px;
+    flex-wrap: wrap;
+  }
+  .welcome-hint {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    margin-top: 16px;
   }
 
   .section {

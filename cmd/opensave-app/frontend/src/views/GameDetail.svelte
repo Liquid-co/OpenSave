@@ -69,8 +69,10 @@
       await api.post(`/api/games/${game.id}/snapshot`, { comment: snapshotComment });
       snapshotComment = '';
     });
-  const rollback = (snap) =>
-    run(`Restored ${snap.id}`, () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
+  const rollback = (snap) => {
+    if (!confirm(`Restore snapshot ${snap.id} over your current save? Your current state is snapshotted first, so this is reversible.`)) return;
+    return run(`Restored ${snap.id}`, () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
+  };
   const createBranch = () =>
     run('Branch created', async () => {
       await api.post(`/api/games/${game.id}/branch`, { name: newBranch });
@@ -88,10 +90,12 @@
     }
   }
 
-  const restoreFile = (relPath) =>
-    run(`Restored ${relPath}`, () =>
+  const restoreFile = (relPath) => {
+    if (!confirm(`Restore "${relPath}" from ${browsing.snapshotId} over the current file?`)) return;
+    return run(`Restored ${relPath}`, () =>
       api.post(`/api/games/${game.id}/snapshot/${browsing.snapshotId}/restore-file`, { relPath })
     );
+  };
 
   async function untrack() {
     if (!confirm(`Stop tracking "${game.name}"? Snapshot files stay on disk.`)) return;

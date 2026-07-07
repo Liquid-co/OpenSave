@@ -68,7 +68,19 @@ export function connectWS(onMessage, onState) {
 
 const app = () => window.go?.main?.App;
 
+// Fallback metadata for `wails dev` / browser preview where the Go binding
+// is absent. Kept loosely in sync with AppInfo() in app.go.
+const FALLBACK_INFO = {
+  name: 'OpenSave',
+  version: '2.0.0',
+  tagline: 'Peer-to-peer game save sync',
+  license: 'MIT',
+  copyright: '© 2026 Siva Prakash & OpenSave contributors',
+  tech: 'Go + Wails'
+};
+
 export const native = {
+  appInfo: () => app()?.AppInfo?.() ?? Promise.resolve(FALLBACK_INFO),
   selectDirectory: (title) => app()?.SelectDirectory(title ?? '') ?? Promise.resolve(''),
   selectFile: (title) => app()?.SelectFile(title ?? '') ?? Promise.resolve(''),
   selectSaveFile: (title, name) => app()?.SelectSaveFile(title ?? '', name ?? '') ?? Promise.resolve(''),
