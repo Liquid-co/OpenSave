@@ -45,10 +45,18 @@
     webhook: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM12 10H8v2h4v-2zm4 4h-8v2h8v-2z'
   };
 
-  function providerStatus(id) {
-    if (!config) return '';
-    if (config.provider === id && config.tokens?.userEmail) return config.tokens.userEmail;
+  // The provider the stored OAuth tokens belong to (server truth at load
+  // time) — independent of which card is currently selected, so the
+  // connected card keeps saying "connected" while you browse the others.
+  let connectedProvider = null;
+
+  // Pure function of its arguments so the template call re-renders whenever
+  // connectedProvider/config change (a closure over `config` would go stale).
+  function providerStatus(id, connected, cfg) {
+    if (!cfg) return '';
+    if (id === connected) return cfg.tokens?.userEmail || 'Connected';
     if (['google_drive', 'onedrive', 'dropbox'].includes(id)) return 'Click to sign in';
+    if (id === cfg.provider && cfg.url) return 'Configured';
     return 'Not configured';
   }
 
@@ -60,6 +68,7 @@
       config = settings.cloudSync ?? {
         enabled: false, provider: 'local', url: '', username: '', password: '', headers: '{}', folderId: ''
       };
+      connectedProvider = config.tokens?.userEmail ? config.provider : null;
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -246,6 +255,9 @@
           class:active={config.provider === p.id}
           on:click={() => { config.provider = p.id; cloudGames = null; openGame = null; }}
         >
+          {#if p.id === connectedProvider}
+            <span class="prov-check" title="Connected">✓</span>
+          {/if}
           <div class="provider-icon">
             {#if p.img}
               <img src={p.img} alt={p.label} />
@@ -254,7 +266,9 @@
             {/if}
           </div>
           <div class="provider-name">{p.label}</div>
-          <div class="provider-status">{providerStatus(p.id)}</div>
+          <div class="provider-status" class:is-connected={p.id === connectedProvider}>
+            {providerStatus(p.id, connectedProvider, config)}
+          </div>
         </button>
       {/each}
     </div>
@@ -293,13 +307,19 @@
       </div>
     {:else}
       <!-- OAuth providers -->
-      {#if config.tokens?.userEmail}
+      {#if connectedProvider === config.provider && config.tokens?.userEmail}
         <div class="connected">
           <span class="badge online">connected</span>
           <span>{config.tokens.userEmail}</span>
           <button class="btn small danger" disabled={busy} on:click={disconnect}>Disconnect</button>
         </div>
       {:else}
+        {#if connectedProvider}
+          <p class="quiet" style="margin-bottom: 10px;">
+            You're currently connected to {providers.find((x) => x.id === connectedProvider)?.label} — signing in
+            here will replace that connection.
+          </p>
+        {/if}
         {#if !authInProgress}
           <button class="btn primary" disabled={busy} on:click={startAuth}>
             Sign in with {currentProvider?.label}
@@ -503,6 +523,7 @@
     margin-bottom: 18px;
   }
   .provider-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -551,6 +572,26 @@
   }
   .provider-card.active .provider-status {
     color: var(--accent);
+  }
+  .provider-status.is-connected {
+    color: var(--success);
+    font-weight: 600;
+  }
+  .prov-check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--success);
+    color: #0c0c0d;
+    font-size: 0.72rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   }
   .oauth-config {
     margin-top: 16px;

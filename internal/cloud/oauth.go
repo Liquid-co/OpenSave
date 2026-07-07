@@ -153,6 +153,10 @@ func (s *Service) ExchangeAuthCode(provider, code, codeVerifier string) error {
 	if err != nil {
 		return err
 	}
+	// Signing in IS choosing this provider: persist it so uploads work even
+	// if the user never presses "Save settings", and so the stored tokens
+	// always belong to the stored provider.
+	cfg.Provider = provider
 	cfg.AccessToken = tok.AccessToken
 	cfg.RefreshToken = tok.RefreshToken
 	cfg.ExpiryTimeMs = time.Now().UnixMilli() + tok.ExpiresIn*1000
@@ -335,7 +339,7 @@ func (s *Service) postTokenForm(tokenURL string, form url.Values) (tokenResponse
 // fetchUserProfile best-effort resolves the account email for the
 // settings UI.
 func (s *Service) fetchUserProfile(provider, accessToken string) string {
-	fallback := strings.ReplaceAll(provider, "_", " ") + " Connected"
+	fallback := providerLabel(provider) + " account"
 	var req *http.Request
 	switch provider {
 	case "google_drive":
