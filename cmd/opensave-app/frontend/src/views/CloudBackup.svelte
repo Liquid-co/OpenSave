@@ -1,12 +1,30 @@
 <script>
-  import { gameList, toast } from '../lib/stores.js';
+  import { gameList, toast, cloudAuthEvent } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
   let config = null;
   let busy = false;
   let authCode = '';
   let authInProgress = false;
+  let authAuto = false; // backend caught the redirect automatically
+  let showManualCode = false;
+
+  // The daemon broadcasts cloud-auth when the browser redirect lands on
+  // its temporary localhost listener — sign-in completes with no pasting.
+  const unsubAuth = cloudAuthEvent.subscribe((ev) => {
+    if (!ev || !authInProgress) return;
+    cloudAuthEvent.set(null);
+    authInProgress = false;
+    showManualCode = false;
+    if (ev.success) {
+      toast(`Connected as ${ev.userEmail}`, 'success');
+      load();
+    } else {
+      toast(ev.error ?? 'Sign-in failed', 'error');
+    }
+  });
+  onDestroy(unsubAuth);
   let cloudGames = null; // grouped explorer data (null = not loaded yet)
   let openGame = null; // gameId of the expanded group
   let browsing = false;
@@ -62,15 +80,27 @@
   async function startAuth() {
     busy = true;
     try {
-      const { authUrl } = await api.post('/api/auth/start', { provider: config.provider });
-      native.openExternal(authUrl);
+      const res = await api.post('/api/auth/start', { provider: config.provider });
+      native.openExternal(res.authUrl);
       authInProgress = true;
-      toast('Sign in using the browser window, then paste the code from the redirect URL here.');
+      authAuto = !!res.autoCallback;
+      showManualCode = !authAuto;
+      if (authAuto) {
+        toast('Finish signing in — OpenSave connects automatically.');
+      } else {
+        toast('Sign in using the browser window, then paste the code from the redirect URL here.');
+      }
     } catch (e) {
       toast(e.message, 'error');
     } finally {
       busy = false;
     }
+  }
+
+  function cancelAuth() {
+    authInProgress = false;
+    showManualCode = false;
+    authCode = '';
   }
 
   async function finishAuth() {
@@ -79,6 +109,7 @@
       const res = await api.post('/api/auth/callback', { code: authCode.trim() });
       toast(`Connected as ${res.userEmail}`, 'success');
       authInProgress = false;
+      showManualCode = false;
       authCode = '';
       await load();
     } catch (e) {
@@ -269,20 +300,42 @@
           <button class="btn small danger" disabled={busy} on:click={disconnect}>Disconnect</button>
         </div>
       {:else}
-        <button class="btn primary" disabled={busy} on:click={startAuth}>
-          Sign in with {currentProvider?.label}
-        </button>
-        {#if authInProgress}
-          <div class="auth-code">
-            <p class="quiet">
-              After approving access, the browser lands on a localhost page. Copy the <code>code</code> value
-              from its address bar and paste it here:
+        {#if !authInProgress}
+          <button class="btn primary" disabled={busy} on:click={startAuth}>
+            Sign in with {currentProvider?.label}
+          </button>
+          {#if config.provider === 'google_drive'}
+            <p class="quiet" style="margin-top: 10px;">
+              ⚠️ On Google's consent screen, <strong>tick the checkbox</strong> allowing OpenSave to access
+              its own Drive files — without it, uploads fail with "insufficient permissions".
             </p>
-            <div class="path-row">
-              <input placeholder="4/0AY0e-g7…" bind:value={authCode} />
-              <button class="btn primary" disabled={!authCode || busy} on:click={finishAuth}>Connect</button>
+          {/if}
+        {:else}
+          <div class="auth-waiting">
+            <span class="cspin"></span>
+            <div class="auth-waiting-text">
+              <strong>Waiting for you to finish signing in…</strong>
+              <span class="quiet">Approve access in your browser — OpenSave connects by itself.</span>
             </div>
+            <button class="btn small" on:click={cancelAuth}>Cancel</button>
           </div>
+          {#if !showManualCode && authAuto}
+            <button class="linkish" on:click={() => (showManualCode = true)}>
+              Having trouble? Paste the code manually
+            </button>
+          {/if}
+          {#if showManualCode}
+            <div class="auth-code">
+              <p class="quiet">
+                After approving access, the browser lands on a localhost page. Copy the <code>code</code> value
+                from its address bar and paste it here:
+              </p>
+              <div class="path-row">
+                <input placeholder="4/0AY0e-g7…" bind:value={authCode} />
+                <button class="btn primary" disabled={!authCode || busy} on:click={finishAuth}>Connect</button>
+              </div>
+            </div>
+          {/if}
         {/if}
       {/if}
       {#if config.provider === 'google_drive'}
@@ -555,6 +608,47 @@
   }
   .auth-code {
     margin-top: 12px;
+  }
+  .auth-waiting {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+  }
+  .auth-waiting-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.88rem;
+  }
+  .cspin {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--accent-soft);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: cspin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes cspin {
+    to { transform: rotate(360deg); }
+  }
+  .linkish {
+    margin-top: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 2px 0;
+  }
+  .linkish:hover {
+    color: var(--text-dim);
   }
   .auth-code code {
     background: var(--bg);

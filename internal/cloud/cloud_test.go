@@ -234,6 +234,64 @@ func TestGoogleDriveProviderWithTokenRefresh(t *testing.T) {
 	}
 }
 
+// TestPruneGameBranch verifies cloud retention: newest `keep` snapshots
+// stay, older ones are deleted, other games/branches are untouched.
+func TestPruneGameBranch(t *testing.T) {
+	svc, s := newTestService(t)
+	destDir := t.TempDir()
+	setCloudConfig(t, s, func(c *store.CloudConfig) {
+		c.Enabled = true
+		c.Provider = "local"
+		c.URL = destDir
+	})
+
+	// Upload 5 snapshots for game__main plus one for another branch/game.
+	names := []string{
+		"game__main__snap_1.zip", "game__main__snap_2.zip", "game__main__snap_3.zip",
+		"game__main__snap_4.zip", "game__main__snap_5.zip",
+		"game__ngplus__snap_9.zip", "other__main__snap_1.zip",
+	}
+	for i, n := range names {
+		if err := svc.Upload(writeTempZip(t, "data"), n); err != nil {
+			t.Fatal(err)
+		}
+		// Stagger mtimes so CreatedTime ordering is deterministic.
+		older := time.Now().Add(-time.Duration(len(names)-i) * time.Minute)
+		_ = os.Chtimes(filepath.Join(destDir, n), older, older)
+	}
+
+	pruned, err := svc.PruneGameBranch(func(name string) bool {
+		return strings.HasPrefix(name, "game__main__")
+	}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != 2 {
+		t.Errorf("pruned = %d, want 2", pruned)
+	}
+
+	remaining, _ := svc.List()
+	got := map[string]bool{}
+	for _, f := range remaining {
+		got[f.Name] = true
+	}
+	for _, want := range []string{"game__main__snap_3.zip", "game__main__snap_4.zip", "game__main__snap_5.zip", "game__ngplus__snap_9.zip", "other__main__snap_1.zip"} {
+		if !got[want] {
+			t.Errorf("%s should have been kept", want)
+		}
+	}
+	for _, gone := range []string{"game__main__snap_1.zip", "game__main__snap_2.zip"} {
+		if got[gone] {
+			t.Errorf("%s should have been pruned", gone)
+		}
+	}
+
+	// keep <= 0 disables pruning entirely.
+	if n, _ := svc.PruneGameBranch(func(string) bool { return true }, 0); n != 0 {
+		t.Errorf("keep=0 pruned %d files; retention should be disabled", n)
+	}
+}
+
 // TestRefreshInvalidGrantClearsTokens verifies that a permanently-dead
 // refresh token (Google's invalid_grant) wipes the stored credentials so
 // the UI stops showing "connected" and the user is told to reconnect.

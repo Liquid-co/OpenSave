@@ -181,7 +181,7 @@ func (s *Service) Upload(filePath, fileName string) error {
 		req.Header.Set("Content-Type", "multipart/related; boundary="+mw.Boundary())
 		req.Header.Set("Authorization", "Bearer "+token)
 		if err := s.doOK(req); err != nil {
-			return fmt.Errorf("Google Drive: %w", err)
+			return googleDriveErr(err)
 		}
 
 	case "dropbox":
@@ -282,7 +282,7 @@ func (s *Service) List() ([]CloudFile, error) {
 			} `json:"files"`
 		}
 		if err := s.doJSON(req, &out); err != nil {
-			return nil, fmt.Errorf("Google Drive: %w", err)
+			return nil, googleDriveErr(err)
 		}
 		files := make([]CloudFile, len(out.Files))
 		for i, f := range out.Files {
@@ -411,7 +411,7 @@ func (s *Service) Download(fileName, localPath string) error {
 			} `json:"files"`
 		}
 		if err := s.doJSON(req, &out); err != nil {
-			return fmt.Errorf("Google Drive: %w", err)
+			return googleDriveErr(err)
 		}
 		if len(out.Files) == 0 {
 			return fmt.Errorf("file %q not found on Google Drive", fileName)
@@ -420,7 +420,7 @@ func (s *Service) Download(fileName, localPath string) error {
 		dlReq.Header.Set("Authorization", "Bearer "+token)
 		raw, err = s.fetchBytes(dlReq)
 		if err != nil {
-			return fmt.Errorf("Google Drive: %w", err)
+			return googleDriveErr(err)
 		}
 
 	case "dropbox":
@@ -524,6 +524,132 @@ func (s *Service) listWebDAV(cfg store.CloudConfig) ([]CloudFile, error) {
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// Delete removes one remote snapshot. Webhook destinations are fire-and-
+// forget and don't support deletion.
+func (s *Service) Delete(f CloudFile) error {
+	cfg, err := s.config()
+	if err != nil {
+		return err
+	}
+
+	switch cfg.Provider {
+	case "local":
+		if cfg.URL == "" {
+			return fmt.Errorf("no local folder destination configured")
+		}
+		return os.Remove(filepath.Join(cfg.URL, f.Name))
+
+	case "webdav":
+		req, err := http.NewRequest(http.MethodDelete, joinURL(cfg.URL, url.PathEscape(f.Name)), nil)
+		if err != nil {
+			return err
+		}
+		applyCustomHeaders(req, cfg.HeadersJSON)
+		applyBasicAuth(req, cfg.Username, cfg.Password)
+		return s.doOK(req)
+
+	case "google_drive":
+		token, err := s.getOrRefreshAccessToken("google_drive")
+		if err != nil {
+			return err
+		}
+		id := f.ID
+		if id == "" {
+			return fmt.Errorf("missing Drive file id for %s", f.Name)
+		}
+		req, _ := http.NewRequest(http.MethodDelete, s.Endpoints.GoogleAPI+"/drive/v3/files/"+id, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if err := s.doOK(req); err != nil {
+			return googleDriveErr(err)
+		}
+		return nil
+
+	case "dropbox":
+		token, err := s.getOrRefreshAccessToken("dropbox")
+		if err != nil {
+			return err
+		}
+		body, _ := json.Marshal(map[string]string{"path": "/OpenSave/" + f.Name})
+		req, _ := http.NewRequest(http.MethodPost, s.Endpoints.DropboxAPI+"/2/files/delete_v2", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		if err := s.doOK(req); err != nil {
+			return fmt.Errorf("Dropbox: %w", err)
+		}
+		return nil
+
+	case "onedrive":
+		token, err := s.getOrRefreshAccessToken("onedrive")
+		if err != nil {
+			return err
+		}
+		req, _ := http.NewRequest(http.MethodDelete, s.Endpoints.Graph+"/v1.0/me/drive/special/approot:/"+url.PathEscape(f.Name), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if err := s.doOK(req); err != nil {
+			return fmt.Errorf("OneDrive: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("deletion is not supported for provider: %s", cfg.Provider)
+}
+
+// PruneGameBranch keeps the newest `keep` remote snapshots of one game
+// branch and deletes the rest — the cloud-side mirror of local snapshot
+// retention. matchName reports whether a remote file belongs to the
+// game+branch (the caller owns the naming scheme). keep <= 0 disables
+// pruning.
+func (s *Service) PruneGameBranch(matchName func(string) bool, keep int) (int, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	files, err := s.List()
+	if err != nil {
+		return 0, err
+	}
+	var matches []CloudFile
+	for _, f := range files {
+		if matchName(f.Name) {
+			matches = append(matches, f)
+		}
+	}
+	if len(matches) <= keep {
+		return 0, nil
+	}
+	// Newest first; delete everything past `keep`.
+	sortByCreatedDesc(matches)
+	pruned := 0
+	for _, f := range matches[keep:] {
+		if err := s.Delete(f); err != nil {
+			s.Log("warn", fmt.Sprintf("cloud: prune of %s failed: %v", f.Name, err))
+			continue
+		}
+		pruned++
+	}
+	if pruned > 0 {
+		s.Log("info", fmt.Sprintf("cloud: pruned %d old snapshot(s) beyond retention of %d", pruned, keep))
+	}
+	return pruned, nil
+}
+
+func sortByCreatedDesc(files []CloudFile) {
+	for i := 1; i < len(files); i++ {
+		for j := i; j > 0 && files[j].CreatedTime > files[j-1].CreatedTime; j-- {
+			files[j], files[j-1] = files[j-1], files[j]
+		}
+	}
+}
+
+// googleDriveErr wraps Drive API failures; a 403 "insufficient permissions"
+// means the account was connected without ticking the Drive checkbox on
+// Google's consent screen, so tell the user exactly how to fix it.
+func googleDriveErr(err error) error {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "insufficient") && (strings.Contains(msg, "403") || strings.Contains(msg, "permission")) {
+		return fmt.Errorf("Google Drive access was not granted for this account — open Cloud Backup, Disconnect, then sign in again and TICK THE CHECKBOX that allows OpenSave to access its own Drive files")
+	}
+	return fmt.Errorf("Google Drive: %w", err)
 }
 
 func (s *Service) httpClient() *http.Client {

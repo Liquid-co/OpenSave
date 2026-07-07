@@ -102,6 +102,10 @@ func (w *WanClient) Connect() {
 	w.lastError = ""
 	w.mu.Unlock()
 
+	// Let dashboards show "connecting…" immediately rather than a stale
+	// disconnected/error state while the dial is in flight.
+	w.engine.notifyPeerUpdate()
+
 	go w.run(ctx, gen, settings)
 }
 

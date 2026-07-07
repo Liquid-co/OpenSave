@@ -100,6 +100,7 @@ type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
+	Scope        string `json:"scope"`
 }
 
 // ExchangeAuthCode swaps an authorization code for tokens and persists
@@ -135,6 +136,15 @@ func (s *Service) ExchangeAuthCode(provider, code, codeVerifier string) error {
 	}
 	if err != nil {
 		return fmt.Errorf("token exchange failed: %w", err)
+	}
+
+	// Google's consent screen shows Drive access as an optional checkbox
+	// (granular consent). If the user signed in without ticking it, the
+	// token can't touch Drive — every upload would fail with
+	// "insufficient permissions". Catch that here with a clear message
+	// instead of persisting a useless token.
+	if provider == "google_drive" && tok.Scope != "" && !strings.Contains(tok.Scope, "drive.file") {
+		return fmt.Errorf("Google sign-in succeeded but Drive access wasn't granted — sign in again and TICK THE CHECKBOX allowing OpenSave to \"See, edit, create and delete only the specific Google Drive files that you use with this app\"")
 	}
 
 	email := s.fetchUserProfile(provider, tok.AccessToken)

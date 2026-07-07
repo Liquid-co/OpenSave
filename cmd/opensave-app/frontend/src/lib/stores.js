@@ -13,6 +13,7 @@ export const logEntries = writable([]);
 export const wsConnected = writable(false);
 export const syncActivity = writable({}); // gameId -> {state, peerName, percentage, ...}
 export const toasts = writable([]);
+export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} from the OAuth callback
 
 export const gameList = derived(games, ($games) =>
   Object.values($games).sort((a, b) => a.name.localeCompare(b.name))
@@ -70,6 +71,9 @@ export function applyMessage(msg) {
       break;
     case 'sync-error':
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', ...data.data } }));
+      break;
+    case 'cloud-auth':
+      cloudAuthEvent.set(data ?? null);
       break;
   }
 }

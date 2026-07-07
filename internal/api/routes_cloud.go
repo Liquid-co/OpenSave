@@ -108,7 +108,12 @@ func (s *Server) handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	pendingPKCE.verifier = verifier
 	pendingPKCE.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]string{"authUrl": authURL})
+	// Try to catch the redirect automatically (the registered redirect URI
+	// is http://localhost/callback). When this works, sign-in completes
+	// with no copy/paste; otherwise the UI falls back to manual code entry.
+	auto := s.startAuthCallback()
+
+	writeJSON(w, http.StatusOK, map[string]any{"authUrl": authURL, "autoCallback": auto})
 }
 
 // handleAuthCallback finishes the flow with the code captured from the

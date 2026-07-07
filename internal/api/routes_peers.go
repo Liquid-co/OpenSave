@@ -28,6 +28,15 @@ func (s *Server) peerRoutes(r chi.Router) {
 	r.Get("/api/wan/status", s.handleWanStatus)
 	r.Get("/api/relay/health", s.handleRelayHealth)
 	r.Get("/api/relay/ips", s.handleRelayIPs)
+	r.Post("/api/relay/reconnect", s.handleRelayReconnect)
+}
+
+// handleRelayReconnect forces a fresh relay connection attempt. Saving
+// settings only reconnects when the code/URL changed, so the UI needs an
+// explicit retry for "the relay was down/waking, try again now".
+func (s *Server) handleRelayReconnect(w http.ResponseWriter, r *http.Request) {
+	s.Daemon.P2P.Wan.Connect()
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "wanRoom": s.Daemon.P2P.Wan.Status()})
 }
 
 // handleRelayIPs returns this machine's LAN addresses and public IP, plus

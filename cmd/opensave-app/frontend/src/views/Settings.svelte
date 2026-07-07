@@ -305,11 +305,6 @@
   .arrow {
     color: var(--text-faint);
   }
-  .card-title {
-    font-size: 1rem;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
   .section-title {
     font-size: 0.95rem;
     font-weight: 600;

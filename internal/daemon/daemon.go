@@ -103,7 +103,22 @@ func New(opts Options) (*Daemon, error) {
 			if !strings.Contains(err.Error(), "not enabled") {
 				log.Log("error", fmt.Sprintf("cloud upload of %s failed: %v", remoteFileName, err))
 			}
+			return
 		}
+		// Cloud-side retention mirrors the game's local snapshot limit:
+		// keep the newest maxSnapshots per branch, delete the rest.
+		gameID, branch, _, ok := snapshot.ParseExportEntryName(remoteFileName)
+		if !ok {
+			return
+		}
+		game, err := s.GetGame(gameID)
+		if err != nil || game.MaxSnapshots <= 0 {
+			return
+		}
+		prefix := fmt.Sprintf("%s__%s__", gameID, branch)
+		_, _ = d.Cloud.PruneGameBranch(func(name string) bool {
+			return strings.HasPrefix(name, prefix)
+		}, game.MaxSnapshots)
 	}
 
 	d.Watcher = watcher.New(watcher.Callbacks{
