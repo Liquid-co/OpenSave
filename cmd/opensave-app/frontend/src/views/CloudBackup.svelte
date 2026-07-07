@@ -50,11 +50,19 @@
   // connected card keeps saying "connected" while you browse the others.
   let connectedProvider = null;
 
+  // Some providers can't reveal the account email (privacy settings / missing
+  // scope) — the daemon stores a placeholder then. Only display it if it
+  // actually looks like an address.
+  const isEmail = (s) => /\S+@\S+\.\S+/.test(s ?? '');
+
   // Pure function of its arguments so the template call re-renders whenever
   // connectedProvider/config change (a closure over `config` would go stale).
   function providerStatus(id, connected, cfg) {
     if (!cfg) return '';
-    if (id === connected) return cfg.tokens?.userEmail || 'Connected';
+    if (id === connected) {
+      const email = cfg.tokens?.userEmail;
+      return isEmail(email) ? email : 'Connected';
+    }
     if (['google_drive', 'onedrive', 'dropbox'].includes(id)) return 'Click to sign in';
     if (id === cfg.provider && cfg.url) return 'Configured';
     return 'Not configured';
@@ -308,9 +316,23 @@
     {:else}
       <!-- OAuth providers -->
       {#if connectedProvider === config.provider && config.tokens?.userEmail}
-        <div class="connected">
-          <span class="badge online">connected</span>
-          <span>{config.tokens.userEmail}</span>
+        <div class="acct">
+          <div class="acct-icon">
+            {#if currentProvider?.img}
+              <img src={currentProvider.img} alt="" />
+            {:else}
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d={iconPaths.cloud} /></svg>
+            {/if}
+          </div>
+          <div class="acct-info">
+            <div class="acct-title">Connected to {currentProvider?.label}</div>
+            <div class="acct-sub">
+              <span class="acct-dot"></span>
+              {isEmail(config.tokens.userEmail)
+                ? config.tokens.userEmail
+                : 'Signed in — new snapshots upload automatically'}
+            </div>
+          </div>
           <button class="btn small danger" disabled={busy} on:click={disconnect}>Disconnect</button>
         </div>
       {:else}
@@ -573,7 +595,8 @@
   .provider-card.active .provider-status {
     color: var(--accent);
   }
-  .provider-status.is-connected {
+  .provider-status.is-connected,
+  .provider-card.active .provider-status.is-connected {
     color: var(--success);
     font-weight: 600;
   }
@@ -642,10 +665,58 @@
     justify-content: flex-end;
     margin-top: 8px;
   }
-  .connected {
+  .acct {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
+    padding: 16px 18px;
+    background: rgba(74, 222, 128, 0.05);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    border-radius: var(--radius-lg);
+  }
+  .acct-icon {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .acct-icon img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+  }
+  .acct-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .acct-title {
+    font-weight: 600;
+    font-size: 0.98rem;
+  }
+  .acct-sub {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .acct-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+    flex-shrink: 0;
   }
   .auth-code {
     margin-top: 12px;
