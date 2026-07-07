@@ -33,16 +33,32 @@
     }
   }
 
+  // Each outcome gets its own toast — joining is announced as in-progress
+  // (the status banner reports the eventual result), leaving as completed.
   const joinRoom = () =>
     run(async () => {
-      const unchanged =
-        codeDraft.trim() === ($wanRoom?.roomCode ?? '') && relayDraft.trim() === ($settings?.relayUrl ?? '');
-      await api.post('/api/settings', { syncCode: codeDraft.trim(), relayUrl: relayDraft.trim() });
+      const code = codeDraft.trim();
+      if (!code) {
+        if ($wanRoom?.enabled) {
+          await api.post('/api/settings', { syncCode: '', relayUrl: relayDraft.trim() });
+          toast('Left the relay room', 'success');
+        } else {
+          toast('Enter a room code first', 'error');
+        }
+        return;
+      }
+      const rejoining = code === ($wanRoom?.roomCode ?? '') && relayDraft.trim() === ($settings?.relayUrl ?? '');
+      await api.post('/api/settings', { syncCode: code, relayUrl: relayDraft.trim() });
       // Saving identical settings doesn't re-dial, so force a fresh attempt.
-      if (unchanged && codeDraft.trim()) await api.post('/api/relay/reconnect');
-    }, codeDraft.trim() ? 'Joining relay room…' : 'Left the relay room');
+      if (rejoining) await api.post('/api/relay/reconnect');
+      toast(rejoining ? `Reconnecting to room “${code}”…` : `Joining room “${code}”…`);
+    });
 
-  const retryConnect = () => run(() => api.post('/api/relay/reconnect'), 'Reconnecting to relay…');
+  const retryConnect = () =>
+    run(async () => {
+      await api.post('/api/relay/reconnect');
+      toast('Reconnecting to relay…');
+    });
   const leaveRoom = () => {
     codeDraft = '';
     return run(() => api.post('/api/settings', { syncCode: '' }), 'Left the relay room');

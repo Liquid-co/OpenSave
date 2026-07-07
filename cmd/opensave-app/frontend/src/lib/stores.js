@@ -39,7 +39,7 @@ export function applyMessage(msg) {
     case 'init':
       settings.set(data.settings ?? null);
       games.set(data.games ?? {});
-      applyPeersPayload(data);
+      applyPeersPayload(data, true);
       logEntries.set(data.logHistory ?? []);
       break;
     case 'games-update':
@@ -78,10 +78,22 @@ export function applyMessage(msg) {
   }
 }
 
-function applyPeersPayload(data) {
+let wasWanConnected = false;
+
+function applyPeersPayload(data, isInit = false) {
   if (data.peers !== undefined) peers.set(data.peers ?? {});
   if (data.discoveredPeers !== undefined) discoveredPeers.set(data.discoveredPeers ?? []);
   if (data.pairingRequests !== undefined) pairingRequests.set(data.pairingRequests ?? []);
-  if (data.wanRoom !== undefined) wanRoom.set(data.wanRoom ?? null);
+  if (data.wanRoom !== undefined) {
+    const room = data.wanRoom ?? null;
+    wanRoom.set(room);
+    // Toast the moment a relay connection is established — but not on the
+    // initial state dump at app launch (already-connected is not news).
+    const connected = !!room?.connected;
+    if (connected && !wasWanConnected && !isInit) {
+      toast(`Connected to relay room “${room.roomCode}”`, 'success');
+    }
+    wasWanConnected = connected;
+  }
   if (data.conflicts !== undefined) conflicts.set(data.conflicts ?? {});
 }
