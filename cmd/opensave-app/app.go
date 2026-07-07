@@ -7,6 +7,7 @@ import (
 
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/daemon"
+	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -77,6 +78,18 @@ func (a *App) startup(ctx context.Context) {
 	d.Log.Log("info", "desktop app connected to daemon at "+addr)
 
 	a.startTray()
+}
+
+// onSecondInstanceLaunch fires when OpenSave is launched again while it is
+// already running — commonly because closing the window only hides it to the
+// tray, so the user thinks it's closed. Rather than spawn a second (blank)
+// window, surface the existing one.
+func (a *App) onSecondInstanceLaunch(_ options.SecondInstanceData) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowShow(a.ctx)
+	runtime.WindowUnminimise(a.ctx)
 }
 
 func (a *App) shutdown(ctx context.Context) {

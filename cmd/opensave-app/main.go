@@ -30,9 +30,15 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 12, G: 12, B: 13, A: 1},
 		Frameless:        true,
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		OnBeforeClose:    app.beforeClose,
+		// Only one OpenSave window ever; a second launch focuses the existing
+		// one instead of opening a duplicate (blank) window.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               "opensave-desktop-single-instance",
+			OnSecondInstanceLaunch: app.onSecondInstanceLaunch,
+		},
+		OnStartup:     app.startup,
+		OnShutdown:    app.shutdown,
+		OnBeforeClose: app.beforeClose,
 		Bind: []interface{}{
 			app,
 		},
