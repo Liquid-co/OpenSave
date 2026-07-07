@@ -6,6 +6,10 @@ export function AppInfo() {
   return window['go']['main']['App']['AppInfo']();
 }
 
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
+}
+
 export function DaemonAddr() {
   return window['go']['main']['App']['DaemonAddr']();
 }

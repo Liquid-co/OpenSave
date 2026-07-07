@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { initApi, connectWS } from './lib/api.js';
+  import { initApi, connectWS, native } from './lib/api.js';
   import { applyMessage, wsConnected, view } from './lib/stores.js';
 
   import logoUrl from './assets/logo.svg';
@@ -20,6 +20,7 @@
 
   let ready = false;
   let bootError = '';
+  let update = null; // {available, latest, url} when a newer release exists
 
   onMount(async () => {
     try {
@@ -29,6 +30,11 @@
     } catch (e) {
       bootError = e.message;
     }
+    // Non-blocking: never let an update check affect startup.
+    try {
+      const res = await native.checkUpdate();
+      if (res?.available) update = res;
+    } catch {}
   });
 
   const views = {
@@ -44,6 +50,15 @@
 
 <div class="shell">
   <TitleBar />
+  {#if update}
+    <div class="update-banner">
+      <span>🎉 OpenSave {update.latest} is available — you're on {update.current}.</span>
+      <div class="update-actions">
+        <button class="link" on:click={() => native.openExternal(update.url)}>Download</button>
+        <button class="dismiss" on:click={() => (update = null)} aria-label="Dismiss">✕</button>
+      </div>
+    </div>
+  {/if}
   <div class="body">
     {#if bootError}
       <div class="boot-error">
@@ -99,6 +114,49 @@
     color: var(--danger);
     max-width: 480px;
     text-align: center;
+  }
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent);
+    color: var(--text);
+    font-size: 0.86rem;
+    flex-shrink: 0;
+  }
+  .update-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .update-banner .link {
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 4px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .update-banner .link:hover {
+    background: var(--accent-hover);
+  }
+  .update-banner .dismiss {
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+  .update-banner .dismiss:hover {
+    background: var(--bg-hover);
+    color: var(--text);
   }
   .boot-logo {
     width: 72px;

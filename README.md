@@ -73,6 +73,12 @@ opensave-decky-plugin  Steam Deck Game Mode plugin (Decky Loader)
 
 The daemon exposes the same REST/WebSocket API and P2P wire protocol as the original JS app, so old and new versions interoperate.
 
+## Documentation
+
+- [User Guide](USER_GUIDE.md) — first run, syncing, snapshots, cloud backup, troubleshooting
+- [Privacy](PRIVACY.md) — what OpenSave does and doesn't do with your data
+- [Changelog](CHANGELOG.md) — release notes
+
 ## License
 
-MIT
+[MIT](LICENSE) — retains the original author's copyright and credits the Go rewrite.

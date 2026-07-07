@@ -3,6 +3,8 @@
 
 export function AppInfo():Promise<Record<string, string>>;
 
+export function CheckForUpdate():Promise<Record<string, any>>;
+
 export function DaemonAddr():Promise<Record<string, string>>;
 
 export function OpenExternal(arg1:string):Promise<void>;

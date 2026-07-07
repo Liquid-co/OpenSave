@@ -81,6 +81,7 @@ const FALLBACK_INFO = {
 
 export const native = {
   appInfo: () => app()?.AppInfo?.() ?? Promise.resolve(FALLBACK_INFO),
+  checkUpdate: () => app()?.CheckForUpdate?.() ?? Promise.resolve({ available: false }),
   selectDirectory: (title) => app()?.SelectDirectory(title ?? '') ?? Promise.resolve(''),
   selectFile: (title) => app()?.SelectFile(title ?? '') ?? Promise.resolve(''),
   selectSaveFile: (title, name) => app()?.SelectSaveFile(title ?? '', name ?? '') ?? Promise.resolve(''),

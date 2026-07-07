@@ -5,9 +5,16 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write # needed to publish a GitHub Release
+
 jobs:
   windows:
     runs-on: windows-latest
+    # Expose whether a signing cert secret is configured (secrets can't be
+    # read directly in step `if:`, so map it to job-level env here).
+    env:
+      HAS_SIGNING: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -25,6 +32,43 @@ jobs:
         run: |
           go build -ldflags="-s -w" -o dist/opensave-cli.exe ./cmd/opensave-cli
           go build -ldflags="-s -w" -o dist/opensave-relay.exe ./cmd/opensave-relay
+
+      # Wails 2.12 doesn't reliably embed Windows versioninfo, so stamp it
+      # onto the built binaries with rcedit (what electron-builder uses).
+      - name: Stamp version metadata (rcedit)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          FV="${V}.0"
+          npm install -g rcedit
+          for exe in cmd/opensave-app/build/bin/*.exe; do
+            rcedit "$exe" \
+              --set-version-string "ProductName" "OpenSave" \
+              --set-version-string "CompanyName" "OpenSave" \
+              --set-version-string "FileDescription" "OpenSave — peer-to-peer game save sync" \
+              --set-version-string "LegalCopyright" "Copyright (c) 2026 Siva Prakash & OpenSave contributors" \
+              --set-file-version "$FV" \
+              --set-product-version "$V" \
+              --set-icon "cmd/opensave-app/build/windows/icon.ico"
+          done
+
+      # Optional Authenticode signing — runs only when the repo has a
+      # WINDOWS_CERT_BASE64 (+ WINDOWS_CERT_PASSWORD) secret configured.
+      - name: Code sign (optional)
+        if: env.HAS_SIGNING == 'true' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          WIN_CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WIN_CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = "$env:RUNNER_TEMP\cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_B64))
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1).FullName
+          Get-ChildItem cmd/opensave-app/build/bin/*.exe | ForEach-Object {
+            & $signtool sign /f $pfx /p $env:WIN_CERT_PW /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -69,3 +113,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build relay image
         run: docker build -f relay/Dockerfile -t opensave-relay .
+
+  # Publish a real GitHub Release with all downloadable assets on tag push.
+  release:
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: linux
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            windows/**/*.exe
+            linux/*.tar.gz
