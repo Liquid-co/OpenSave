@@ -159,6 +159,40 @@ func TestRetentionPruning(t *testing.T) {
 	}
 }
 
+// TestRestoreOldestAtRetentionLimit guards a data-loss bug: restoring the
+// oldest snapshot while the game is at its retention limit used to fail,
+// because the safety snapshot taken first pushed the target beyond the
+// limit and pruning deleted its archive before extraction.
+func TestRestoreOldestAtRetentionLimit(t *testing.T) {
+	env := setup(t) // maxSnapshots = 3
+
+	// Fill exactly to the limit; snap0 is the oldest and holds "v0".
+	var snaps []store.Snapshot
+	for i := 0; i < 3; i++ {
+		writeSave(t, env.saveDir, "slot1.sav", "v"+string(rune('0'+i)))
+		s, err := env.mgr.Create("game1", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snaps = append(snaps, s)
+	}
+	oldest := snaps[0]
+
+	// Change the save so a safety snapshot is taken (which triggers pruning).
+	writeSave(t, env.saveDir, "slot1.sav", "current")
+
+	if _, err := env.mgr.Restore("game1", oldest.ID); err != nil {
+		t.Fatalf("Restore of oldest snapshot at retention limit failed: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(env.saveDir, "slot1.sav"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "v0" {
+		t.Errorf("restored content = %q, want %q", got, "v0")
+	}
+}
+
 func TestBranchSwitchRoundTrip(t *testing.T) {
 	env := setup(t)
 	writeSave(t, env.saveDir, "slot1.sav", "main branch save")

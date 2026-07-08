@@ -9,6 +9,7 @@ package snapshot
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -168,7 +169,16 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 		return store.Snapshot{}, fmt.Errorf("snapshot %q not found for game %q", snapshotID, gameID)
 	}
 
+	// The safety snapshot below triggers retention pruning, which — when the
+	// game is at its snapshot limit and this is the oldest snapshot — would
+	// delete this very snapshot's archive before we extract it. Restore from
+	// a temporary copy so the content survives that pruning.
+	restoreZip := snap.ZipPath
 	if savePathHasContent(game.SavePath) {
+		if tmp, err := copyToTempZip(snap.ZipPath); err == nil {
+			restoreZip = tmp
+			defer os.Remove(tmp)
+		}
 		safetyComment := fmt.Sprintf("Pre-rollback safety restore point (before restoring %s)", snapshotID)
 		if _, err := m.Create(gameID, safetyComment, true); err != nil {
 			// Non-fatal, same as JS: warn and continue the restore.
@@ -176,10 +186,34 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 		}
 	}
 
-	if err := UnzipTo(snap.ZipPath, game.SavePath); err != nil {
+	if err := UnzipTo(restoreZip, game.SavePath); err != nil {
 		return store.Snapshot{}, fmt.Errorf("restore snapshot %s: %w", snapshotID, err)
 	}
 	return snap, nil
+}
+
+// copyToTempZip duplicates a snapshot archive to a temp file so a restore
+// can read it even if retention deletes the original mid-operation.
+func copyToTempZip(src string) (string, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	tmp, err := os.CreateTemp("", "opensave-restore-*.zip")
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	return tmp.Name(), nil
 }
 
 // CreateBranch adds a new empty branch to a game.
