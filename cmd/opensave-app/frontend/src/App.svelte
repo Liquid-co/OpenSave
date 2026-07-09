@@ -9,6 +9,7 @@
   import StatusBar from './components/StatusBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import ConflictModal from './components/ConflictModal.svelte';
+  import PairingBanner from './components/PairingBanner.svelte';
 
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
@@ -82,6 +83,7 @@
   <StatusBar />
   <Toasts />
   <ConflictModal />
+  {#if ready}<PairingBanner />{/if}
 </div>
 
 <style>

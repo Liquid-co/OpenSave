@@ -173,6 +173,17 @@ func (a *App) OpenExternal(url string) {
 	runtime.BrowserOpenURL(a.ctx, url)
 }
 
+// ShowWindow surfaces the window (un-hides from tray, un-minimises, and
+// brings it to the front). Called from the UI when an event needs the
+// user's attention, e.g. an incoming pairing request.
+func (a *App) ShowWindow() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowShow(a.ctx)
+	runtime.WindowUnminimise(a.ctx)
+}
+
 // Window controls for the custom title bar.
 func (a *App) WindowMinimise() { runtime.WindowMinimise(a.ctx) }
 func (a *App) WindowToggleMaximise() {

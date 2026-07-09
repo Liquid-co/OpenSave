@@ -89,5 +89,6 @@ export const native = {
   minimise: () => app()?.WindowMinimise(),
   toggleMaximise: () => app()?.WindowToggleMaximise(),
   close: () => app()?.WindowClose(),
+  showWindow: () => app()?.ShowWindow(),
   isWails: () => !!app()
 };

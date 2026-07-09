@@ -1,5 +1,5 @@
 <script>
-  import { peers, discoveredPeers, pairingRequests, wanRoom, toast } from '../lib/stores.js';
+  import { peers, discoveredPeers, wanRoom, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import InternetSync from './InternetSync.svelte';
 
@@ -33,9 +33,6 @@
     run(() => api.post('/api/peers/pair', { address: d.address, port: d.port }), `Pairing request sent to ${d.deviceName}`);
   const pairManual = () =>
     run(() => api.post('/api/peers/pair', { address: manualIp, port: Number(manualPort) }), 'Pairing request sent');
-  const approve = (req) =>
-    run(() => api.post('/api/peers/approve', { peerId: req.peerId }), `Paired with ${req.deviceName}`);
-  const reject = (req) => run(() => api.post('/api/peers/reject', { peerId: req.peerId }));
   const unpair = (peer) => {
     if (!confirm(`Unpair "${peer.name}"?`)) return;
     run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
@@ -47,22 +44,6 @@
 <div class="head">
   <h2 class="page-title">Devices</h2>
 </div>
-
-{#if $pairingRequests.length > 0}
-  <div class="card requests">
-    <h3>Pairing requests</h3>
-    {#each $pairingRequests as req (req.peerId)}
-      <div class="req-row">
-        <div class="req-info">
-          <strong>{req.deviceName}</strong>
-          <span class="req-meta">{req.isWan ? 'via internet relay' : `${req.address}:${req.port}`}</span>
-        </div>
-        <button class="btn small" disabled={busy} on:click={() => reject(req)}>Ignore</button>
-        <button class="btn small primary" disabled={busy} on:click={() => approve(req)}>Approve</button>
-      </div>
-    {/each}
-  </div>
-{/if}
 
 <h3 class="section">Paired devices</h3>
 {#if pairedList.length === 0}
@@ -164,28 +145,6 @@
   }
   .lan-intro {
     margin-bottom: 4px;
-  }
-  .requests {
-    border-color: rgba(138, 99, 244, 0.45);
-    margin-bottom: 8px;
-  }
-  .requests h3 {
-    margin-bottom: 10px;
-  }
-  .req-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 0;
-  }
-  .req-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  .req-meta {
-    font-size: 0.78rem;
-    color: var(--text-faint);
   }
   .list {
     display: flex;

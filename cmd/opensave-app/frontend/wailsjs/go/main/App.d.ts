@@ -15,6 +15,8 @@ export function SelectFile(arg1:string):Promise<string>;
 
 export function SelectSaveFile(arg1:string,arg2:string):Promise<string>;
 
+export function ShowWindow():Promise<void>;
+
 export function WindowClose():Promise<void>;
 
 export function WindowMinimise():Promise<void>;

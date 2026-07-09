@@ -30,6 +30,10 @@ export function SelectSaveFile(arg1, arg2) {
   return window['go']['main']['App']['SelectSaveFile'](arg1, arg2);
 }
 
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
+}
+
 export function WindowClose() {
   return window['go']['main']['App']['WindowClose']();
 }
