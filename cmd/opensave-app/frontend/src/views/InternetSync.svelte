@@ -81,10 +81,6 @@
   }
 </script>
 
-<div class="head">
-  <h2 class="page-title">Internet Sync</h2>
-</div>
-
 <p class="lead">
   Sync across the internet with no port forwarding: both devices join the same room code on a relay, and
   saves travel through an encrypted tunnel. The relay never stores your files.
@@ -198,12 +194,6 @@
 {/if}
 
 <style>
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
   .lead {
     color: var(--text-dim);
     font-size: 0.9rem;

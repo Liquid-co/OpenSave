@@ -1,10 +1,16 @@
 <script>
-  import { peers, discoveredPeers, pairingRequests, toast } from '../lib/stores.js';
+  import { peers, discoveredPeers, pairingRequests, wanRoom, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
+  import InternetSync from './InternetSync.svelte';
+
+  export let params = {};
 
   let manualIp = '';
   let manualPort = 8383;
   let busy = false;
+  // Which "add a device" method is shown. Deep-links can request the
+  // internet tab; otherwise default to the local network.
+  let connectTab = params.tab === 'internet' ? 'wan' : 'lan';
 
   $: pairedList = Object.values($peers).sort((a, b) => a.name.localeCompare(b.name));
   $: pairedIds = new Set(pairedList.map((p) => p.id));
@@ -62,7 +68,7 @@
 {#if pairedList.length === 0}
   <div class="empty">
     <h3>No paired devices</h3>
-    <p>Devices on your Wi-Fi appear below automatically. For syncing over the internet, use Internet Sync.</p>
+    <p>Pair a device below — on your Wi-Fi it appears automatically, or connect over the internet with a room code.</p>
   </div>
 {:else}
   <div class="list">
@@ -77,7 +83,7 @@
             </span>
           </div>
           <div class="peer-meta">
-            {peer.address === 'relay' ? 'internet relay' : `${peer.address}:${peer.port}`}
+            {peer.address === 'relay' ? '🌐 internet relay' : `🖧 ${peer.address}:${peer.port}`}
             · last synced {fmtTime(peer.lastSynced)}
           </div>
         </div>
@@ -87,30 +93,46 @@
   </div>
 {/if}
 
-<h3 class="section">On your network</h3>
-{#if lanDiscovered.length === 0}
-  <p class="quiet">No unpaired devices found on the local network. Make sure OpenSave is running on the other device.</p>
-{:else}
-  <div class="list">
-    {#each lanDiscovered as d (d.id)}
-      <div class="card peer">
-        <div class="peer-icon">{d.deviceType === 'deck' ? '🎮' : '🖥️'}</div>
-        <div class="peer-info">
-          <div class="peer-name">{d.deviceName}</div>
-          <div class="peer-meta">{d.address}:{d.port}</div>
-        </div>
-        <button class="btn small primary" disabled={busy} on:click={() => pairDiscovered(d)}>Pair</button>
-      </div>
-    {/each}
-  </div>
-{/if}
-
-<h3 class="section">Add by IP address</h3>
-<div class="card manual">
-  <input placeholder="192.168.1.42" bind:value={manualIp} />
-  <input class="port" type="number" bind:value={manualPort} />
-  <button class="btn primary" disabled={!manualIp || busy} on:click={pairManual}>Send pairing request</button>
+<h3 class="section">Add a device</h3>
+<div class="pill-tabs connect-tabs">
+  <button class:active={connectTab === 'lan'} on:click={() => (connectTab = 'lan')}>🖧 On this network</button>
+  <button class:active={connectTab === 'wan'} on:click={() => (connectTab = 'wan')}>
+    🌐 Over the internet
+    {#if $wanRoom?.connected}<span class="tab-dot"></span>{/if}
+  </button>
 </div>
+
+{#if connectTab === 'lan'}
+  <p class="quiet lan-intro">
+    Devices running OpenSave on the same Wi-Fi/Ethernet discover each other automatically. No setup needed.
+  </p>
+  <h4 class="subsection">Found on your network</h4>
+  {#if lanDiscovered.length === 0}
+    <p class="quiet">No unpaired devices found on the local network. Make sure OpenSave is running on the other device.</p>
+  {:else}
+    <div class="list">
+      {#each lanDiscovered as d (d.id)}
+        <div class="card peer">
+          <div class="peer-icon">{d.deviceType === 'deck' ? '🎮' : '🖥️'}</div>
+          <div class="peer-info">
+            <div class="peer-name">{d.deviceName}</div>
+            <div class="peer-meta">{d.address}:{d.port}</div>
+          </div>
+          <button class="btn small primary" disabled={busy} on:click={() => pairDiscovered(d)}>Pair</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  <h4 class="subsection">Add by IP address</h4>
+  <div class="card manual">
+    <input placeholder="192.168.1.42" bind:value={manualIp} />
+    <input class="port" type="number" bind:value={manualPort} />
+    <button class="btn primary" disabled={!manualIp || busy} on:click={pairManual}>Send pairing request</button>
+  </div>
+{:else}
+  <InternetSync />
+{/if}
 
 <style>
   .head {
@@ -118,6 +140,30 @@
   }
   .section {
     margin: 22px 0 10px;
+  }
+  .subsection {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin: 18px 0 8px;
+  }
+  .connect-tabs {
+    margin-bottom: 14px;
+  }
+  .connect-tabs button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+  }
+  .lan-intro {
+    margin-bottom: 4px;
   }
   .requests {
     border-color: rgba(138, 99, 244, 0.45);

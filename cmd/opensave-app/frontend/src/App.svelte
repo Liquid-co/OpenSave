@@ -13,7 +13,6 @@
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
   import Devices from './views/Devices.svelte';
-  import InternetSync from './views/InternetSync.svelte';
   import CloudBackup from './views/CloudBackup.svelte';
   import Settings from './views/Settings.svelte';
   import ActivityLog from './views/ActivityLog.svelte';
@@ -41,7 +40,9 @@
     home: Home,
     game: GameDetail,
     devices: Devices,
-    internet: InternetSync,
+    // 'internet' is kept as an alias so any deep-link opens Devices on its
+    // Over-the-internet tab (Internet Sync now lives there).
+    internet: Devices,
     cloud: CloudBackup,
     settings: Settings,
     activity: ActivityLog
