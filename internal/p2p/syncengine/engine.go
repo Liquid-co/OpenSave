@@ -352,14 +352,22 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 	}
 
-	// Pre-compute per-file changed blocks and the total byte count.
+	// Pre-compute per-file changed blocks, the total transfer byte count,
+	// and the disk footprint (net growth + largest single new file, since
+	// PatchFile writes a temp copy before renaming over the old version).
 	changedBlocks := map[string][]int{}
-	var totalBytes int64
+	var totalBytes, netGrowth, maxNewSize int64
 	for _, relPath := range filesToPull {
 		remoteFile := remoteData.Manifest.Files[relPath]
 		var localFile *delta.FileEntry
+		var localSize int64
 		if lf, ok := localManifest.Files[relPath]; ok {
 			localFile = &lf
+			localSize = lf.Size
+		}
+		netGrowth += remoteFile.Size - localSize
+		if remoteFile.Size > maxNewSize {
+			maxNewSize = remoteFile.Size
 		}
 		indices := DifferentBlockIndices(localFile, remoteFile)
 		changedBlocks[relPath] = indices
@@ -368,6 +376,22 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 				totalBytes += int64(remoteFile.Blocks[idx].Length)
 			}
 		}
+	}
+
+	// Fail early with a clear message if the drive can't hold the incoming
+	// files, instead of crashing mid-write with a raw OS "disk full" error.
+	if netGrowth < 0 {
+		netGrowth = 0
+	}
+	const diskMargin = 16 << 20 // 16 MiB headroom
+	needed := netGrowth + maxNewSize + diskMargin
+	spaceDir := game.SavePath
+	if fi, err := os.Stat(spaceDir); err != nil || !fi.IsDir() {
+		spaceDir = filepath.Dir(game.SavePath)
+	}
+	if avail, ok := availableDiskBytes(spaceDir); ok && uint64(needed) > avail {
+		return fmt.Errorf("not enough free storage: this sync needs about %s but only %s is free on the drive holding your save",
+			humanBytes(needed), humanBytes(int64(avail)))
 	}
 
 	tracker := newProgressTracker(totalBytes)
@@ -530,6 +554,20 @@ func (e *Engine) recordMirrorSnapshot(gameID string, game store.Game, peer Peer,
 		ZipPath:      zipPath,
 		SizeBytes:    info.Size(),
 	})
+}
+
+// humanBytes formats a byte count as a short human-readable string.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func (e *Engine) deviceName() string {

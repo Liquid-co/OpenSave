@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -170,6 +171,26 @@ func TestSync_PullNewRemoteFile(t *testing.T) {
 	last := env.transport.syncEvents[len(env.transport.syncEvents)-1]
 	if last != "sync-complete" {
 		t.Errorf("expected sync-complete last, got %v", env.transport.syncEvents)
+	}
+}
+
+func TestSync_InsufficientDiskSpace(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.remoteDir, "save.dat", "remote progress that needs space")
+
+	// Simulate a nearly-full destination drive.
+	orig := availableDiskBytes
+	availableDiskBytes = func(string) (uint64, bool) { return 10, true }
+	defer func() { availableDiskBytes = orig }()
+
+	_, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer)
+	if err == nil || !strings.Contains(err.Error(), "not enough free storage") {
+		t.Fatalf("expected a free-storage error, got %v", err)
+	}
+
+	// The pull must abort before writing anything.
+	if _, statErr := os.Stat(filepath.Join(env.localDir, "save.dat")); statErr == nil {
+		t.Error("save.dat should not exist when the disk-space check fails")
 	}
 }
 
