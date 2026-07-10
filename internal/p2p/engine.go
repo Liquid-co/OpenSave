@@ -6,6 +6,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/opensave/opensave/internal/delta"
@@ -15,6 +16,10 @@ import (
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 )
+
+// resyncRetryInterval is how often the failsafe re-attempts games whose
+// sync was interrupted (e.g. the network dropped mid-transfer).
+const resyncRetryInterval = 20 * time.Second
 
 // GameState is the lightweight per-game summary exchanged in pings/hellos
 // so peers can see what each other has without a full manifest fetch.
@@ -39,6 +44,13 @@ type Engine struct {
 	// OnPeerUpdate fires whenever peer/pairing state changes (dashboard
 	// broadcast hook). May be nil.
 	OnPeerUpdate func()
+
+	// Failsafe: games whose last sync was interrupted (network error mid-
+	// transfer) are queued here and retried automatically, no prompt, until
+	// they complete.
+	pendingMu     sync.Mutex
+	pendingResync map[string]bool
+	stopRetry     chan struct{}
 }
 
 // StartDiscovery begins UDP LAN presence broadcasting. Paired peers seen
@@ -92,6 +104,12 @@ func (e *Engine) StartDiscovery() error {
 
 // Stop shuts down discovery, the WAN client, and any hosted relay.
 func (e *Engine) Stop() {
+	e.pendingMu.Lock()
+	if e.stopRetry != nil {
+		close(e.stopRetry)
+		e.stopRetry = nil
+	}
+	e.pendingMu.Unlock()
 	if e.Discovery != nil {
 		e.Discovery.Stop()
 	}
@@ -211,7 +229,94 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string) (map[string]syncen
 	if len(online) == 0 {
 		return nil, fmt.Errorf("no online peers available")
 	}
-	return e.Sync.SyncGame(ctx, gameID, online)
+	results, err := e.Sync.SyncGame(ctx, gameID, online)
+	e.trackSyncOutcome(gameID, results)
+	return results, err
+}
+
+// trackSyncOutcome queues a game for automatic retry if any peer's sync
+// failed (a transient/network error), or clears it once the sync completes.
+func (e *Engine) trackSyncOutcome(gameID string, results map[string]syncengine.Result) {
+	failed := false
+	for _, r := range results {
+		if r.Status == "error" {
+			failed = true
+			break
+		}
+	}
+	e.pendingMu.Lock()
+	defer e.pendingMu.Unlock()
+	if e.pendingResync == nil {
+		e.pendingResync = map[string]bool{}
+	}
+	if failed {
+		if !e.pendingResync[gameID] {
+			e.Log("info", fmt.Sprintf("sync for %s was interrupted; will retry automatically when reachable", gameID))
+		}
+		e.pendingResync[gameID] = true
+	} else {
+		delete(e.pendingResync, gameID)
+	}
+}
+
+// startResyncLoop runs the interrupted-sync failsafe: while any game is
+// pending and a peer is reachable, re-attempt it silently until it
+// completes. Robust to brief network blips that never flip a peer
+// offline→online (which is what the reconnect auto-sync relies on).
+func (e *Engine) StartResyncLoop() {
+	e.pendingMu.Lock()
+	if e.stopRetry != nil { // already running
+		e.pendingMu.Unlock()
+		return
+	}
+	e.stopRetry = make(chan struct{})
+	stop := e.stopRetry
+	e.pendingMu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(resyncRetryInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				e.retryPendingResyncs()
+			}
+		}
+	}()
+}
+
+func (e *Engine) retryPendingResyncs() {
+	e.pendingMu.Lock()
+	ids := make([]string, 0, len(e.pendingResync))
+	for id := range e.pendingResync {
+		ids = append(ids, id)
+	}
+	e.pendingMu.Unlock()
+	if len(ids) == 0 {
+		return
+	}
+	// Refresh LAN peer status first so a peer that just reconnected is seen
+	// as online without waiting for the next discovery cycle.
+	e.PingPairedPeers(context.Background())
+	online := e.OnlinePeers()
+	if len(online) == 0 {
+		return // no one to sync with yet; keep waiting
+	}
+	for _, id := range ids {
+		e.Log("info", fmt.Sprintf("retrying interrupted sync for %s", id))
+		results, err := e.Sync.SyncGame(context.Background(), id, online)
+		if err == nil {
+			e.trackSyncOutcome(id, results) // clears on success
+			e.pendingMu.Lock()
+			done := !e.pendingResync[id]
+			e.pendingMu.Unlock()
+			if done {
+				e.Log("success", fmt.Sprintf("re-synced %s after an earlier interruption", id))
+			}
+		}
+	}
 }
 
 // SyncAllGames syncs every tracked game (used when a peer comes online).
@@ -228,9 +333,12 @@ func (e *Engine) SyncAllGames(ctx context.Context) {
 		if !g.AutoSync {
 			continue
 		}
-		if _, err := e.Sync.SyncGame(ctx, g.ID, online); err != nil {
+		results, err := e.Sync.SyncGame(ctx, g.ID, online)
+		if err != nil {
 			e.Log("warn", fmt.Sprintf("auto-sync %s: %v", g.ID, err))
+			continue
 		}
+		e.trackSyncOutcome(g.ID, results)
 	}
 }
 

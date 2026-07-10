@@ -181,6 +181,10 @@ func (d *Daemon) Start() error {
 		}
 	}
 
+	// Failsafe: automatically retry any game whose sync gets interrupted
+	// (e.g. the network drops mid-transfer) once peers are reachable again.
+	d.P2P.StartResyncLoop()
+
 	// Join the WAN relay room if a sync code is configured (no-op without one).
 	d.P2P.Wan.Connect()
 

@@ -89,7 +89,9 @@ export function applyMessage(msg) {
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', ...data.data } }));
       const gameName = get(games)[data.gameId]?.name ?? 'a game';
       const reason = friendlySyncError(data.data?.error);
-      toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}`, 'error');
+      // Every failed sync is queued for automatic retry — reassure the user
+      // they don't need to manually re-sync.
+      toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}. OpenSave will retry automatically.`, 'error');
       break;
     }
     case 'cloud-auth':
