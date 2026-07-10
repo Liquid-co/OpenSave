@@ -312,6 +312,76 @@ func TestSync_ConflictDetectedAndResolvedKeepRemote(t *testing.T) {
 	}
 }
 
+// TestConflict_CarriesComparisonData verifies the conflict captures per-side
+// stats and the differing file list, and that keep-remote snapshots the
+// local version first so the choice is undoable.
+func TestConflict_CarriesComparisonData(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "save.dat", "local version")
+	write(t, env.localDir, "only-here.cfg", "mine")
+	write(t, env.remoteDir, "save.dat", "remote version longer")
+	write(t, env.remoteDir, "only-there.cfg", "theirs")
+	if err := env.store.SetSyncState("game1", env.peer.ID, []string{"save.dat"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.UpdatePeerLastSynced(env.peer.ID, "2026-01-01T00:00:00.000Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	if res, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil || res.Status != "conflict" {
+		t.Fatalf("expected conflict, got %+v err=%v", res, err)
+	}
+	c, ok := env.engine.ActiveConflicts()["game1"]
+	if !ok {
+		t.Fatal("no active conflict")
+	}
+
+	if c.LocalStats.Files != 2 || c.RemoteStats.Files != 2 {
+		t.Errorf("stats files = %d/%d, want 2/2", c.LocalStats.Files, c.RemoteStats.Files)
+	}
+	if c.LocalStats.TotalBytes == 0 || c.RemoteStats.TotalBytes == 0 {
+		t.Error("stats total bytes should be non-zero")
+	}
+	if c.DiffTotal != 3 || len(c.DiffFiles) != 3 {
+		t.Fatalf("diff count = %d (%d listed), want 3", c.DiffTotal, len(c.DiffFiles))
+	}
+	byPath := map[string]DiffFile{}
+	for _, d := range c.DiffFiles {
+		byPath[d.Path] = d
+	}
+	if byPath["save.dat"].Status != "changed" {
+		t.Errorf("save.dat status = %q, want changed", byPath["save.dat"].Status)
+	}
+	if byPath["only-here.cfg"].Status != "only-local" || byPath["only-here.cfg"].RemoteSize != -1 {
+		t.Errorf("only-here.cfg = %+v, want only-local with RemoteSize -1", byPath["only-here.cfg"])
+	}
+	if byPath["only-there.cfg"].Status != "only-remote" || byPath["only-there.cfg"].LocalSize != -1 {
+		t.Errorf("only-there.cfg = %+v, want only-remote with LocalSize -1", byPath["only-there.cfg"])
+	}
+
+	// keep-remote must snapshot the local version before overwriting.
+	if _, err := env.engine.ResolveConflict(context.Background(), "game1", env.peer.ID, "keep-remote"); err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := env.store.ListSnapshots("game1", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range snaps {
+		if strings.Contains(s.Comment, "before keeping") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a safety snapshot of the local version; snapshots: %+v", snaps)
+	}
+	got, _ := os.ReadFile(filepath.Join(env.localDir, "save.dat"))
+	if string(got) != "remote version longer" {
+		t.Errorf("local after keep-remote = %q", got)
+	}
+}
+
 func TestSync_ConflictResolvedKeepLocal(t *testing.T) {
 	env := setupEngine(t)
 	write(t, env.localDir, "save.dat", "local version")

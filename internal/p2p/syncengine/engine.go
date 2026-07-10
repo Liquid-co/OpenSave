@@ -17,9 +17,30 @@ import (
 
 // Conflict is a diverged-save state awaiting user resolution.
 type Conflict struct {
-	Peer       Peer          `json:"peer"`
-	LocalSnap  SnapshotInfo  `json:"localSnap"`
-	RemoteSnap SnapshotInfo  `json:"remoteSnap"`
+	Peer       Peer         `json:"peer"`
+	LocalSnap  SnapshotInfo `json:"localSnap"`
+	RemoteSnap SnapshotInfo `json:"remoteSnap"`
+	// Comparison data so the user can make an informed choice.
+	LocalStats  SideStats  `json:"localStats"`
+	RemoteStats SideStats  `json:"remoteStats"`
+	DiffFiles   []DiffFile `json:"diffFiles"` // capped; DiffTotal is the real count
+	DiffTotal   int        `json:"diffTotal"`
+}
+
+// SideStats summarises one side's save state for the conflict UI.
+type SideStats struct {
+	Files         int   `json:"files"`
+	TotalBytes    int64 `json:"totalBytes"`
+	LatestMtimeMs int64 `json:"latestMtimeMs"`
+}
+
+// DiffFile is one path that differs between the two sides. Sizes are -1
+// when the file doesn't exist on that side.
+type DiffFile struct {
+	Path       string `json:"path"`
+	Status     string `json:"status"` // changed | only-local | only-remote
+	LocalSize  int64  `json:"localSize"`
+	RemoteSize int64  `json:"remoteSize"`
 }
 
 // Result summarizes one game/peer sync run.
@@ -251,14 +272,60 @@ func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.
 		remoteSnap = *remoteData.LatestSnapshot
 	}
 
+	// Capture comparison data while we hold both manifests, so the UI can
+	// show which side is further along and exactly what differs.
+	diffs := diffManifests(localManifest, remoteData.Manifest)
+	const maxDiffFiles = 100
+	total := len(diffs)
+	if len(diffs) > maxDiffFiles {
+		diffs = diffs[:maxDiffFiles]
+	}
+
 	e.mu.Lock()
-	e.activeConflicts[gameID] = &Conflict{Peer: peer, LocalSnap: localSnap, RemoteSnap: remoteSnap}
+	e.activeConflicts[gameID] = &Conflict{
+		Peer: peer, LocalSnap: localSnap, RemoteSnap: remoteSnap,
+		LocalStats:  manifestStats(localManifest),
+		RemoteStats: manifestStats(remoteData.Manifest),
+		DiffFiles:   diffs,
+		DiffTotal:   total,
+	}
 	e.mu.Unlock()
 
 	e.Log("warn", fmt.Sprintf("sync conflict on %q with %q: both sides modified since last sync", gameID, peer.Name))
 	if e.Progress.OnConflict != nil {
 		e.Progress.OnConflict(gameID)
 	}
+}
+
+// manifestStats summarises a manifest for the conflict comparison UI.
+func manifestStats(m delta.Manifest) SideStats {
+	s := SideStats{Files: len(m.Files), LatestMtimeMs: int64(m.LatestMtime)}
+	for _, f := range m.Files {
+		s.TotalBytes += f.Size
+	}
+	return s
+}
+
+// diffManifests lists every path that differs between the two sides,
+// sorted by path.
+func diffManifests(local, remote delta.Manifest) []DiffFile {
+	var out []DiffFile
+	for p, lf := range local.Files {
+		if rf, ok := remote.Files[p]; ok {
+			if lf.Hash != rf.Hash {
+				out = append(out, DiffFile{Path: p, Status: "changed", LocalSize: lf.Size, RemoteSize: rf.Size})
+			}
+		} else {
+			out = append(out, DiffFile{Path: p, Status: "only-local", LocalSize: lf.Size, RemoteSize: -1})
+		}
+	}
+	for p, rf := range remote.Files {
+		if _, ok := local.Files[p]; !ok {
+			out = append(out, DiffFile{Path: p, Status: "only-remote", LocalSize: -1, RemoteSize: rf.Size})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 func (e *Engine) applyLocalDeletions(game store.Game, d Decision) {

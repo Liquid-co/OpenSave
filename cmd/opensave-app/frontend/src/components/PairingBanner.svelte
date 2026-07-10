@@ -1,7 +1,8 @@
 <script>
   import { fly } from 'svelte/transition';
   import { pairingRequests, toast } from '../lib/stores.js';
-  import { api, native } from '../lib/api.js';
+  import { api } from '../lib/api.js';
+  import { demandAttention } from '../lib/notify.js';
 
   let busy = false;
   let seen = new Set(); // request ids we've already chimed for
@@ -12,8 +13,7 @@
   function onRequests(list) {
     const fresh = list.filter((r) => !seen.has(r.peerId));
     if (fresh.length > 0) {
-      playChime();
-      native.showWindow();
+      demandAttention();
       const who = fresh[0].deviceName ?? 'A device';
       toast(`${who} wants to pair`, 'info');
     }
@@ -34,32 +34,6 @@
     } finally {
       busy = false;
     }
-  }
-
-  // A short, pleasant two-note chime synthesised on the fly (no asset).
-  function playChime() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      if (ctx.state === 'suspended') ctx.resume();
-      const now = ctx.currentTime;
-      [660, 990].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        const t = now + i * 0.13;
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-        osc.start(t);
-        osc.stop(t + 0.36);
-      });
-      setTimeout(() => ctx.close(), 900);
-    } catch {}
   }
 
   const source = (req) => (req.isWan ? '🌐 over the internet' : `🖧 ${req.address}`);
