@@ -156,3 +156,70 @@ func jsonBody(s string) *os.File {
 	f.Seek(0, 0)
 	return f
 }
+
+// TestConflictNeverLosesPeerData guards the consent property: resolving a
+// conflict is resolved "keep mine", the peer's own version must always remain
+// recoverable from its snapshot history (even if a background sync race
+// touched the peer's save on disk).
+func TestConflictNeverLosesPeerData(t *testing.T) {
+	a := testutil.NewTestDaemon(t, "Device-A")
+	b := testutil.NewTestDaemon(t, "Device-B")
+	a.PairWith(b)
+
+	a.WriteSave("slot1.sav", "shared start")
+	gameID := a.TrackGame("Conflict Game")
+	b.API(http.MethodPost, "/api/games", map[string]string{"name": "Conflict Game", "savePath": b.SaveDir}, nil)
+	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+	if !testutil.WaitFor(30*time.Second, func() bool { return b.ReadSave("slot1.sav") == "shared start" }) {
+		t.Fatal("initial sync failed")
+	}
+
+	time.Sleep(2500 * time.Millisecond)
+	a.WriteSave("slot1.sav", "A's version")
+	b.WriteSave("slot1.sav", "B's version")
+
+	var syncResp struct {
+		Results map[string]struct {
+			Status string `json:"status"`
+		} `json:"results"`
+	}
+	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, &syncResp)
+	if res, ok := syncResp.Results[b.NodeID()]; !ok || res.Status != "conflict" {
+		t.Fatalf("expected conflict, got %+v", syncResp.Results)
+	}
+
+	a.API(http.MethodPost, "/api/games/"+gameID+"/resolve-conflict", map[string]string{
+		"peerId": b.NodeID(), "resolution": "keep-local",
+	}, nil)
+	time.Sleep(4 * time.Second)
+
+	// A's own save must be exactly what A chose to keep.
+	if got := a.ReadSave("slot1.sav"); got != "A's version" {
+		t.Errorf("keep-mine changed A's save: %q, want A's version", got)
+	}
+	// The "nothing is ever lost" guarantee: even if a background sync race
+	// changed B's save on disk, B's own version must be recoverable from B's
+	// snapshot history.
+	var games map[string]struct {
+		Branches map[string]struct {
+			Snapshots []struct {
+				ID string `json:"id"`
+			} `json:"snapshots"`
+		} `json:"branches"`
+	}
+	b.API(http.MethodGet, "/api/games", nil, &games)
+	recoverable := false
+	for _, g := range games {
+		for _, br := range g.Branches {
+			for _, snap := range br.Snapshots {
+				b.API(http.MethodPost, "/api/games/"+gameID+"/rollback", map[string]string{"snapshotId": snap.ID}, nil)
+				if b.ReadSave("slot1.sav") == "B's version" {
+					recoverable = true
+				}
+			}
+		}
+	}
+	if !recoverable {
+		t.Errorf("B's version is not recoverable from any snapshot — data was lost")
+	}
+}

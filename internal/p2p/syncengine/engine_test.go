@@ -397,13 +397,18 @@ func TestSync_ConflictResolvedKeepLocal(t *testing.T) {
 	if _, err := env.engine.ResolveConflict(context.Background(), "game1", env.peer.ID, "keep-local"); err != nil {
 		t.Fatal(err)
 	}
-	// keep-local sends a pull trigger and leaves local files alone.
-	if env.transport.pullTriggers != 1 {
-		t.Errorf("pull triggers = %d, want 1", env.transport.pullTriggers)
+	// keep-local is purely local: our files are untouched AND we must NOT
+	// force the peer to overwrite its save (consent — the peer decides for
+	// itself).
+	if env.transport.pullTriggers != 0 {
+		t.Errorf("keep-local must not force the peer; pull triggers = %d, want 0", env.transport.pullTriggers)
 	}
 	local, _ := os.ReadFile(filepath.Join(env.localDir, "save.dat"))
 	if string(local) != "local version" {
 		t.Error("keep-local must not modify local files")
+	}
+	if len(env.engine.ActiveConflicts()) != 0 {
+		t.Error("conflict should be cleared after keep-local")
 	}
 }
 

@@ -12,16 +12,15 @@ import (
 )
 
 // ResolveConflict applies the user's chosen resolution to an active
-// conflict:
+// conflict. Every resolution affects ONLY this device's save — it never
+// reaches over and rewrites the peer's save without the peer's own user
+// choosing. The peer resolves its own copy of the conflict independently.
 //
-//   - keep-local:   trigger the peer to pull our state; nothing changes here.
-//   - keep-remote:  overwrite local files with the peer's current state.
-//   - merge-branch: park the remote state on a new "conflict-<peer>-<id>"
-//     branch so both versions survive; the user can switch
-//     between them later.
-//
-// Resolution never forces the remote peer's state directly — keep-local
-// just sends a pull trigger and lets the peer's own engine handle it.
+//   - keep-local:   keep this device's version as-is (peer is untouched).
+//   - keep-remote:  adopt the peer's current state on this device, taking a
+//     safety snapshot of the local version first.
+//   - merge-branch: park the peer's state on a new "conflict-<peer>-<id>"
+//     branch so both versions survive; switch between them later.
 func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution string) (branchName string, err error) {
 	e.mu.Lock()
 	conflict := e.activeConflicts[gameID]
@@ -33,8 +32,11 @@ func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution
 
 	switch resolution {
 	case "keep-local":
-		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep LOCAL — triggering %q to pull", gameID, peer.Name))
-		e.Transport.TriggerPeerPull(peer, gameID)
+		// Purely local: keep our version, clear our conflict. We deliberately
+		// do NOT force the peer to adopt our save — that would change their
+		// files without their consent. If they want ours, their own engine
+		// detects the same conflict and their user chooses "keep theirs".
+		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep LOCAL (peer's save left untouched)", gameID))
 		e.clearConflict(gameID)
 		return "", nil
 

@@ -128,9 +128,9 @@
         </button>
       </div>
       <p class="hint-line">
-        🛡️ Nothing is lost with any choice: “Keep both” parks {peerName}'s version on a separate branch, and
-        “Keep theirs” snapshots your version first — you can restore either any time from the game's
-        Snapshots and Branches tabs.
+        🛡️ Each device decides for itself — <strong>“Keep mine” never overwrites {peerName}'s save</strong>
+        (they choose for their device). Nothing is lost either way: “Keep both” parks {peerName}'s version on a
+        branch, and “Keep theirs” snapshots yours first. Restore anything from the game's Snapshots / Branches tabs.
       </p>
     </div>
   </div>

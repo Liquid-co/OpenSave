@@ -113,7 +113,13 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 			continue
 		}
 		results[peer.ID] = res
-		_ = e.Store.UpdatePeerLastSynced(peer.ID, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		// Only a genuinely completed sync advances the "last synced" baseline.
+		// Advancing it on a conflict (or error) would hide the still-unresolved
+		// divergence from the NEXT sync, causing the peer to silently overwrite
+		// its own changes instead of detecting the conflict and asking.
+		if res.Status != "conflict" && res.Status != "error" {
+			_ = e.Store.UpdatePeerLastSynced(peer.ID, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		}
 	}
 	return results, nil
 }
@@ -184,6 +190,18 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		e.Log("success", fmt.Sprintf("%q already in sync with %q", game.Name, peer.Name))
 		e.persistLineage(gameID, peer.ID, localManifest)
 		return Result{Status: "in_sync", Direction: "none"}, nil
+	}
+
+	// Race-free safety net: the mtime-based conflict check above can miss a
+	// divergence under clock skew / sync races. If we're about to overwrite
+	// local files while the local save has changes that aren't captured in
+	// any snapshot yet, those unsaved changes would be lost. Surface it as a
+	// conflict for the user to resolve instead of silently overwriting.
+	if len(decision.FilesToPull) > 0 && game.LastManifestHash != "" &&
+		localManifest.ManifestHash() != game.LastManifestHash {
+		e.Log("warn", fmt.Sprintf("uncaptured local changes on %q would be overwritten by %q — raising conflict", game.Name, peer.Name))
+		e.registerConflict(gameID, peer, localManifest, remoteData)
+		return Result{Status: "conflict", PeerID: peer.ID, PeerName: peer.Name}, nil
 	}
 
 	// 6. Apply deletions (locally + propagate to peer).
