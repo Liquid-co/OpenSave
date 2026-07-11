@@ -96,7 +96,7 @@ func (e *Engine) overwriteLocalWithRemote(ctx context.Context, gameID string, pe
 		return err
 	}
 
-	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{Name: game.Name, SavePath: game.SavePath})
+	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL})
 	if err != nil {
 		return fmt.Errorf("fetch remote manifest: %w", err)
 	}

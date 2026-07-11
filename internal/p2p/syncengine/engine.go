@@ -137,6 +137,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	isFile, _ := delta.ResolveLocalSaveFilePath(game.SavePath)
 	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
 		Name: game.Name, SavePath: game.SavePath, IsFile: isFile,
+		AppID: game.AppID, CoverURL: game.CoverURL,
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("fetch remote manifest: %w", err)

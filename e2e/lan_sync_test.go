@@ -254,3 +254,34 @@ func TestPeerInitiatedDetectionOfRemoteChange(t *testing.T) {
 		t.Errorf("B failed to detect A's change on its own; B has %q", b.ReadSave("slot1.sav"))
 	}
 }
+
+// TestCoverArtPropagatesOnSync verifies that when a peer auto-tracks a game
+// via sync, it also receives the game's cover art — previously the auto-
+// tracked side showed a blank tile.
+func TestCoverArtPropagatesOnSync(t *testing.T) {
+	a := testutil.NewTestDaemon(t, "Device-A")
+	b := testutil.NewTestDaemon(t, "Device-B")
+	a.PairWith(b)
+
+	gameID := a.TrackGame("Cover Game")
+	// Give A's game a cover; B does not track this game at all.
+	a.API(http.MethodPatch, "/api/games/"+gameID, map[string]string{
+		"appId": "264710", "coverUrl": "https://cdn.example/steam/264710/cover.jpg",
+	}, nil)
+	a.WriteSave("slot1.sav", "hello")
+
+	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+
+	// B should auto-track the game AND get A's cover.
+	ok := testutil.WaitFor(30*time.Second, func() bool {
+		var games map[string]struct {
+			CoverURL string `json:"coverUrl"`
+		}
+		b.API(http.MethodGet, "/api/games", nil, &games)
+		g, exists := games[gameID]
+		return exists && g.CoverURL == "https://cdn.example/steam/264710/cover.jpg"
+	})
+	if !ok {
+		t.Error("B did not receive the game's cover art on sync")
+	}
+}

@@ -23,6 +23,12 @@ func (t *wanTransport) FetchManifest(ctx context.Context, peer syncengine.Peer, 
 		params.Set("savePath", q.SavePath)
 	}
 	params.Set("isFile", fmt.Sprintf("%t", q.IsFile))
+	if q.AppID != "" {
+		params.Set("appId", q.AppID)
+	}
+	if q.CoverURL != "" {
+		params.Set("coverUrl", q.CoverURL)
+	}
 
 	raw, err := t.wan.Request(ctx, peer.ID, "/manifest/"+gameID+"?"+params.Encode(), "GET", nil)
 	if err != nil {

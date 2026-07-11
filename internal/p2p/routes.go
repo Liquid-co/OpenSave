@@ -228,7 +228,14 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 		}
 		localPath := delta.TranslatePathToLocal(remotePath, rules)
 
-		game = store.Game{ID: gameID, Name: name, SavePath: localPath, ActiveBranch: "main", AutoSync: true, MaxSnapshots: 5}
+		game = store.Game{
+			ID: gameID, Name: name, SavePath: localPath, ActiveBranch: "main",
+			AutoSync: true, MaxSnapshots: 5,
+			// Carry the cover art from the requesting peer so the game
+			// doesn't show as a blank tile on this device.
+			AppID:    r.URL.Query().Get("appId"),
+			CoverURL: r.URL.Query().Get("coverUrl"),
+		}
 		if err := e.Store.CreateGame(game); err != nil {
 			jsonError(w, http.StatusInternalServerError, "auto-track failed: "+err.Error())
 			return
@@ -239,6 +246,19 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 			_ = os.MkdirAll(localPath, 0o777)
 		}
 		e.Log("info", fmt.Sprintf("auto-tracked %q at %q from peer manifest request", name, localPath))
+		e.notifyGamesUpdate()
+	} else if game.CoverURL == "" {
+		// Already tracked here but with no cover (e.g. tracked manually
+		// without an App ID) — backfill it from what the peer sent.
+		if cover := r.URL.Query().Get("coverUrl"); cover != "" {
+			game.CoverURL = cover
+			if game.AppID == "" {
+				game.AppID = r.URL.Query().Get("appId")
+			}
+			if err := e.Store.UpdateGame(game); err == nil {
+				e.notifyGamesUpdate()
+			}
+		}
 	}
 
 	manifest, err := delta.BuildManifest(game.SavePath)

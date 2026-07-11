@@ -49,6 +49,11 @@ type Engine struct {
 	// broadcast hook). May be nil.
 	OnPeerUpdate func()
 
+	// OnGamesUpdate fires when the game list changes on this device from a
+	// peer action (e.g. auto-tracking a synced game, backfilling its cover).
+	// May be nil.
+	OnGamesUpdate func()
+
 	// Failsafe: games whose last sync was interrupted (network error mid-
 	// transfer) are queued here and retried automatically, no prompt, until
 	// they complete.
@@ -467,6 +472,12 @@ func (e *Engine) Unpair(peerID string) error {
 func (e *Engine) notifyPeerUpdate() {
 	if e.OnPeerUpdate != nil {
 		e.OnPeerUpdate()
+	}
+}
+
+func (e *Engine) notifyGamesUpdate() {
+	if e.OnGamesUpdate != nil {
+		e.OnGamesUpdate()
 	}
 }
 

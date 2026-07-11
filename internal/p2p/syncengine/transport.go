@@ -40,6 +40,10 @@ type ManifestQuery struct {
 	Name     string
 	SavePath string
 	IsFile   bool
+	// AppID and CoverURL let a peer that auto-tracks this game show the same
+	// cover art, instead of a blank tile.
+	AppID    string
+	CoverURL string
 }
 
 // BlockData is one fetched block.

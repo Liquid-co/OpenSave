@@ -125,6 +125,7 @@ func (s *Server) Start(port int) (string, error) {
 
 	// Peer/dashboard state changes push live updates.
 	s.Daemon.P2P.OnPeerUpdate = s.BroadcastPeersUpdate
+	s.Daemon.P2P.OnGamesUpdate = s.BroadcastGamesUpdate
 	s.wireSyncProgress()
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
