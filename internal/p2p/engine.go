@@ -21,6 +21,10 @@ import (
 // sync was interrupted (e.g. the network dropped mid-transfer).
 const resyncRetryInterval = 20 * time.Second
 
+// reconcileEveryNTicks controls how often (in resyncRetryInterval ticks) a
+// full reconcile runs — 3 × 20s = every 60s.
+const reconcileEveryNTicks = 3
+
 // GameState is the lightweight per-game summary exchanged in pings/hellos
 // so peers can see what each other has without a full manifest fetch.
 type GameState struct {
@@ -259,10 +263,15 @@ func (e *Engine) trackSyncOutcome(gameID string, results map[string]syncengine.R
 	}
 }
 
-// startResyncLoop runs the interrupted-sync failsafe: while any game is
-// pending and a peer is reachable, re-attempt it silently until it
-// completes. Robust to brief network blips that never flip a peer
-// offline→online (which is what the reconnect auto-sync relies on).
+// StartResyncLoop runs two background safeties on one ticker:
+//
+//   - Every tick: retry any game whose sync was interrupted (network blip
+//     mid-transfer) until it completes.
+//   - Every reconcileEveryNTicks ticks: a full reconcile — sync every game
+//     with online peers. This is the eventual-consistency backstop that
+//     catches changes no event delivered (a missed watcher event, a dropped
+//     fire-and-forget push trigger, or briefly stale peer status), which is
+//     why cross-device changes could occasionally go undetected.
 func (e *Engine) StartResyncLoop() {
 	e.pendingMu.Lock()
 	if e.stopRetry != nil { // already running
@@ -276,15 +285,30 @@ func (e *Engine) StartResyncLoop() {
 	go func() {
 		ticker := time.NewTicker(resyncRetryInterval)
 		defer ticker.Stop()
+		ticks := 0
 		for {
 			select {
 			case <-stop:
 				return
 			case <-ticker.C:
+				ticks++
 				e.retryPendingResyncs()
+				if ticks%reconcileEveryNTicks == 0 {
+					e.reconcileAllGames()
+				}
 			}
 		}
 	}()
+}
+
+// reconcileAllGames refreshes peer status and re-syncs every game — the
+// periodic backstop against missed sync triggers.
+func (e *Engine) reconcileAllGames() {
+	e.PingPairedPeers(context.Background())
+	if len(e.OnlinePeers()) == 0 {
+		return
+	}
+	e.SyncAllGames(context.Background())
 }
 
 func (e *Engine) retryPendingResyncs() {

@@ -212,7 +212,9 @@ func TestConflictNeverLosesPeerData(t *testing.T) {
 	for _, g := range games {
 		for _, br := range g.Branches {
 			for _, snap := range br.Snapshots {
-				b.API(http.MethodPost, "/api/games/"+gameID+"/rollback", map[string]string{"snapshotId": snap.ID}, nil)
+				if b.APIStatus(http.MethodPost, "/api/games/"+gameID+"/rollback", map[string]string{"snapshotId": snap.ID}, nil) != 200 {
+					continue
+				}
 				if b.ReadSave("slot1.sav") == "B's version" {
 					recoverable = true
 				}
@@ -221,5 +223,34 @@ func TestConflictNeverLosesPeerData(t *testing.T) {
 	}
 	if !recoverable {
 		t.Errorf("B's version is not recoverable from any snapshot — data was lost")
+	}
+}
+
+// TestPeerInitiatedDetectionOfRemoteChange proves cross-device detection
+// works even when the changing side never pushes: B initiating a sync must
+// notice and pull A's newer save on its own. This is the mechanism the
+// periodic reconcile relies on to catch changes that no push delivered.
+func TestPeerInitiatedDetectionOfRemoteChange(t *testing.T) {
+	a := testutil.NewTestDaemon(t, "Device-A")
+	b := testutil.NewTestDaemon(t, "Device-B")
+	a.PairWith(b)
+
+	a.WriteSave("slot1.sav", "v1")
+	gameID := a.TrackGame("Detect Game")
+	b.API(http.MethodPost, "/api/games", map[string]string{"name": "Detect Game", "savePath": b.SaveDir}, nil)
+	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+	if !testutil.WaitFor(30*time.Second, func() bool { return b.ReadSave("slot1.sav") == "v1" }) {
+		t.Fatal("initial sync failed")
+	}
+
+	// A changes its save, then wait past the sync skew window. We do NOT ask
+	// A to push — B must detect it by initiating its own sync (as the
+	// periodic reconcile does).
+	time.Sleep(2500 * time.Millisecond)
+	a.WriteSave("slot1.sav", "v2-remote-change")
+
+	b.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+	if !testutil.WaitFor(30*time.Second, func() bool { return b.ReadSave("slot1.sav") == "v2-remote-change" }) {
+		t.Errorf("B failed to detect A's change on its own; B has %q", b.ReadSave("slot1.sav"))
 	}
 }

@@ -97,6 +97,13 @@ func (td *TestDaemon) API(method, path string, body any, out any) {
 	}
 }
 
+// APIStatus performs a request and returns the HTTP status without failing
+// the test — for calls that may legitimately return a 4xx.
+func (td *TestDaemon) APIStatus(method, path string, body any, out any) int {
+	td.T.Helper()
+	return td.apiRaw(method, path, body, out)
+}
+
 func (td *TestDaemon) apiRaw(method, path string, body any, out any) int {
 	td.T.Helper()
 	var reader *bytes.Reader
