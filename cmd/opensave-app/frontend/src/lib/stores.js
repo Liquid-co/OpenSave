@@ -14,6 +14,7 @@ export const wsConnected = writable(false);
 export const syncActivity = writable({}); // gameId -> {state, peerName, percentage, ...}
 export const toasts = writable([]);
 export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} from the OAuth callback
+export const conflictResolution = writable(null); // {gameId, resolution, branchName?, error?} when a background resolution finishes
 
 export const gameList = derived(games, ($games) =>
   Object.values($games).sort((a, b) => a.name.localeCompare(b.name))
@@ -68,13 +69,13 @@ export function applyMessage(msg) {
       logEntries.update((l) => [...l.slice(-199), data]);
       break;
     case 'sync-start':
-      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'running', ...data.data } }));
+      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'running', at: Date.now(), ...data.data } }));
       break;
     case 'sync-progress':
-      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'running', ...data.data } }));
+      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'running', at: Date.now(), ...data.data } }));
       break;
     case 'sync-complete':
-      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'done', ...data.data } }));
+      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'done', at: Date.now(), ...data.data } }));
       setTimeout(
         () =>
           syncActivity.update((s) => {
@@ -86,12 +87,37 @@ export function applyMessage(msg) {
       );
       break;
     case 'sync-error': {
-      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', ...data.data } }));
+      syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', at: Date.now(), ...data.data } }));
       const gameName = get(games)[data.gameId]?.name ?? 'a game';
       const reason = friendlySyncError(data.data?.error);
       // Every failed sync is queued for automatic retry — reassure the user
-      // they don't need to manually re-sync.
-      toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}. OpenSave will retry automatically.`, 'error');
+      // they don't need to manually re-sync. The retry loop re-fails every
+      // ~20s while the cause persists, so rate-limit the toast per game.
+      const now = Date.now();
+      if (now - (lastSyncErrorToast[data.gameId] ?? 0) > 60_000) {
+        lastSyncErrorToast[data.gameId] = now;
+        toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}. OpenSave will retry automatically.`, 'error');
+      }
+      break;
+    }
+    case 'conflict-resolved': {
+      const gameName = get(games)[data.gameId]?.name ?? 'a game';
+      if (data.error) {
+        toast(
+          `Couldn't apply your choice for “${gameName}” — ${friendlySyncError(data.error)}. The conflict is still open.`,
+          'error'
+        );
+      } else {
+        toast(
+          data.resolution === 'merge-branch'
+            ? `Both versions kept for “${gameName}” — the other device's copy is on branch "${data.branchName}"`
+            : data.resolution === 'keep-remote'
+              ? `Now using the other device's version of “${gameName}” — yours is snapshotted if you change your mind`
+              : `Kept this device's version of “${gameName}”`,
+          'success'
+        );
+      }
+      conflictResolution.set(data ?? null);
       break;
     }
     case 'cloud-auth':
@@ -99,6 +125,27 @@ export function applyMessage(msg) {
       break;
   }
 }
+
+const lastSyncErrorToast = {}; // gameId -> ms timestamp of last error toast
+
+// Safety sweep: if the other device died mid-sync, no sync-complete or
+// sync-error ever arrives and the "syncing…" spinner would stay forever.
+// Any running entry that hasn't reported progress in 3 minutes is dropped
+// (live transfers report at least every 500ms).
+setInterval(() => {
+  syncActivity.update((s) => {
+    const now = Date.now();
+    let changed = false;
+    const copy = { ...s };
+    for (const [gid, entry] of Object.entries(copy)) {
+      if (entry.state === 'running' && entry.at && now - entry.at > 180_000) {
+        delete copy[gid];
+        changed = true;
+      }
+    }
+    return changed ? copy : s;
+  });
+}, 30_000);
 
 let wasWanConnected = false;
 

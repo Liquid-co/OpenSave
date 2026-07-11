@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // BlockSource supplies the bytes for one block index, either from the
@@ -38,29 +39,71 @@ func PatchFile(filePath string, remoteEntry FileEntry, remoteBlocks []BlockSourc
 	// first the same way the JS code chmod 0o666's before write/unlink.
 	clearReadOnlyIfSet(filePath)
 
-	tmpPath := filePath + ".opensave.tmp"
+	tmpPath := filePath + TmpSuffix
 	if err := writeReconstructedFile(tmpPath, filePath, remoteEntry, remoteBlocks); err != nil {
-		os.Remove(tmpPath)
+		removeWithRetry(tmpPath)
 		return err
 	}
 
 	gotHash, err := hashFileWhole(tmpPath)
 	if err != nil {
-		os.Remove(tmpPath)
+		removeWithRetry(tmpPath)
 		return fmt.Errorf("hash reconstructed file: %w", err)
 	}
 	if gotHash != remoteEntry.Hash {
-		os.Remove(tmpPath)
+		removeWithRetry(tmpPath)
 		return fmt.Errorf("patch integrity check failed for %s: expected %s got %s", filePath, remoteEntry.Hash, gotHash)
 	}
 
 	clearReadOnlyIfSet(tmpPath)
 
-	if err := os.Rename(tmpPath, filePath); err != nil {
-		os.Remove(tmpPath)
+	if err := replaceWithRetry(tmpPath, filePath); err != nil {
+		removeWithRetry(tmpPath)
 		return fmt.Errorf("finalize patched file: %w", err)
 	}
 	return nil
+}
+
+// renameFile is swappable so tests can simulate a transiently locked
+// destination without real AV timing.
+var renameFile = os.Rename
+
+// replaceWithRetry renames tmpPath over filePath, retrying with backoff
+// (~6s total). On Windows, antivirus — Defender above all — briefly locks
+// freshly written files (especially .exe payloads) for scanning, which
+// makes the finalizing rename fail with a sharing violation even though
+// nothing is actually wrong. One failed rename here used to strand the
+// .opensave.tmp file on disk, which then leaked into manifests and synced
+// to peers as a real file.
+func replaceWithRetry(tmpPath, filePath string) error {
+	var err error
+	delay := 100 * time.Millisecond
+	for attempt := 0; attempt < 7; attempt++ {
+		if attempt > 0 {
+			time.Sleep(delay)
+			delay *= 2
+		}
+		clearReadOnlyIfSet(filePath)
+		if err = renameFile(tmpPath, filePath); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+// removeWithRetry best-effort deletes a temp file, retrying briefly since
+// the same AV scan that fails a rename also fails the cleanup delete. A
+// survivor is harmless — manifests exclude TmpSuffix files and the walk
+// garbage-collects stale ones — but tidy is better.
+func removeWithRetry(path string) {
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		if err := os.Remove(path); err == nil || os.IsNotExist(err) {
+			return
+		}
+	}
 }
 
 // writeReconstructedFile writes blockCount blocks (each remoteEntry.BlockSize

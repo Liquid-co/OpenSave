@@ -206,3 +206,45 @@ func TestBatchIndices(t *testing.T) {
 		t.Error("concurrency constants wrong")
 	}
 }
+
+// TestIntersectLineage_UnconfirmedPushNeverEntersLineage is the regression
+// test for a real data-loss incident: device A pushed a file, the peer's
+// pull kept failing (AV lock on a fresh .exe), and A recorded the file as
+// "synced" anyway from its local manifest alone. On the next run "in
+// lineage but missing on peer" was read as "peer deleted it" — and A
+// deleted the user's original. Lineage must be the manifest intersection:
+// a pushed file the peer never received stays out, so the next sync
+// re-pushes it instead of deleting it.
+func TestIntersectLineage_UnconfirmedPushNeverEntersLineage(t *testing.T) {
+	local := delta.Manifest{
+		Files: map[string]delta.FileEntry{
+			"shared.sav":   {Hash: "h1"},
+			"OpenSave.exe": {Hash: "h2"}, // pushed, peer's pull failed
+		},
+		Dirs: []string{"common", "local-only"},
+	}
+	remote := delta.Manifest{
+		Files: map[string]delta.FileEntry{
+			"shared.sav": {Hash: "h1"},
+		},
+		Dirs: []string{"common"},
+	}
+
+	files, dirs := IntersectLineage(local, remote)
+	if len(files) != 1 || files[0] != "shared.sav" {
+		t.Fatalf("lineage files = %v, want only shared.sav", files)
+	}
+	if len(dirs) != 1 || dirs[0] != "common" {
+		t.Fatalf("lineage dirs = %v, want only common", dirs)
+	}
+
+	// And the decision that follows from the corrected lineage: the file
+	// missing on the remote is re-PUSHED, never deleted locally.
+	d := Compute(local, remote, toSet(files), toSet(dirs))
+	if len(d.FilesToDeleteLocally) != 0 {
+		t.Fatalf("pushed-but-unreceived file must never be deleted locally, got %v", d.FilesToDeleteLocally)
+	}
+	if len(d.FilesToPush) != 1 || d.FilesToPush[0] != "OpenSave.exe" {
+		t.Fatalf("expected OpenSave.exe re-push, got %v", d.FilesToPush)
+	}
+}

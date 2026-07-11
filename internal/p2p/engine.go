@@ -60,7 +60,21 @@ type Engine struct {
 	pendingMu     sync.Mutex
 	pendingResync map[string]bool
 	stopRetry     chan struct{}
+
+	// Short-lived manifest-hash cache for ping/hello responses. Every
+	// incoming ping used to re-hash every tracked save from scratch —
+	// constant disk/CPU churn with the 20s retry loop pinging both ways.
+	hashCacheMu sync.Mutex
+	hashCache   map[string]cachedManifestHash
 }
+
+type cachedManifestHash struct {
+	hash string
+	at   time.Time
+}
+
+// manifestHashTTL bounds how stale a ping-response manifest hash can be.
+const manifestHashTTL = 20 * time.Second
 
 // StartDiscovery begins UDP LAN presence broadcasting. Paired peers seen
 // on the LAN flip online (triggering auto-sync when they were offline);
@@ -170,12 +184,34 @@ func (e *Engine) LocalGamesState() map[string]GameState {
 				state.LatestSnapshotTime = t.UnixMilli()
 			}
 		}
-		if m, err := delta.BuildManifest(g.SavePath); err == nil {
-			state.ManifestHash = m.ManifestHash()
-		}
+		state.ManifestHash = e.manifestHashCached(g.ID, g.SavePath)
 		out[g.ID] = state
 	}
 	return out
+}
+
+// manifestHashCached returns the game's manifest hash, re-hashing at most
+// once per manifestHashTTL per game.
+func (e *Engine) manifestHashCached(gameID, savePath string) string {
+	e.hashCacheMu.Lock()
+	if c, ok := e.hashCache[gameID]; ok && time.Since(c.at) < manifestHashTTL {
+		e.hashCacheMu.Unlock()
+		return c.hash
+	}
+	e.hashCacheMu.Unlock()
+
+	hash := ""
+	if m, err := delta.BuildManifest(savePath); err == nil {
+		hash = m.ManifestHash()
+	}
+
+	e.hashCacheMu.Lock()
+	if e.hashCache == nil {
+		e.hashCache = map[string]cachedManifestHash{}
+	}
+	e.hashCache[gameID] = cachedManifestHash{hash: hash, at: time.Now()}
+	e.hashCacheMu.Unlock()
+	return hash
 }
 
 // OnlinePeers returns paired peers currently marked online, as sync-engine

@@ -86,6 +86,16 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			if w.engine.Sync.Progress.OnSyncComplete != nil {
 				w.engine.Sync.Progress.OnSyncComplete(msg.GameID, ev)
 			}
+			// Peer finished pulling from us over the relay: refresh the
+			// shared lineage so pushed files start counting as synced.
+			if peer, err := w.engine.Store.GetPeer(msg.From); err == nil {
+				sp := syncengine.Peer{ID: peer.ID, Name: peer.Name, Address: "relay", Port: peer.Port, IsWan: true}
+				go func() {
+					refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					defer cancel()
+					w.engine.Sync.RefreshLineage(refreshCtx, msg.GameID, sp)
+				}()
+			}
 		case "sync-error":
 			if w.engine.Sync.Progress.OnSyncError != nil {
 				w.engine.Sync.Progress.OnSyncError(msg.GameID, ev)
@@ -283,28 +293,12 @@ func (w *WanClient) serveManifest(route string) (int, any) {
 	}
 	gameID := u.Path[strings.LastIndex(u.Path, "/")+1:]
 
-	game, err := w.engine.Store.GetGame(gameID)
+	// Same auto-track + cover-backfill behavior as the LAN route — relay
+	// peers were previously auto-tracked without cover art, which is why
+	// covers didn't propagate between WAN-paired devices.
+	game, err := w.engine.ensureManifestGame(gameID, manifestQueryFromURL(u.Query()))
 	if err != nil {
-		name := u.Query().Get("name")
-		remotePath := u.Query().Get("savePath")
-		if name == "" || remotePath == "" {
-			return 404, map[string]string{"error": "Game not found."}
-		}
-		settings, sErr := w.engine.Store.GetSettings()
-		if sErr != nil {
-			return 500, map[string]string{"error": sErr.Error()}
-		}
-		rules := make([]delta.TranslationRule, len(settings.PathTranslations))
-		for i, tr := range settings.PathTranslations {
-			rules[i] = delta.TranslationRule{FromPattern: tr.FromPattern, ToPattern: tr.ToPattern}
-		}
-		localPath := delta.TranslatePathToLocal(remotePath, rules)
-		game = store.Game{ID: gameID, Name: name, SavePath: localPath, ActiveBranch: "main", AutoSync: true, MaxSnapshots: 5}
-		if err := w.engine.Store.CreateGame(game); err != nil {
-			return 400, map[string]string{"error": "Auto-track failed: " + err.Error()}
-		}
-		_ = os.MkdirAll(localPath, 0o777)
-		w.engine.Log("info", fmt.Sprintf("auto-tracked %q at %q from WAN peer", name, localPath))
+		return 404, map[string]string{"error": err.Error()}
 	}
 
 	manifest, err := delta.BuildManifest(game.SavePath)

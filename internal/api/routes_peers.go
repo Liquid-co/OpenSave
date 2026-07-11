@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -260,20 +261,35 @@ func (s *Server) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "peerId and resolution are required")
 		return
 	}
-
-	branchName, err := s.Daemon.P2P.Sync.ResolveConflict(r.Context(), gameID, body.PeerID, body.Resolution)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	switch body.Resolution {
+	case "keep-local", "keep-remote", "merge-branch":
+	default:
+		writeError(w, http.StatusBadRequest, "invalid conflict resolution "+body.Resolution)
 		return
 	}
-	s.BroadcastGamesUpdate()
-	s.BroadcastPeersUpdate()
 
-	resp := map[string]any{"success": true, "resolution": body.Resolution}
-	if branchName != "" {
-		resp["branchName"] = branchName
-	}
-	writeJSON(w, http.StatusOK, resp)
+	// Applying a resolution can pull the peer's whole save over the relay —
+	// minutes of transfer. Run it in the background and report the outcome
+	// via the "conflict-resolved" WS broadcast, so the modal's button click
+	// returns instantly instead of freezing the UI until the pull finishes.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		branchName, err := s.Daemon.P2P.Sync.ResolveConflict(ctx, gameID, body.PeerID, body.Resolution)
+
+		payload := map[string]any{"gameId": gameID, "resolution": body.Resolution}
+		if branchName != "" {
+			payload["branchName"] = branchName
+		}
+		if err != nil {
+			payload["error"] = err.Error()
+		}
+		s.Hub.Broadcast("conflict-resolved", payload)
+		s.BroadcastGamesUpdate()
+		s.BroadcastPeersUpdate()
+	}()
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "status": "applying", "resolution": body.Resolution})
 }
 
 func itoa(n int) string {

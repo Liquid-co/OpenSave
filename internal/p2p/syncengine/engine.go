@@ -189,7 +189,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 
 	if !decision.HasChanges() {
 		e.Log("success", fmt.Sprintf("%q already in sync with %q", game.Name, peer.Name))
-		e.persistLineage(gameID, peer.ID, localManifest)
+		e.persistLineage(gameID, peer.ID, localManifest, remoteData.Manifest)
 		return Result{Status: "in_sync", Direction: "none"}, nil
 	}
 
@@ -228,7 +228,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	// 10. Record the post-sync lineage.
 	freshManifest, err := delta.BuildManifest(game.SavePath)
 	if err == nil {
-		e.persistLineage(gameID, peer.ID, freshManifest)
+		e.persistLineage(gameID, peer.ID, freshManifest, remoteData.Manifest)
 	}
 
 	return e.classifyResult(decision), nil
@@ -270,15 +270,68 @@ func (e *Engine) lineageSets(gameID, peerID string) (files, dirs map[string]stru
 	return toSet(fileList), toSet(dirList), nil
 }
 
-func (e *Engine) persistLineage(gameID, peerID string, manifest delta.Manifest) {
-	files := make([]string, 0, len(manifest.Files))
-	for p := range manifest.Files {
-		files = append(files, p)
-	}
-	sort.Strings(files)
-	if err := e.Store.SetSyncState(gameID, peerID, files, manifest.Dirs); err != nil {
+// persistLineage records the paths BOTH sides verifiably had at the end of
+// a successful sync — strictly the intersection of the two manifests.
+//
+// Recording local-only paths (as this once did) is how a user's file got
+// deleted: after a push-trigger sync we recorded "the peer has this file"
+// before the peer had actually pulled it. The peer's pull kept failing (AV
+// lock on a fresh .exe), so on the next run "in lineage but missing on
+// peer" was misread as "the peer deleted it" — and the local original was
+// removed. Unconfirmed pushes must never enter the lineage; they join it
+// on the first sync after the peer's manifest actually contains them.
+func (e *Engine) persistLineage(gameID, peerID string, local, remote delta.Manifest) {
+	files, dirs := IntersectLineage(local, remote)
+	if err := e.Store.SetSyncState(gameID, peerID, files, dirs); err != nil {
 		e.Log("warn", fmt.Sprintf("persist sync lineage failed: %v", err))
 	}
+}
+
+// IntersectLineage returns the sorted file and dir paths present in both
+// manifests — the only paths that may count as "synced on both sides".
+func IntersectLineage(local, remote delta.Manifest) (files, dirs []string) {
+	files = make([]string, 0, len(local.Files))
+	for p := range local.Files {
+		if _, ok := remote.Files[p]; ok {
+			files = append(files, p)
+		}
+	}
+	sort.Strings(files)
+
+	remoteDirs := toSet(remote.Dirs)
+	dirs = make([]string, 0, len(local.Dirs))
+	for _, d := range local.Dirs {
+		if _, ok := remoteDirs[d]; ok {
+			dirs = append(dirs, d)
+		}
+	}
+	sort.Strings(dirs)
+	return files, dirs
+}
+
+// RefreshLineage re-fetches the peer's manifest and re-persists the shared
+// lineage. Called when a peer reports it finished pulling from us: the
+// files we pushed are now really on both sides, so they can safely enter
+// the lineage (making future local deletions of them propagate instead of
+// the file being pulled back).
+func (e *Engine) RefreshLineage(ctx context.Context, gameID string, peer Peer) {
+	game, err := e.Store.GetGame(gameID)
+	if err != nil {
+		return
+	}
+	isFile, _ := delta.ResolveLocalSaveFilePath(game.SavePath)
+	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
+		Name: game.Name, SavePath: game.SavePath, IsFile: isFile,
+		AppID: game.AppID, CoverURL: game.CoverURL,
+	})
+	if err != nil {
+		return
+	}
+	local, err := delta.BuildManifest(game.SavePath)
+	if err != nil {
+		return
+	}
+	e.persistLineage(gameID, peer.ID, local, remoteData.Manifest)
 }
 
 func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.Manifest, remoteData ManifestResponse) {
@@ -483,6 +536,27 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	tracker := newProgressTracker(totalBytes)
 	throttle := e.throttleFor(peer.Wan())
 
+	// Progress reporter shared by the per-file loop and the block-group
+	// loop inside each file. Without in-file reporting, a single large
+	// file (e.g. an 18MB save pulled over the relay) sat at 0% for its
+	// whole transfer. Throttled so relay round-trips don't spam the UI.
+	var lastReport time.Time
+	reportProgress := func(force bool) {
+		if !force && time.Since(lastReport) < 500*time.Millisecond {
+			return
+		}
+		lastReport = time.Now()
+		bytesPulled, speed, pct := tracker.stats()
+		ev := ProgressEvent{PeerName: peer.Name, BytesTransferred: bytesPulled, TotalBytes: totalBytes, SpeedBytesPerSec: speed, Percentage: pct}
+		if e.Progress.OnSyncProgress != nil {
+			e.Progress.OnSyncProgress(gameID, ev)
+		}
+		e.Transport.ReportSyncEvent(peer, gameID, "sync-progress", map[string]any{
+			"peerName": deviceName, "bytesTransferred": bytesPulled, "totalBytes": totalBytes,
+			"speedBytesPerSec": speed, "percentage": pct,
+		})
+	}
+
 	for _, relPath := range filesToPull {
 		if !delta.IsSafePath(game.SavePath, relPath) {
 			return fmt.Errorf("path traversal attempt on pulled file %s", relPath)
@@ -490,7 +564,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		remoteFile := remoteData.Manifest.Files[relPath]
 		indices := changedBlocks[relPath]
 
-		blocks, err := e.fetchFileBlocks(ctx, peer, gameID, relPath, remoteFile, indices, throttle, tracker)
+		blocks, err := e.fetchFileBlocks(ctx, peer, gameID, relPath, remoteFile, indices, throttle, tracker, reportProgress)
 		if err != nil {
 			return err
 		}
@@ -508,16 +582,8 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 		e.Log("info", "file updated: "+relPath)
 
-		// Group-boundary progress reporting.
-		bytesPulled, speed, pct := tracker.stats()
-		ev := ProgressEvent{PeerName: peer.Name, BytesTransferred: bytesPulled, TotalBytes: totalBytes, SpeedBytesPerSec: speed, Percentage: pct}
-		if e.Progress.OnSyncProgress != nil {
-			e.Progress.OnSyncProgress(gameID, ev)
-		}
-		e.Transport.ReportSyncEvent(peer, gameID, "sync-progress", map[string]any{
-			"peerName": deviceName, "bytesTransferred": bytesPulled, "totalBytes": totalBytes,
-			"speedBytesPerSec": speed, "percentage": pct,
-		})
+		// File-boundary progress reporting (always fires).
+		reportProgress(true)
 	}
 
 	// Mirror the peer's latest snapshot locally so both sides share history.
@@ -537,7 +603,8 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 // groups (3 WAN / 5 LAN at a time, group-boundary waits) with per-batch
 // retries.
 func (e *Engine) fetchFileBlocks(ctx context.Context, peer Peer, gameID, relPath string,
-	remoteFile delta.FileEntry, indices []int, throttle *throttler, tracker *progressTracker) ([]delta.BlockSource, error) {
+	remoteFile delta.FileEntry, indices []int, throttle *throttler, tracker *progressTracker,
+	onGroup func(force bool)) ([]delta.BlockSource, error) {
 
 	batches := BatchIndices(indices, remoteFile.BlockSize, peer.Wan())
 	concurrency := ConcurrencyFor(peer.Wan())
@@ -572,6 +639,9 @@ func (e *Engine) fetchFileBlocks(ctx context.Context, peer Peer, gameID, relPath
 				groupBytes += int64(b.Length)
 			}
 			tracker.add(groupBytes)
+			if onGroup != nil {
+				onGroup(false) // in-file progress so big files don't sit at 0%
+			}
 			throttle.wait(ctx, groupBytes)
 		}
 	}

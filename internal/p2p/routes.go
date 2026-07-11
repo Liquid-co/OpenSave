@@ -203,62 +203,99 @@ func (e *Engine) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"success": true})
 }
 
+// manifestGameQuery is what a peer's manifest request tells us about the
+// game, used for auto-tracking and cover backfill.
+type manifestGameQuery struct {
+	Name     string
+	SavePath string
+	AppID    string
+	CoverURL string
+	IsFile   bool
+}
+
+func manifestQueryFromURL(q interface{ Get(string) string }) manifestGameQuery {
+	return manifestGameQuery{
+		Name:     q.Get("name"),
+		SavePath: q.Get("savePath"),
+		AppID:    q.Get("appId"),
+		CoverURL: q.Get("coverUrl"),
+		IsFile:   q.Get("isFile") == "true",
+	}
+}
+
+// ensureManifestGame returns the tracked game for a peer's manifest
+// request — auto-tracking it (translated save path, carrying the peer's
+// cover art) when unknown, and backfilling missing cover art on known
+// games. Shared by the LAN route and the WAN relay handler so both paths
+// behave identically.
+func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery) (store.Game, error) {
+	game, err := e.Store.GetGame(gameID)
+	if err == nil {
+		// Already tracked here but with no cover (e.g. tracked manually
+		// without an App ID) — backfill it from what the peer sent.
+		if game.CoverURL == "" && q.CoverURL != "" {
+			game.CoverURL = q.CoverURL
+			if game.AppID == "" {
+				game.AppID = q.AppID
+			}
+			if err := e.Store.UpdateGame(game); err == nil {
+				e.notifyGamesUpdate()
+			}
+		}
+		return game, nil
+	}
+
+	if q.Name == "" || q.SavePath == "" {
+		return store.Game{}, fmt.Errorf("Game not found.")
+	}
+	settings, sErr := e.Store.GetSettings()
+	if sErr != nil {
+		return store.Game{}, sErr
+	}
+	rules := make([]delta.TranslationRule, len(settings.PathTranslations))
+	for i, tr := range settings.PathTranslations {
+		rules[i] = delta.TranslationRule{FromPattern: tr.FromPattern, ToPattern: tr.ToPattern}
+	}
+	localPath := delta.TranslatePathToLocal(q.SavePath, rules)
+
+	// Never auto-track at a profile/system-level folder: syncing it would
+	// hash the user's whole profile. Send the requester a clear reason
+	// instead of a mysterious walk error.
+	if reason := delta.DangerousSyncRoot(localPath); reason != "" {
+		return store.Game{}, fmt.Errorf("cannot auto-track %q at %q: %s — set the game's save path on this device manually", q.Name, localPath, reason)
+	}
+
+	game = store.Game{
+		ID: gameID, Name: q.Name, SavePath: localPath, ActiveBranch: "main",
+		AutoSync: true, MaxSnapshots: 5,
+		// Carry the cover art from the requesting peer so the game
+		// doesn't show as a blank tile on this device.
+		AppID:    q.AppID,
+		CoverURL: q.CoverURL,
+	}
+	if err := e.Store.CreateGame(game); err != nil {
+		return store.Game{}, fmt.Errorf("auto-track failed: %w", err)
+	}
+	if q.IsFile {
+		_ = os.MkdirAll(filepath.Dir(localPath), 0o777)
+	} else {
+		_ = os.MkdirAll(localPath, 0o777)
+	}
+	e.Log("info", fmt.Sprintf("auto-tracked %q at %q from peer manifest request", q.Name, localPath))
+	e.notifyGamesUpdate()
+	return game, nil
+}
+
 // handleManifest serves a game's manifest + branch + latest-snapshot info.
 // If the game isn't tracked here yet, it is auto-tracked using the
 // requester's supplied name/savePath (translated to local conventions).
 func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
 
-	game, err := e.Store.GetGame(gameID)
+	game, err := e.ensureManifestGame(gameID, manifestQueryFromURL(r.URL.Query()))
 	if err != nil {
-		name := r.URL.Query().Get("name")
-		remotePath := r.URL.Query().Get("savePath")
-		if name == "" || remotePath == "" {
-			jsonError(w, http.StatusNotFound, "Game not found.")
-			return
-		}
-		settings, sErr := e.Store.GetSettings()
-		if sErr != nil {
-			jsonError(w, http.StatusInternalServerError, sErr.Error())
-			return
-		}
-		rules := make([]delta.TranslationRule, len(settings.PathTranslations))
-		for i, tr := range settings.PathTranslations {
-			rules[i] = delta.TranslationRule{FromPattern: tr.FromPattern, ToPattern: tr.ToPattern}
-		}
-		localPath := delta.TranslatePathToLocal(remotePath, rules)
-
-		game = store.Game{
-			ID: gameID, Name: name, SavePath: localPath, ActiveBranch: "main",
-			AutoSync: true, MaxSnapshots: 5,
-			// Carry the cover art from the requesting peer so the game
-			// doesn't show as a blank tile on this device.
-			AppID:    r.URL.Query().Get("appId"),
-			CoverURL: r.URL.Query().Get("coverUrl"),
-		}
-		if err := e.Store.CreateGame(game); err != nil {
-			jsonError(w, http.StatusInternalServerError, "auto-track failed: "+err.Error())
-			return
-		}
-		if r.URL.Query().Get("isFile") == "true" {
-			_ = os.MkdirAll(filepath.Dir(localPath), 0o777)
-		} else {
-			_ = os.MkdirAll(localPath, 0o777)
-		}
-		e.Log("info", fmt.Sprintf("auto-tracked %q at %q from peer manifest request", name, localPath))
-		e.notifyGamesUpdate()
-	} else if game.CoverURL == "" {
-		// Already tracked here but with no cover (e.g. tracked manually
-		// without an App ID) — backfill it from what the peer sent.
-		if cover := r.URL.Query().Get("coverUrl"); cover != "" {
-			game.CoverURL = cover
-			if game.AppID == "" {
-				game.AppID = r.URL.Query().Get("appId")
-			}
-			if err := e.Store.UpdateGame(game); err == nil {
-				e.notifyGamesUpdate()
-			}
-		}
+		jsonError(w, http.StatusNotFound, err.Error())
+		return
 	}
 
 	manifest, err := delta.BuildManifest(game.SavePath)
@@ -372,12 +409,39 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 		if e.Sync.Progress.OnSyncComplete != nil {
 			e.Sync.Progress.OnSyncComplete(gameID, ev)
 		}
+		// The peer finished pulling from us: whatever we pushed is now on
+		// both sides, so refresh the shared lineage. Until this runs,
+		// freshly-pushed files deliberately stay out of the lineage (see
+		// persistLineage), so deleting one locally would pull it back
+		// instead of propagating the delete.
+		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				e.Sync.RefreshLineage(ctx, gameID, peer)
+			}()
+		}
 	case "sync-error":
 		if e.Sync.Progress.OnSyncError != nil {
 			e.Sync.Progress.OnSyncError(gameID, ev)
 		}
 	}
 	jsonOK(w, map[string]any{"success": true})
+}
+
+// peerByAddress finds a paired peer by its request IP, as a sync-engine
+// peer descriptor.
+func (e *Engine) peerByAddress(ip string) (syncengine.Peer, bool) {
+	peers, err := e.Store.ListPeers()
+	if err != nil {
+		return syncengine.Peer{}, false
+	}
+	for _, p := range peers {
+		if p.Address == ip {
+			return syncengine.Peer{ID: p.ID, Name: p.Name, Address: p.Address, Port: p.Port, IsWan: p.Address == "relay"}, true
+		}
+	}
+	return syncengine.Peer{}, false
 }
 
 // handleSyncTrigger is the reverse-sync endpoint a peer calls when it has

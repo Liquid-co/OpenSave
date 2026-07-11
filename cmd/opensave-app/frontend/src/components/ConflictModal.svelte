@@ -1,14 +1,30 @@
 <script>
-  import { conflicts, games, toast } from '../lib/stores.js';
+  import { conflicts, conflictResolution, games, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { demandAttention } from '../lib/notify.js';
 
   let busy = false;
   let showDiff = false;
   let seen = new Set(); // gameIds already announced
+  let applying = new Set(); // gameIds whose resolution runs in the background
 
-  $: entries = Object.entries($conflicts);
+  // Conflicts being applied stay hidden: the resolution (possibly a long
+  // relay pull) runs in the background and only clears the conflict once
+  // it finishes — but the user already made their choice, so don't keep
+  // the modal (or its disabled buttons) on screen.
+  $: entries = Object.entries($conflicts).filter(([gid]) => !applying.has(gid));
   $: current = entries[0]; // one at a time
+
+  // When a background resolution reports back: on failure the conflict is
+  // still active, so un-hide it (the modal reappears with the error toast
+  // explaining why). On success the conflict entry is already gone.
+  $: onResolutionDone($conflictResolution);
+  function onResolutionDone(ev) {
+    if (ev && applying.has(ev.gameId)) {
+      applying.delete(ev.gameId);
+      applying = new Set(applying);
+    }
+  }
   $: gameName = current ? ($games[current[0]]?.name ?? current[0]) : '';
   $: conflict = current ? current[1] : null;
   $: peerName = conflict ? (conflict.peer.Name ?? conflict.peer.name ?? 'the other device') : '';
@@ -24,6 +40,16 @@
       toast(`Save conflict for “${name}” — choose which version to keep`, 'error');
     }
     seen = new Set(list.map(([gid]) => gid));
+    // Housekeeping: forget "applying" markers for conflicts that no longer
+    // exist (the background resolution finished and cleared them).
+    let pruned = false;
+    for (const gid of applying) {
+      if (!(gid in $conflicts)) {
+        applying.delete(gid);
+        pruned = true;
+      }
+    }
+    if (pruned) applying = new Set(applying);
   }
 
   // Which side is further along? Compare last-modified times.
@@ -35,19 +61,19 @@
     if (!current || busy) return;
     busy = true;
     const [gameId, c] = current;
+    const name = gameName;
     try {
-      const res = await api.post(`/api/games/${gameId}/resolve-conflict`, {
+      // Returns immediately; the actual apply (possibly a long transfer)
+      // runs in the background and reports via the conflict-resolved WS
+      // event, which stores.js turns into the outcome toast.
+      await api.post(`/api/games/${gameId}/resolve-conflict`, {
         peerId: c.peer.ID ?? c.peer.id,
         resolution
       });
-      toast(
-        resolution === 'merge-branch'
-          ? `Both versions kept — ${peerName}'s copy is on branch "${res.branchName}"`
-          : resolution === 'keep-remote'
-            ? `Kept ${peerName}'s version — yours is snapshotted if you change your mind`
-            : `Kept this device's version`,
-        'success'
-      );
+      applying = new Set(applying).add(gameId);
+      if (resolution !== 'keep-local') {
+        toast(`Applying your choice for “${name}” — transferring ${peerName}'s files…`, 'info');
+      }
       showDiff = false;
     } catch (e) {
       toast(e.message, 'error');

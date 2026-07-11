@@ -8,13 +8,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// TmpSuffix marks the temp files PatchFile writes before atomically
+// replacing the target. They are never part of the save itself: manifests
+// must exclude them, or an interrupted patch's leftover would sync to the
+// peer as a real file (and cascade into name.opensave.tmp.opensave.tmp).
+const TmpSuffix = ".opensave.tmp"
+
+// staleTmpAge is how old a leftover TmpSuffix file must be before the
+// manifest walk garbage-collects it. Generous enough that a patch actively
+// writing its temp file is never deleted out from under it.
+const staleTmpAge = 15 * time.Minute
 
 const (
 	defaultBlockSize = 64 * 1024
@@ -141,6 +154,13 @@ func HashFile(path string) (FileEntry, error) {
 // BuildManifest walks root (a directory or a single file, per
 // ResolveLocalSaveFilePath) and returns a full Manifest of its contents.
 func BuildManifest(root string) (Manifest, error) {
+	// Never scan profile/system-level folders. A mis-tracked game pointing
+	// at e.g. C:\Users\<name> would otherwise try to hash (and sync!) the
+	// whole user profile — and die on the first legacy junction anyway.
+	if reason := DangerousSyncRoot(root); reason != "" {
+		return Manifest{}, fmt.Errorf("refusing to scan %q: %s — edit this game's save path so it points at the actual save folder", root, reason)
+	}
+
 	info, err := os.Stat(root)
 	if err != nil {
 		return Manifest{}, err
@@ -164,9 +184,25 @@ func BuildManifest(root string) (Manifest, error) {
 	var dirs []string
 	err = filepath.Walk(root, func(path string, walkInfo os.FileInfo, walkErr error) error {
 		if walkErr != nil {
+			// Permission-denied subtrees (Windows legacy junctions like
+			// AppData\Local\Application Data, locked system dirs) are
+			// skipped instead of failing the whole manifest — one
+			// unreadable directory must not abort every sync of the game.
+			if os.IsPermission(walkErr) {
+				if walkInfo != nil && walkInfo.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return walkErr
 		}
 		if path == root {
+			return nil
+		}
+		// Never follow or record symlinks / reparse points: junctions can
+		// recurse (Application Data -> its own parent) or point outside the
+		// save root entirely.
+		if walkInfo.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
@@ -183,6 +219,16 @@ func BuildManifest(root string) (Manifest, error) {
 
 		if walkInfo.IsDir() {
 			dirs = append(dirs, rel)
+			return nil
+		}
+
+		// Leftover atomic-replace temp from an interrupted patch: never a
+		// real save file. Exclude it, and garbage-collect it once it's
+		// clearly abandoned (old enough that no live patch still owns it).
+		if strings.HasSuffix(rel, TmpSuffix) {
+			if time.Since(walkInfo.ModTime()) > staleTmpAge {
+				_ = os.Remove(path)
+			}
 			return nil
 		}
 

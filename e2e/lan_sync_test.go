@@ -140,13 +140,16 @@ func TestConflictFlowOverHTTP(t *testing.T) {
 		t.Fatalf("expected conflict result, got %+v", syncResp.Results)
 	}
 
-	// Resolve keep-remote on A: A adopts B's version.
+	// Resolve keep-remote on A: A adopts B's version. The endpoint returns
+	// immediately and applies in the background, so poll for the outcome.
 	a.API(http.MethodPost, "/api/games/"+gameID+"/resolve-conflict", map[string]string{
 		"peerId": b.NodeID(), "resolution": "keep-remote",
 	}, nil)
 
-	if got := a.ReadSave("slot1.sav"); got != "B's version" {
-		t.Errorf("after keep-remote, A has %q, want B's version", got)
+	if !testutil.WaitFor(30*time.Second, func() bool {
+		return a.ReadSave("slot1.sav") == "B's version"
+	}) {
+		t.Errorf("after keep-remote, A has %q, want B's version", a.ReadSave("slot1.sav"))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestManifestUnmarshalsJSFractionalMtimes reproduces the exact payload
@@ -262,5 +263,121 @@ func TestTranslatePathToLocal_CustomRuleTakesPriority(t *testing.T) {
 	want := "/mnt/local/saves/game1"
 	if got != want {
 		t.Errorf("TranslatePathToLocal = %q, want %q", got, want)
+	}
+}
+
+func TestBuildManifest_ExcludesAndCleansTmpFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.sav"), []byte("data"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	freshTmp := filepath.Join(dir, "fresh.sav"+TmpSuffix)
+	staleTmp := filepath.Join(dir, "stale.sav"+TmpSuffix)
+	for _, p := range []string{freshTmp, staleTmp} {
+		if err := os.WriteFile(p, []byte("leftover"), 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(staleTmp, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := BuildManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Files) != 1 {
+		t.Errorf("manifest must contain only real.sav, got %v", m.Files)
+	}
+	if _, ok := m.Files["real.sav"]; !ok {
+		t.Error("real.sav missing from manifest")
+	}
+	// Fresh tmp (a patch might still own it) survives on disk but is
+	// excluded; stale tmp is garbage-collected.
+	if _, err := os.Stat(freshTmp); err != nil {
+		t.Error("fresh tmp file must not be deleted")
+	}
+	if _, err := os.Stat(staleTmp); !os.IsNotExist(err) {
+		t.Error("stale tmp file should have been garbage-collected")
+	}
+}
+
+func TestDangerousSyncRoot(t *testing.T) {
+	dangerous := []string{
+		`C:\`, `c:`, `D:\`,
+		`C:\Users`, `C:\Users\omarv`, `C:\Users\Siva Prakash`,
+		`C:\Users\omarv\AppData`, `C:\Users\omarv\AppData\Local`,
+		`C:\Users\omarv\AppData\Roaming`, `C:\Users\bob\AppData\LocalLow`,
+		`C:\Users\omarv\Documents`, `C:\Users\omarv\Desktop`, `C:\Users\omarv\Downloads`,
+		`C:\Users\omarv\Saved Games`,
+		`C:\Windows`, `C:\Windows\System32`,
+		`C:\Program Files`, `C:\ProgramData`,
+		`C:/Users/omarv`, // forward slashes must not bypass the guard
+		"/", "/home", "/home/omar", "/home/omar/.config", "/home/omar/.local/share",
+	}
+	for _, p := range dangerous {
+		if reason := DangerousSyncRoot(p); reason == "" {
+			t.Errorf("DangerousSyncRoot(%q) = safe, want dangerous", p)
+		}
+	}
+
+	safe := []string{
+		`C:\Users\omarv\Desktop\Synced Folder`,
+		`C:\Users\omarv\Documents\Steam\CODEX\1091500`,
+		`C:\Users\omarv\AppData\Roaming\Goldberg SteamEmu Saves\ANIMAL WELL`,
+		`C:\Users\Public\Documents\Steam\CODEX\264710`,
+		`C:\Users\omarv\Saved Games\CD Projekt Red\Cyberpunk 2077`,
+		`C:\Program Files\OldGame\saves`,
+		`D:\Games\Saves`,
+		"/home/omar/.local/share/Terraria",
+		"/home/omar/games/save",
+	}
+	for _, p := range safe {
+		if reason := DangerousSyncRoot(p); reason != "" {
+			t.Errorf("DangerousSyncRoot(%q) = %q, want safe", p, reason)
+		}
+	}
+}
+
+func TestPatchFile_RetriesLockedRename(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "game.exe")
+	if err := os.WriteFile(filePath, []byte("old build"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an AV scanner holding the file: the first two renames fail
+	// with a sharing-violation-style error, then it releases.
+	realRename := renameFile
+	failures := 0
+	renameFile = func(oldpath, newpath string) error {
+		if failures < 2 {
+			failures++
+			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: os.ErrPermission}
+		}
+		return realRename(oldpath, newpath)
+	}
+	defer func() { renameFile = realRename }()
+
+	data := []byte("new build bytes")
+	remoteEntry := FileEntry{
+		Size:      int64(len(data)),
+		BlockSize: defaultBlockSize,
+		Blocks:    []Block{{Index: 0, Hash: hashBytes(data), Length: len(data)}},
+		Hash:      hashBytes(data),
+	}
+	if err := PatchFile(filePath, remoteEntry, []BlockSource{{Index: 0, Data: data}}); err != nil {
+		t.Fatalf("PatchFile should survive transient rename failures: %v", err)
+	}
+	if failures != 2 {
+		t.Errorf("expected 2 simulated failures before success, got %d", failures)
+	}
+	got, _ := os.ReadFile(filePath)
+	if string(got) != string(data) {
+		t.Errorf("file content = %q, want %q", got, data)
+	}
+	if _, err := os.Stat(filePath + TmpSuffix); !os.IsNotExist(err) {
+		t.Error("tmp file must be gone after successful retry")
 	}
 }
