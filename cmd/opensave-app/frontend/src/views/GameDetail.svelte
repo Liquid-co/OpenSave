@@ -1,5 +1,5 @@
 <script>
-  import { games, navigate, toast, syncActivity } from '../lib/stores.js';
+  import { games, navigate, toast, syncActivity, askConfirm } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
 
   export let params = {};
@@ -69,8 +69,8 @@
       await api.post(`/api/games/${game.id}/snapshot`, { comment: snapshotComment });
       snapshotComment = '';
     });
-  const rollback = (snap) => {
-    if (!confirm(`Restore snapshot ${snap.id} over your current save? Your current state is snapshotted first, so this is reversible.`)) return;
+  const rollback = async (snap) => {
+    if (!(await askConfirm(`Restore snapshot ${snap.id} over your current save? Your current state is snapshotted first, so this is reversible.`, { title: 'Restore snapshot?', confirmText: 'Restore' }))) return;
     return run(`Restored ${snap.id}`, () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
   };
   const createBranch = () =>
@@ -90,15 +90,15 @@
     }
   }
 
-  const restoreFile = (relPath) => {
-    if (!confirm(`Restore "${relPath}" from ${browsing.snapshotId} over the current file?`)) return;
+  const restoreFile = async (relPath) => {
+    if (!(await askConfirm(`Restore "${relPath}" from ${browsing.snapshotId} over the current file?`, { title: 'Restore file?', confirmText: 'Restore' }))) return;
     return run(`Restored ${relPath}`, () =>
       api.post(`/api/games/${game.id}/snapshot/${browsing.snapshotId}/restore-file`, { relPath })
     );
   };
 
   async function untrack() {
-    if (!confirm(`Stop tracking "${game.name}"? Snapshot files stay on disk.`)) return;
+    if (!(await askConfirm(`Stop tracking "${game.name}"? Snapshot files stay on disk.`, { title: 'Stop tracking?', confirmText: 'Stop tracking', danger: true }))) return;
     await run('Stopped tracking', () => api.del(`/api/games/${game.id}`));
     navigate('home');
   }
@@ -136,8 +136,8 @@
 
   $: if (game && tab === 'cloud' && cloudSnaps === null && !cloudLoading) loadCloudSnaps();
 
-  const restoreCloud = (snap) => {
-    if (!confirm(`Download and restore cloud snapshot ${snap.snapshotId} over your current save?`)) return;
+  const restoreCloud = async (snap) => {
+    if (!(await askConfirm(`Download and restore cloud snapshot ${snap.snapshotId} over your current save?`, { title: 'Restore from cloud?', confirmText: 'Download & restore' }))) return;
     return run('Restored from cloud', async () => {
       await api.post(`/api/cloud/restore/${game.id}`, { fileName: snap.name });
     });

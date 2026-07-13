@@ -1,5 +1,5 @@
 <script>
-  import { gameList, toast, cloudAuthEvent } from '../lib/stores.js';
+  import { gameList, toast, cloudAuthEvent, askConfirm } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
   import { onMount, onDestroy } from 'svelte';
 
@@ -177,7 +177,7 @@
   const toggleGame = (id) => (openGame = openGame === id ? null : id);
 
   const restoreCloud = async (gameId, file) => {
-    if (!confirm(`Restore ${file.snapshotId} from the cloud over your current save?`)) return;
+    if (!(await askConfirm(`Restore ${file.snapshotId} from the cloud over your current save?`, { title: 'Restore from cloud?', confirmText: 'Restore' }))) return;
     busy = true;
     try {
       await api.post(`/api/cloud/restore/${gameId}`, { fileName: file.name });

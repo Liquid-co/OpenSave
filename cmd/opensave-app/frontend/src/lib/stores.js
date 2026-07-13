@@ -26,6 +26,28 @@ export function navigate(name, params = {}) {
   view.set({ name, params });
 }
 
+// In-app confirmation dialog (replaces window.confirm, which renders as
+// the bare WebView2 browser popup — jarringly non-native to the app).
+// Usage: if (await askConfirm('Unpair "Laptop"?', { danger: true })) { … }
+export const confirmRequest = writable(null); // {title, message, confirmText, cancelText, danger, resolve}
+export function askConfirm(message, opts = {}) {
+  return new Promise((resolve) => {
+    confirmRequest.set({
+      title: opts.title ?? 'Are you sure?',
+      message,
+      confirmText: opts.confirmText ?? 'Confirm',
+      cancelText: opts.cancelText ?? 'Cancel',
+      danger: opts.danger ?? false,
+      resolve
+    });
+  });
+}
+export function answerConfirm(result) {
+  const req = get(confirmRequest);
+  confirmRequest.set(null);
+  req?.resolve(result);
+}
+
 let toastId = 0;
 export function toast(message, kind = 'info') {
   const id = ++toastId;

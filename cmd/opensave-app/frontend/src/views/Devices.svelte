@@ -1,5 +1,5 @@
 <script>
-  import { peers, discoveredPeers, wanRoom, toast } from '../lib/stores.js';
+  import { peers, discoveredPeers, wanRoom, toast, askConfirm } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import InternetSync from './InternetSync.svelte';
 
@@ -33,8 +33,8 @@
     run(() => api.post('/api/peers/pair', { address: d.address, port: d.port }), `Pairing request sent to ${d.deviceName}`);
   const pairManual = () =>
     run(() => api.post('/api/peers/pair', { address: manualIp, port: Number(manualPort) }), 'Pairing request sent');
-  const unpair = (peer) => {
-    if (!confirm(`Unpair "${peer.name}"?`)) return;
+  const unpair = async (peer) => {
+    if (!(await askConfirm(`Unpair "${peer.name}"? Their games stay on both devices; syncing between you stops.`, { title: 'Unpair device?', confirmText: 'Unpair', danger: true }))) return;
     run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
   };
 
