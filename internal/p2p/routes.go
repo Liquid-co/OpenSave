@@ -188,6 +188,10 @@ func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Same machine, fresh identity (reinstall/reset) — drop the ghost entry.
+	if removed, _ := e.Store.PrunePeersAtAddress(ip, body.Port, body.PeerID); len(removed) > 0 {
+		e.Log("info", fmt.Sprintf("removed stale pairing %v — same device re-paired with a new identity", removed))
+	}
 
 	e.Log("success", fmt.Sprintf("pairing confirmed with %q (%s:%d)", body.DeviceName, ip, body.Port))
 	e.notifyPeerUpdate()

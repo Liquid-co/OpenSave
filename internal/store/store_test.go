@@ -1,6 +1,8 @@
 package store
 
 import (
+	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 )
@@ -199,5 +201,79 @@ func TestPeerPairingAndSyncStateLifecycle(t *testing.T) {
 	}
 	if len(files) != 0 || len(dirs) != 0 {
 		t.Error("expected sync state to be cleared after unpair")
+	}
+}
+
+func TestPeerLastSyncedWireShape(t *testing.T) {
+	s := openTestStore(t)
+	p := Peer{ID: "peer-1", Name: "Laptop", Address: "10.0.0.2", Port: 8383, Status: "online"}
+	if err := s.UpsertPeer(p); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsynced peer serializes lastSynced as null (not {String,Valid} —
+	// that object rendered as "Invalid Date" in the dashboard).
+	got, _ := s.GetPeer("peer-1")
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"lastSynced":null`)) {
+		t.Errorf("unsynced peer JSON = %s, want lastSynced:null", raw)
+	}
+
+	if err := s.UpdatePeerLastSynced("peer-1", "2026-07-14T10:00:00.000Z"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetPeer("peer-1")
+	raw, _ = json.Marshal(got)
+	if !bytes.Contains(raw, []byte(`"lastSynced":"2026-07-14T10:00:00.000Z"`)) {
+		t.Errorf("synced peer JSON = %s, want plain lastSynced string", raw)
+	}
+}
+
+func TestPrunePeersAtAddress(t *testing.T) {
+	s := openTestStore(t)
+	// Old identity of the machine at 10.0.0.2 (pre-reinstall)...
+	if err := s.UpsertPeer(Peer{ID: "old-id", Name: "LAPTOP-OLD", Address: "10.0.0.2", Port: 8383, Status: "offline"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSyncState("game-1", "old-id", []string{"a.sav"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// ...and an unrelated peer elsewhere.
+	if err := s.UpsertPeer(Peer{ID: "other", Name: "Deck", Address: "10.0.0.9", Port: 8383, Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	// The machine re-pairs under a fresh identity.
+	if err := s.UpsertPeer(Peer{ID: "new-id", Name: "LAPTOP-NEW", Address: "10.0.0.2", Port: 8383, Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := s.PrunePeersAtAddress("10.0.0.2", 8383, "new-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || removed[0] != "LAPTOP-OLD" {
+		t.Fatalf("removed = %v, want [LAPTOP-OLD]", removed)
+	}
+	if _, err := s.GetPeer("old-id"); err == nil {
+		t.Error("ghost peer should be gone")
+	}
+	if _, err := s.GetPeer("new-id"); err != nil {
+		t.Error("new identity must survive")
+	}
+	if _, err := s.GetPeer("other"); err != nil {
+		t.Error("unrelated peer must survive")
+	}
+	if files, _, _ := s.GetSyncState("game-1", "old-id"); len(files) != 0 {
+		t.Error("ghost peer's sync lineage should be gone")
+	}
+
+	// "relay" is every WAN peer's pseudo-address — never prune on it.
+	_ = s.UpsertPeer(Peer{ID: "wan-a", Name: "A", Address: "relay", Port: 1, Status: "online"})
+	_ = s.UpsertPeer(Peer{ID: "wan-b", Name: "B", Address: "relay", Port: 1, Status: "online"})
+	if removed, _ := s.PrunePeersAtAddress("relay", 1, "wan-a"); len(removed) != 0 {
+		t.Errorf("must never prune on the relay pseudo-address, removed %v", removed)
 	}
 }

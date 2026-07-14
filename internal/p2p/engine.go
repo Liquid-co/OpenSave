@@ -478,6 +478,10 @@ func (e *Engine) ApprovePairing(ctx context.Context, peerID string) error {
 	}); err != nil {
 		return err
 	}
+	// Same machine, fresh identity (reinstall/reset) — drop the ghost entry.
+	if removed, _ := e.Store.PrunePeersAtAddress(req.Address, req.Port, req.PeerID); len(removed) > 0 {
+		e.Log("info", fmt.Sprintf("removed stale pairing %v — same device re-paired with a new identity", removed))
+	}
 
 	confirmBody := map[string]any{
 		"peerId":     settings.NodeID,
