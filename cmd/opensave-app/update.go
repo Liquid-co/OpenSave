@@ -64,10 +64,20 @@ func (a *App) CheckForUpdate() map[string]any {
 	}
 
 	// A directly-downloadable .exe asset enables one-click in-app install;
-	// without one the UI falls back to opening the release page.
+	// without one the UI falls back to opening the release page. Releases
+	// carry several executables (NSIS installer, CLI, relay) — only the
+	// portable app binary may ever be swapped in over the running app.
 	assetURL := ""
 	for _, asset := range rel.Assets {
-		if strings.HasSuffix(strings.ToLower(asset.Name), ".exe") {
+		name := strings.ToLower(asset.Name)
+		if !strings.HasSuffix(name, ".exe") {
+			continue
+		}
+		if strings.Contains(name, "installer") || strings.Contains(name, "setup") ||
+			strings.Contains(name, "cli") || strings.Contains(name, "relay") {
+			continue
+		}
+		if name == "opensave.exe" {
 			assetURL = asset.BrowserDownloadURL
 			break
 		}
