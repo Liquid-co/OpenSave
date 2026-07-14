@@ -46,6 +46,18 @@ var popularSteamGames = map[string]string{
 	"2280":    "Doom",
 	"379720":  "DOOM (2016)",
 	"782330":  "DOOM Eternal",
+	"2358720": "Black Myth: Wukong",
+	"461040":  "PICO PARK:Classic Edition",
+	"1509960": "PICO PARK",
+	"2644470": "PICO PARK 2",
+	"367520":  "Hollow Knight",
+	"264710":  "Subnautica",
+	"1326470": "Sons Of The Forest",
+	"242760":  "The Forest",
+	"1229490": "ULTRAKILL",
+	"813230":  "ANIMAL WELL",
+	"3241660": "R.E.P.O.",
+	"1533420": "Lethal Company",
 }
 
 // extraNameAliases are additional lowercase-name -> AppID matches beyond
@@ -63,6 +75,11 @@ var extraNameAliases = map[string]string{
 	"stardew valley":         "413150",
 	"fallout 4":              "377160",
 	"red dead redemption 2":  "1174180",
+	"black myth":             "2358720",
+	"wukong":                 "2358720",
+	"b1":                     "2358720", // Black Myth: Wukong's UE project codename
+	"pico park":              "1509960",
+	"hollow knight":          "367520",
 }
 
 // nameToAppIDIndex builds the lowercase-name -> AppID lookup used to infer
@@ -97,6 +114,12 @@ func inferAppIDFromName(name string, index map[string]string) string {
 		return appID
 	}
 	for indexName, appID := range index {
+		// Containment only for reasonably long keys — short aliases like
+		// "b1" (Wukong's codename) must only ever match exactly, or they'd
+		// swallow unrelated names.
+		if len(indexName) < 5 || len(key) < 5 {
+			continue
+		}
 		if strings.Contains(key, indexName) || strings.Contains(indexName, key) {
 			return appID
 		}

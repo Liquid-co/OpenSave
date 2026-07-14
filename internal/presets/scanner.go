@@ -20,6 +20,12 @@ type Scanner struct {
 	// when non-nil (tests use this to stay hermetic on machines that have
 	// a real Steam library).
 	SteamUserdataPaths []string
+	// SteamRoots overrides Steam install-root detection (registry +
+	// well-known paths) when non-nil. Tests only.
+	SteamRoots []string
+	// LocalLowDir overrides %USERPROFILE%\AppData\LocalLow when non-empty.
+	// Tests only.
+	LocalLowDir string
 }
 
 // NewScanner builds a production Scanner using the Steam Store API
@@ -69,8 +75,55 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 		}
 	}
 
-	// 3. Steam userdata folders (Windows + Linux/SteamOS/Flatpak).
-	discovered = append(discovered, sc.scanSteamUserdata(dedupSet(discovered))...)
+	// 3. Steam libraries: follow libraryfolders.vdf to every library drive
+	// and parse appmanifests — exact installed-game names + AppIDs, plus
+	// detection of games whose Steam library isn't on C:.
+	libraries := sc.steamLibraryPaths()
+	apps := steamInstalledApps(libraries)
+	appNames := make(map[string]string, len(apps))
+	for _, a := range apps {
+		appNames[a.AppID] = a.Name
+	}
+
+	// 3a. Steam userdata folders (Windows + Linux/SteamOS/Flatpak).
+	discovered = append(discovered, sc.scanSteamUserdata(dedupSet(discovered), appNames)...)
+
+	// 3b. Saves kept inside install folders (the UE <Project>/Saved/
+	// SaveGames convention): installed Steam games first, then any game
+	// folder sitting next to steamapps on a library drive — which is where
+	// portable/cracked installs like "D:\Games\Black Myth - Wukong" live.
+	seen := dedupSet(discovered)
+	for _, a := range apps {
+		p := ueSavePathUnder(a.InstallDir)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		discovered = append(discovered, DiscoveredSave{
+			ID: "steamlib-" + a.AppID, Name: a.Name, Type: "game",
+			SavePath: p, AppID: a.AppID,
+		})
+	}
+	for _, lib := range libraries {
+		for _, sub := range listSubdirs(lib) {
+			if libSystemDirs[toLowerASCII(sub)] {
+				continue
+			}
+			p := ueSavePathUnder(filepath.Join(lib, sub))
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			discovered = append(discovered, DiscoveredSave{
+				ID: "installdir-" + sanitizeID(sub), Name: sub, Type: "game",
+				SavePath: p,
+			})
+		}
+	}
+
+	// 3c. Unity saves: %USERPROFILE%/AppData/LocalLow/<Company>/<Game> —
+	// PICO PARK, Hollow Knight, Cuphead, and most Unity titles live here.
+	discovered = append(discovered, sc.scanLocalLow()...)
 
 	// 4. Epic "Saved Games" and GOG "My Games" wrapper folders.
 	for _, w := range []struct{ id, name, path string }{
@@ -139,18 +192,28 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 	return discovered
 }
 
+// steamUserdataSystemIDs are userdata subfolders that are Steam client
+// plumbing, not game saves.
+var steamUserdataSystemIDs = map[string]bool{
+	"7": true, "760": true, "241100": true, // client config, screenshots, controller configs
+}
+
+// libSystemDirs are library-root subfolders that are Steam's own, never a
+// game install.
+var libSystemDirs = map[string]bool{
+	"steamapps": true, "steam": true, "userdata": true, "config": true,
+	"appcache": true, "logs": true, "dumps": true, "bin": true,
+	"package": true, "public": true, "clientui": true, "controller_base": true,
+}
+
 // scanSteamUserdata walks Steam's userdata/<user>/<appId> layout across
-// all known install locations.
-func (sc *Scanner) scanSteamUserdata(seen map[string]bool) []DiscoveredSave {
+// all known install locations, naming entries from installed-game
+// manifests when possible.
+func (sc *Scanner) scanSteamUserdata(seen map[string]bool, appNames map[string]string) []DiscoveredSave {
 	steamPaths := sc.SteamUserdataPaths
 	if steamPaths == nil {
-		home, _ := os.UserHomeDir()
-		steamPaths = []string{
-			`C:\Program Files (x86)\Steam\userdata`,
-			`C:\Program Files\Steam\userdata`,
-			filepath.Join(home, ".local/share/Steam/userdata"),
-			filepath.Join(home, ".steam/steam/userdata"),
-			filepath.Join(home, ".var/app/com.valvesoftware.Steam/.local/share/Steam/userdata"),
+		for _, root := range sc.steamRootDirs() {
+			steamPaths = append(steamPaths, filepath.Join(root, "userdata"))
 		}
 	}
 
@@ -162,6 +225,11 @@ func (sc *Scanner) scanSteamUserdata(seen map[string]bool) []DiscoveredSave {
 		for _, user := range listSubdirs(steamPath) {
 			userPath := filepath.Join(steamPath, user)
 			for _, game := range listSubdirs(userPath) {
+				// Game dirs are always numeric AppIDs; named siblings
+				// (config, ugc, gamerecordings, …) are client plumbing.
+				if !isAppID(game) || steamUserdataSystemIDs[game] {
+					continue
+				}
 				gamePath := filepath.Join(userPath, game)
 				normalized, err := filepath.Abs(gamePath)
 				if err != nil {
@@ -181,11 +249,72 @@ func (sc *Scanner) scanSteamUserdata(seen map[string]bool) []DiscoveredSave {
 				if isAppID(game) {
 					d.AppID = game
 				}
+				if name := appNames[game]; name != "" {
+					d.Name = name
+				}
 				found = append(found, d)
 			}
 		}
 	}
 	return found
+}
+
+// localLowVendorSkip filters LocalLow companies that are never games.
+var localLowVendorSkip = map[string]bool{
+	"microsoft": true, "adobe": true, "nvidia": true, "nvidia corporation": true,
+	"intel": true, "intel corporation": true, "amd": true, "oracle": true,
+	"sun": true, "temp": true, "google": true, "discord": true, "mozilla": true,
+	"unity": true, "unitytechnologies": true, "unity technologies": true,
+	"epic games": true, "valve": true, "acm": true,
+}
+
+// scanLocalLow discovers Unity's standard save convention:
+// %USERPROFILE%/AppData/LocalLow/<Company>/<Game>.
+func (sc *Scanner) scanLocalLow() []DiscoveredSave {
+	root := sc.LocalLowDir
+	if root == "" {
+		home, _ := os.UserHomeDir()
+		root = filepath.Join(home, "AppData", "LocalLow")
+	}
+	if !dirExists(root) {
+		return nil
+	}
+
+	var found []DiscoveredSave
+	for _, company := range listSubdirs(root) {
+		if localLowVendorSkip[toLowerASCII(company)] || looksLikeHexHash(company) {
+			continue
+		}
+		companyPath := filepath.Join(root, company)
+		for _, game := range listSubdirs(companyPath) {
+			gamePath := filepath.Join(companyPath, game)
+			if !dirNonEmpty(gamePath) {
+				continue
+			}
+			found = append(found, DiscoveredSave{
+				ID:       "unity-" + sanitizeID(company) + "-" + sanitizeID(game),
+				Name:     game,
+				Type:     "game",
+				SavePath: gamePath,
+			})
+		}
+	}
+	return found
+}
+
+// looksLikeHexHash reports cache dirs named as long hex digests (browser /
+// shader caches that sometimes land in LocalLow).
+func looksLikeHexHash(s string) bool {
+	if len(s) < 32 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveNames upgrades "Game ID: 12345"-style names to real titles:
