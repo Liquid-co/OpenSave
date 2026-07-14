@@ -102,6 +102,7 @@ export const native = {
   appInfo: () => app()?.AppInfo?.() ?? Promise.resolve(FALLBACK_INFO),
   checkUpdate: () => app()?.CheckForUpdate?.() ?? Promise.resolve({ available: false }),
   changelog: () => app()?.Changelog?.() ?? Promise.resolve(''),
+  updateGreeting: () => app()?.UpdateGreeting?.() ?? Promise.resolve({}),
   installFromPeer: (peerId) => app()?.InstallUpdateFromPeer?.(peerId) ?? Promise.resolve('not available in browser preview'),
   installFromUrl: (url) => app()?.InstallUpdateFromURL?.(url) ?? Promise.resolve('not available in browser preview'),
   selectDirectory: (title) => app()?.SelectDirectory(title ?? '') ?? Promise.resolve(''),

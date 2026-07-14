@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/opensave/opensave/internal/version"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -217,6 +220,31 @@ func downloadToFile(url, path string, progress func(done, total int64)) error {
 		progress(done, total)
 	}
 	return nil
+}
+
+// stampVersionFile records the running build's identity in the data dir
+// and returns the previously recorded version when it differs — i.e. this
+// is the first run after an update. Returns "" on the very first run or
+// when the build hasn't changed.
+func stampVersionFile(homeDir string) (updatedFrom string) {
+	path := filepath.Join(homeDir, "last-version")
+	stamp := version.Version + "|" + strconv.FormatInt(version.BuildTimeMs(), 10)
+
+	prev := ""
+	if raw, err := os.ReadFile(path); err == nil {
+		prev = strings.TrimSpace(string(raw))
+	}
+	if prev == stamp {
+		return ""
+	}
+	_ = os.WriteFile(path, []byte(stamp), 0o666)
+	if prev == "" {
+		return "" // first run ever — nothing to announce
+	}
+	if i := strings.IndexByte(prev, '|'); i >= 0 {
+		prev = prev[:i]
+	}
+	return prev
 }
 
 // cleanupReplacedBinary runs at startup. After an update, the previous

@@ -46,6 +46,10 @@ export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }
 
+export function UpdateGreeting() {
+  return window['go']['main']['App']['UpdateGreeting']();
+}
+
 export function WindowClose() {
   return window['go']['main']['App']['WindowClose']();
 }

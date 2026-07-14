@@ -16,6 +16,8 @@ export const toasts = writable([]);
 export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} from the OAuth callback
 export const conflictResolution = writable(null); // {gameId, resolution, branchName?, error?} when a background resolution finishes
 export const appUpdate = writable(null); // {state: downloading|installing|restarting|error, percentage, error} during self-update
+export const showAbout = writable(false); // About dialog visibility (shared so any surface can open it)
+export const aboutChangelogOpen = writable(false); // open About with the changelog pre-expanded
 
 export const gameList = derived(games, ($games) =>
   Object.values($games).sort((a, b) => a.name.localeCompare(b.name))

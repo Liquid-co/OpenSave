@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { native } from '../lib/api.js';
+  import { aboutChangelogOpen } from '../lib/stores.js';
   import logoUrl from '../assets/logo.svg';
 
   export let onClose = () => {};
@@ -9,6 +10,12 @@
   let changelog = '';
   let showChangelog = false;
   onMount(async () => {
+    // Opened from the "updated — what's new?" banner: expand the
+    // changelog immediately (one-shot flag).
+    if ($aboutChangelogOpen) {
+      showChangelog = true;
+      aboutChangelogOpen.set(false);
+    }
     try {
       info = await native.appInfo();
     } catch {

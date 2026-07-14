@@ -23,12 +23,13 @@ var AppVersion = version.Version
 // App is the Wails-bound bridge between the webview frontend and the
 // embedded daemon. Methods on it are callable from JS.
 type App struct {
-	ctx        context.Context
-	daemon     *daemon.Daemon
-	server     *api.Server
-	addr       string
-	bootErr    string
-	reallyQuit bool
+	ctx         context.Context
+	daemon      *daemon.Daemon
+	server      *api.Server
+	addr        string
+	bootErr     string
+	reallyQuit  bool
+	updatedFrom string // previous version when this run is the first on a new build
 }
 
 // NewApp creates the App shell (daemon boots in startup).
@@ -51,6 +52,14 @@ func (a *App) startup(ctx context.Context) {
 		a.bootErr = err.Error()
 		d.Stop()
 		return
+	}
+
+	// Detect "first run after an update" so the UI can greet with the
+	// changelog — this is how users see what's new after a peer-to-peer
+	// update, which carries no release notes of its own.
+	a.updatedFrom = stampVersionFile(d.Paths.HomeDir)
+	if a.updatedFrom != "" {
+		d.Log.Log("success", "OpenSave updated: "+a.updatedFrom+" → "+AppVersion)
 	}
 
 	settings, err := d.Store.GetSettings()
@@ -139,6 +148,12 @@ func (a *App) AppInfo() map[string]string {
 // view.
 func (a *App) Changelog() string {
 	return opensave.Changelog
+}
+
+// UpdateGreeting reports the version this install was just updated FROM
+// ("" normally) so the UI can announce the update and offer the changelog.
+func (a *App) UpdateGreeting() map[string]string {
+	return map[string]string{"updatedFrom": a.updatedFrom}
 }
 
 // DaemonAddr returns the local API address (host:port) or an error string

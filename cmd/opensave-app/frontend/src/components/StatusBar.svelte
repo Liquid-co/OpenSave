@@ -1,11 +1,10 @@
 <script>
   import { onMount } from 'svelte';
-  import { wsConnected, syncActivity, wanRoom, peers } from '../lib/stores.js';
+  import { wsConnected, syncActivity, wanRoom, peers, showAbout } from '../lib/stores.js';
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
 
   let version = '2.0.0';
-  let showAbout = false;
   onMount(async () => {
     try {
       const info = await native.appInfo();
@@ -20,8 +19,8 @@
     : 'No syncs in progress';
 </script>
 
-{#if showAbout}
-  <AboutModal onClose={() => (showAbout = false)} />
+{#if $showAbout}
+  <AboutModal onClose={() => showAbout.set(false)} />
 {/if}
 
 <footer>
@@ -37,7 +36,7 @@
       <span class="wan">relay: {$wanRoom.roomCode}</span>
     {/if}
     <span>{onlinePeers} peer{onlinePeers === 1 ? '' : 's'} online</span>
-    <button class="ver" on:click={() => (showAbout = true)} title="About OpenSave">OpenSave v{version}</button>
+    <button class="ver" on:click={() => showAbout.set(true)} title="About OpenSave">OpenSave v{version}</button>
   </div>
 </footer>
 

@@ -23,6 +23,8 @@ export function SelectSaveFile(arg1:string,arg2:string):Promise<string>;
 
 export function ShowWindow():Promise<void>;
 
+export function UpdateGreeting():Promise<Record<string, string>>;
+
 export function WindowClose():Promise<void>;
 
 export function WindowMinimise():Promise<void>;

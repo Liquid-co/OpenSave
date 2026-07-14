@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, aboutChangelogOpen } from './lib/stores.js';
 
   import logoUrl from './assets/logo.svg';
   import TitleBar from './components/TitleBar.svelte';
@@ -49,13 +49,35 @@
     retrying = false;
   }
 
+  let updatedTo = ''; // set when this launch is the first on a new build
+
+  function openWhatsNew() {
+    aboutChangelogOpen.set(true);
+    showAbout.set(true);
+    updatedTo = '';
+  }
+
   onMount(async () => {
     await boot();
-    // Non-blocking: never let an update check affect startup.
+    // First launch after an update (including peer-to-peer, which carries
+    // no release notes): announce it and offer the embedded changelog.
     try {
-      const res = await native.checkUpdate();
-      if (res?.available) update = res;
+      const g = await native.updateGreeting();
+      if (g?.updatedFrom) {
+        const info = await native.appInfo();
+        updatedTo = info?.version ?? '';
+      }
     } catch {}
+    // Non-blocking: never let an update check affect startup. Re-check
+    // every 6h too — the app lives in the tray for weeks at a time.
+    const check = async () => {
+      try {
+        const res = await native.checkUpdate();
+        if (res?.available) update = res;
+      } catch {}
+    };
+    await check();
+    setInterval(check, 6 * 3600 * 1000);
   });
 
   const views = {
@@ -108,6 +130,14 @@
     {#if showNotes && update.notes}
       <div class="update-notes">{update.notes}</div>
     {/if}
+  {:else if updatedTo}
+    <div class="update-banner">
+      <span>🎉 OpenSave was updated to v{updatedTo}.</span>
+      <div class="update-actions">
+        <button class="link" on:click={openWhatsNew}>What's new</button>
+        <button class="dismiss" on:click={() => (updatedTo = '')} aria-label="Dismiss">✕</button>
+      </div>
+    </div>
   {/if}
   <div class="body">
     {#if bootError}
