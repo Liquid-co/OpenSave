@@ -6,13 +6,21 @@
   export let onClose = () => {};
 
   let info = null;
+  let changelog = '';
+  let showChangelog = false;
   onMount(async () => {
     try {
       info = await native.appInfo();
     } catch {
       info = { name: 'OpenSave', version: '2.0.0' };
     }
+    try {
+      changelog = await native.changelog();
+    } catch {}
   });
+
+  $: buildLabel =
+    info?.buildTime && info.buildTime !== '0' ? new Date(Number(info.buildTime)).toLocaleString() : '';
 
   function onKeydown(e) {
     if (e.key === 'Escape') onClose();
@@ -26,13 +34,24 @@
     <button class="x" on:click={onClose} title="Close" aria-label="Close">✕</button>
     <img class="logo" src={logoUrl} alt="" />
     <h2>{info?.name ?? 'OpenSave'}</h2>
-    <div class="ver">Version {info?.version ?? '—'}</div>
+    <div class="ver">
+      Version {info?.version ?? '—'}{#if buildLabel}<span class="build"> · built {buildLabel}</span>{/if}
+    </div>
     <p class="tagline">{info?.tagline ?? ''}</p>
 
     <div class="meta">
       <div><span>License</span> {info?.license ?? 'MIT'}</div>
       <div><span>Built with</span> {info?.tech ?? 'Go + Wails'}</div>
     </div>
+
+    {#if changelog}
+      <button class="changelog-toggle" on:click={() => (showChangelog = !showChangelog)}>
+        {showChangelog ? '▾ Hide' : '▸ What’s new'}
+      </button>
+      {#if showChangelog}
+        <div class="changelog">{changelog}</div>
+      {/if}
+    {/if}
 
     <p class="copy">{info?.copyright ?? ''}</p>
     <p class="note">Wire-compatible with the original Node.js/Electron OpenSave — Go and JS devices sync together.</p>
@@ -112,6 +131,34 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 2px;
+  }
+  .build {
+    color: var(--text-faint);
+    font-weight: 400;
+    font-size: 0.78rem;
+  }
+  .changelog-toggle {
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.84rem;
+    padding: 4px 8px;
+    margin-bottom: 8px;
+  }
+  .changelog {
+    max-height: 220px;
+    overflow-y: auto;
+    text-align: left;
+    white-space: pre-wrap;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+    margin-bottom: 12px;
   }
   .copy {
     font-size: 0.78rem;

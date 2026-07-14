@@ -4,18 +4,21 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
+	opensave "github.com/opensave/opensave"
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/daemon"
+	"github.com/opensave/opensave/internal/version"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AppVersion is the single source of truth for the app version shown in
-// the UI. Keep it in sync with wails.json's info.productVersion (which
-// drives the Windows executable/installer metadata).
-const AppVersion = "2.0.0"
+// AppVersion mirrors internal/version.Version — the single source of
+// truth for the app version. Keep wails.json's info.productVersion (which
+// drives the Windows executable/installer metadata) in sync with it.
+var AppVersion = version.Version
 
 // App is the Wails-bound bridge between the webview frontend and the
 // embedded daemon. Methods on it are callable from JS.
@@ -124,11 +127,18 @@ func (a *App) AppInfo() map[string]string {
 	return map[string]string{
 		"name":      "OpenSave",
 		"version":   AppVersion,
+		"buildTime": strconv.FormatInt(version.BuildTimeMs(), 10),
 		"tagline":   "Peer-to-peer game save sync",
 		"license":   "MIT",
 		"copyright": "© 2026 Siva Prakash & OpenSave contributors",
 		"tech":      "Go + Wails",
 	}
+}
+
+// Changelog returns the embedded CHANGELOG.md for the in-app "What's new"
+// view.
+func (a *App) Changelog() string {
+	return opensave.Changelog
 }
 
 // DaemonAddr returns the local API address (host:port) or an error string

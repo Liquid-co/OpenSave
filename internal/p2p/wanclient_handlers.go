@@ -15,6 +15,7 @@ import (
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/version"
 )
 
 // handleMessage dispatches one relay message, mirroring
@@ -52,6 +53,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 				Type: "hello-reply", To: msg.From, From: localID,
 				DeviceName: settings.DeviceName, DeviceType: settings.DeviceType, Port: settings.Port,
 				Games: w.gamesStateJSON(),
+				AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
 			})
 		}
 
@@ -121,6 +123,9 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 // trackPresence flips paired peers online (routing them via relay) and
 // refreshes discovered timestamps.
 func (w *WanClient) trackPresence(msg RelayMessage) {
+	if msg.AppVersion != "" {
+		w.engine.recordPeerBuild(msg.From, msg.AppVersion, msg.BuildTimeMs)
+	}
 	peer, err := w.engine.Store.GetPeer(msg.From)
 	if err == nil {
 		wasOffline := peer.Status != "online"
@@ -269,6 +274,12 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 
 	case strings.HasPrefix(route, "/snapshot/"):
 		return w.serveSnapshotDownload(route)
+
+	case strings.HasPrefix(route, "/app-binary"):
+		if !isPaired {
+			return 401, map[string]string{"error": "Unauthorized: Requesting peer is not paired."}
+		}
+		return serveAppBinaryChunk(route)
 
 	case strings.HasPrefix(route, "/sync/trigger/"):
 		gameID := route[strings.LastIndex(route, "/")+1:]

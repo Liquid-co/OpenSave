@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast } from './lib/stores.js';
 
   import logoUrl from './assets/logo.svg';
   import TitleBar from './components/TitleBar.svelte';
@@ -22,7 +22,19 @@
   let ready = false;
   let bootError = '';
   let retrying = false;
-  let update = null; // {available, latest, url} when a newer release exists
+  let update = null; // {available, latest, url, assetUrl?, notes?} when a newer release exists
+  let showNotes = false;
+  let installStarted = false;
+
+  async function installRelease() {
+    if (!update?.assetUrl || installStarted) return;
+    installStarted = true;
+    const err = await native.installFromUrl(update.assetUrl);
+    if (err) {
+      toast(err, 'error');
+      installStarted = false;
+    }
+  }
 
   async function boot() {
     bootError = '';
@@ -61,14 +73,41 @@
 
 <div class="shell">
   <TitleBar />
-  {#if update}
+  {#if $appUpdate && $appUpdate.state !== 'error'}
+    <div class="update-banner installing">
+      <span>
+        {#if $appUpdate.state === 'downloading'}
+          ⬇️ Updating OpenSave — downloading {$appUpdate.percentage ?? 0}%…
+        {:else if $appUpdate.state === 'installing'}
+          🔧 Installing update…
+        {:else}
+          🔄 Restarting with the new version…
+        {/if}
+        <em>The app restarts itself when done — your games keep syncing.</em>
+      </span>
+    </div>
+  {:else if update}
     <div class="update-banner">
       <span>🎉 OpenSave {update.latest} is available — you're on {update.current}.</span>
       <div class="update-actions">
-        <button class="link" on:click={() => native.openExternal(update.url)}>Download</button>
+        {#if update.notes}
+          <button class="dismiss" on:click={() => (showNotes = !showNotes)}>
+            {showNotes ? 'Hide notes' : "What's new"}
+          </button>
+        {/if}
+        {#if update.assetUrl}
+          <button class="link" disabled={installStarted} on:click={installRelease}>
+            {installStarted ? 'Starting…' : 'Install & restart'}
+          </button>
+        {:else}
+          <button class="link" on:click={() => native.openExternal(update.url)}>Download</button>
+        {/if}
         <button class="dismiss" on:click={() => (update = null)} aria-label="Dismiss">✕</button>
       </div>
     </div>
+    {#if showNotes && update.notes}
+      <div class="update-notes">{update.notes}</div>
+    {/if}
   {/if}
   <div class="body">
     {#if bootError}
@@ -188,6 +227,23 @@
   .update-banner .dismiss:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  .update-banner.installing em {
+    color: var(--text-dim);
+    font-style: normal;
+    margin-left: 8px;
+    font-size: 0.8rem;
+  }
+  .update-notes {
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    padding: 10px 16px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    flex-shrink: 0;
   }
   .boot-logo {
     width: 72px;

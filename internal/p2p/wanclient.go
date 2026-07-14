@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/version"
 )
 
 const (
@@ -39,6 +40,8 @@ type RelayMessage struct {
 	PairedPeers []string        `json:"pairedPeers,omitempty"`
 	GameID      string          `json:"gameId,omitempty"`
 	EventType   string          `json:"eventType,omitempty"`
+	AppVersion  string          `json:"appVersion,omitempty"`
+	BuildTimeMs int64           `json:"buildTimeMs,omitempty"`
 	EventData   json.RawMessage `json:"data2,omitempty"` // unused; sync-event reuses Data
 }
 
@@ -174,6 +177,7 @@ func (w *WanClient) run(ctx context.Context, gen int, settings store.Settings) {
 		Type: "hello", From: w.localPeerID(),
 		DeviceName: settings.DeviceName, DeviceType: settings.DeviceType, Port: settings.Port,
 		Games: w.gamesStateJSON(), PairedPeers: pairedIDs,
+		AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
 	})
 	w.engine.notifyPeerUpdate()
 
@@ -194,6 +198,7 @@ func (w *WanClient) run(ctx context.Context, gen int, settings store.Settings) {
 					Type: "ping", From: w.localPeerID(),
 					DeviceName: s.DeviceName, DeviceType: s.DeviceType, Port: s.Port,
 					Games: w.gamesStateJSON(),
+					AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
 				})
 				w.expireStalePeers()
 			}

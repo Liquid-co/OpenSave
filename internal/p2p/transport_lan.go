@@ -123,21 +123,33 @@ func doJSON(req *http.Request, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// pingPeer probes a paired peer's /api/p2p/ping and reports reachability.
-func pingPeer(ctx context.Context, p store.Peer, fromNodeID string) bool {
+// pingPeer probes a paired peer's /api/p2p/ping. Reports reachability plus
+// the peer's app build info (for the peer-update flow) when present.
+func pingPeer(ctx context.Context, p store.Peer, fromNodeID string) (pingInfo, bool) {
 	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	url := fmt.Sprintf("http://%s:%d/api/p2p/ping?from=%s", p.Address, p.Port, url.QueryEscape(fromNodeID))
 	req, err := http.NewRequestWithContext(pingCtx, http.MethodGet, url, nil)
 	if err != nil {
-		return false
+		return pingInfo{}, false
 	}
 	resp, err := lanClient.Do(req)
 	if err != nil {
-		return false
+		return pingInfo{}, false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		return pingInfo{}, false
+	}
+	var info pingInfo
+	_ = json.NewDecoder(resp.Body).Decode(&info)
+	return info, true
+}
+
+// pingInfo is the subset of the ping response the caller records.
+type pingInfo struct {
+	AppVersion  string `json:"appVersion"`
+	BuildTimeMs int64  `json:"buildTimeMs"`
 }
 
 func postHandshake(ctx context.Context, address string, port int, body map[string]any) error {

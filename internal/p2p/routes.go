@@ -15,6 +15,7 @@ import (
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/version"
 )
 
 // RegisterRoutes mounts the peer-to-peer protocol under /api/p2p on the
@@ -33,6 +34,7 @@ func (e *Engine) RegisterRoutes(r chi.Router) {
 		r.Post("/api/p2p/delete-file/{gameId}", e.handleDeleteFile)
 		r.Post("/api/p2p/sync-event/{gameId}", e.handleSyncEvent)
 		r.Get("/api/sync/trigger/{gameId}", e.handleSyncTrigger)
+		r.Get("/api/p2p/app-binary", e.handleAppBinary)
 	})
 }
 
@@ -117,11 +119,13 @@ func (e *Engine) handlePing(w http.ResponseWriter, r *http.Request) {
 		paired = err == nil
 	}
 	jsonOK(w, map[string]any{
-		"status":     "ok",
-		"paired":     paired,
-		"deviceName": settings.DeviceName,
-		"deviceType": settings.DeviceType,
-		"games":      e.LocalGamesState(),
+		"status":      "ok",
+		"paired":      paired,
+		"deviceName":  settings.DeviceName,
+		"deviceType":  settings.DeviceType,
+		"games":       e.LocalGamesState(),
+		"appVersion":  version.Version,
+		"buildTimeMs": version.BuildTimeMs(),
 	})
 }
 

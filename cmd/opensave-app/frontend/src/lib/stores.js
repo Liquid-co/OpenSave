@@ -15,6 +15,7 @@ export const syncActivity = writable({}); // gameId -> {state, peerName, percent
 export const toasts = writable([]);
 export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} from the OAuth callback
 export const conflictResolution = writable(null); // {gameId, resolution, branchName?, error?} when a background resolution finishes
+export const appUpdate = writable(null); // {state: downloading|installing|restarting|error, percentage, error} during self-update
 
 export const gameList = derived(games, ($games) =>
   Object.values($games).sort((a, b) => a.name.localeCompare(b.name))
@@ -144,6 +145,13 @@ export function applyMessage(msg) {
     }
     case 'cloud-auth':
       cloudAuthEvent.set(data ?? null);
+      break;
+    case 'app-update':
+      appUpdate.set(data ?? null);
+      if (data?.state === 'error') {
+        toast(`Update failed — ${data.error}. Nothing was changed; you're still on the current version.`, 'error');
+        setTimeout(() => appUpdate.set(null), 500);
+      }
       break;
   }
 }

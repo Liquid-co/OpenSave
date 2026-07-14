@@ -1,6 +1,6 @@
 <script>
-  import { peers, discoveredPeers, wanRoom, toast, askConfirm } from '../lib/stores.js';
-  import { api } from '../lib/api.js';
+  import { peers, discoveredPeers, wanRoom, appUpdate, toast, askConfirm } from '../lib/stores.js';
+  import { api, native } from '../lib/api.js';
   import InternetSync from './InternetSync.svelte';
 
   export let params = {};
@@ -38,6 +38,18 @@
     run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
   };
 
+  // Peer-to-peer app update: pull the newer build the peer is running and
+  // install it here — no manually copying the exe between machines.
+  const updateFromPeer = async (peer) => {
+    const ok = await askConfirm(
+      `${peer.name} is running a newer OpenSave build (${peer.appVersion}). Download it from ${peer.name} and update this device? OpenSave restarts itself when done.`,
+      { title: 'Update OpenSave?', confirmText: 'Update & restart' }
+    );
+    if (!ok) return;
+    const err = await native.installFromPeer(peer.id);
+    if (err) toast(err, 'error');
+  };
+
   const fmtTime = (t) => (t ? new Date(t).toLocaleString() : 'never');
 </script>
 
@@ -66,8 +78,14 @@
           <div class="peer-meta">
             {peer.address === 'relay' ? '🌐 internet relay' : `🖧 ${peer.address}:${peer.port}`}
             · last synced {fmtTime(peer.lastSynced)}
+            {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
           </div>
         </div>
+        {#if peer.hasNewerBuild && peer.status === 'online'}
+          <button class="btn small primary" disabled={busy || !!$appUpdate} on:click={() => updateFromPeer(peer)}>
+            ⬆ Update from this device
+          </button>
+        {/if}
         <button class="btn small danger" disabled={busy} on:click={() => unpair(peer)}>Unpair</button>
       </div>
     {/each}

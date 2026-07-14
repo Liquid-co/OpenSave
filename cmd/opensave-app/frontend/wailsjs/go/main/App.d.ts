@@ -3,9 +3,15 @@
 
 export function AppInfo():Promise<Record<string, string>>;
 
+export function Changelog():Promise<string>;
+
 export function CheckForUpdate():Promise<Record<string, any>>;
 
 export function DaemonAddr():Promise<Record<string, string>>;
+
+export function InstallUpdateFromPeer(arg1:string):Promise<string>;
+
+export function InstallUpdateFromURL(arg1:string):Promise<string>;
 
 export function OpenExternal(arg1:string):Promise<void>;
 

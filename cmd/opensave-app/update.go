@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/opensave/opensave/internal/version"
 )
 
 // updateRepo is the GitHub "owner/repo" whose releases are checked for a
@@ -40,6 +41,11 @@ func (a *App) CheckForUpdate() map[string]any {
 		TagName    string `json:"tag_name"`
 		HTMLURL    string `json:"html_url"`
 		Prerelease bool   `json:"prerelease"`
+		Body       string `json:"body"`
+		Assets     []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
 		return none
@@ -56,37 +62,31 @@ func (a *App) CheckForUpdate() map[string]any {
 	if url == "" {
 		url = "https://github.com/" + updateRepo + "/releases/latest"
 	}
+
+	// A directly-downloadable .exe asset enables one-click in-app install;
+	// without one the UI falls back to opening the release page.
+	assetURL := ""
+	for _, asset := range rel.Assets {
+		if strings.HasSuffix(strings.ToLower(asset.Name), ".exe") {
+			assetURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+
+	notes := rel.Body
+	if len(notes) > 4000 {
+		notes = notes[:4000] + "\n…"
+	}
 	return map[string]any{
 		"available": true,
 		"current":   AppVersion,
 		"latest":    latest,
 		"url":       url,
+		"assetUrl":  assetURL,
+		"notes":     notes,
 	}
 }
 
-// compareVersions returns -1, 0, or 1 comparing dotted numeric versions
-// (e.g. "2.1.0" vs "2.0.3"). Non-numeric or missing parts count as 0.
-func compareVersions(a, b string) int {
-	as := strings.Split(a, ".")
-	bs := strings.Split(b, ".")
-	n := len(as)
-	if len(bs) > n {
-		n = len(bs)
-	}
-	for i := 0; i < n; i++ {
-		ai, bi := 0, 0
-		if i < len(as) {
-			ai, _ = strconv.Atoi(strings.TrimSpace(as[i]))
-		}
-		if i < len(bs) {
-			bi, _ = strconv.Atoi(strings.TrimSpace(bs[i]))
-		}
-		if ai != bi {
-			if ai < bi {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
-}
+// compareVersions is kept as a thin alias so existing tests keep working;
+// the canonical implementation lives in internal/version.
+func compareVersions(a, b string) int { return version.Compare(a, b) }

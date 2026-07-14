@@ -66,6 +66,11 @@ type Engine struct {
 	// constant disk/CPU churn with the 20s retry loop pinging both ways.
 	hashCacheMu sync.Mutex
 	hashCache   map[string]cachedManifestHash
+
+	// Live per-peer app build info (version + build time) learned from
+	// pings/hellos, powering the "update from this device" flow.
+	buildMu    sync.Mutex
+	peerBuilds map[string]PeerBuild
 }
 
 type cachedManifestHash struct {
@@ -250,7 +255,10 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 		if p.Address == "relay" {
 			continue // WAN presence is heartbeat-driven (Phase 3)
 		}
-		ok := pingPeer(ctx, p, settings.NodeID)
+		info, ok := pingPeer(ctx, p, settings.NodeID)
+		if ok && info.AppVersion != "" {
+			e.recordPeerBuild(p.ID, info.AppVersion, info.BuildTimeMs)
+		}
 		newStatus := "offline"
 		if ok {
 			newStatus = "online"

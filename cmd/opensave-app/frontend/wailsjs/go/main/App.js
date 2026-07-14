@@ -6,12 +6,24 @@ export function AppInfo() {
   return window['go']['main']['App']['AppInfo']();
 }
 
+export function Changelog() {
+  return window['go']['main']['App']['Changelog']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
 
 export function DaemonAddr() {
   return window['go']['main']['App']['DaemonAddr']();
+}
+
+export function InstallUpdateFromPeer(arg1) {
+  return window['go']['main']['App']['InstallUpdateFromPeer'](arg1);
+}
+
+export function InstallUpdateFromURL(arg1) {
+  return window['go']['main']['App']['InstallUpdateFromURL'](arg1);
 }
 
 export function OpenExternal(arg1) {

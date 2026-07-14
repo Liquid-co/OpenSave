@@ -17,6 +17,10 @@ import (
 var assets embed.FS
 
 func main() {
+	// After a self-update this waits for the replaced process to exit (and
+	// removes its leftover binary) before claiming the single-instance lock.
+	cleanupReplacedBinary()
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{

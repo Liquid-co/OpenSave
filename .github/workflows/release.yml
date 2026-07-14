@@ -27,7 +27,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
       - name: Build Windows app (NSIS installer + portable exe)
         working-directory: cmd/opensave-app
-        run: wails build -nsis
+        run: wails build -nsis -ldflags "-X github.com/opensave/opensave/internal/version.BuildTime=$(date +%s)"
       - name: Build CLI + relay
         run: |
           go build -ldflags="-s -w" -o dist/opensave-cli.exe ./cmd/opensave-cli
@@ -93,7 +93,7 @@ jobs:
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
       - name: Build Linux app
         working-directory: cmd/opensave-app
-        run: wails build -tags webkit2_41
+        run: wails build -tags webkit2_41 -ldflags "-X github.com/opensave/opensave/internal/version.BuildTime=$(date +%s)"
       - name: Build CLI + relay, assemble tar.gz
         run: |
           go build -ldflags="-s -w" -o dist/opensave-cli ./cmd/opensave-cli
