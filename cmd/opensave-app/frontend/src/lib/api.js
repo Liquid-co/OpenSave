@@ -14,7 +14,26 @@ export async function initApi() {
     if (e.message && !String(e.message).includes('undefined')) throw e;
     baseURL = 'http://127.0.0.1:8383';
   }
-  return baseURL;
+
+  // Prove the API is reachable from THIS webview before declaring the app
+  // ready. Without this, a blocked/broken local connection renders the
+  // whole UI as endless "Loading…" panels and "Failed to fetch" toasts
+  // with no explanation.
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await request('GET', '/api/status');
+      return baseURL;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  }
+  throw new Error(
+    `The window can't reach OpenSave's background service at ${baseURL} (${lastErr?.message ?? 'no response'}). ` +
+      `This is usually another program blocking local connections (firewall/antivirus), or a leftover OpenSave still running — ` +
+      `check the system tray and Task Manager, then hit Retry.`
+  );
 }
 
 async function request(method, path, body) {

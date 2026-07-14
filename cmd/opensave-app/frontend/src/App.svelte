@@ -21,9 +21,12 @@
 
   let ready = false;
   let bootError = '';
+  let retrying = false;
   let update = null; // {available, latest, url} when a newer release exists
 
-  onMount(async () => {
+  async function boot() {
+    bootError = '';
+    retrying = true;
     try {
       await initApi();
       connectWS(applyMessage, (up) => wsConnected.set(up));
@@ -31,6 +34,11 @@
     } catch (e) {
       bootError = e.message;
     }
+    retrying = false;
+  }
+
+  onMount(async () => {
+    await boot();
     // Non-blocking: never let an update check affect startup.
     try {
       const res = await native.checkUpdate();
@@ -68,6 +76,12 @@
         <img class="boot-logo" src={logoUrl} alt="OpenSave" />
         <h2>OpenSave failed to start</h2>
         <p>{bootError}</p>
+        <button class="btn primary" disabled={retrying} on:click={boot}>
+          {retrying ? 'Retrying…' : 'Retry'}
+        </button>
+        <p class="boot-hint">
+          Details are saved to <code>.opensave\opensave.log</code> in your user folder.
+        </p>
       </div>
     {:else if ready}
       <Sidebar />
@@ -119,6 +133,18 @@
     color: var(--danger);
     max-width: 480px;
     text-align: center;
+  }
+  .boot-error .btn {
+    margin-top: 6px;
+  }
+  .boot-hint {
+    color: var(--text-dim) !important;
+    font-size: 0.8rem;
+  }
+  .boot-hint code {
+    background: var(--bg-raised);
+    padding: 1px 5px;
+    border-radius: 5px;
   }
   .update-banner {
     display: flex;

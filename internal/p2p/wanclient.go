@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -232,6 +233,12 @@ func (w *WanClient) connectionLost(ctx context.Context, gen int, state, errMsg s
 		return
 	}
 	if errMsg != "" {
+		// x509 failures against a healthy relay are almost always transient
+		// (free-tier relay waking up serving a stale cert) or a wrong local
+		// clock — say so instead of leaving a scary bare TLS error.
+		if strings.Contains(errMsg, "x509") || strings.Contains(errMsg, "certificate") {
+			errMsg += " — the relay may still be waking up (retrying automatically); if this persists, check this device's date & time"
+		}
 		w.engine.Log("warn", "WAN relay error: "+errMsg)
 	}
 	w.engine.Log("info", "WAN relay connection lost; reconnecting in 5s")

@@ -7,6 +7,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -67,22 +68,33 @@ func New(opts Options) (*Daemon, error) {
 		return nil, fmt.Errorf("resolve paths: %w", err)
 	}
 
+	// Mirror the activity log to disk from the very first step so failures
+	// that never reach the dashboard (boot problems, unreachable API) stay
+	// diagnosable — the dashboard only exists once boot succeeds.
+	log := logging.New()
+	log.AttachFile(filepath.Join(paths.HomeDir, "opensave.log"))
+	log.Log("info", "daemon starting (data dir: "+paths.HomeDir+")")
+	fail := func(err error) (*Daemon, error) {
+		log.Log("error", "daemon boot failed: "+err.Error())
+		log.Close()
+		return nil, err
+	}
+
 	if legacyimport.Needed(paths.LegacyDB, paths.SQLiteDB) {
 		if err := legacyimport.Run(paths.LegacyDB, paths.SQLiteDB, paths.MigrationLog); err != nil {
-			return nil, fmt.Errorf("legacy database import failed (your JSON data is untouched): %w", err)
+			return fail(fmt.Errorf("legacy database import failed (your JSON data is untouched): %w", err))
 		}
 	}
 
 	s, err := store.Open(paths.SQLiteDB)
 	if err != nil {
-		return nil, fmt.Errorf("open store: %w", err)
+		return fail(fmt.Errorf("open store: %w", err))
 	}
 	if err := s.EnsureDefaultSettings(paths.HomeDir, paths.BackupsDir); err != nil {
 		s.Close()
-		return nil, fmt.Errorf("initialize settings: %w", err)
+		return fail(fmt.Errorf("initialize settings: %w", err))
 	}
 
-	log := logging.New()
 	snaps := snapshot.New(s)
 
 	d := &Daemon{
@@ -202,6 +214,7 @@ func (d *Daemon) Stop() {
 	d.P2P.Stop()
 	d.Watcher.Stop()
 	d.Store.Close()
+	d.Log.Close()
 }
 
 // SteamCoverURL returns Steam's CDN header art for an AppID ("" when the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/daemon"
@@ -74,6 +75,22 @@ func (a *App) startup(ctx context.Context) {
 	if _, port, splitErr := net.SplitHostPort(addr); splitErr == nil {
 		addr = "127.0.0.1:" + port
 	}
+
+	// Self-check: confirm the API is actually connectable on loopback
+	// before handing the address to the webview. If something on this
+	// machine blocks it (firewall/security software), fail loudly with the
+	// reason instead of letting the UI render broken with "Failed to
+	// fetch" on every call.
+	if conn, dialErr := net.DialTimeout("tcp", addr, 3*time.Second); dialErr != nil {
+		a.bootErr = fmt.Sprintf(
+			"the app's local service started on %s but this machine blocks connections to it (%v) — check firewall/security software",
+			addr, dialErr)
+		d.Log.Log("error", a.bootErr)
+		return
+	} else {
+		conn.Close()
+	}
+
 	a.addr = addr
 	d.Log.Log("info", "desktop app connected to daemon at "+addr)
 
