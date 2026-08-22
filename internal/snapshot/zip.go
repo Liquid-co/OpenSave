@@ -168,7 +168,7 @@ func UnzipTo(zipPath, targetPath string) error {
 		if err := os.MkdirAll(destDir, 0o777); err != nil {
 			return err
 		}
-		if err := clearSavePath(destDir); err != nil {
+		if err := clearSavePathGuarded(destDir); err != nil {
 			return fmt.Errorf("clear target dir: %w", err)
 		}
 	}

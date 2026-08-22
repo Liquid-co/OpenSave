@@ -89,8 +89,19 @@ func dangerousUnixRoot(p string) string {
 	switch p {
 	case "/home", "/root", "/etc", "/usr", "/var", "/tmp":
 		return "it is a system folder"
+	// macOS keeps profiles under /Users, not /home. Everything below treated
+	// "home" as the only profile parent, so a Mac's entire home directory was
+	// not recognised as one — found by a test that asked for a profile root
+	// this would refuse and got back permission to empty it.
+	case "/users", "/Users":
+		return "it is a system folder"
 	}
 	segs := strings.Split(strings.TrimPrefix(p, "/"), "/")
+	if segs[0] == "users" {
+		// /Users/<name> is the macOS equivalent of /home/<name>, and the
+		// folder names beneath it are the same ones.
+		segs[0] = "home"
+	}
 	if segs[0] == "home" {
 		switch len(segs) {
 		case 2:

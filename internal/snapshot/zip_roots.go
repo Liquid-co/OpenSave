@@ -230,7 +230,7 @@ func UnzipRoots(zipPath, primary string, extra map[string]string) (unplaced []st
 		if err := os.MkdirAll(primary, 0o777); err != nil {
 			return nil, err
 		}
-		if err := clearSavePath(primary); err != nil {
+		if err := clearSavePathGuarded(primary); err != nil {
 			return nil, fmt.Errorf("clear %s: %w", primary, err)
 		}
 	}
@@ -258,7 +258,7 @@ func UnzipRoots(zipPath, primary string, extra map[string]string) (unplaced []st
 				if err := os.MkdirAll(target, 0o777); err != nil {
 					return nil, err
 				}
-				if err := clearSavePath(target); err != nil {
+				if err := clearSavePathGuarded(target); err != nil {
 					return nil, fmt.Errorf("clear %s: %w", target, err)
 				}
 				cleared[name] = true

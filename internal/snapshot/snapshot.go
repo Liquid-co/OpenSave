@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -658,11 +659,11 @@ func (m *Manager) SwitchBranch(gameID, targetBranch string) error {
 	if pathsErr != nil {
 		return fmt.Errorf("read the game's save locations: %w", pathsErr)
 	}
-	if err := clearSavePath(game.SavePath); err != nil {
+	if err := clearSavePathGuarded(game.SavePath); err != nil {
 		return fmt.Errorf("clear save path: %w", err)
 	}
 	for name, path := range switchPaths {
-		if err := clearSavePath(path); err != nil {
+		if err := clearSavePathGuarded(path); err != nil {
 			return fmt.Errorf("clear the %q save location: %w", name, err)
 		}
 	}
@@ -738,6 +739,34 @@ func savePathHasContent(savePath string) bool {
 	}
 	entries, err := os.ReadDir(savePath)
 	return err == nil && len(entries) > 0
+}
+
+// clearSavePath is the most destructive thing in the app: it empties a folder
+// outright. Everything that restores state calls it first — rollback, restoring
+// one snapshot, switching branches — because a restore has to put the save back
+// as it was rather than merge into whatever is there.
+//
+// So it refuses a path that is not a save folder. delta.DangerousSyncRoot names
+// the profile and system roots, and its comment records why it exists: a game
+// really did end up tracked at a profile root in the wild.
+//
+// The guard was only ever wired into BuildManifest, which is the READING side.
+// That produces the worst possible arrangement: a mis-tracked game fails to
+// sync, and the user's natural response to "sync is broken" is to roll back or
+// switch branches — the one action that would empty their profile. The check
+// belongs here most of all, where the deletion happens.
+//
+// Refusing rather than skipping. A restore that quietly declined to clear
+// would unzip a snapshot on top of whatever was already there and call it
+// restored, which is a different kind of wrong.
+func clearSavePathGuarded(savePath string) error {
+	if reason := delta.DangerousSyncRoot(savePath); reason != "" {
+		return fmt.Errorf(
+			"refusing to empty %q before restoring: %s. This game's save path is not a save "+
+				"folder — correct it in the game's configuration, and nothing here is touched",
+			savePath, reason)
+	}
+	return clearSavePath(savePath)
 }
 
 // clearSavePath removes a single save file, or empties a save directory
