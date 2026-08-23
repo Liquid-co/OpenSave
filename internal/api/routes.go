@@ -326,6 +326,25 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	game.ID = gameID // id is not client-mutable
+
+	// A changed save path is validated exactly as a fresh track is. This
+	// decoded straight into the stored game and wrote it back, so a path that
+	// tracking would refuse — a profile root, a drive root, one that does not
+	// exist — could be set here instead, and every guard downstream assumes
+	// the paths it is handed came past that check. It is how a game comes to
+	// be tracked at a whole home folder despite the track-time refusal.
+	//
+	// Only when it actually changes: re-validating an unchanged path would
+	// reject the game against itself as a duplicate, and would start failing
+	// edits to a game whose folder went missing.
+	if game.SavePath != oldSavePath {
+		abs, err := s.Daemon.ValidateSavePath(game.SavePath)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		game.SavePath = abs
+	}
 	// Cover art: a user-set custom URL is always kept. An empty cover, or
 	// a previously auto-generated Steam cover, is (re)derived from the
 	// AppID — so changing the AppID refreshes the art.
