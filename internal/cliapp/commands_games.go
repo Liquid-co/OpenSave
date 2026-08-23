@@ -1,10 +1,10 @@
 package cliapp
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"encoding/json"
 	"strconv"
 	"strings"
 

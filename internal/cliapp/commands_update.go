@@ -44,6 +44,15 @@ func cmdUpdate(args []string) int {
 		case "--help", "-h":
 			fmt.Fprintln(os.Stderr, updateUsage)
 			return 0
+		default:
+			// Anything unrecognised is refused rather than ignored. Running
+			// bare installs, so a silently dropped argument resolves the
+			// wrong way: `opensave update check` — the spelling without
+			// dashes — dropped "check" and installed, which is the opposite
+			// of what was asked for.
+			fmt.Fprintf(os.Stderr, "error: unknown argument %q\n\n", a)
+			fmt.Fprintln(os.Stderr, updateUsage)
+			return 1
 		}
 	}
 

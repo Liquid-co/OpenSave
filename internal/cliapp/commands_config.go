@@ -161,6 +161,13 @@ func cmdLinks(d *daemon.Daemon, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: opensave links <gameId>")
 		return 1
 	}
+	// Confirm the game exists first. Listing aliases for an id nobody tracks
+	// returns an empty set, which printed as "no other game is linked" and
+	// exited 0 — a typo read back as a confirmed answer, and every sibling
+	// command rejects an unknown id instead.
+	if _, err := d.Store.GetGame(args[0]); err != nil {
+		return fail(asJSON, unknownGameError(d, args[0], err))
+	}
 	aliases, err := d.Store.ListGameAliases(args[0])
 	if err != nil {
 		return fail(asJSON, err)

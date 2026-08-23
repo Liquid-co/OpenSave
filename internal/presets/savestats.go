@@ -124,6 +124,20 @@ func measureOne(path string, deadline time.Time) (count int, bytes int64, latest
 			}
 			return nil
 		}
+		// Every entry advances the clock, directories included. Counting only
+		// files left the deadline unreachable in a tree that is mostly
+		// folders: statFileCap counts files too, so neither guard could fire
+		// and the walk ran to completion however long that took. Steam's
+		// userdata is exactly that shape — a folder per game, most of them
+		// holding nothing — which is how a scan came to look stuck.
+		since++
+		if since >= statClockCheckEvery {
+			since = 0
+			if time.Now().After(deadline) {
+				truncated = true
+				return errStopWalk
+			}
+		}
 		// A junction is not a directory as far as Go is concerned, so without
 		// this it falls through and is counted as a file — inflating the
 		// count, and letting a folder holding nothing but a junction look
@@ -134,14 +148,6 @@ func measureOne(path string, deadline time.Time) (count int, bytes int64, latest
 		}
 		if d.IsDir() {
 			return nil
-		}
-		since++
-		if since >= statClockCheckEvery {
-			since = 0
-			if time.Now().After(deadline) {
-				truncated = true
-				return errStopWalk
-			}
 		}
 		fi, err := d.Info()
 		if err != nil {
