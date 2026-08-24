@@ -382,7 +382,9 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		lineageFiles = filterLineage(lineageFiles, rules)
 		lineageDirs = filterLineage(lineageDirs, rules)
 	}
-	decision := Compute(localManifest, remoteData.Manifest, lineageFiles, lineageDirs)
+	// The agreed base goes in too: it is what lets an mtime tie be settled by
+	// which side actually moved, rather than always going to the remote.
+	decision := ComputeWithBase(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, agreedHash)
 
 	if !decision.HasChanges() {
 		e.Log("success", fmt.Sprintf("%q already in sync with %q", game.Name, peer.Name))

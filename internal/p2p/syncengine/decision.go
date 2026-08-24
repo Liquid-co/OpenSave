@@ -107,7 +107,15 @@ func (d Decision) HasDeletions() bool {
 // Only the modified-both-sides case falls back to mtime comparison, with
 // remote winning ties.
 func Compute(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[string]struct{}) Decision {
+	return ComputeWithBase(local, remote, lastSyncedFiles, lastSyncedDirs, "")
+}
+
+// ComputeWithBase is Compute told which manifest hash both sides last agreed
+// on, so an mtime tie can be broken by content rather than by direction. See
+// the tie case below for why that matters.
+func ComputeWithBase(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[string]struct{}, baseHash string) Decision {
 	var d Decision
+	localHash, remoteHash := local.ManifestHash(), remote.ManifestHash()
 
 	allFiles := map[string]struct{}{}
 	for p := range local.Files {
@@ -142,8 +150,28 @@ func Compute(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[s
 				d.FilesToPull = append(d.FilesToPull, relPath)
 			case localFile.MtimeMs > remoteFile.MtimeMs:
 				d.FilesToPush = append(d.FilesToPush, relPath)
-			default: // tie: pull from remote
-				d.FilesToPull = append(d.FilesToPull, relPath)
+			default:
+				// Equal stamps, different content. Whichever side still
+				// matches the base both sides agreed on is the one that has
+				// not moved, so the other side holds the edit and wins.
+				//
+				// Compute only runs when DetectConflict said no, which with a
+				// base recorded means at most one side has moved — so this
+				// cannot pick the wrong one when it applies at all.
+				//
+				// Without it the tie went to the remote unconditionally, and a
+				// local edit was replaced by the peer's older content with
+				// nothing said. Equal stamps are not exotic: they are what a
+				// filesystem with coarse timestamps gives you, and an SD card
+				// in a Steam Deck is exFAT.
+				switch {
+				case baseHash != "" && remoteHash == baseHash:
+					d.FilesToPush = append(d.FilesToPush, relPath)
+				case baseHash != "" && localHash == baseHash:
+					d.FilesToPull = append(d.FilesToPull, relPath)
+				default:
+					d.FilesToPull = append(d.FilesToPull, relPath)
+				}
 			}
 		}
 	}
