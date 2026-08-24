@@ -176,3 +176,66 @@ func (sc *Scanner) launcherInstallDirs() map[string]string {
 	}
 	return out
 }
+
+// knownGameNames returns the normalised names of every game the manifest knows,
+// mapped to its Steam AppID where the manifest has one.
+//
+// Used to tell a publisher folder from a game folder. Both %USERPROFILE%\Saved
+// Games and Documents\My Games hold a mix: most children are games, but some
+// are the studio ("CD Projekt Red" holding Cyberpunk 2077, "Arkane Studios"
+// holding Deathloop, "MachineGames" holding Wolfenstein II). Offering the
+// studio as the game names it after the publisher, finds no cover art for it,
+// and — where a studio ships more than one title — puts several games in one
+// synced unit, so a rollback of any of them rolls back all of them.
+//
+// The manifest is the arbiter rather than a hand-written list of studios: it
+// already knows twenty thousand game names, and a name it does not know is
+// exactly the case where descending would be a guess.
+func (sc *Scanner) knownGameNames() map[string]string {
+	idx := sc.loadManifestIndex()
+	out := make(map[string]string, len(idx))
+	for _, g := range idx {
+		if k := normalizeGameName(g.Name); k != "" {
+			if _, seen := out[k]; !seen {
+				out[k] = g.SteamID
+			}
+		}
+	}
+	return out
+}
+
+// resolveWrapperChild decides which folder under a "Saved Games"-style wrapper
+// is the game.
+//
+// It returns the child's name and true only when the folder itself is not a
+// game the manifest knows AND exactly one of its subfolders is. Both halves
+// matter:
+//
+//   - A known name is never descended into. "God of War" and "The Last of Us
+//     Part I" each hold a single subfolder here, and descending would offer a
+//     profile id as the game.
+//   - An unknown folder with no known child is left exactly as it was.
+//     "ThomasAndFriends" and "TrainSimWorld2EGS" are real saves the manifest
+//     has never heard of, and guessing at them would lose them.
+//
+// Requiring exactly one known child keeps a studio folder holding two games
+// from silently resolving to whichever came first — that case wants both rows,
+// which is what returning false leaves the caller free to do.
+func (sc *Scanner) resolveWrapperChild(dir, name string, known map[string]string) (string, bool) {
+	if known == nil {
+		return "", false
+	}
+	if _, isGame := known[normalizeGameName(name)]; isGame {
+		return "", false
+	}
+	var hits []string
+	for _, sub := range listSubdirs(filepath.Join(dir, name)) {
+		if _, isGame := known[normalizeGameName(sub)]; isGame {
+			hits = append(hits, sub)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], true
+	}
+	return "", false
+}

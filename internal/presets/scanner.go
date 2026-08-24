@@ -252,6 +252,15 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 	discovered = append(discovered, sc.scanLocalLow()...)
 
 	// 4. Epic "Saved Games" and GOG "My Games" wrapper folders.
+	//
+	// Some children are the studio rather than the game: "CD Projekt Red"
+	// holding Cyberpunk 2077, "Arkane Studios" holding Deathloop,
+	// "MachineGames" holding Wolfenstein II. Offering the studio names the
+	// row after the publisher, leaves it with no cover art, and where a
+	// studio ships more than one title puts several games in one synced unit
+	// — so rolling back any of them rolls back all of them. Descend one level
+	// when the manifest says the child is a game and the folder is not.
+	knownGames := sc.knownGameNames()
 	for _, w := range []struct{ id, name, path string }{
 		{"epic-savedgames", "Epic / Saved Games", "%USERPROFILE%/Saved Games"},
 		{"gog-mygames", "GOG / My Games", "%USERPROFILE%/Documents/My Games"},
@@ -264,11 +273,15 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 			if isCacheDirName(sub) {
 				continue
 			}
+			name, path := sub, filepath.Join(resolved, sub)
+			if child, ok := sc.resolveWrapperChild(resolved, sub, knownGames); ok {
+				name, path = child, filepath.Join(path, child)
+			}
 			discovered = append(discovered, DiscoveredSave{
-				ID:       w.id + "-" + sanitizeID(sub),
-				Name:     sub,
+				ID:       w.id + "-" + sanitizeID(name),
+				Name:     name,
 				Type:     "game",
-				SavePath: filepath.Join(resolved, sub),
+				SavePath: path,
 			})
 		}
 	}
