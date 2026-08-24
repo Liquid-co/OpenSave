@@ -701,14 +701,26 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 		}
 		// A game whose save lives only in the registry used to be dropped here
 		// for having no file paths — 619 of them, invisible to every scan.
-		if len(paths) == 0 && len(regKeys) == 0 {
+		//
+		// A game with neither is kept too, when the manifest knows its Steam
+		// id. It has nothing for a scan to look for — its saves are Steam
+		// Cloud's business, which is why the manifest declares no paths — but
+		// its name still maps to an App ID, and that mapping is what gets a
+		// game its cover art. Dropping it cost 29,246 of the manifest's 48,946
+		// Steam ids, so a game like Killer Bean was found by another pass,
+		// correctly named, and left blank on the shelf.
+		//
+		// These carry no paths and no registry keys, so every scan pass skips
+		// them by the checks it already makes.
+		steamID := ""
+		if mg.Steam.ID > 0 {
+			steamID = strconv.FormatInt(mg.Steam.ID, 10)
+		}
+		if len(paths) == 0 && len(regKeys) == 0 && steamID == "" {
 			continue
 		}
 		sort.Strings(regKeys) // stable index across rebuilds
-		g := indexedGame{Name: name, Paths: paths, Registry: regKeys}
-		if mg.Steam.ID > 0 {
-			g.SteamID = strconv.FormatInt(mg.Steam.ID, 10)
-		}
+		g := indexedGame{Name: name, Paths: paths, Registry: regKeys, SteamID: steamID}
 		for dir := range mg.InstallDir {
 			g.Installs = append(g.Installs, dir)
 		}

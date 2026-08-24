@@ -120,6 +120,24 @@ func Group(saves []DiscoveredSave) {
 		for _, i := range idxs {
 			saves[i].GroupID = key
 		}
+	}
+
+	// Two rows for one game, found under two names, are joined here — see
+	// mergeNestedGroups. Done after every row has a group id and before roles
+	// are assigned, because a role only means anything within a settled group.
+	mergeNestedGroups(saves)
+
+	regrouped := map[string][]int{}
+	var regroupedOrder []string
+	for i := range saves {
+		key := saves[i].GroupID
+		if _, seen := regrouped[key]; !seen {
+			regroupedOrder = append(regroupedOrder, key)
+		}
+		regrouped[key] = append(regrouped[key], i)
+	}
+	for _, key := range regroupedOrder {
+		idxs := regrouped[key]
 		if len(idxs) == 1 {
 			saves[idxs[0]].Role = RoleOnly
 			continue
