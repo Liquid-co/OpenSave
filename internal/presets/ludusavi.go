@@ -476,6 +476,12 @@ func blockedRoots(vars map[string]string) map[string]bool {
 func (sc *Scanner) installBaseCandidates() func([]string) []string {
 	libs := sc.steamLibraryPaths()
 	installed := map[string]string{}
+	// Non-Steam launchers first, so a game present in both is resolved
+	// against its Steam install — that is the copy whose userdata folder the
+	// rest of the scan is already looking at.
+	for name, dir := range sc.launcherInstallDirs() {
+		installed[name] = dir
+	}
 	for _, a := range steamInstalledApps(libs) {
 		installed[strings.ToLower(filepath.Base(a.InstallDir))] = a.InstallDir
 	}

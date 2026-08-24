@@ -42,6 +42,12 @@ type Scanner struct {
 	// (emulator paths, Proton prefixes). Empty means os.UserHomeDir. Tests
 	// only.
 	HomeDir string
+	// EpicManifestDirs overrides where the Epic launcher's install manifests
+	// are read from when non-nil. Tests only.
+	EpicManifestDirs []string
+	// InstallParentDirs overrides the non-Steam launcher folders whose
+	// children are game install directories when non-nil. Tests only.
+	InstallParentDirs []string
 }
 
 // linuxHome returns the home dir used to resolve Linux save paths.

@@ -147,9 +147,9 @@ func TestProtonCoarseScanDefersToManifestHits(t *testing.T) {
 	// The real save (manifest will pinpoint it) plus prefix junk.
 	realSave := filepath.Join(steamuser, "AppData", "Roaming", "SEGA", "P3R", "Steam")
 	junk := [][]string{
-		{"AppData", "Roaming", "CRIWARE"},          // vendor-skip list
-		{"AppData", "Local", "Temp"},               // vendor-skip list
-		{"Documents", "SomeUnknownVendor"},         // legit coarse candidate
+		{"AppData", "Roaming", "CRIWARE"},  // vendor-skip list
+		{"AppData", "Local", "Temp"},       // vendor-skip list
+		{"Documents", "SomeUnknownVendor"}, // legit coarse candidate
 	}
 	for _, dir := range append([][]string{{"AppData", "Roaming", "SEGA", "P3R", "Steam"}}, junk...) {
 		p := filepath.Join(append([]string{steamuser}, dir...)...)
