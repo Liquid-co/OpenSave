@@ -712,6 +712,17 @@ func (m *Manager) SwitchBranch(gameID, targetBranch string) error {
 			// but the switch itself stands (branch pointer already moved).
 			fmt.Fprintf(os.Stderr, "[snapshot] failed to restore branch snapshot: %v\n", err)
 		}
+		// The registry half comes with the files. Restoring one without the
+		// other pairs this branch's files with the registry state of the branch
+		// being left — a save the game never had, and one nothing in the
+		// listing would show as wrong.
+		if dir := switchRoots[winreg.LocationName]; dir != "" {
+			for _, w := range RestoreRegistryCapture(game.Name, dir) {
+				if m.Log != nil {
+					m.Log("warn", w)
+				}
+			}
+		}
 	}
 	return nil
 }

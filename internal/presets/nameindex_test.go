@@ -1,6 +1,7 @@
 package presets
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -79,4 +80,44 @@ func TestNameIndexIsSafeUnderConcurrentUse(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// The adoption has to actually happen during a scan. Testing
+// adoptManifestForNaming directly leaves the call site unverified, which is
+// how a correct function ends up wired to nothing — the same gap the wrapper
+// rule had.
+func TestAScanAdoptsTheManifestItLoaded(t *testing.T) {
+	resetNameIndex(t)
+
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+
+	// A game the embedded snapshot cannot know about.
+	const name = "A Game Added After This Build Shipped"
+	sc := manifestScanner(t, `
+`+name+`:
+  files:
+    "<home>/Saved Games/`+name+`":
+      tags: [save]
+      when:
+        - os: windows
+  steam:
+    id: 4242424
+`)
+	sc.SteamRoots = []string{t.TempDir()}
+	sc.SteamUserdataPaths = []string{}
+
+	// Nothing may consult the index before the scan. manifestNameIndex fills
+	// the cache from the embedded copy on first read, and adoption never
+	// shrinks an index — so a read here would leave 18,000 entries in place
+	// and correctly refuse this one-game manifest, testing the refusal rather
+	// than the wiring.
+	sc.Scan(nil)
+	if got := inferAppIDFromName(name, nameToAppIDIndex()); got != "4242424" {
+		t.Errorf("after a scan the name resolved to %q, want 4242424 — the loaded "+
+			"manifest was not adopted for naming", got)
+	}
 }
