@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -49,10 +50,29 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Game not found.")
 		return
 	}
+	// A save location is checked the same way a save path is. An extra
+	// location is watched, hashed, synced to every peer and uploaded to the
+	// cloud, so pointing one at a profile folder syncs a user's Documents to
+	// their other devices — and a restore then refuses to clear it, leaving
+	// the game unrestorable. The CLI has always run this check; the API went
+	// straight to the store, so the same folder was accepted here and refused
+	// there.
+	//
+	// An empty path is how a location learned from a peer is recorded before
+	// this device knows where it lives, and must stay allowed.
+	path := body.Path
+	if strings.TrimSpace(path) != "" {
+		abs, err := s.Daemon.CheckRestoreTarget(path)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		path = abs
+	}
 	// Rejections here are the overlap and naming rules, which are the user's
 	// to hear about rather than a server fault: "that folder is already
 	// covered by the main save" is a sentence, not a 500.
-	if err := s.Daemon.Store.AddGameRoot(gameID, body.Name, body.Path); err != nil {
+	if err := s.Daemon.Store.AddGameRoot(gameID, body.Name, path); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
