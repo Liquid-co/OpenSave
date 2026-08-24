@@ -292,10 +292,15 @@ func cmdUpnp(args []string) int {
 func cmdScan(d *daemon.Daemon, args []string) int {
 	// Folders holding nothing are hidden by default. They are a fifth of a
 	// real machine's results — Steam makes a userdata folder for every game
-	// you own whether or not saves go there — and a listing where most rows
-	// are places nothing has ever been written is a listing nobody reads.
-	// --all brings them back, for the case of wanting to track a folder
-	// before the game has first saved.
+	// you own whether or not saves go there, and a crack makes one per title
+	// it has ever seen — and a listing where most rows are places nothing has
+	// ever been written is a listing nobody reads.
+	//
+	// Except where that would take the game out of the listing entirely: if
+	// none of a title's folders hold anything, its empties are the only rows
+	// it has. Hiding those removed the title rather than tidying it, which is
+	// what a 2.2.x upgrade reported as fewer games detected. --all shows the
+	// rest.
 	asJSON, args := jsonFlag(args)
 	showEmpty := false
 	for _, a := range args {
@@ -313,9 +318,9 @@ func cmdScan(d *daemon.Daemon, args []string) int {
 	found = presets.FilterExcluded(found, settings.ExcludePaths)
 	presets.Measure(found)
 
-	total, emptyCount := len(found), presets.CountEmpty(found)
+	total, emptyCount := len(found), presets.CountRedundantEmpty(found)
 	if !showEmpty {
-		found = presets.WithoutEmpty(found)
+		found = presets.WithoutRedundantEmpty(found)
 	}
 	// One entry per game, its other folders underneath. A scan finds the same
 	// game several times over — different detection passes, so its rows are
