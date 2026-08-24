@@ -178,8 +178,24 @@ func measureOne(path string, deadline time.Time) (count int, bytes int64, latest
 //
 // Unmeasured locations are not empty by this definition. Callers use it to
 // decide what to hide, and hiding the unknown is how a real save goes missing.
+//
+// A measurement cut short is unknown too, which is the harder half. A walk that
+// ran out of budget before reaching any file reports Measured with a count of
+// zero — indistinguishable, without Truncated, from a folder that genuinely
+// holds nothing. Reported as: games that "wouldn't pop up until I'd scanned ten
+// times", and titles that disappeared between scans.
+//
+// It is not a rare shape. A save with a folder per slot or per profile walks
+// hundreds of directories before its first file, and whether the budget lasts
+// that long depends on how many other locations were measured first, how fast
+// the disk is that minute, and which goroutine got a slot — so the same machine
+// gives a different answer each scan.
+//
+// Truncated with a non-zero count is a different thing and stays empty-able:
+// that is the file cap, and a location that counted 20,000 files is not empty by
+// any definition.
 func (d DiscoveredSave) IsEmpty() bool {
-	return d.Measured && d.FileCount == 0
+	return d.Measured && !d.Truncated && d.FileCount == 0
 }
 
 // CountEmpty returns how many of these locations are known to hold nothing.
