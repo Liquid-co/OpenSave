@@ -30,6 +30,11 @@ type Config struct {
 	// GoogleClientSecret enables the /api/oauth/token proxy for Google
 	// Drive; empty disables it with a config error response.
 	GoogleClientSecret string
+	// SteamGridDBKey enables the /api/cover/lookup artwork lookup; empty
+	// disables it, and clients fall back to showing no cover rather than
+	// failing. Held here for the same reason as the secret above: a key
+	// compiled into an open-source client is a key anyone can lift out of it.
+	SteamGridDBKey string
 }
 
 func (c *Config) applyDefaults() {
@@ -148,6 +153,7 @@ func (s *Server) Start() (string, error) {
 	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/oauth/token", s.handleOAuthProxy)
+	mux.HandleFunc("/api/cover/lookup", s.handleCoverLookup)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", s.cfg.Port))
 	if err != nil {

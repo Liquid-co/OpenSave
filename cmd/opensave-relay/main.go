@@ -69,6 +69,9 @@ func main() {
 		Port:               envInt("PORT", 8386),
 		MaxPerRoom:         envInt("MAX_PER_ROOM", 20),
 		GoogleClientSecret: os.Getenv("GOOGLE_DRIVE_CLIENT_SECRET"),
+		// Optional. Without it the artwork lookup answers "not configured"
+		// and clients simply show no cover for games Steam has none for.
+		SteamGridDBKey: os.Getenv("STEAMGRIDDB_KEY"),
 	}
 
 	srv := relay.New(cfg)

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,6 +20,12 @@ import (
 type httpStatusError struct{ status string }
 
 func (e *httpStatusError) Error() string { return "cover fetch: " + e.status }
+
+// errNoSteamID marks "this game has no App ID to ask Steam about", which is a
+// different thing from a fetch that failed — one is a fact about the game, the
+// other is a fact about the network, and only the second is worth telling
+// anyone about.
+var errNoSteamID = errors.New("no steam app id for this game")
 
 // A cover is a small image on a best-effort path: fail fast rather than tie
 // up a connection, since a scan can request hundreds at once.
@@ -89,20 +96,32 @@ func recentCoverMiss(key string) bool {
 // GET /api/cover?appId=<numeric>[&portrait=1]
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	appID := r.URL.Query().Get("appId")
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	// A game with no App ID can still have art, under its name. Steam cannot
+	// answer about it — its CDN is keyed on App ID — but the second source can.
 	if !isNumericID(appID) {
-		writeError(w, http.StatusBadRequest, "appId must be numeric")
+		appID = ""
+	}
+	if appID == "" && name == "" {
+		writeError(w, http.StatusBadRequest, "appId must be numeric, or a name must be given")
 		return
 	}
 	portrait := r.URL.Query().Get("portrait") == "1"
 
+	// One cache key per game, whichever source ends up answering.
+	cacheKey := appID
+	if cacheKey == "" {
+		cacheKey = coverKeyForName(name)
+	}
+
 	// Serve straight from the disk cache without touching the network.
-	if data, err := os.ReadFile(s.coverCachePath(appID, portrait)); err == nil && len(data) > 0 {
+	if data, err := os.ReadFile(s.coverCachePath(cacheKey, portrait)); err == nil && len(data) > 0 {
 		writeCover(w, data)
 		return
 	}
 
 	// Known to have no art — don't re-walk the network for it on every scan.
-	missKey := coverMissKey(appID, portrait)
+	missKey := coverMissKey(cacheKey, portrait)
 	if recentCoverMiss(missKey) {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -112,21 +131,40 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	defer func() { <-coverFetchSem }()
 
 	// Another request may have fetched it while we waited for a slot.
-	if data, err := os.ReadFile(s.coverCachePath(appID, portrait)); err == nil && len(data) > 0 {
+	if data, err := os.ReadFile(s.coverCachePath(cacheKey, portrait)); err == nil && len(data) > 0 {
 		writeCover(w, data)
 		return
 	}
 
-	data, err := s.fetchCover(appID, portrait)
+	// Steam first, always: exact, no third party, and the answer for most of a
+	// library. Only when it has nothing does the second source get asked.
+	var data []byte
+	var err error
+	// A game with no App ID never asks Steam at all. That is not a failure to
+	// reach anything, so it must not be reported as one: errNoSteamID is
+	// carried separately from a fetch error for exactly that reason.
+	err = errNoSteamID
+	if appID != "" {
+		data, err = s.fetchCover(appID, portrait)
+	}
+	if err != nil {
+		if fb, fbErr := s.fetchFallbackCover(cacheKey, name, appID, portrait); fbErr == nil {
+			writeCover(w, fb)
+			return
+		}
+	}
 	if err != nil {
 		// A non-200 (e.g. 404) just means this game has no cover art — normal.
 		// Only warn when the network itself couldn't be reached, since that's
 		// what makes *every* cover blank.
 		var statusErr *httpStatusError
-		if errors.As(err, &statusErr) {
-			// The CDN answered "no such image" — this game simply has no art.
+		switch {
+		case errors.Is(err, errNoSteamID), errors.As(err, &statusErr):
+			// Either the CDN said "no such image", or there was no App ID to
+			// ask about — and the second source had nothing either. This game
+			// simply has no art, which is not worth a warning.
 			coverMisses.Store(missKey, time.Now())
-		} else {
+		default:
 			coverFailOnce.Do(func() {
 				s.Daemon.Log.Log("warn", "cover art can't be loaded — this network can't reach "+
 					"Steam's CDN or the image-proxy fallback ("+err.Error()+")")
@@ -150,6 +188,18 @@ func (s *Server) coverCachePath(appID string, portrait bool) string {
 		name = appID + "_p.jpg"
 	}
 	return filepath.Join(s.Daemon.Paths.HomeDir, "covers", name)
+}
+
+// writeCoverCache stores art under a key, for whichever source produced it.
+// Cached the same way regardless of where it came from: a cover on disk is a
+// cover, and a later request should not care which source answered first.
+func (s *Server) writeCoverCache(key string, portrait bool, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	path := s.coverCachePath(key, portrait)
+	_ = os.MkdirAll(filepath.Dir(path), 0o777)
+	_ = os.WriteFile(path, data, 0o666)
 }
 
 // isNumericID guards against SSRF: only all-digit App IDs ever reach the CDN
@@ -187,8 +237,7 @@ func (s *Server) fetchCover(appID string, portrait bool) ([]byte, error) {
 			lastErr = err
 			return nil, false
 		}
-		_ = os.MkdirAll(filepath.Dir(s.coverCachePath(appID, portrait)), 0o777)
-		_ = os.WriteFile(s.coverCachePath(appID, portrait), data, 0o666)
+		s.writeCoverCache(appID, portrait, data)
 		return data, true
 	}
 
