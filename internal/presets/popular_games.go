@@ -232,13 +232,22 @@ func manifestCompactIndex() map[string]string {
 
 func buildNameIndex(games []indexedGame) map[string]string {
 	index := make(map[string]string, len(games))
+	// A name that could belong to anything identifies nothing. The manifest
+	// really does list games called "Data" and "Save", and a folder with one of
+	// those names is almost always a subfolder rather than the title — so
+	// matching on it hands App-ID resolution a confident wrong answer, which
+	// then merges two unrelated games under one id.
+	//
+	// groupKey has refused these since long before this index existed; the
+	// naming side only escaped it because the smaller index happened not to
+	// contain one.
 	ambiguous := map[string]bool{}
 	for _, g := range games {
 		if g.SteamID == "" || g.Name == "" {
 			continue
 		}
 		key := normalizeGameName(g.Name)
-		if key == "" || ambiguous[key] {
+		if key == "" || ambiguous[key] || genericNames[strings.ReplaceAll(key, " ", "")] {
 			continue
 		}
 		if existing, seen := index[key]; seen && existing != g.SteamID {

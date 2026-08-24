@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -791,4 +792,21 @@ func entryIsSaveEntry(tpl string, entry manifestFileEntry) bool {
 		}
 	}
 	return false
+}
+
+// BuildEmbeddedIndexJSON builds the compact index from a manifest and returns
+// it as JSON, for regenerating the copy embedded in the binary.
+//
+// The embedded index is what a fresh install scans against before any manifest
+// download has finished, so it has to carry every field a scan reads. It fell
+// behind once already: registry save keys were added to indexedGame and the
+// embedded copy still held none, which left registry-only games undetectable
+// until the first background refresh rebuilt the index.
+func BuildEmbeddedIndexJSON(yamlPath string) ([]byte, error) {
+	games := buildManifestIndex(yamlPath)
+	if len(games) == 0 {
+		return nil, fmt.Errorf("no games parsed from %s", yamlPath)
+	}
+	sort.Slice(games, func(i, j int) bool { return games[i].Name < games[j].Name })
+	return json.Marshal(games)
 }
