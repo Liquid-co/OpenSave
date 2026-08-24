@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,7 +45,10 @@ type manifestFileEntry struct {
 }
 
 type manifestGame struct {
-	Files      map[string]manifestFileEntry `yaml:"files"`
+	Files map[string]manifestFileEntry `yaml:"files"`
+	// Registry keys holding save data, in the same shape as Files. 2,810 games
+	// declare one, and for 619 of them it is the only place a save exists.
+	Registry   map[string]manifestFileEntry `yaml:"registry"`
 	InstallDir map[string]struct{}          `yaml:"installDir"`
 	Steam      struct {
 		ID int64 `yaml:"id"`
@@ -58,6 +62,11 @@ type indexedGame struct {
 	SteamID  string   `json:"s,omitempty"`
 	Installs []string `json:"i,omitempty"` // installDir folder names
 	Paths    []string `json:"p"`           // Windows-relevant save path templates
+	// Registry keys holding this game's save data, full hive names with
+	// forward slashes exactly as the manifest writes them. Absent from an
+	// index built by an older release, which reads as "none" — the field is
+	// additive, so an index on disk from a previous version still loads.
+	Registry []string `json:"r,omitempty"`
 }
 
 // manifestPaths derives the manifest + index locations from the scanner's
@@ -669,10 +678,20 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 			}
 			paths = append(paths, tpl)
 		}
-		if len(paths) == 0 {
+		var regKeys []string
+		for key, entry := range mg.Registry {
+			if !registryEntryIsSave(key, entry) {
+				continue
+			}
+			regKeys = append(regKeys, key)
+		}
+		// A game whose save lives only in the registry used to be dropped here
+		// for having no file paths — 619 of them, invisible to every scan.
+		if len(paths) == 0 && len(regKeys) == 0 {
 			continue
 		}
-		g := indexedGame{Name: name, Paths: paths}
+		sort.Strings(regKeys) // stable index across rebuilds
+		g := indexedGame{Name: name, Paths: paths, Registry: regKeys}
 		if mg.Steam.ID > 0 {
 			g.SteamID = strconv.FormatInt(mg.Steam.ID, 10)
 		}
@@ -689,6 +708,27 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 // Windows paths that resolve inside a Proton prefix). Per-OS filtering of
 // the survivors happens at scan time — templates with placeholders the
 // current platform can't resolve are dropped there.
+// registryEntryIsSave reports whether a manifest registry key holds save data.
+//
+// Unlike a file template there is no placeholder to resolve — a registry path
+// is already absolute — so only the tags decide, by the same rule the file side
+// uses: an entry tagged at all must be tagged "save", and an untagged entry
+// counts.
+func registryEntryIsSave(key string, entry manifestFileEntry) bool {
+	if strings.TrimSpace(key) == "" {
+		return false
+	}
+	if len(entry.Tags) == 0 {
+		return true
+	}
+	for _, t := range entry.Tags {
+		if t == "save" {
+			return true
+		}
+	}
+	return false
+}
+
 func entryIsSaveEntry(tpl string, entry manifestFileEntry) bool {
 	// Placeholders no supported platform can resolve.
 	if strings.Contains(tpl, "<winDir>") || strings.Contains(tpl, "<dataDrive>") {
