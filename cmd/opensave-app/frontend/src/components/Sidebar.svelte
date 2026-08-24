@@ -1,4 +1,23 @@
 <script>
+  // Which games' explicit covers are currently revealed. Held per-game rather
+  // than as one "show everything" flag: revealing one cover should not uncover
+  // the rest of the shelf.
+  //
+  // A Set in a plain variable would not re-render — Svelte tracks assignment,
+  // so both helpers reassign.
+  let revealed = new Set();
+  const reveal = (game) => {
+    if (game?.coverExplicit && !revealed.has(game.id)) {
+      revealed = new Set(revealed).add(game.id);
+    }
+  };
+  const unreveal = (game) => {
+    if (game?.coverExplicit && revealed.has(game.id)) {
+      const next = new Set(revealed);
+      next.delete(game.id);
+      revealed = next;
+    }
+  };
   import { view, navigate, settings, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
 
   let filter = '';
@@ -63,16 +82,31 @@
         class="game"
         class:active={$view.name === 'game' && $view.params.gameId === game.id}
         on:click={() => navigate('game', { gameId: game.id })}
+        on:mouseenter={() => reveal(game)}
+        on:mouseleave={() => unreveal(game)}
+        on:focus={() => reveal(game)}
+        on:blur={() => unreveal(game)}
       >
         <span class="thumb">
           <span class="cover-fallback">{initials(game.name)}</span>
           {#if game.coverUrl}
+            <!--
+              Explicit art is blurred until asked for. The artwork source holds
+              the only cover some adult games have, so refusing it would leave
+              them blank forever — but a shelf someone may have open in company
+              should not show it unannounced. Hover or keyboard focus reveals
+              it; moving away hides it again.
+            -->
             <img
               src={game.coverUrl}
               alt=""
+              class:explicit={game.coverExplicit && !revealed.has(game.id)}
               on:load={(e) => (e.currentTarget.style.display = '')}
               on:error={(e) => (e.currentTarget.style.display = 'none')}
             />
+            {#if game.coverExplicit && !revealed.has(game.id)}
+              <span class="explicit-badge" title="Explicit cover — hover to reveal" aria-hidden="true"></span>
+            {/if}
           {/if}
         </span>
         <span class="game-name">{game.name}</span>
@@ -96,6 +130,35 @@
 </aside>
 
 <style>
+  /* Explicit art is blurred, not hidden: the tile keeps the game's shape and
+     colour so the shelf stays recognisable, while nothing in it is legible.
+     6px on a 24px thumbnail is already a smudge — the scale hides the soft
+     edge a blur leaves at the border, and .thumb clips the overflow. */
+  .thumb img.explicit {
+    filter: blur(6px) saturate(0.7);
+    transform: scale(1.2);
+  }
+  .thumb {
+    overflow: hidden;
+    border-radius: 6px;
+  }
+  .thumb img {
+    transition: filter 120ms ease, transform 120ms ease;
+  }
+  /* A dot, not a label: at 24px there is no room for text, and the point is
+     only to say "this one is covered on purpose" rather than to read as a
+     rating. */
+  .explicit-badge {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.72);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+    pointer-events: none;
+  }
   aside {
     width: var(--sidebar-w);
     background: var(--bg-sidebar);

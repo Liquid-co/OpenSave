@@ -46,8 +46,9 @@ var steamGridCache struct {
 }
 
 type steamGridEntry struct {
-	url string
-	at  time.Time
+	url  string
+	nsfw bool
+	at   time.Time
 }
 
 const (
@@ -90,16 +91,16 @@ func (s *Server) handleCoverLookup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := strings.ToLower(name) + "|" + appID
-	if url, ok, fresh := steamGridLookupCached(key); fresh {
+	if cached, ok, fresh := steamGridLookupCached(key); fresh {
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		writeJSONStatus(w, http.StatusOK, map[string]string{"url": url})
+		writeJSONStatus(w, http.StatusOK, map[string]any{"url": cached.url, "nsfw": cached.nsfw})
 		return
 	}
 
-	found, err := s.steamGridArtURL(name, appID)
+	found, nsfw, err := s.steamGridArtURL(name, appID)
 	if err != nil {
 		// A failure to reach SteamGridDB is not "this game has no art", and
 		// caching it as one would leave every client blank until the entry
@@ -107,72 +108,84 @@ func (s *Server) handleCoverLookup(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	steamGridStore(key, found)
+	steamGridStore(key, found, nsfw)
 	if found == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writeJSONStatus(w, http.StatusOK, map[string]string{"url": found})
+	writeJSONStatus(w, http.StatusOK, map[string]any{"url": found, "nsfw": nsfw})
 }
 
-func steamGridLookupCached(key string) (url string, ok bool, fresh bool) {
+func steamGridLookupCached(key string) (entry steamGridEntry, ok bool, fresh bool) {
 	steamGridCache.Lock()
 	defer steamGridCache.Unlock()
 	e, seen := steamGridCache.entries[key]
 	if !seen {
-		return "", false, false
+		return steamGridEntry{}, false, false
 	}
 	ttl := steamGridHitTTL
 	if e.url == "" {
 		ttl = steamGridMissTTL
 	}
 	if time.Since(e.at) > ttl {
-		return "", false, false
+		return steamGridEntry{}, false, false
 	}
-	return e.url, e.url != "", true
+	return e, e.url != "", true
 }
 
-func steamGridStore(key, url string) {
+func steamGridStore(key, url string, nsfw bool) {
 	steamGridCache.Lock()
 	defer steamGridCache.Unlock()
 	if steamGridCache.entries == nil {
 		steamGridCache.entries = map[string]steamGridEntry{}
 	}
-	steamGridCache.entries[key] = steamGridEntry{url: url, at: time.Now()}
+	steamGridCache.entries[key] = steamGridEntry{url: url, nsfw: nsfw, at: time.Now()}
 }
 
 // steamGridArtURL resolves a game to one artwork URL, or "" when SteamGridDB
-// knows the game but has no art for it.
-func (s *Server) steamGridArtURL(name, appID string) (string, error) {
+// knows the game but has no art for it. nsfw reports that the only art
+// available is explicit.
+func (s *Server) steamGridArtURL(name, appID string) (artURL string, nsfw bool, err error) {
 	gameID, err := s.steamGridGameID(name, appID)
 	if err != nil || gameID == 0 {
-		return "", err
+		return "", false, err
 	}
 
 	// Grids are the shelf art a cover slot wants. Asked for in the sizes a
 	// tile actually uses, so the relay is not handing back a 4K image to be
 	// scaled down on every client.
-	// nsfw=false and humor=false are defaults, not preferences to expose. A
-	// save manager shows a shelf of whatever a user happens to have installed,
-	// and an explicit or joke image appearing unasked-for on that shelf is a
-	// worse failure than a blank tile — including for a game whose own store
-	// art is explicit, where a blank tile is the discreet answer.
+	// Explicit art is fetched, not filtered out — and reported as explicit, so
+	// the client can show it blurred until someone asks to see it. Refusing it
+	// outright would leave an adult game with a blank tile forever; showing it
+	// unannounced would put it on a shelf someone might have open in company.
+	// Blurring is the answer that serves both.
+	//
+	// Joke art is filtered out entirely: nobody is looking for it, and unlike
+	// explicit art there is no case where it is the game's real cover.
 	endpoint := fmt.Sprintf(
-		"%s/grids/game/%d?dimensions=460x215,920x430&types=static&nsfw=false&humor=false",
+		"%s/grids/game/%d?dimensions=460x215,920x430&types=static&humor=false",
 		steamGridAPI, gameID)
 	var payload struct {
 		Success bool `json:"success"`
 		Data    []struct {
-			URL string `json:"url"`
+			URL  string `json:"url"`
+			NSFW bool   `json:"nsfw"`
 		} `json:"data"`
 	}
 	if err := s.steamGridGet(endpoint, &payload); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if !payload.Success || len(payload.Data) == 0 {
-		return "", nil
+		return "", false, nil
 	}
-	return payload.Data[0].URL, nil
+	// Prefer art nobody needs to be warned about: an explicit cover is only
+	// used when it is all the game has.
+	for _, g := range payload.Data {
+		if !g.NSFW {
+			return g.URL, false, nil
+		}
+	}
+	return payload.Data[0].URL, true, nil
 }
 
 // steamGridGameID finds SteamGridDB's id for a game, by Steam AppID when there

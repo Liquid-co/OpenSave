@@ -116,7 +116,7 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 
 	// Serve straight from the disk cache without touching the network.
 	if data, err := os.ReadFile(s.coverCachePath(cacheKey, portrait)); err == nil && len(data) > 0 {
-		writeCover(w, data)
+		s.writeCoverMaybeExplicit(w, cacheKey, data)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 
 	// Another request may have fetched it while we waited for a slot.
 	if data, err := os.ReadFile(s.coverCachePath(cacheKey, portrait)); err == nil && len(data) > 0 {
-		writeCover(w, data)
+		s.writeCoverMaybeExplicit(w, cacheKey, data)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if fb, fbErr := s.fetchFallbackCover(cacheKey, name, appID, portrait); fbErr == nil {
-			writeCover(w, fb)
+			s.writeCoverMaybeExplicit(w, cacheKey, fb)
 			return
 		}
 	}
@@ -173,13 +173,25 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writeCover(w, data)
+	s.writeCoverMaybeExplicit(w, cacheKey, data)
 }
 
 func writeCover(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "public, max-age=604800")
 	_, _ = w.Write(data)
+}
+
+// writeCoverMaybeExplicit is writeCover plus the header a caller needs to know
+// whether to blur what it just received.
+//
+// An <img src> cannot read a header, which is why the flag is also on the game
+// payload — this is for callers that fetch the bytes themselves.
+func (s *Server) writeCoverMaybeExplicit(w http.ResponseWriter, cacheKey string, data []byte) {
+	if s.CoverIsExplicit(cacheKey) {
+		w.Header().Set("X-Cover-Explicit", "1")
+	}
+	writeCover(w, data)
 }
 
 func (s *Server) coverCachePath(appID string, portrait bool) string {

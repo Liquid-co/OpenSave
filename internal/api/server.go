@@ -358,9 +358,13 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		"appId":              g.AppID,
 		"exePath":            g.ExePath,
 		"coverUrl":           g.CoverURL,
-		"syncIgnore":         g.SyncIgnore,
-		"branches":           branches,
-		"createdAt":          g.CreatedAt,
+		// Whether the art cached for this game is explicit, so the client can
+		// blur it until someone asks to see it. An <img src> cannot read a
+		// response header, so it travels with the game rather than the image.
+		"coverExplicit": s.CoverIsExplicit(coverKeyFor(g)),
+		"syncIgnore":    g.SyncIgnore,
+		"branches":      branches,
+		"createdAt":     g.CreatedAt,
 	}
 }
 

@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/opensave/opensave/internal/store"
 )
 
 // The second source of cover art, for the games Steam's CDN has nothing for.
@@ -36,10 +39,10 @@ var artLookupClient = &http.Client{Timeout: 8 * time.Second}
 // Returns "" for every failure — no relay configured, no key on the relay, the
 // game unknown, the network down. A cover is the one thing in this program
 // that is allowed to simply not appear.
-func (s *Server) fallbackArtURL(name, appID string) string {
+func (s *Server) fallbackArtURL(name, appID string) (artURL string, nsfw bool) {
 	settings, err := s.Daemon.Store.GetSettings()
 	if err != nil || strings.TrimSpace(settings.RelayURL) == "" {
-		return ""
+		return "", false
 	}
 	base := strings.TrimRight(settings.RelayURL, "/")
 	// The relay speaks WebSocket for sync and HTTP for everything else; the
@@ -56,32 +59,33 @@ func (s *Server) fallbackArtURL(name, appID string) string {
 	}
 	resp, err := artLookupClient.Get(base + "/api/cover/lookup?" + q.Encode())
 	if err != nil {
-		return ""
+		return "", false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return ""
+		return "", false
 	}
 	var payload struct {
-		URL string `json:"url"`
+		URL  string `json:"url"`
+		NSFW bool   `json:"nsfw"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&payload) != nil {
-		return ""
+		return "", false
 	}
 	if !strings.HasPrefix(payload.URL, "https://") {
 		// The relay is another machine's answer, and this one is about to
 		// fetch whatever it names. Only https, and never a scheme that could
 		// reach something local.
-		return ""
+		return "", false
 	}
-	return payload.URL
+	return payload.URL, payload.NSFW
 }
 
 // fetchFallbackCover retrieves art from the second source and caches it under
 // the same key the Steam path uses, so a later request is served from disk
 // without asking anyone.
 func (s *Server) fetchFallbackCover(cacheKey, name, appID string, portrait bool) ([]byte, error) {
-	artURL := s.fallbackArtURL(name, appID)
+	artURL, nsfw := s.fallbackArtURL(name, appID)
 	if artURL == "" {
 		return nil, fmt.Errorf("no fallback art for %q", name)
 	}
@@ -95,7 +99,31 @@ func (s *Server) fetchFallbackCover(cacheKey, name, appID string, portrait bool)
 		}
 	}
 	s.writeCoverCache(cacheKey, portrait, data)
+	s.markCoverExplicit(cacheKey, nsfw)
 	return data, nil
+}
+
+// markCoverExplicit records that a cached cover is explicit, as a marker file
+// beside the image.
+//
+// A marker rather than a field on the game: the same art is shown for a scan
+// result nobody has tracked yet, and a scan row has nowhere to keep a flag that
+// outlives the scan. The file sits next to the image it describes, so the two
+// are cached and evicted together and can never disagree.
+func (s *Server) markCoverExplicit(cacheKey string, nsfw bool) {
+	path := s.coverCachePath(cacheKey, false) + ".explicit"
+	if !nsfw {
+		_ = os.Remove(path)
+		return
+	}
+	_ = os.WriteFile(path, []byte("1"), 0o666)
+}
+
+// CoverIsExplicit reports whether the cached cover for a key is explicit, so a
+// client can blur it until someone asks to see it.
+func (s *Server) CoverIsExplicit(cacheKey string) bool {
+	_, err := os.Stat(s.coverCachePath(cacheKey, false) + ".explicit")
+	return err == nil
 }
 
 // coverKeyForName turns a game name into a cache key that is safe as a
@@ -106,4 +134,14 @@ func (s *Server) fetchFallbackCover(cacheKey, name, appID string, portrait bool)
 func coverKeyForName(name string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(name))))
 	return "n" + hex.EncodeToString(sum[:8])
+}
+
+// coverKeyFor is the cache key a game's art is stored under: its App ID when it
+// has one, and its name otherwise — matching what handleCover computes for the
+// same game.
+func coverKeyFor(g store.Game) string {
+	if isNumericID(g.AppID) {
+		return g.AppID
+	}
+	return coverKeyForName(g.Name)
 }

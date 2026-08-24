@@ -62,15 +62,22 @@ func TestMissesAreCachedAsWellAsHits(t *testing.T) {
 	steamGridCache.entries = nil
 	steamGridCache.Unlock()
 
-	steamGridStore("a game|", "")
+	steamGridStore("a game|", "", false)
 	if _, ok, fresh := steamGridLookupCached("a game|"); !fresh || ok {
 		t.Errorf("a miss was not cached: fresh=%v ok=%v", fresh, ok)
 	}
 
-	steamGridStore("other|", "https://example.com/art.png")
-	url, ok, fresh := steamGridLookupCached("other|")
-	if !fresh || !ok || url != "https://example.com/art.png" {
-		t.Errorf("a hit did not survive the cache: %q ok=%v fresh=%v", url, ok, fresh)
+	steamGridStore("other|", "https://example.com/art.png", false)
+	e, ok, fresh := steamGridLookupCached("other|")
+	if !fresh || !ok || e.url != "https://example.com/art.png" {
+		t.Errorf("a hit did not survive the cache: %q ok=%v fresh=%v", e.url, ok, fresh)
+	}
+
+	// The explicit flag has to survive the cache too, or a blurred cover
+	// un-blurs itself on the second lookup.
+	steamGridStore("adult|", "https://example.com/x.png", true)
+	if e, ok, _ := steamGridLookupCached("adult|"); !ok || !e.nsfw {
+		t.Errorf("the explicit flag was lost in the cache: %+v", e)
 	}
 
 	if _, _, fresh := steamGridLookupCached("never asked|"); fresh {

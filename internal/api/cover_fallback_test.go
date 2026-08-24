@@ -57,7 +57,7 @@ func TestOnlyHTTPSArtURLsAreAccepted(t *testing.T) {
 		if err := ts.daemon.Store.UpdateSettings(settings); err != nil {
 			t.Fatal(err)
 		}
-		if got := ts.server.fallbackArtURL("Some Game", ""); got != "" {
+		if got, _ := ts.server.fallbackArtURL("Some Game", ""); got != "" {
 			t.Errorf("body %q produced art URL %q, want it refused", body, got)
 		}
 		relay.Close()
@@ -76,7 +76,7 @@ func TestNoRelayMeansNoLookup(t *testing.T) {
 	if err := ts.daemon.Store.UpdateSettings(settings); err != nil {
 		t.Fatal(err)
 	}
-	if got := ts.server.fallbackArtURL("Some Game", "1234"); got != "" {
+	if got, _ := ts.server.fallbackArtURL("Some Game", "1234"); got != "" {
 		t.Errorf("fallbackArtURL with no relay = %q, want empty", got)
 	}
 }
