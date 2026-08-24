@@ -9,6 +9,8 @@
     buildGroups,
     contentsLabel,
     isEmptyResult,
+    withoutRedundantEmpty,
+    redundantEmptyCount,
     normPath,
     plannedGames,
     rootNameFor
@@ -157,8 +159,12 @@
   // Everything the type tabs and the counts describe. Empty folders are out
   // of the pool entirely unless asked for, so the tab counts match what the
   // grid shows rather than counting rows nobody can see.
-  $: scanPool = (scanResults ?? []).filter((r) => showEmpty || !isEmptyResult(r));
-  $: emptyCount = (scanResults ?? []).filter(isEmptyResult).length;
+  // Empty folders are hidden, except where that would take a game out of the
+  // listing entirely — see withoutRedundantEmpty. The count offered by the
+  // "show empty" control has to be the number this actually hides, not the
+  // number of empty rows, or it promises more than it reveals.
+  $: scanPool = showEmpty ? (scanResults ?? []) : withoutRedundantEmpty(scanResults ?? []);
+  $: emptyCount = redundantEmptyCount(scanResults ?? []);
 
   $: filteredResults = scanPool.filter((r) => {
     if (!showTracked && trackedPaths.has(normPath(r.savePath))) return false;
@@ -480,7 +486,7 @@
                 <div class="cover-art">
                   {#if item.appId}
                     <img
-                      src={coverURL(item.appId, true)}
+                      src={coverURL(item.appId, true, item.name)}
                       alt={item.name}
                       loading="lazy"
                       on:error={(e) => (e.currentTarget.style.display = 'none')}

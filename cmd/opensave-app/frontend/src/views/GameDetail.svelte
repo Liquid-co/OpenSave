@@ -46,7 +46,7 @@
   // Cover preview for the config editor: a custom URL wins, else the proxied
   // Steam art for the App ID being edited.
   $: cfgCover =
-    cfg?.coverUrl && !cfg.coverUrl.includes('steamstatic.com') ? cfg.coverUrl : coverURL(cfg?.appId);
+    cfg?.coverUrl && !cfg.coverUrl.includes('steamstatic.com') ? cfg.coverUrl : coverURL(cfg?.appId, false, cfg?.name ?? '');
 
   // ── Picking files to exclude ─────────────────────────────────────
   // The pattern box on its own asks you to type a filename you have to

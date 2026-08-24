@@ -60,19 +60,29 @@ export const api = {
 /**
  * Cover-art URL served through the local daemon proxy (which caches and has
  * reliable internet), instead of hotlinking Steam's CDN from the webview.
- * Returns '' when there's no App ID. `portrait` fetches the tall library art.
+ * `portrait` fetches the tall library art.
+ *
+ * A name may be given as well as, or instead of, an App ID. Steam's CDN is
+ * keyed on App ID and can answer for nothing else, so a game sold only on GOG
+ * or itch — or one found under a folder name no manifest recognises — used to
+ * get an empty string here and never ask at all. The daemon can look those up
+ * by name, and returning '' meant nothing ever reached the code that does.
  */
-export function coverURL(appId, portrait = false) {
-  if (!appId) return '';
-  return `${baseURL}/api/cover?appId=${encodeURIComponent(appId)}${portrait ? '&portrait=1' : ''}`;
+export function coverURL(appId, portrait = false, name = '') {
+  const q = new URLSearchParams();
+  if (appId) q.set('appId', String(appId));
+  if (name) q.set('name', name);
+  if (![...q.keys()].length) return '';
+  if (portrait) q.set('portrait', '1');
+  return `${baseURL}/api/cover?${q.toString()}`;
 }
 
 /** Best cover for a tracked game: a user's custom URL wins; otherwise the
- *  proxied Steam art for its App ID. */
+ *  proxied art for its App ID, or for its name when it has no App ID. */
 export function gameCover(game) {
   const custom = game?.coverUrl;
   if (custom && !custom.includes('steamstatic.com')) return custom;
-  return coverURL(game?.appId);
+  return coverURL(game?.appId, false, game?.name ?? '');
 }
 
 /** Open the live-update WebSocket; onMessage receives {type, data}. */

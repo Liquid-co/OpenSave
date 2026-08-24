@@ -1,6 +1,6 @@
 <script>
   import { gameList, toast, cloudAuthEvent, cloudUploadEvent, backupProgressEvent, askConfirm, settings } from '../lib/stores.js';
-  import { api, native } from '../lib/api.js';
+  import { api, native, coverURL } from '../lib/api.js';
   import { backdropClose } from '../lib/backdrop.js';
   import { onMount, onDestroy } from 'svelte';
 
@@ -363,8 +363,13 @@
 
   // Small cover art next to each row — same Steam box-art the auto-scan
   // grid uses, with the tracked game's own coverUrl taking precedence.
-  const portraitUrl = (appId) =>
-    `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`;
+  // Through the daemon, not straight at Steam's CDN. This screen hotlinked the
+  // CDN directly, which is the one thing the cover proxy exists to avoid: the
+  // embedded webview cannot reliably reach an external host, and on a network
+  // that blocks Steam these were the only blank tiles left in the app. The
+  // daemon caches, falls back to an image proxy, and can answer for a game with
+  // no App ID at all.
+  const portraitUrl = (appId, name = '') => coverURL(appId, true, name);
 
   const openExportPicker = async () => {
     exportOpen = true;
@@ -376,7 +381,7 @@
         id: g.id, name: g.name, savePath: g.savePath, appId: g.appId,
         // Portrait box art first (matches the auto-scan tiles); the stored
         // coverUrl is Steam's landscape header — wrong shape for tiles.
-        cover: (g.appId ? portraitUrl(g.appId) : '') || g.coverUrl || '', tracked: true,
+        cover: portraitUrl(g.appId, g.name) || g.coverUrl || '', tracked: true,
       }));
       const knownPaths = new Set(tracked.map((g) => g.savePath.toLowerCase()));
       const knownIds = new Set(tracked.map((g) => g.id));
@@ -388,7 +393,7 @@
         .filter((d) => !(d.measured && d.fileCount === 0))
         .map((d) => ({
           id: d.id, name: d.name, savePath: d.savePath, appId: d.appId,
-          cover: d.appId ? portraitUrl(d.appId) : '', tracked: false,
+          cover: portraitUrl(d.appId, d.name), tracked: false,
         }));
       for (const g of tracked) exportSel[g.id] = true; // tracked pre-selected
       exportItems = [...tracked, ...detected];

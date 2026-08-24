@@ -24,8 +24,45 @@ export const normPath = (p) => (p ?? '').replace(/[\\/]+$/, '').toLowerCase();
  * The `measured` half is load-bearing and must never be dropped: a folder the
  * daemon could NOT read also reports zero files, and treating that as empty
  * would hide a real save from the listing. Unknown is not empty.
+ *
+ * `truncated` is the same argument for the harder case. Measuring shares one
+ * budget across the whole scan, and a walk cut short by it reports measured
+ * with a count of zero — indistinguishable, without this, from a folder that
+ * genuinely holds nothing. That is what made games appear only after several
+ * scans and vanish again: a save with a folder per slot walks hundreds of
+ * directories before its first file, and whether the budget lasts depends on
+ * what was measured before it.
+ *
+ * Truncated with a non-zero count is the file cap, not the clock, and stays
+ * empty-able — a folder holding 20,000 files is not empty by any definition.
  */
-export const isEmptyResult = (r) => !!r.measured && r.fileCount === 0;
+export const isEmptyResult = (r) => !!r.measured && !r.truncated && r.fileCount === 0;
+
+/**
+ * Drop empty folders, except where dropping one would take its game out of the
+ * listing altogether.
+ *
+ * Hiding every empty folder is right for the usual case: a save lives in one
+ * place and the folders a launcher or a crack created speculatively are noise.
+ * It is wrong when NONE of a game's folders hold anything yet, because then its
+ * empties are the only rows it has, and dropping them removes the title rather
+ * than tidying it.
+ *
+ * Mirrors WithoutRedundantEmpty in internal/presets. The two must agree: the
+ * CLI and this screen showing different games for the same machine is how a
+ * user concludes one of them is broken.
+ */
+export function withoutRedundantEmpty(rows) {
+  const keyOf = (r) => r.groupId || `id:${r.id}`;
+  const hasContent = new Set();
+  for (const r of rows) {
+    if (!isEmptyResult(r)) hasContent.add(keyOf(r));
+  }
+  return rows.filter((r) => !isEmptyResult(r) || !hasContent.has(keyOf(r)));
+}
+
+/** How many rows withoutRedundantEmpty would drop, for the "show empty" hint. */
+export const redundantEmptyCount = (rows) => rows.length - withoutRedundantEmpty(rows).length;
 
 // Order within a game: the folder to track, then the ones offered with it,
 // then the ones merely offered, then the ones already covered.
