@@ -5,8 +5,6 @@ import {
   fmtAge,
   fmtBytes,
   isEmptyResult,
-  withoutRedundantEmpty,
-  redundantEmptyCount,
   normPath,
   plannedGames,
   rootNameFor
@@ -126,39 +124,6 @@ describe('isEmptyResult', () => {
       expect(isEmptyResult({ measured: true, truncated: true, fileCount: 20000 })).toBe(false);
     });
   });
-
-  describe('withoutRedundantEmpty', () => {
-    const full = { id: 'a', groupId: 'app:1', measured: true, fileCount: 3 };
-    const emptySibling = { id: 'a', groupId: 'app:1', measured: true, fileCount: 0 };
-    const emptyAlone = { id: 'b', groupId: 'app:2', measured: true, fileCount: 0 };
-
-    it('drops an empty folder when its game has a real one', () => {
-      expect(withoutRedundantEmpty([full, emptySibling])).toEqual([full]);
-    });
-
-    // The case behind "2.3.1 finds fewer games than 2.2.x": when none of a
-    // title's folders hold anything, its empties are the only rows it has, and
-    // dropping them removes the game rather than tidying it.
-    it('keeps an empty folder when it is all its game has', () => {
-      const kept = withoutRedundantEmpty([full, emptySibling, emptyAlone]);
-      expect(kept).toContain(emptyAlone);
-      expect(kept).not.toContain(emptySibling);
-    });
-
-    it('never lets one game rescue another', () => {
-      expect(withoutRedundantEmpty([full, emptyAlone])).toHaveLength(2);
-    });
-
-    it('counts what it would actually hide', () => {
-      expect(redundantEmptyCount([full, emptySibling, emptyAlone])).toBe(1);
-    });
-
-    // A folder nobody could measure is unknown, not empty, and must survive.
-    it('keeps a folder that could not be measured', () => {
-      const unknown = { id: 'c', groupId: 'app:1', measured: false, fileCount: 0 };
-      expect(withoutRedundantEmpty([full, unknown])).toHaveLength(2);
-    });
-});
 
 describe('contentsLabel', () => {
   const now = Date.now();

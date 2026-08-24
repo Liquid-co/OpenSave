@@ -9,8 +9,6 @@
     buildGroups,
     contentsLabel,
     isEmptyResult,
-    withoutRedundantEmpty,
-    redundantEmptyCount,
     normPath,
     plannedGames,
     rootNameFor
@@ -163,8 +161,13 @@
   // listing entirely — see withoutRedundantEmpty. The count offered by the
   // "show empty" control has to be the number this actually hides, not the
   // number of empty rows, or it promises more than it reveals.
-  $: scanPool = showEmpty ? (scanResults ?? []) : withoutRedundantEmpty(scanResults ?? []);
-  $: emptyCount = redundantEmptyCount(scanResults ?? []);
+  // Off means no empty folders. It said that before and did not do it: a game
+  // whose folders are ALL empty was kept anyway, so the toggle hid some empty
+  // tiles and left others sitting there. Keeping a title visible is worth less
+  // than a control that behaves, and nothing is lost — the count beside the
+  // toggle says how many are hidden and one click brings them back.
+  $: scanPool = showEmpty ? (scanResults ?? []) : (scanResults ?? []).filter((r) => !isEmptyResult(r));
+  $: emptyCount = (scanResults ?? []).filter(isEmptyResult).length;
 
   $: filteredResults = scanPool.filter((r) => {
     if (!showTracked && trackedPaths.has(normPath(r.savePath))) return false;
@@ -433,7 +436,7 @@
         <div>
           <h2>🔍 Auto-scan results</h2>
           <p class="scan-modal-sub">
-            {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {shownAvailable} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} more empty hidden{/if}{/if}
+            {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {shownAvailable} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} empty hidden{/if}{/if}
           </p>
         </div>
         <button class="btn icon" on:click={closeScan} title="Close">✕</button>
@@ -456,9 +459,9 @@
             Show tracked
           </label>
           {#if emptyCount > 0}
-            <label class="scan-show-tracked" title="Folders that exist but hold no files — Steam makes one for every game you own, whether or not saves go there. A game whose folders are ALL empty stays listed even with this off, or it would vanish from this screen entirely; this shows the rest.">
+              <label class="scan-show-tracked" title="Folders that exist but hold no files — Steam makes one for every game you own, whether or not saves go there. A game with nothing saved anywhere is in here too.">
               <input type="checkbox" bind:checked={showEmpty} />
-              Show {emptyCount} more empty
+              Show {emptyCount} empty
             </label>
           {/if}
         </div>

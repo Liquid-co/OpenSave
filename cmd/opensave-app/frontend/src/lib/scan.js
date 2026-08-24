@@ -38,32 +38,6 @@ export const normPath = (p) => (p ?? '').replace(/[\\/]+$/, '').toLowerCase();
  */
 export const isEmptyResult = (r) => !!r.measured && !r.truncated && r.fileCount === 0;
 
-/**
- * Drop empty folders, except where dropping one would take its game out of the
- * listing altogether.
- *
- * Hiding every empty folder is right for the usual case: a save lives in one
- * place and the folders a launcher or a crack created speculatively are noise.
- * It is wrong when NONE of a game's folders hold anything yet, because then its
- * empties are the only rows it has, and dropping them removes the title rather
- * than tidying it.
- *
- * Mirrors WithoutRedundantEmpty in internal/presets. The two must agree: the
- * CLI and this screen showing different games for the same machine is how a
- * user concludes one of them is broken.
- */
-export function withoutRedundantEmpty(rows) {
-  const keyOf = (r) => r.groupId || `id:${r.id}`;
-  const hasContent = new Set();
-  for (const r of rows) {
-    if (!isEmptyResult(r)) hasContent.add(keyOf(r));
-  }
-  return rows.filter((r) => !isEmptyResult(r) || !hasContent.has(keyOf(r)));
-}
-
-/** How many rows withoutRedundantEmpty would drop, for the "show empty" hint. */
-export const redundantEmptyCount = (rows) => rows.length - withoutRedundantEmpty(rows).length;
-
 // Order within a game: the folder to track, then the ones offered with it,
 // then the ones merely offered, then the ones already covered.
 const ROLE_RANK = { primary: 0, only: 0, location: 1, alternative: 2, inside: 3 };

@@ -209,58 +209,6 @@ func CountEmpty(saves []DiscoveredSave) int {
 	return n
 }
 
-// WithoutRedundantEmpty drops empty locations, except where dropping one would
-// take its game out of the listing altogether.
-//
-// Hiding every empty folder is right for the usual case: a save lives in one
-// place, and the other folders a game or a crack created speculatively are
-// noise. It is wrong when NONE of a game's folders hold anything yet — there
-// the empties are the only rows the game has, and dropping them removes the
-// title itself rather than tidying it.
-//
-// That is what a user upgrading from 2.2.x reported as fewer games detected.
-// Detection had not changed at all; on the machine the report came from, 18 of
-// 170 titles had nothing in any of their folders and so vanished completely.
-// Keeping their rows costs 19 extra lines out of 237 and loses no title,
-// where showing every empty would have cost 48.
-//
-// A title is "the same game" by the same key Group uses, so the listing and
-// this filter never disagree about what counts as one game.
-func WithoutRedundantEmpty(saves []DiscoveredSave) []DiscoveredSave {
-	hasContent := make(map[string]bool, len(saves))
-	for _, s := range saves {
-		if !s.IsEmpty() {
-			hasContent[emptyFilterKey(s)] = true
-		}
-	}
-	out := make([]DiscoveredSave, 0, len(saves))
-	for _, s := range saves {
-		// Unmeasured locations are not empty by IsEmpty's definition, so they
-		// are never dropped here — hiding the unknown is how a real save goes
-		// missing.
-		if !s.IsEmpty() || !hasContent[emptyFilterKey(s)] {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// CountRedundantEmpty returns how many locations WithoutRedundantEmpty would
-// drop, for the line that offers --all.
-func CountRedundantEmpty(saves []DiscoveredSave) int {
-	return len(saves) - len(WithoutRedundantEmpty(saves))
-}
-
-// emptyFilterKey identifies the game a location belongs to. Group falls back to
-// a per-entry id for anything it cannot group, and this has to match it or the
-// two would disagree about whether a title still has a row.
-func emptyFilterKey(d DiscoveredSave) string {
-	if k := groupKey(d); k != "" {
-		return k
-	}
-	return "id:" + d.ID
-}
-
 // WithoutEmpty drops the locations that are known to hold nothing, preserving
 // order. Locations that could not be measured are kept.
 func WithoutEmpty(saves []DiscoveredSave) []DiscoveredSave {

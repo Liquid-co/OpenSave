@@ -296,11 +296,12 @@ func cmdScan(d *daemon.Daemon, args []string) int {
 	// it has ever seen — and a listing where most rows are places nothing has
 	// ever been written is a listing nobody reads.
 	//
-	// Except where that would take the game out of the listing entirely: if
-	// none of a title's folders hold anything, its empties are the only rows
-	// it has. Hiding those removed the title rather than tidying it, which is
-	// what a 2.2.x upgrade reported as fewer games detected. --all shows the
-	// rest.
+	// Every empty folder, without exception. Keeping a title whose folders are
+	// all empty was tried, to stop it disappearing from the listing — and it
+	// made the filter unpredictable, because some empty rows were hidden and
+	// others were not, with nothing on screen to say why. The count below and
+	// --all are what make them reachable; a filter that behaves is worth more
+	// than one that second-guesses.
 	asJSON, args := jsonFlag(args)
 	showEmpty := false
 	for _, a := range args {
@@ -318,9 +319,9 @@ func cmdScan(d *daemon.Daemon, args []string) int {
 	found = presets.FilterExcluded(found, settings.ExcludePaths)
 	presets.Measure(found)
 
-	total, emptyCount := len(found), presets.CountRedundantEmpty(found)
+	total, emptyCount := len(found), presets.CountEmpty(found)
 	if !showEmpty {
-		found = presets.WithoutRedundantEmpty(found)
+		found = presets.WithoutEmpty(found)
 	}
 	// One entry per game, its other folders underneath. A scan finds the same
 	// game several times over — different detection passes, so its rows are

@@ -52,19 +52,6 @@ func TestATruncatedMeasurementIsNotEmpty(t *testing.T) {
 	}
 }
 
-// A location that was cut short must survive the filter too, or the fix above
-// only moves the problem one layer up.
-func TestATruncatedLocationIsNotFilteredOut(t *testing.T) {
-	saves := []DiscoveredSave{
-		{ID: "g1", Name: "Game", AppID: "1", SavePath: `C:\a`, Measured: true, FileCount: 5},
-		{ID: "g1", Name: "Game", AppID: "1", SavePath: `C:\b`, Measured: true, FileCount: 0, Truncated: true},
-	}
-	kept := WithoutRedundantEmpty(saves)
-	if len(kept) != 2 {
-		t.Errorf("a location whose measurement was cut short was dropped as empty: %d kept", len(kept))
-	}
-}
-
 // The file cap also sets Truncated, and a location that counted 20,000 files
 // must still be able to be non-empty — the two uses of the flag must not be
 // confused.
