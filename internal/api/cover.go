@@ -120,6 +120,16 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Steam has usually already downloaded this game's art, and the file is on
+	// this disk. Checked before anything reaches the network: it is free,
+	// instant, and works offline. See cover_local.go for what it does and does
+	// not cover.
+	if data := s.localSteamCover(appID, portrait); len(data) > 0 {
+		s.writeCoverCache(cacheKey, portrait, data)
+		writeCover(w, data)
+		return
+	}
+
 	// Known to have no art — don't re-walk the network for it on every scan.
 	missKey := coverMissKey(cacheKey, portrait)
 	if recentCoverMiss(missKey) {

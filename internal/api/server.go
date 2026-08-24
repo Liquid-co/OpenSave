@@ -31,6 +31,9 @@ type Server struct {
 
 	httpServer *http.Server
 	listener   net.Listener
+	// SteamCacheDirs overrides where Steam's already-downloaded library art is
+	// looked for when non-nil. Tests only.
+	SteamCacheDirs []string
 }
 
 // New assembles the router and hub around a daemon.
