@@ -142,7 +142,19 @@ func extractSingleFile(zipPath, entryName, destRel, savePath string) error {
 		}
 		defer src.Close()
 
-		destPath := filepath.Join(savePath, filepath.FromSlash(want))
+		// The entry name decides where this is written, and a snapshot archive
+		// is not always this machine's own — it can arrive from a peer or
+		// inside an imported backup. An entry called "../x" wrote outside the
+		// save folder entirely.
+		//
+		// The same check the whole-archive path has always made; this one
+		// joined the name straight on. Matching an entry in the archive is not
+		// protection when the archive is what an attacker controls.
+		clean := filepath.Clean(filepath.FromSlash(want))
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+			return fmt.Errorf("file %q in this snapshot points outside the save folder", entryName)
+		}
+		destPath := filepath.Join(savePath, clean)
 		if info, statErr := os.Stat(savePath); statErr == nil && !info.IsDir() {
 			destPath = savePath // single-file save mode
 		}
