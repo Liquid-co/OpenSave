@@ -475,6 +475,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		return store.Game{}, err
 	}
 
+	// Some games keep their saves in the registry — 430 in the manifest, and
+	// for 303 of them it is the only place a save exists. Set up before the
+	// initial snapshot below, so the very first archive holds the registry
+	// half too rather than a files-only copy the user would have to snapshot
+	// again to correct.
+	d.setUpRegistryCapture(game)
+
 	// The initial snapshot can take a while for a big save — run it in the
 	// background so tracking returns immediately and never blocks the UI.
 	// If the game is untracked while the snapshot runs, stop: no watch, no

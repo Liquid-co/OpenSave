@@ -73,8 +73,22 @@ type indexedGame struct {
 // cache file directory (~/.opensave).
 func (sc *Scanner) manifestPaths() (yamlPath, indexPath string) {
 	dir := filepath.Dir(sc.CacheFile)
-	return filepath.Join(dir, "ludusavi-manifest.yaml"), filepath.Join(dir, "ludusavi-index.json")
+	return filepath.Join(dir, "ludusavi-manifest.yaml"), filepath.Join(dir, indexFileName)
 }
+
+// indexFileName carries the index's format in its name.
+//
+// The index is rebuilt only when it is older than the manifest it came from,
+// which is the right rule for content and the wrong one for shape: adding
+// registry keys to the format left every existing install reading a file that
+// had none, and no manifest update was due to trigger a rebuild. Games whose
+// save is in the registry would simply never have been found.
+//
+// A new name rather than a version field inside the file. An older build keeps
+// reading the file it knows and a newer one builds its own, so a user moving
+// between the two is never handed an index whose shape their code predates.
+// Bump this whenever indexedGame gains or loses a field that a scan depends on.
+const indexFileName = "ludusavi-index-v2.json"
 
 // scanLudusavi expands the manifest's save-path templates and returns the
 // locations that actually exist on this machine.

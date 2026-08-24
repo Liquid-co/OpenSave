@@ -14,10 +14,10 @@ import (
 )
 
 type testEnv struct {
-	mgr      *Manager
-	store    *store.Store
-	saveDir  string
-	backups  string
+	mgr     *Manager
+	store   *store.Store
+	saveDir string
+	backups string
 }
 
 func setup(t *testing.T) *testEnv {

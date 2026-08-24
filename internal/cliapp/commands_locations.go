@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/opensave/opensave/internal/daemon"
+	"github.com/opensave/opensave/internal/winreg"
 )
 
 // A game's extra save locations — the folders beyond its main one that belong
@@ -79,10 +80,21 @@ func cmdLocations(d *daemon.Daemon, args []string) int {
 		return fail(asJSON, err)
 	}
 
+	// Registry saves are not a folder, so they are not a root — but they are
+	// part of this game's save, and this listing is where someone looks to see
+	// what is covered.
+	regKeys, _ := d.Store.GameRegistryKeys(gameID)
+
 	if asJSON {
 		out := []map[string]any{{"name": "", "path": game.SavePath, "primary": true, "mapped": true}}
 		for _, r := range roots {
 			out = append(out, map[string]any{"name": r.Name, "path": r.Path, "primary": false, "mapped": r.Mapped()})
+		}
+		for _, k := range regKeys {
+			out = append(out, map[string]any{
+				"name": "registry", "path": k, "primary": false,
+				"mapped": winreg.Available(), "registry": true,
+			})
 		}
 		return emitJSON(out)
 	}
@@ -99,7 +111,29 @@ func cmdLocations(d *daemon.Daemon, args []string) int {
 		// restore until someone points it somewhere.
 		field(r.Name, warnText("no folder on this device — set one with `opensave locations add`"))
 	}
-	if len(roots) == 0 {
+	// 430 games in the manifest keep saves in the registry, and for 303 of them
+	// it is the only place a save exists — so a device that cannot read one is
+	// backing up half a save, or none of it, and has to say so.
+	for _, k := range regKeys {
+		// "registry key", not "registry": the location above is already named
+		// registry and holds the captured copy, so two rows under one label
+		// would read as two folders rather than a folder and the key it holds.
+		if winreg.Available() {
+			field("registry key", k)
+			continue
+		}
+		field("registry key", warnText(k+" — cannot be read on this device"))
+	}
+	if len(regKeys) > 0 && !winreg.Available() {
+		fmt.Println()
+		if len(roots) == 0 && game.SavePath == "" {
+			warning("Every save this game has is in the Windows registry, and none of it can be backed up here.")
+		} else {
+			warning("This game keeps %d save(s) in the Windows registry. Its files are backed up here; "+
+				"the registry half syncs from a Windows device.", len(regKeys))
+		}
+	}
+	if len(roots) == 0 && len(regKeys) == 0 {
 		fmt.Println()
 		note("This game has only its main save folder.")
 	}

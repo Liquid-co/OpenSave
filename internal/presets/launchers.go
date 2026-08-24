@@ -239,3 +239,49 @@ func (sc *Scanner) resolveWrapperChild(dir, name string, known map[string]string
 	}
 	return "", false
 }
+
+// RegistryKeysFor returns the registry keys the manifest says a game keeps its
+// saves in, matched by Steam AppID first and by name second.
+//
+// AppID first because it is exact. A name has to survive the spellings a save
+// folder arrives under, and normalizeGameName makes that work most of the time
+// — but "Rounds" and "ROUNDS" being the same game is a guess that an AppID
+// never has to make.
+//
+// Returns nothing when the game is not in the manifest, which is the common
+// case: 430 of twenty thousand games declare a save-tagged registry key.
+func (sc *Scanner) RegistryKeysFor(name, appID string) []string {
+	idx := sc.loadManifestIndex()
+	if len(idx) == 0 {
+		return nil
+	}
+	if appID != "" {
+		for _, g := range idx {
+			if g.SteamID == appID && len(g.Registry) > 0 {
+				return append([]string(nil), g.Registry...)
+			}
+		}
+	}
+	key := normalizeGameName(stripNameSuffixes(name))
+	if key == "" {
+		return nil
+	}
+	for _, g := range idx {
+		if len(g.Registry) == 0 {
+			continue
+		}
+		if normalizeGameName(g.Name) == key {
+			return append([]string(nil), g.Registry...)
+		}
+	}
+	return nil
+}
+
+// stripNameSuffixes removes the decorations a discovery adds to a title, so a
+// row listed as "Rounds (Epic/Unreal Save)" still matches the manifest.
+func stripNameSuffixes(name string) string {
+	if i := strings.IndexByte(name, '('); i > 0 {
+		name = name[:i]
+	}
+	return strings.TrimSpace(name)
+}

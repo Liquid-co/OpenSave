@@ -22,6 +22,7 @@ import (
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/winreg"
 )
 
 // UploadHook is called after each snapshot is created, with the local zip
@@ -165,6 +166,11 @@ func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto bo
 	if rootsErr != nil {
 		extraRoots = nil
 	}
+	// Refresh the registry capture before archiving it. The capture is a file
+	// in one of the game's locations, so the zip picks it up with everything
+	// else — but the file is only as current as the last time it was written,
+	// and the registry has changed since the game was played.
+	m.refreshRegistryCapture(game, settings, extraRoots)
 	skipped, captured, err := ZipRootsCapturing(game.SavePath, extraRoots, stagingPath)
 	if err != nil {
 		os.Remove(stagingPath)
@@ -508,6 +514,22 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 	}
 	if err != nil {
 		return store.Snapshot{}, fmt.Errorf("restore snapshot %s: %w", snapshotID, err)
+	}
+
+	// The registry half, after the files. The capture arrived as a file in the
+	// game's registry location — unzipping put it back on disk, and this reads
+	// it and writes the values into the registry itself. Restoring the file
+	// alone would leave the game reading whatever the registry still held.
+	//
+	// Warnings, not failure: the files are already back, and a save restored
+	// without its registry half is worth more than an error that leaves the
+	// caller unsure whether anything happened at all.
+	if dir := restoreRoots[winreg.LocationName]; dir != "" {
+		for _, w := range RestoreRegistryCapture(game.Name, dir) {
+			if m.Log != nil {
+				m.Log("warn", w)
+			}
+		}
 	}
 	return snap, nil
 }
