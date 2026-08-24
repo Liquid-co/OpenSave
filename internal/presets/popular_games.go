@@ -212,7 +212,7 @@ func inferAppIDFromName(name string, index map[string]string) string {
 // collides more readily — "Portal 2" and "Portal2" are the same game, but so
 // are a lot of pairs that are not — and the ambiguity rule below has to be
 // applied over the compacted keys to be worth anything.
-var manifestCompactIndex = sync.OnceValue(func() map[string]string {
+func manifestCompactIndex() map[string]string {
 	index := map[string]string{}
 	ambiguous := map[string]bool{}
 	for key, appID := range manifestNameIndex() {
@@ -228,10 +228,9 @@ var manifestCompactIndex = sync.OnceValue(func() map[string]string {
 		index[compact] = appID
 	}
 	return index
-})
+}
 
-var manifestNameIndex = sync.OnceValue(func() map[string]string {
-	games := loadEmbeddedIndex()
+func buildNameIndex(games []indexedGame) map[string]string {
 	index := make(map[string]string, len(games))
 	ambiguous := map[string]bool{}
 	for _, g := range games {
@@ -250,4 +249,55 @@ var manifestNameIndex = sync.OnceValue(func() map[string]string {
 		index[key] = g.SteamID
 	}
 	return index
-})
+}
+
+// The naming index is built from the manifest the scan actually loaded, not
+// only from the copy compiled in.
+//
+// It read loadEmbeddedIndex directly, so a machine that had downloaded a fresh
+// manifest still matched names against the snapshot bundled at build time: the
+// 17 MB download drove path detection while naming and cover art stayed frozen
+// at whatever was known when the release was cut. 184 games in today's
+// manifest could not resolve for that reason alone, and that number only grows
+// between releases.
+//
+// Set once per process by the first scan that loads a manifest; the embedded
+// copy is the fallback, so a first run before any download still names what it
+// can.
+var (
+	nameIndexMu    sync.RWMutex
+	nameIndexCache map[string]string
+)
+
+func manifestNameIndex() map[string]string {
+	nameIndexMu.RLock()
+	cached := nameIndexCache
+	nameIndexMu.RUnlock()
+	if cached != nil {
+		return cached
+	}
+	built := buildNameIndex(loadEmbeddedIndex())
+	nameIndexMu.Lock()
+	if nameIndexCache == nil {
+		nameIndexCache = built
+	}
+	cached = nameIndexCache
+	nameIndexMu.Unlock()
+	return cached
+}
+
+// adoptManifestForNaming replaces the naming index when a scan has loaded a
+// manifest with more in it than the embedded copy. Never shrinks the index: a
+// hermetic test with a two-entry manifest must not blank out real names for
+// everything else in the process.
+func adoptManifestForNaming(games []indexedGame) {
+	if len(games) == 0 {
+		return
+	}
+	built := buildNameIndex(games)
+	nameIndexMu.Lock()
+	defer nameIndexMu.Unlock()
+	if len(built) > len(nameIndexCache) {
+		nameIndexCache = built
+	}
+}

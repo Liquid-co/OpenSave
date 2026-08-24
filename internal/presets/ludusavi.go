@@ -74,6 +74,10 @@ func (sc *Scanner) scanLudusavi(seen map[string]bool) []DiscoveredSave {
 		return nil
 	}
 	games := sc.loadManifestIndex()
+	// Naming and cover art match against whatever manifest this scan loaded,
+	// rather than only the copy compiled into the binary. See
+	// adoptManifestForNaming.
+	adoptManifestForNaming(games)
 	if len(games) == 0 {
 		return nil
 	}
