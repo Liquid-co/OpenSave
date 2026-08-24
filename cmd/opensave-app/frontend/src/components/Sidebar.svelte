@@ -20,6 +20,7 @@
   };
   import { view, navigate, settings, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
+  import CoverImage from './CoverImage.svelte';
 
   let filter = '';
 
@@ -98,25 +99,11 @@
             reliably reach. gameCover asks the local daemon, which caches, falls
             back to an image proxy, and knows whether what it returned is explicit.
           -->
-          {#if gameCover(game)}
-            <!--
-              Explicit art is blurred until asked for. The artwork source holds
-              the only cover some adult games have, so refusing it would leave
-              them blank forever — but a shelf someone may have open in company
-              should not show it unannounced. Hover or keyboard focus reveals
-              it; moving away hides it again.
-            -->
-            <img
-              src={gameCover(game)}
-              alt=""
-              class:explicit={game.coverExplicit && !revealed.has(game.id)}
-              on:load={(e) => (e.currentTarget.style.display = '')}
-              on:error={(e) => (e.currentTarget.style.display = 'none')}
-            />
-            {#if game.coverExplicit && !revealed.has(game.id)}
-              <span class="explicit-badge" title="Explicit cover — hover to reveal" aria-hidden="true"></span>
-            {/if}
-          {/if}
+          <CoverImage
+            src={gameCover(game)}
+            alt=""
+            revealed={revealed.has(game.id)}
+          />
         </span>
         <span class="game-name">{game.name}</span>
         {#if $syncActivity[game.id]?.state === 'running'}
@@ -139,34 +126,12 @@
 </aside>
 
 <style>
-  /* Explicit art is blurred, not hidden: the tile keeps the game's shape and
-     colour so the shelf stays recognisable, while nothing in it is legible.
-     6px on a 24px thumbnail is already a smudge — the scale hides the soft
-     edge a blur leaves at the border, and .thumb clips the overflow. */
-  .thumb img.explicit {
-    filter: blur(6px) saturate(0.7);
-    transform: scale(1.2);
-  }
   .thumb {
     overflow: hidden;
     border-radius: 6px;
   }
-  .thumb img {
+  .thumb :global(img) {
     transition: filter 120ms ease, transform 120ms ease;
-  }
-  /* A dot, not a label: at 24px there is no room for text, and the point is
-     only to say "this one is covered on purpose" rather than to read as a
-     rating. */
-  .explicit-badge {
-    position: absolute;
-    right: 1px;
-    bottom: 1px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.72);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
-    pointer-events: none;
   }
   aside {
     width: var(--sidebar-w);
@@ -319,7 +284,7 @@
     height: 24px;
     flex-shrink: 0;
   }
-  .thumb img {
+  .thumb :global(img) {
     position: absolute;
     inset: 0;
     width: 24px;

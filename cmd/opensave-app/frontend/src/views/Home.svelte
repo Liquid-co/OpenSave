@@ -2,6 +2,7 @@
   import { gameList, peers, navigate, toast, syncActivity, askConfirm, settings } from '../lib/stores.js';
   import { api, native, coverURL, gameCover } from '../lib/api.js';
   import { backdropClose } from '../lib/backdrop.js';
+  import CoverImage from '../components/CoverImage.svelte';
   // The scan screen's decisions live in a plain module so they can be tested
   // without opening the app — see scan.test.js, where each case is a mistake
   // that actually reached a build.
@@ -101,6 +102,14 @@
   // you own. Kept reachable, since tracking a folder before the game's first
   // save is a legitimate thing to want.
   let showEmpty = false;
+
+  // Which explicit covers are currently uncovered. Per tile, not a shelf-wide
+  // switch: revealing one should not uncover the rest.
+  let revealedCovers = new Set();
+  const revealCover = (id) => { if (!revealedCovers.has(id)) revealedCovers = new Set(revealedCovers).add(id); };
+  const hideCover = (id) => {
+    if (revealedCovers.has(id)) { const n = new Set(revealedCovers); n.delete(id); revealedCovers = n; }
+  };
   // Which game's folder list is open. One at a time: the panel spans the grid
   // and several open at once turns the tiles into a wall of paths.
   let expandedGroup = null;
@@ -481,6 +490,10 @@
                 class:tracked={isTracked(item)}
                 class:empty-result={isEmptyResult(item)}
                 on:click={() => !isTracked(item) && toggleGroup(group)}
+                on:mouseenter={() => revealCover(item.id)}
+                on:mouseleave={() => hideCover(item.id)}
+                on:focus={() => revealCover(item.id)}
+                on:blur={() => hideCover(item.id)}
                 on:keydown={(e) => !isTracked(item) && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleGroup(group))}
                 role="button"
                 tabindex="0"
@@ -494,14 +507,11 @@
                     The daemon answers 404 when it finds nothing and the error handler
                     below hides the image, so asking costs a cached miss and nothing more.
                   -->
-                  {#if item.appId || item.name}
-                    <img
-                      src={coverURL(item.appId, true, item.name)}
-                      alt={item.name}
-                      loading="lazy"
-                      on:error={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                  {/if}
+                  <CoverImage
+                    src={coverURL(item.appId, true, item.name)}
+                    alt={item.name}
+                    revealed={revealedCovers.has(item.id)}
+                  />
                   <div class="cover-fallback">
                     <span class="cover-emoji">{typeIcon(item.type)}</span>
                     <span class="cover-fallback-name">{item.name}</span>
@@ -867,7 +877,7 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft);
   }
-  .cover-art img {
+  .cover-art :global(img) {
     position: absolute;
     inset: 0;
     width: 100%;
