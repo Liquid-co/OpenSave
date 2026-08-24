@@ -144,11 +144,26 @@ func UnzipTo(zipPath, targetPath string) error {
 	}
 	defer r.Close()
 
+	// Whether the save is one file or a folder. A tracked location can be
+	// either — several RPG Maker titles keep a single file — and the answer
+	// decides where everything in the archive lands.
+	//
+	// What is on disk settles it when the target exists. When it does not, the
+	// archive cannot: a snapshot of a lone save.dat and a snapshot of a folder
+	// containing only save.dat hold exactly the same entry, so counting entries
+	// answers the question by guessing at it. It guessed wrong in the case that
+	// matters most — a game uninstalled, its folder gone, one file in its last
+	// snapshot — and wrote the save into the PARENT of the save folder, where
+	// the game will never look, while reporting the restore a success.
+	//
+	// The path's own shape is the better answer and the one the rest of this
+	// package already uses: ensureSavePathExists treats a save path with an
+	// extension as a file and anything else as a folder.
 	isFile := false
 	if info, statErr := os.Stat(targetPath); statErr == nil {
 		isFile = !info.IsDir()
-	} else if len(r.File) == 1 && !r.File[0].FileInfo().IsDir() {
-		isFile = true
+	} else {
+		isFile = len(filepath.Ext(targetPath)) > 1
 	}
 
 	var destDir string
