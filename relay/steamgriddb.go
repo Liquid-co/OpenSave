@@ -152,7 +152,13 @@ func (s *Server) steamGridArtURL(name, appID string) (string, error) {
 	// Grids are the shelf art a cover slot wants. Asked for in the sizes a
 	// tile actually uses, so the relay is not handing back a 4K image to be
 	// scaled down on every client.
-	endpoint := fmt.Sprintf("%s/grids/game/%d?dimensions=460x215,920x430&types=static",
+	// nsfw=false and humor=false are defaults, not preferences to expose. A
+	// save manager shows a shelf of whatever a user happens to have installed,
+	// and an explicit or joke image appearing unasked-for on that shelf is a
+	// worse failure than a blank tile — including for a game whose own store
+	// art is explicit, where a blank tile is the discreet answer.
+	endpoint := fmt.Sprintf(
+		"%s/grids/game/%d?dimensions=460x215,920x430&types=static&nsfw=false&humor=false",
 		steamGridAPI, gameID)
 	var payload struct {
 		Success bool `json:"success"`
