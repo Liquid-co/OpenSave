@@ -433,7 +433,7 @@
         <div>
           <h2>🔍 Auto-scan results</h2>
           <p class="scan-modal-sub">
-            {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {shownAvailable} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} empty hidden{/if}{/if}
+            {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {shownAvailable} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} more empty hidden{/if}{/if}
           </p>
         </div>
         <button class="btn icon" on:click={closeScan} title="Close">✕</button>
@@ -456,9 +456,9 @@
             Show tracked
           </label>
           {#if emptyCount > 0}
-            <label class="scan-show-tracked" title="Folders that exist but hold no files. Steam creates one for every game you own, whether or not saves go there.">
+            <label class="scan-show-tracked" title="Folders that exist but hold no files — Steam makes one for every game you own, whether or not saves go there. A game whose folders are ALL empty stays listed even with this off, or it would vanish from this screen entirely; this shows the rest.">
               <input type="checkbox" bind:checked={showEmpty} />
-              Show {emptyCount} empty
+              Show {emptyCount} more empty
             </label>
           {/if}
         </div>
@@ -484,7 +484,14 @@
                 title={item.savePath}
               >
                 <div class="cover-art">
-                  {#if item.appId}
+                  <!--
+                    Asked for whenever there is anything to ask about. Gating this on an
+                    App ID skipped exactly the games the name lookup exists to serve: a
+                    title sold only on GOG or itch has none, so no request was ever made.
+                    The daemon answers 404 when it finds nothing and the error handler
+                    below hides the image, so asking costs a cached miss and nothing more.
+                  -->
+                  {#if item.appId || item.name}
                     <img
                       src={coverURL(item.appId, true, item.name)}
                       alt={item.name}

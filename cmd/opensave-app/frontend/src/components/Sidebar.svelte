@@ -19,6 +19,7 @@
     }
   };
   import { view, navigate, settings, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
+  import { gameCover } from '../lib/api.js';
 
   let filter = '';
 
@@ -89,7 +90,15 @@
       >
         <span class="thumb">
           <span class="cover-fallback">{initials(game.name)}</span>
-          {#if game.coverUrl}
+          <!--
+            Through the daemon, not the stored URL. game.coverUrl is empty for a
+            game with no App ID, so this rendered no image at all for exactly the
+            titles the name lookup was added to cover; and when it was set it
+            pointed straight at Steam's CDN, which the embedded webview cannot
+            reliably reach. gameCover asks the local daemon, which caches, falls
+            back to an image proxy, and knows whether what it returned is explicit.
+          -->
+          {#if gameCover(game)}
             <!--
               Explicit art is blurred until asked for. The artwork source holds
               the only cover some adult games have, so refusing it would leave
@@ -98,7 +107,7 @@
               it; moving away hides it again.
             -->
             <img
-              src={game.coverUrl}
+              src={gameCover(game)}
               alt=""
               class:explicit={game.coverExplicit && !revealed.has(game.id)}
               on:load={(e) => (e.currentTarget.style.display = '')}
