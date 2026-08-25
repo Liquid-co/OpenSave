@@ -26,13 +26,27 @@ import (
 // at least recognise a client command and say where it belongs.
 const usage = `opensave-relay — the OpenSave WAN relay server
 
-It takes no commands. Everything it has is set by environment variable:
+Commands:
+
+  opensave-relay                     start it
+  opensave-relay setup               ask for the secrets and store them
+  opensave-relay config              show what is configured, and from where
+
+Secrets come from "setup" or from the environment, environment first:
+
+  GOOGLE_DRIVE_CLIENT_SECRET=…       optional, enables the OAuth token proxy
+  STEAMGRIDDB_KEY=…                  optional, enables cover-art lookup
+
+"setup" exists so neither is ever typed on a command line, where a shell
+records it, or pasted into a unit file that gets committed. Nothing is echoed
+while typing, and the file it writes is created 0600 before anything goes in.
+
+Settings that are not secrets stay in the environment:
 
   PORT=8386                          port to listen on
   MAX_PER_ROOM=20                    most devices allowed in one room
-  GOOGLE_DRIVE_CLIENT_SECRET=…       optional OAuth token proxy
+  OPENSAVE_RELAY_SECRETS=…           where the secrets file lives
 
-  opensave-relay                     start it
   PORT=9000 opensave-relay           on another port
 
 Health check: GET /health — reports room and client counts, nothing else.
@@ -53,6 +67,10 @@ func main() {
 		case "-h", "--help", "help":
 			fmt.Println(usage)
 			return
+		case "setup":
+			os.Exit(runSetup())
+		case "config", "show-config":
+			os.Exit(runShowConfig())
 		case "-v", "--version", "version":
 			fmt.Printf("opensave-relay %s\n", version.Version)
 			return
@@ -65,13 +83,19 @@ func main() {
 		}
 	}
 
+	// Secrets come from the environment when it sets them, and from the file
+	// `opensave-relay setup` writes otherwise. Environment first so a container
+	// or a systemd unit that already injects them keeps working exactly as it
+	// did, and so an operator who has automated this is never silently
+	// overridden by a file someone left behind.
+	secrets, sources := relay.ResolveSecrets(relay.SecretsPath())
 	cfg := relay.Config{
 		Port:               envInt("PORT", 8386),
 		MaxPerRoom:         envInt("MAX_PER_ROOM", 20),
-		GoogleClientSecret: os.Getenv("GOOGLE_DRIVE_CLIENT_SECRET"),
+		GoogleClientSecret: secrets.GoogleClientSecret,
 		// Optional. Without it the artwork lookup answers "not configured"
 		// and clients simply show no cover for games Steam has none for.
-		SteamGridDBKey: os.Getenv("STEAMGRIDDB_KEY"),
+		SteamGridDBKey: secrets.SteamGridDBKey,
 	}
 
 	srv := relay.New(cfg)
@@ -90,6 +114,16 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("OpenSave WAN Relay listening on %s (health: http://%s/health)\n", addr, addr)
+	// Which optional features are actually on, and where each secret came
+	// from. Masked, never the value: a relay log is the last place a secret
+	// should end up, and "configured or not" is all a banner needs to say.
+	fmt.Printf("  cloud sync:  %-14s (%s)\n",
+		relay.MaskSecret(cfg.GoogleClientSecret), sources["googleClientSecret"])
+	fmt.Printf("  cover art:   %-14s (%s)\n",
+		relay.MaskSecret(cfg.SteamGridDBKey), sources["steamGridDBKey"])
+	if cfg.GoogleClientSecret == "" && cfg.SteamGridDBKey == "" {
+		fmt.Println("  Run `opensave-relay setup` to configure these without typing them on a command line.")
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)

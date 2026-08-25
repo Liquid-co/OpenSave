@@ -215,11 +215,30 @@ if [ "$NEW_SHELL_NEEDED" = "1" ]; then
     say ""
 fi
 
+# ── Relay secrets ────────────────────────────────────────────────────────
+#
+# Offered, not assumed. Most people installing this are setting up a client and
+# will never run a relay, so prompting everyone for a Google client secret would
+# be noise — and a prompt nobody understands is one people paste anything into.
+#
+# Skipped entirely when stdin is not a terminal: an install piped from curl has
+# no one to answer, and stopping there to wait would hang the pipeline.
+if [ -t 0 ] && [ -x "$INSTALL_DIR/opensave-relay" ]; then
+    say ""
+    printf "Configure relay secrets now (cloud sync, cover art)? [y/N] "
+    read -r reply || reply=""
+    case "$reply" in
+        [Yy]*) "$INSTALL_DIR/opensave-relay" setup || true ;;
+        *)     say "  Skipped — run 'opensave-relay setup' whenever you like." ;;
+    esac
+fi
+
 say "Next:"
 say "  opensave scan                 find your game saves"
 say "  opensave daemon start         run the sync service"
 say "  opensave service install      run it automatically on login"
 say "  opensave pair <other-device>  pair another machine"
+say "  opensave-relay setup          store this relay's secrets (relay hosts only)"
 say ""
 say "'os' works as a short alias for 'opensave'."
 say "On a Steam Deck, also run: sudo loginctl enable-linger \$USER"

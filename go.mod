@@ -47,6 +47,7 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
