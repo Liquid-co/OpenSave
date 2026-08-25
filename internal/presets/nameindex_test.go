@@ -110,11 +110,18 @@ func TestAScanAdoptsTheManifestItLoaded(t *testing.T) {
 	sc.SteamRoots = []string{t.TempDir()}
 	sc.SteamUserdataPaths = []string{}
 
-	// Nothing may consult the index before the scan. manifestNameIndex fills
-	// the cache from the embedded copy on first read, and adoption never
-	// shrinks an index — so a read here would leave 18,000 entries in place
-	// and correctly refuse this one-game manifest, testing the refusal rather
-	// than the wiring.
+	// Start from a known-empty index rather than an unset one. Adoption
+	// compares against whatever is in use and refuses anything smaller, and
+	// what is in use is never empty — manifestNameIndex seeds itself from the
+	// embedded copy. Against 48,000 embedded names a one-game fixture is
+	// correctly refused, which would test the refusal rather than the wiring.
+	//
+	// An empty-but-present index is the one state where this fixture can win,
+	// and it is a real state: a build whose embedded index failed to parse.
+	nameIndexMu.Lock()
+	nameIndexCache = map[string]string{}
+	nameIndexMu.Unlock()
+
 	sc.Scan(nil)
 	if got := inferAppIDFromName(name, nameToAppIDIndex()); got != "4242424" {
 		t.Errorf("after a scan the name resolved to %q, want 4242424 — the loaded "+

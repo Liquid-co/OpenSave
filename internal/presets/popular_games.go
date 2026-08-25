@@ -304,9 +304,20 @@ func adoptManifestForNaming(games []indexedGame) {
 		return
 	}
 	built := buildNameIndex(games)
+	// Compared against what is already in use, and that is never empty:
+	// manifestNameIndex seeds itself from the embedded copy on first read. An
+	// empty cache would otherwise let the first manifest to arrive win by
+	// default, however small — a truncated download, or a hermetic scan over a
+	// two-game fixture, would replace 48,000 names with two and every later
+	// lookup in the process would miss.
+	//
+	// Found exactly that way: one test that scans a one-game manifest left the
+	// name index holding a single entry, and three unrelated tests failed
+	// because of it.
+	current := manifestNameIndex()
 	nameIndexMu.Lock()
 	defer nameIndexMu.Unlock()
-	if len(built) > len(nameIndexCache) {
+	if len(built) > len(current) {
 		nameIndexCache = built
 	}
 }

@@ -356,9 +356,21 @@ func windowsPathVars() map[string]string {
 // ludusaviVarSets returns the placeholder→path maps to try for one game on
 // the scanner's target OS.
 func (sc *Scanner) ludusaviVarSets(g indexedGame, protonIdx map[string][]string) []map[string]string {
-	if sc.goos() == "windows" {
+	switch sc.goos() {
+	case "windows":
 		if v := windowsPathVars(); v != nil {
 			return []map[string]string{v}
+		}
+		return nil
+	case "darwin":
+		// The manifest has no dedicated macOS placeholder — its ~2,800
+		// mac-only entries write paths as "<home>/Library/Application
+		// Support/…" directly, which <home> alone resolves. There is
+		// nothing here for Proton: Wine prefixes are a Linux-only
+		// mechanism, so a Windows-only template genuinely has no
+		// counterpart to try on a Mac.
+		if home := sc.linuxHome(); home != "" {
+			return []map[string]string{{"<home>": home}}
 		}
 		return nil
 	}
@@ -786,8 +798,13 @@ func entryIsSaveEntry(tpl string, entry manifestFileEntry) bool {
 	if len(entry.When) == 0 {
 		return true
 	}
+	// "mac" was missing here, which dropped every entry restricted to it at
+	// index build time — before ludusaviVarSets, the runtime resolver, ever
+	// got a chance to run. 3,181 file templates in the manifest are mac-only,
+	// and every one of them was invisible on every platform, Windows and
+	// Linux included, because the index simply never carried them.
 	for _, w := range entry.When {
-		if w.OS == "" || w.OS == "windows" || w.OS == "linux" {
+		if w.OS == "" || w.OS == "windows" || w.OS == "linux" || w.OS == "mac" {
 			return true
 		}
 	}
