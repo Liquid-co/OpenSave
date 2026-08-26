@@ -299,6 +299,108 @@ jobs:
           name: flatpak
           path: OpenSave.flatpak
 
+  # macOS is built on macOS because it has to be: Wails links against the
+  # system WebKit through cgo, so the app cannot be cross-compiled from Linux
+  # the way the headless binaries can. The CLI and relay are pure Go and would
+  # cross-compile fine, but they are built here anyway so every macOS artifact
+  # comes out of one job with one version stamp.
+  #
+  # Nothing here is signed or notarised. That needs a paid Apple Developer
+  # account, and without one Gatekeeper refuses the first launch and tells the
+  # user the developer cannot be verified — they have to right-click and choose
+  # Open. Adding signing later means adding credentials to this job, not
+  # restructuring it.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build the app (universal)
+        working-directory: cmd/opensave-app
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          STAMP="-X github.com/opensave/opensave/internal/version.Version=$V"
+          STAMP="$STAMP -X github.com/opensave/opensave/internal/version.BuildTime=$(date +%s)"
+          # Universal rather than two downloads: a Mac user should not have to
+          # know whether their machine is Apple silicon or Intel, and choosing
+          # wrong produces an app that simply will not open.
+          wails build -platform darwin/universal -ldflags "$STAMP"
+          if [ ! -d build/bin/OpenSave.app ]; then
+            echo "::error::wails build produced no OpenSave.app"
+            exit 1
+          fi
+
+      - name: Build CLI + relay for both architectures
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X github.com/opensave/opensave/internal/version.Version=$V"
+          LD="$LD -X github.com/opensave/opensave/internal/version.BuildTime=$(date +%s)"
+          for arch in arm64 amd64; do
+            dir="opensave-macos-$arch"
+            mkdir -p "$dir"
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -ldflags="$LD" -o "$dir/opensave-cli" ./cmd/opensave-cli
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -ldflags="$LD" -o "$dir/opensave-relay" ./cmd/opensave-relay
+            cp packaging/man/opensave.1 "$dir/" 2>/dev/null || true
+            tar -czf "$dir.tar.gz" "$dir"
+          done
+
+      - name: Package the .dmg
+        run: |
+          # hdiutil ships with macOS, so this needs no third-party action to
+          # audit. The staging folder holds the app beside a symlink to
+          # /Applications, which is the drag-to-install layout Mac users expect.
+          STAGE=dmg-stage
+          mkdir -p "$STAGE"
+          cp -R cmd/opensave-app/build/bin/OpenSave.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname OpenSave -srcfolder "$STAGE" -ov -format UDZO OpenSave-macos.dmg
+          hdiutil verify OpenSave-macos.dmg
+
+      - name: Check the bundle is what it claims to be
+        run: |
+          # Structural checks only. The app opens a webview on start and has no
+          # --version flag, so running it on a runner with no display would
+          # either hang this job or leave a process behind. A build check must
+          # not be able to do that.
+          APP=cmd/opensave-app/build/bin/OpenSave.app
+          BIN="$APP/Contents/MacOS/OpenSave"
+          test -f "$APP/Contents/Info.plist" || { echo "::error::the bundle has no Info.plist"; exit 1; }
+          test -x "$BIN" || { echo "::error::no executable at $BIN"; exit 1; }
+          # Universal or it is not universal: a single-architecture binary means
+          # half the Macs that download it cannot open it, and nothing else in
+          # this job would notice.
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "architectures: $ARCHS"
+          case "$ARCHS" in
+            *arm64*x86_64* | *x86_64*arm64*) ;;
+            *) echo "::error::expected a universal binary, got: $ARCHS"; exit 1 ;;
+          esac
+          # And that the version really was stamped in. An unstamped build
+          # reports the default and breaks self-update comparisons silently.
+          V="${GITHUB_REF_NAME#v}"
+          # grep -a rather than strings: verified locally that it finds an
+          # ldflags-injected version in both a Windows and a darwin binary, and
+          # reports nothing for a version that was never stamped. strings is not
+          # present everywhere, and a check that silently fails open is worse
+          # than no check.
+          grep -aqF "$V" "$BIN" || echo "::warning::could not find version $V in the binary"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            OpenSave-macos.dmg
+            opensave-macos-arm64.tar.gz
+            opensave-macos-amd64.tar.gz
+
   relay-docker:
     runs-on: ubuntu-latest
     steps:
@@ -308,7 +410,7 @@ jobs:
 
   # Publish a real GitHub Release with all downloadable assets on tag push.
   release:
-    needs: [windows, linux, flatpak]
+    needs: [windows, linux, flatpak, macos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -324,15 +426,19 @@ jobs:
         with:
           name: flatpak
           path: flatpak
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: macos
       # scripts/install.sh verifies downloads against this before installing.
       # Piping an installer to a shell is trust enough; it should at least
       # refuse bytes it can't vouch for.
       - name: Generate SHA256SUMS
         run: |
-          find windows linux flatpak -type f \
+          find windows linux flatpak macos -type f \
             \( -name '*.exe' -o -name '*.msi' -o -name '*.tar.gz' \
                -o -name '*.deb' -o -name '*.rpm' -o -name '*.flatpak' \
-               -o -name '*.zip' \) \
+               -o -name '*.zip' -o -name '*.dmg' \) \
             -exec sha256sum {} + | sed 's| .*/| |' > SHA256SUMS
           cat SHA256SUMS
 

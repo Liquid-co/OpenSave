@@ -46,8 +46,8 @@ os="$(uname -s)"
 arch="$(uname -m)"
 
 case "$os" in
-    Linux) ;;
-    Darwin) die "macOS builds aren't published yet — build from source: go build ./cmd/opensave-cli" ;;
+    Linux)  platform="linux" ;;
+    Darwin) platform="macos" ;;
     *) die "unsupported OS: $os" ;;
 esac
 
@@ -57,11 +57,16 @@ case "$arch" in
     *) die "unsupported architecture: $arch" ;;
 esac
 
-ASSET="opensave-linux-${arch}.tar.gz"
+ASSET="opensave-${platform}-${arch}.tar.gz"
 
-# The arm64 build is the headless pair only — the desktop app needs native
-# WebKit, which doesn't cross-compile.
-if [ "$arch" = "arm64" ]; then
+# What each tarball actually contains, said before the download rather than
+# after: someone installing on a Mac or a Pi should not have to work out from
+# an empty Applications folder that the desktop app was never in there.
+if [ "$platform" = "macos" ]; then
+    say "Note: this installs the CLI and relay. The desktop app is a separate"
+    say "      .dmg on the releases page — it is unsigned, so the first launch"
+    say "      needs right-click -> Open rather than a double-click."
+elif [ "$arch" = "arm64" ]; then
     say "Note: arm64 ships the CLI and relay only (no desktop app)."
 fi
 
@@ -107,9 +112,10 @@ fi
 tar -xzf "$tmp/$ASSET" -C "$tmp" || die "could not extract $ASSET"
 
 # The archive's top-level directory differs by architecture
-# (opensave-linux, opensave-linux-arm64), so find it rather than assume.
+# (opensave-linux, opensave-linux-arm64, opensave-macos-arm64), so find it
+# rather than assume.
 src=""
-for candidate in "$tmp"/opensave-linux*; do
+for candidate in "$tmp"/opensave-"$platform"*; do
     if [ -d "$candidate" ] && [ -f "$candidate/opensave-cli" ]; then
         src="$candidate"
         break
