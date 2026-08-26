@@ -16,6 +16,13 @@ type TranslationRule struct {
 var (
 	windowsUserProfileRe = regexp.MustCompile(`(?i)^[A-Za-z]:\\Users\\[^\\]+`)
 	linuxHomeRe          = regexp.MustCompile(`^/home/[^/]+`)
+	// macOS profiles live under /Users, not /home, so a Mac peer's paths
+	// matched neither branch and were handed to the other machine unchanged —
+	// a Windows device would then try to use "/Users/alice/Library/…"
+	// literally. Same shape as the Windows regex, which is why it is
+	// case-insensitive: HFS+ and APFS are case-preserving but usually
+	// case-insensitive, so a peer may report either spelling.
+	macHomeRe = regexp.MustCompile(`(?i)^/Users/[^/]+`)
 )
 
 // TranslatePathToLocal converts a peer-reported remote save path into the
@@ -51,6 +58,11 @@ func TranslatePathToLocal(remotePath string, rules []TranslationRule) string {
 			rest := strings.TrimPrefix(remotePath, loc)
 			return home + filepathFromSlash(rest)
 		}
+	} else if loc := macHomeRe.FindString(remotePath); loc != "" {
+		// Checked without a HasPrefix guard because the match has to be
+		// case-insensitive, which HasPrefix is not.
+		rest := strings.TrimPrefix(remotePath, loc)
+		return home + filepathFromSlash(rest)
 	}
 
 	return remotePath
