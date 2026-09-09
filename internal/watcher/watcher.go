@@ -130,6 +130,17 @@ type Engine struct {
 	catchUp    chan catchUpJob
 	catchUpCtx context.Context
 	stopCatch  context.CancelFunc
+
+	// reconcileEvery is this engine's copy of reconcileInterval, read once
+	// when it is built.
+	//
+	// A field rather than the package variable read from inside the worker,
+	// because that read would happen on the new goroutine while whoever set
+	// the variable carries on — a test restoring the real interval after
+	// starting an engine writes it concurrently with that read. Starting a
+	// goroutine orders the writes that came BEFORE it and nothing after, so
+	// that is a data race, and one only the race detector would ever show.
+	reconcileEvery time.Duration
 }
 
 // catchUpJob is one game to check after its watch starts.
@@ -184,6 +195,8 @@ func New(cb Callbacks) *Engine {
 		catchUp:    make(chan catchUpJob, 256),
 		catchUpCtx: ctx,
 		stopCatch:  cancel,
+		// Read here, on the caller's goroutine, not inside the worker.
+		reconcileEvery: reconcileInterval,
 	}
 	go e.catchUpWorker()
 	go e.reconcileWorker()
@@ -198,7 +211,7 @@ func New(cb Callbacks) *Engine {
 // whose folder still matches its baseline produces nothing at all. The only
 // difference is what prompts it.
 func (e *Engine) reconcileWorker() {
-	ticker := time.NewTicker(reconcileInterval)
+	ticker := time.NewTicker(e.reconcileEvery)
 	defer ticker.Stop()
 	for {
 		select {
