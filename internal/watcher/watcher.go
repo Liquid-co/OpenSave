@@ -54,6 +54,40 @@ const (
 	snapshotRetryDelay = 1500 * time.Millisecond
 )
 
+// reconcileInterval is how often every watched game is checked against the
+// state the watcher believes it is in.
+//
+// A watch reports changes; it does not guarantee it saw them all. Events are
+// dropped when a burst overruns the buffer, a folder created during one can
+// end up watched by nobody, and a change landing between the last event and
+// the debounce firing raises nothing further. All of those leave a live watch
+// whose baseline no longer describes the folder — and because every correction
+// was itself driven by an event, nothing will ever fix it. Measured at four
+// minutes with no sign of recovering; the only reason it was not four hours is
+// that the test gave up.
+//
+// That baseline decides whether a save holds changes a pull might overwrite,
+// so a stale one is wrong in the direction that costs someone a save.
+//
+// The cost is real and worth stating plainly, because it is the same cost this
+// package spent a release removing. Every pass walks each watched tree; with
+// the hash cache that walk stats files rather than reading them, but the cache
+// also forces a genuine re-read of anything it has held for cacheMaxAge (an
+// hour), so a reconcile running forever guarantees one full read of every
+// tracked save per hour. Before this, an idle game with no events was never
+// walked at all.
+//
+// Fifteen minutes is the compromise. It turns "wrong until something else
+// happens to touch this folder" into "wrong for at most a quarter of an hour",
+// which is the difference that matters, while keeping the walk rare enough not
+// to reinstate the constant disk activity people reported. Shorten it and the
+// walking becomes noticeable on a large library; lengthen it and a dropped
+// event costs more time holding a baseline that is wrong.
+//
+// A variable rather than a constant so tests can drive it; nothing else writes
+// to it.
+var reconcileInterval = 15 * time.Minute
+
 // Callbacks connect the watcher to the rest of the daemon without import
 // cycles. All are required.
 type Callbacks struct {
@@ -152,7 +186,50 @@ func New(cb Callbacks) *Engine {
 		stopCatch:  cancel,
 	}
 	go e.catchUpWorker()
+	go e.reconcileWorker()
 	return e
+}
+
+// reconcileWorker re-checks every watched game on a timer.
+//
+// It queues the same job a starting watch queues, so everything catchUpOne is
+// careful about applies unchanged: games with no baseline are left alone, the
+// checks run one at a time rather than reading every save at once, and a game
+// whose folder still matches its baseline produces nothing at all. The only
+// difference is what prompts it.
+func (e *Engine) reconcileWorker() {
+	ticker := time.NewTicker(reconcileInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.catchUpCtx.Done():
+			return
+		case <-ticker.C:
+			for _, job := range e.watchedJobs() {
+				e.queueCatchUp(job)
+			}
+		}
+	}
+}
+
+// watchedJobs describes every live watch, for the reconcile.
+//
+// Collected under the lock and queued outside it: queueCatchUp never blocks,
+// but holding the engine lock across a loop over every game is how Watch and
+// Unwatch end up waiting on unrelated work.
+func (e *Engine) watchedJobs() []catchUpJob {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	jobs := make([]catchUpJob, 0, len(e.games))
+	for _, gw := range e.games {
+		jobs = append(jobs, catchUpJob{
+			gameID:   gw.gameID,
+			savePath: gw.savePath,
+			extra:    gw.extra,
+			isFile:   gw.isFile,
+		})
+	}
+	return jobs
 }
 
 // catchUpWorker snapshots games that changed while nobody was watching.

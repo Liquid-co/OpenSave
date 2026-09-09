@@ -135,6 +135,20 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **A watch that lost track of a folder now finds its way back.** Watching a
+  folder tells you what happens next, and everything the watcher did to correct
+  itself was driven by another change arriving. When the change was the thing
+  that went missing — a burst big enough to drop events, a new subfolder that
+  ended up watched by nobody — the watcher was left holding a picture of the
+  folder that was wrong, and nothing was ever going to correct it. It stayed
+  wrong for as long as the folder stayed quiet.
+
+  That picture is what decides whether a save has changes worth protecting
+  before another device's copy is applied, so a wrong one is wrong in the
+  direction that loses a save. Every watched game is now re-checked on a timer
+  and put right if it has drifted, so this lasts minutes at worst instead of
+  indefinitely. A game nothing has touched still produces nothing.
+
 - **OpenSave no longer stops a game from deleting its own save (Windows).**
   While a save was being read — to hash it, to send it, or to archive it into a
   snapshot — Windows would not let anything else delete that file, and OpenSave
