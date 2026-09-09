@@ -10,11 +10,23 @@ import (
 // ValidateRelayURL refuses a relay address that would carry saves across an
 // untrusted network in the clear.
 //
-// Sync payloads are gzipped and base64'd inside JSON and nothing else — there
-// is no application-layer encryption anywhere in OpenSave, so ws:// means the
-// save file itself is readable by anything on the path. wss:// is the only
-// thing standing between a save and the network it crosses, which makes
-// "did you type ws or wss" a security decision rather than a preference.
+// This rule predates end-to-end sealing and its original reasoning has since
+// expired: sync payloads used to be gzipped and base64'd inside JSON and
+// nothing else, so ws:// meant the save file itself was readable by anything
+// on the path. Payloads between paired devices are now sealed, so what ws://
+// exposes is metadata — which peers are talking, which games by id, how much
+// data — rather than the saves.
+//
+// The refusal stays anyway, for two reasons that outlive the old one. A
+// pairing made before key exchange existed has nothing to seal with and is
+// still in the clear, and both devices must be running a build that seals
+// before either does. Relaxing this while either is true would put somebody's
+// saves on the open internet, and they would have no way of noticing.
+//
+// What would justify relaxing it: sealing shipped and established, plus a
+// guard at the point of transmission rather than on this string — whether a
+// payload is sealed is a property of the pair, not of the URL, so the check
+// belongs where the bytes move.
 //
 // ws:// is still allowed where the network is the trust boundary: the same
 // machine, a home LAN, or a private overlay like Tailscale. That is what the
@@ -53,8 +65,10 @@ func ValidateRelayURL(raw string) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"ws://%s would send your saves across the internet unencrypted, because OpenSave "+
-			"relies on the relay connection for that and adds no encryption of its own.\n"+
+		"ws://%s would carry your syncs across the internet unencrypted. Saves between "+
+			"paired devices are sealed, but a pairing made before OpenSave exchanged keys "+
+			"is not, and the rest — which devices are talking, and which games — is "+
+			"readable either way.\n"+
 			"Use wss://%s instead. If you run this relay, give it a domain name and a "+
 			"certificate — the installer does that for you with --domain.", host, host)
 }

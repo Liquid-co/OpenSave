@@ -27,6 +27,12 @@ func (s *Server) routes(r chi.Router) {
 	r.Get("/api/games", s.handleListGames)
 	r.Post("/api/games", s.handleTrackGame)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
+
+	// Games a peer syncs that this device has no folder for. Only ever
+	// populated when the "ask before tracking" setting is on.
+	r.Get("/api/offered-games", s.handleListOfferedGames)
+	r.Post("/api/offered-games/{gameId}/place", s.handlePlaceOfferedGame)
+	r.Post("/api/offered-games/{gameId}/decline", s.handleDeclineOfferedGame)
 	r.Patch("/api/games/{gameId}", s.handleUpdateGame)
 	r.Delete("/api/games/{gameId}", s.handleUntrackGame)
 

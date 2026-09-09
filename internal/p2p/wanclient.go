@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/version"
 )
@@ -82,6 +83,32 @@ type RelayMessage struct {
 	AppVersion  string          `json:"appVersion,omitempty"`
 	BuildTimeMs int64           `json:"buildTimeMs,omitempty"`
 	EventData   json.RawMessage `json:"data2,omitempty"` // unused; sync-event reuses Data
+
+	// Request authentication. Proves the sender holds the private half of the
+	// key pinned when pairing completed, because "from" alone is whatever the
+	// sender wrote and the relay does not check it.
+	//
+	// omitempty on all three: a build that does not send them produces the
+	// same JSON as before, and one that does not understand them ignores the
+	// extra fields. See internal/e2ee/auth.go.
+	Nonce  string `json:"nonce,omitempty"`
+	AuthMs int64  `json:"authMs,omitempty"`
+	Auth   string `json:"auth,omitempty"`
+
+	// Sealed payloads. When set, these carry what Body and Data would have,
+	// encrypted so only the paired peer can read them — the relay passes every
+	// frame to every room member, so anyone holding the room code receives
+	// them. Empty for a pairing with no shared key, which sends plaintext as
+	// it always did. See payloadseal.go.
+	SealedBody []byte `json:"sealedBody,omitempty"`
+	SealedData []byte `json:"sealedData,omitempty"`
+}
+
+// pendingRequest is an outstanding request: where its answer goes, and who is
+// entitled to give it.
+type pendingRequest struct {
+	ch     chan RelayMessage
+	peerID string
 }
 
 // WanPeer is a device seen in the relay room.
@@ -105,7 +132,13 @@ type WanClient struct {
 	state      string // disconnected | connecting | connected | error
 	lastError  string
 	discovered map[string]WanPeer
-	pending    map[string]chan RelayMessage
+	// pending maps a request's id to where its answer goes, and to the peer
+	// entitled to answer it.
+	//
+	// The peer is recorded because the relay broadcasts every message to the
+	// whole room: the id alone identifies which request an answer belongs to,
+	// not who is allowed to give it.
+	pending    map[string]pendingRequest
 	generation int // bumped on every (re)connect to invalidate stale loops
 	stopped    bool
 	cancelConn context.CancelFunc
@@ -138,7 +171,7 @@ func newWanClient(e *Engine) *WanClient {
 		engine:      e,
 		state:       "disconnected",
 		discovered:  map[string]WanPeer{},
-		pending:     map[string]chan RelayMessage{},
+		pending:     map[string]pendingRequest{},
 		staleWarned: map[string]bool{},
 	}
 }
@@ -474,6 +507,67 @@ func (w *WanClient) send(msg RelayMessage) {
 // resolution paths.
 func (w *WanClient) SendRelayMessage(msg RelayMessage) { w.send(msg) }
 
+// buildRequest assembles a request frame: payload sealed, whole thing
+// authenticated, ready to go on the wire.
+//
+// This is a single function on purpose. It used to be inline in Request, and
+// so the one caller that did not go through Request — the push trigger, which
+// wants no reply and so had its own bare send — was silently exempt from both.
+// The receiving side refuses an unsigned request from a peer that has
+// authenticated before, which is the correct rule and made that trigger
+// disappear: every push over the relay arrived only when the receiver's own
+// periodic reconcile happened to come round, up to a minute later. Anything
+// shaped like a request has to be built here.
+func (w *WanClient) buildRequest(peerID, msgID, route, method string, rawBody json.RawMessage) RelayMessage {
+	msg := RelayMessage{
+		Type: "request", To: peerID, From: w.localPeerID(),
+		MsgID: msgID, Route: route, Method: method,
+	}
+	// Seal the payload if this pairing has a key, so the rest of the room
+	// receives ciphertext rather than the save. The key exchange itself is
+	// the one thing that cannot be sealed — see isKeyExchangeRoute.
+	if sealed, ok := w.engine.sealForPeer(peerID, rawBody); ok && !isKeyExchangeRoute(route) {
+		msg.SealedBody = sealed
+	} else {
+		msg.Body = rawBody
+	}
+	// Then authenticate what is actually on the wire. MAC over the sealed
+	// bytes, not the plaintext, so the receiver can check a message before
+	// decrypting it rather than having to touch unverified ciphertext first.
+	//
+	// A peer paired before key exchange existed has nothing to derive from and
+	// the request goes out as it always did — the receiving side knows that
+	// and does not demand a MAC that could never have been sent.
+	if key, keyErr := w.engine.requestAuthKey(peerID); keyErr == nil {
+		if nonce, nonceErr := e2ee.NewNonce(); nonceErr == nil {
+			msg.Nonce = nonce
+			msg.AuthMs = time.Now().UnixMilli()
+			msg.Auth = e2ee.RequestMAC(key, msg.From, msg.To, route, method,
+				wireBody(msg.SealedBody, msg.Body), nonce, msg.AuthMs)
+		} else {
+			w.engine.Log("warn", "could not generate a request nonce: "+nonceErr.Error())
+		}
+	}
+	return msg
+}
+
+// Notify sends a request that expects no reply.
+//
+// Same frame as Request builds, minus the MsgID that a response would be
+// matched against — so it is sealed and authenticated like everything else.
+func (w *WanClient) Notify(peerID, route, method string, body any) {
+	var rawBody json.RawMessage
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			w.engine.Log("warn", "could not encode a notification for "+peerID+": "+err.Error())
+			return
+		}
+		rawBody = raw
+	}
+	w.send(w.buildRequest(peerID, "", route, method, rawBody))
+}
+
 // Request performs an HTTP-shaped RPC against a peer through the relay.
 func (w *WanClient) Request(ctx context.Context, peerID, route, method string, body any) (json.RawMessage, error) {
 	w.mu.Lock()
@@ -483,7 +577,7 @@ func (w *WanClient) Request(ctx context.Context, peerID, route, method string, b
 	}
 	msgID := fmt.Sprintf("msg_%d_%06d", time.Now().UnixMilli(), rand.Intn(1_000_000))
 	respCh := make(chan RelayMessage, 1)
-	w.pending[msgID] = respCh
+	w.pending[msgID] = pendingRequest{ch: respCh, peerID: peerID}
 	w.mu.Unlock()
 
 	defer func() {
@@ -501,10 +595,7 @@ func (w *WanClient) Request(ctx context.Context, peerID, route, method string, b
 		rawBody = raw
 	}
 
-	w.send(RelayMessage{
-		Type: "request", To: peerID, From: w.localPeerID(),
-		MsgID: msgID, Route: route, Method: method, Body: rawBody,
-	})
+	w.send(w.buildRequest(peerID, msgID, route, method, rawBody))
 
 	// wanRequestTimeout is a floor, not a ceiling: a caller moving several
 	// megabytes of save data sets a deadline sized to the payload, and a flat

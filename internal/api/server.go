@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/logging"
+	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/version"
@@ -75,7 +76,12 @@ func (s *Server) peersPayload() map[string]any {
 			AppVersion    string `json:"appVersion,omitempty"`
 			BuildTimeMs   int64  `json:"buildTimeMs,omitempty"`
 			HasNewerBuild bool   `json:"hasNewerBuild,omitempty"`
-		}{Peer: p}
+			// What actually protects traffic with this device. Sent per peer
+			// rather than described once in the interface, because the answer
+			// differs per pairing and the reader cannot work out which case
+			// they are in from a general statement.
+			p2p.PeerProtection
+		}{Peer: p, PeerProtection: s.Daemon.P2P.PeerProtection(p)}
 		if b, ok := builds[p.ID]; ok {
 			entry.AppVersion = b.AppVersion
 			entry.BuildTimeMs = b.BuildTimeMs

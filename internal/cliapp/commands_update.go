@@ -177,6 +177,10 @@ func downloadCLIAsset(url, name, dest string) error {
 			return fmt.Errorf("download failed: %w", err)
 		}
 		fmt.Println()
+		// Checked before unpacking, so a bad archive never writes files out.
+		if err := selfupdate.VerifyDownload(url, archivePath); err != nil {
+			return err
+		}
 		if err := selfupdate.ExtractFromTarGz(archivePath, "opensave-cli", dest); err != nil {
 			return fmt.Errorf("unpack failed: %w", err)
 		}
@@ -187,7 +191,8 @@ func downloadCLIAsset(url, name, dest string) error {
 		return fmt.Errorf("download failed: %w", err)
 	}
 	fmt.Println()
-	return nil
+	// Checked before this binary is staged for the swap.
+	return selfupdate.VerifyDownload(url, dest)
 }
 
 // progressBar returns a callback that redraws a single line, so a slow

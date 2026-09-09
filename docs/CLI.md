@@ -303,6 +303,7 @@ opensave config set relay-url wss://relay.example.com
 opensave config set snapshot-limit 20             # automatic snapshots kept per branch
 opensave config set manual-snapshot-limit 0       # 0 = keep yours forever (the default)
 opensave config set match-by-app-id true
+opensave config set unknown-game-from-peer ask    # or track (the default)
 opensave config set update-channel beta
 ```
 

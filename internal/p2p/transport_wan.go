@@ -87,22 +87,43 @@ func (t *wanTransport) DeleteRemote(ctx context.Context, peer syncengine.Peer, r
 	return err
 }
 
+// TriggerPeerPull tells a peer that this device holds newer content.
+//
+// Through Notify rather than a bare send: it is a request, and the receiving
+// side refuses an unsigned request from a peer that has authenticated before.
+// Built by hand it carried no MAC, so it was dropped on arrival and the push
+// only landed when the peer's own periodic reconcile came round.
 func (t *wanTransport) TriggerPeerPull(peer syncengine.Peer, gameID string) {
-	t.wan.send(RelayMessage{
-		Type: "request", To: peer.ID, From: t.wan.localPeerID(),
-		Route: "/sync/trigger/" + gameID, Method: "GET",
-	})
+	t.wan.Notify(peer.ID, "/sync/trigger/"+gameID, "GET", nil)
 }
 
+// ReportSyncEvent tells a peer how a sync it is involved in is going.
+//
+// Sealed like any other payload, and for a sharper reason than it looks. A
+// progress event is not a status line: sync-complete names every file the peer
+// pulled, and save paths are not anonymous. They carry Windows account names,
+// Steam IDs, cloud-profile folders, and character or save-slot names people
+// chose themselves. Left in the clear this was the most legible thing in the
+// room — no base64, no compression, one flat list of paths per sync, next to
+// the game id and the device name.
+//
+// It travels as a bare send rather than through Request, which is exactly how
+// it kept its plaintext while every routed payload was being sealed around it.
 func (t *wanTransport) ReportSyncEvent(peer syncengine.Peer, gameID, eventType string, data map[string]any) {
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return
 	}
-	t.wan.send(RelayMessage{
+	msg := RelayMessage{
 		Type: "sync-event", To: peer.ID, From: t.wan.localPeerID(),
-		GameID: gameID, EventType: eventType, Data: raw,
-	})
+		GameID: gameID, EventType: eventType,
+	}
+	if sealed, ok := t.wan.engine.sealForPeer(peer.ID, raw); ok {
+		msg.SealedData = sealed
+	} else {
+		msg.Data = raw
+	}
+	t.wan.send(msg)
 }
 
 // routingTransport picks LAN or WAN per peer.

@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // TmpSuffix marks the temp files PatchFile writes before atomically
@@ -159,7 +161,7 @@ func HashFile(path string) (FileEntry, error) {
 	}
 
 	blockSize := BlockSizeFor(info.Size())
-	f, err := os.Open(path)
+	f, err := fsx.OpenShared(path)
 	if err != nil {
 		return FileEntry{}, err
 	}
@@ -219,11 +221,11 @@ func BuildManifest(root string) (Manifest, error) {
 	}
 
 	if !info.IsDir() {
-		entry, err := HashFile(root)
+		entry, err := cachedHashFile(root, info)
 		if err != nil {
 			return Manifest{}, err
 		}
-		m.Files[filepath.Base(root)] = entry
+		m.Files[NormalizeRelPath(filepath.Base(root))] = entry
 		m.LatestMtime = entry.MtimeMs
 		return m, nil
 	}
@@ -239,6 +241,20 @@ func BuildManifest(root string) (Manifest, error) {
 				if walkInfo != nil && walkInfo.IsDir() {
 					return filepath.SkipDir
 				}
+				return nil
+			}
+			// A file that vanished between the directory being read and this
+			// entry being examined. Ordinary, not exceptional: games delete
+			// save slots and rewrite temp files constantly, and a walk of a
+			// folder someone is using races that by definition.
+			//
+			// It has to be skipped rather than returned, for the same reason
+			// the permission case is. Aborting means no manifest, which means
+			// the sync does nothing at all — so a deletion made anywhere in
+			// the folder fails to reach the other device, and nothing reports
+			// a problem. The file is gone; a manifest that omits it is the
+			// correct description of the folder.
+			if os.IsNotExist(walkErr) {
 				return nil
 			}
 			return walkErr
@@ -257,6 +273,9 @@ func BuildManifest(root string) (Manifest, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		// One agreed spelling, so a macOS peer's decomposed names and a
+		// Windows/Linux peer's composed ones compare equal. See unicodenames.go.
+		rel = NormalizeRelPath(rel)
 		if isDotEntry(rel) {
 			if walkInfo.IsDir() {
 				return filepath.SkipDir
@@ -279,8 +298,21 @@ func BuildManifest(root string) (Manifest, error) {
 			return nil
 		}
 
-		entry, err := HashFile(path)
+		entry, err := cachedHashFile(path, walkInfo)
 		if err != nil {
+			// Deleted after the walk listed it and before it could be read.
+			// Skipped, so one disappearing file cannot cost the whole game its
+			// manifest — see the walkErr case above.
+			if os.IsNotExist(err) {
+				return nil
+			}
+			// Anything else — a game holding its save open exclusively, a
+			// permission problem — is deliberately still fatal to the build.
+			// The file EXISTS and could not be read, so its contents are
+			// unknown, and a manifest that simply omits it would describe the
+			// folder as no longer containing it. That description reaches the
+			// peer as a deletion, and the peer deletes its own copy. Failing
+			// the build costs a delayed sync; guessing costs someone's save.
 			return err
 		}
 		m.Files[rel] = entry

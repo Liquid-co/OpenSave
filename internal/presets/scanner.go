@@ -321,23 +321,56 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 		}
 
 		base := sanitizeID(filepath.Base(resolved))
-		for _, sub := range listSubdirs(resolved) {
+		subs := listSubdirs(resolved)
+
+		// The path may BE the save folder. Someone adding a location is at
+		// least as likely to point at the folder their saves are in as at a
+		// folder of game folders — and offering only its children found
+		// nothing at all in that case, which is what "it didn't check the new
+		// location" meant.
+		//
+		// A folder with no subdirectories is unambiguous: there is nothing
+		// below it to offer instead, so if it holds anything it is what was
+		// meant. A folder that has children is left to the loop below, which
+		// would otherwise start offering "D:\Games" as if it were a save.
+		if len(subs) == 0 {
+			if dirNonEmpty(resolved) {
+				discovered = append(discovered, DiscoveredSave{
+					ID:       "custom-" + base,
+					Name:     filepath.Base(resolved),
+					Type:     "game",
+					SavePath: resolved,
+				})
+			}
+			continue
+		}
+
+		for _, sub := range subs {
 			if isCacheDirName(sub) {
 				continue
 			}
+			full := filepath.Join(resolved, sub)
 			// A portable emulator gets its save folders offered, not the
 			// whole install: the install holds cores, BIOS and ROMs, and
 			// syncing that instead of the saves is worse than finding
 			// nothing.
-			if saves := portableEmulatorSaves(filepath.Join(resolved, sub)); len(saves) > 0 {
+			if saves := portableEmulatorSaves(full); len(saves) > 0 {
 				discovered = append(discovered, saves...)
 				continue
 			}
 			discovered = append(discovered, DiscoveredSave{
-				ID:       "custom-" + base + "-" + sanitizeID(sub),
-				Name:     sub,
-				Type:     "game",
-				SavePath: filepath.Join(resolved, sub),
+				ID:   "custom-" + base + "-" + sanitizeID(sub),
+				Name: sub,
+				Type: "game",
+				// Narrowed, exactly as a repack wrapper's subfolder is a few
+				// dozen lines above. This branch was the one place that
+				// offered a raw folder, so adding a library directory
+				// proposed whole game installs — "The Witcher 3", 100+ GB of
+				// it — instead of the SaveData folder two levels inside. The
+				// walk behind this is depth- and fan-out-bounded already, and
+				// it declines to guess when several candidates match, leaving
+				// the container for the user to correct.
+				SavePath: resolveGameContainerDir(full),
 			})
 		}
 	}

@@ -272,6 +272,20 @@
         Match saves across PCs by Steam App ID
       </label>
       <span class="hint" style="margin-top: 6px;">Links the same game across devices even when it was tracked under different names or drives (e.g. a Steam copy on one PC, a standalone copy on another). Leave this off if you deliberately keep two separate copies of the same game that shouldn't merge. You can always link games by hand from a game's page.</span>
+        <div class="field" style="margin-top: 18px;">
+          <label for="s-unknown-game">When another device syncs a game this one doesn't have</label>
+          <select id="s-unknown-game" bind:value={draft.unknownGameFromPeer}>
+            <option value="track">Start tracking it automatically (recommended)</option>
+            <option value="ask">Ask me where to keep it</option>
+          </select>
+          <span class="hint">
+            Tracking automatically works out a folder from where the game lives on the other
+            device, which is why OpenSave usually needs no setup. Choose <em>Ask me</em> if your
+            saves are somewhere that guess would get wrong — a second drive, a folder you moved,
+            or a game that keeps saves in a folder named after your account. Games waiting for a
+            folder appear on the Games page.
+          </span>
+        </div>
       <div class="field" style="margin-top: 14px;">
         <label for="s-limit">Internet bandwidth limit</label>
         <select id="s-limit" bind:value={draft.speedLimit}>

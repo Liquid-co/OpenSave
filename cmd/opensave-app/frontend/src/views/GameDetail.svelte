@@ -2,6 +2,7 @@
   import { games, navigate, toast, syncActivity, askConfirm } from '../lib/stores.js';
   import { api, native, coverURL, gameCover } from '../lib/api.js';
   import { addExclusion, addNegation, removeDirectExclusion } from '../lib/ignorerules.js';
+  import { savePathChange } from '../lib/savepath.js';
 
   export let params = {};
 
@@ -35,6 +36,7 @@
     cfg = {
       _id: game.id,
       appId: game.appId ?? '',
+      savePath: game.savePath ?? '',
       exePath: game.exePath ?? '',
       coverUrl: game.coverUrl ?? '',
       autoSync: game.autoSync ?? true,
@@ -386,9 +388,30 @@
       return;
     }
     appIdError = '';
+
+    // Moving tracking to a different folder is the one edit on this form that
+    // changes WHICH files are the save, rather than a detail about them. The
+    // old folder is left untouched, but nothing there syncs or is snapshotted
+    // any more, so it is worth one confirmation.
+    const savePath = savePathChange(game.savePath, cfg.savePath);
+    if (savePath) {
+      const ok = await askConfirm(
+        `Track “${game.name}” at ${savePath} from now on?\n\n` +
+          `Files in the old folder are left exactly where they are, but they stop syncing ` +
+          `and stop being snapshotted. Existing snapshots are kept and still restore.`,
+        { title: 'Move tracking to a new folder?', confirmText: 'Move tracking' }
+      );
+      if (!ok) return;
+    }
+
     await run('Configuration saved', () =>
       api.patch(`/api/games/${game.id}`, {
         appId,
+        // Omitted unless it actually changed: the PATCH decodes into the
+        // stored game, so leaving it out keeps the current folder. Sending an
+        // empty string instead would be a real edit, and validation would
+        // reject it — blocking every other change on this form.
+        ...(savePath ? { savePath } : {}),
         exePath: cfg.exePath,
         coverUrl: cfg.coverUrl,
         autoSync: cfg.autoSync,
@@ -397,6 +420,11 @@
         syncIgnore: cfg.syncIgnore ?? ''
       })
     );
+  }
+
+  async function browseSavePath() {
+    const dir = await native.selectDirectory(`Save folder for “${game.name}”`);
+    if (dir) cfg.savePath = dir;
   }
 
   async function browseExe() {
@@ -654,6 +682,26 @@
         </div>
         <div class="config-fields">
           <h3>Launch &amp; sync configuration</h3>
+          <div class="field">
+            <label for="c-savepath">Save folder</label>
+            <div class="path-row">
+              <input id="c-savepath" placeholder="Folder holding this game's saves" bind:value={cfg.savePath} />
+              <button class="btn" on:click={browseSavePath}>Browse</button>
+            </div>
+            <span class="hint">
+              The folder OpenSave treats as this game's save. Files sync by their position
+              <em>inside</em> this folder, so each device can point at a different path and still
+              end up with the same files — useful when a game keeps saves in a per-account folder
+              named after your Steam or Epic ID, which differs on every machine. Point each device
+              at its own such folder and saves land where that copy of the game looks for them.
+            </span>
+            {#if savePathChange(game.savePath, cfg.savePath)}
+              <span class="hint hint-warn">
+                Not saved yet. The old folder keeps its files but stops syncing and being
+                snapshotted.
+              </span>
+            {/if}
+          </div>
           <div class="field">
             <label for="c-appid">Steam App ID</label>
             <input id="c-appid" placeholder="e.g. 1091500" bind:value={cfg.appId} />
@@ -985,6 +1033,19 @@
   }
   .hint-error {
     color: var(--danger);
+  }
+  .hint-warn {
+    color: var(--warn);
+  }
+  /* Defined in Settings/Home/CloudBackup too, but Svelte scopes styles per
+     component — without a copy here the executable row's input and button
+     never sat side by side. */
+  .path-row {
+    display: flex;
+    gap: 8px;
+  }
+  .path-row input {
+    flex: 1;
   }
   .tabs {
     margin-bottom: 18px;

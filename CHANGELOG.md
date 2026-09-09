@@ -3,6 +3,359 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Every paired device now says whether what you sync with it is
+  encrypted.** Encryption over a relay depends on a key the two devices
+  exchange while pairing, and until this version pairing over a relay threw
+  that key away — so an encrypted pairing and an unencrypted one looked exactly
+  alike, on the screen that tells you the relay cannot read your saves. Each
+  device in the list now carries its own state, the room panel sums it up when
+  you join, and a pairing that has no key offers the one thing that fixes it.
+  Devices on your local network are shown as what they are — a direct
+  connection that never touches a relay — rather than as a failure to encrypt.
+
+  The badge is computed from the same condition the sending code uses, so it
+  cannot claim a protection that is not actually being applied.
+
+- **Self-hosting a relay now asks instead of expecting flags.** Run
+  `install-relay.sh` with no options on a terminal and it walks through the
+  domain name, the port, cover art and Google Drive sign-in, explaining what
+  each is for and why you might skip it, then shows a summary before changing
+  anything. Nothing is echoed while you type a key. Every answer is still a
+  flag for anyone scripting it, and piping the script into `bash` never
+  triggers the questions — stdin there is the script itself.
+
+- **Hosting a relay from the app opens the port for you.** Ticking "host a WAN
+  relay" now asks the router for a port forward over UPnP and reports the
+  address it got back, instead of telling you to configure the router
+  yourself. Unticking it, or quitting, withdraws the mapping — a hole left
+  open by a checkbox someone has since unticked is one they would never find
+  again. The mapping is taken on a one-hour lease and renewed while hosting
+  continues, so a crash or a reinstall cleans itself up rather than leaving
+  the port open on your router indefinitely; routers that refuse leases get a
+  permanent mapping as before. Where UPnP is switched off it says so and says what to do instead;
+  the relay still works for devices on your own network either way. The
+  port-forwarding code had been in the project since the JavaScript port,
+  reachable only from a command-line verb.
+
+
+- **Change where a game's save folder is, from its Manage tab.** The folder was
+  fixed once a game was tracked, and could only be moved from the command line.
+  It now has a Browse button beside the App ID, refuses the folders tracking has
+  always refused, and asks before moving. Files sync by their position *inside*
+  that folder, so two devices can point at completely different paths and still
+  hold the same save — which is what makes this useful for games that keep saves
+  in a folder named after your Steam or Epic account, where the name is
+  different on every machine.
+
+- **"Ask me where to keep it" for games another device syncs.** OpenSave works
+  out a folder from where the game lives on the other device, which is why it
+  usually needs no setup, and that stays the default. Where the guess is least
+  reliable — a second drive, a folder you moved, a per-account save directory —
+  Settings can now ask instead. Games waiting for a folder appear at the top of
+  the Games page with the path they use on the other device, and nothing syncs
+  until you choose. The other device is told plainly that yours is waiting,
+  rather than being shown the same "not tracked" state as a game you removed on
+  purpose.
+
+- **Cover art on a relay you run yourself.** The relay has been able to look
+  up artwork for games Steam has no cover for since the key handling landed,
+  but there was no way to install the key alongside the Google secret and
+  nothing said where to get one. `install-relay.sh` now takes
+  `--steamgriddb-key-file`, handled exactly as the Google secret is — read
+  once, copied to a root-only file, never printed, and no value-on-the-command-line
+  variant, because an argument is visible in `ps` to every user on the machine.
+  Both secrets now share one env file rather than the second overwriting the
+  first. `docs/RELAY.md` says where to get a key, why each relay needs its own
+  rather than sharing, and how to check it arrived.
+
+### Security
+
+- **Updates are checked against the checksums published with them.** The only
+  thing between a downloaded update and a rename over the running program was
+  a size check and the first two bytes of the file — anything beginning "MZ"
+  passed. The connection to GitHub is encrypted, which protects the transfer
+  and says nothing about the file: an altered release asset would have been
+  installed and run without a murmur. Both the app and the command line now
+  verify a download against the release's `SHA256SUMS`, as the relay installer
+  already did, and refuse to install anything that does not match — including
+  when no checksums are published at all, because "we could not check, so we
+  installed it" is not a defence.
+
+  This is not the same as signed updates. Checksums fetched from the same
+  release as the file are only as trustworthy as that release. It closes the
+  likelier gap — a file altered in transit or at rest — and signing with a key
+  that never touches CI is the step after it.
+
+- **Devices on your network are identified by proof, not by address.** A peer
+  was recognised by the network address it connected from, which anyone on the
+  same network can take — by ARP spoofing, or simply by being handed that
+  address after the real device's DHCP lease expired. Requests between paired
+  devices now carry proof that the sender holds the key pinned when the two
+  paired, covering the route, the method and the contents, and each one is
+  single-use so a captured request cannot be replayed or re-aimed.
+
+  As with relay sync, both devices need this version: until then a pair keeps
+  working on the old check, and protection latches on the first request that
+  proves itself. A pairing with no key behind it has nothing to prove with —
+  unpair and pair those two again to give it one.
+
+- **Internet sync is now end-to-end encrypted and authenticated.** Saves sent
+  through a relay are sealed between your two devices, so the relay passes on
+  data it cannot read — not even ours — and each request now carries proof that
+  it came from the device it says it did.
+
+  Before this, the connection to the relay was encrypted but the contents were
+  not, so anyone you had given your room code to was in a position to read what
+  passed through. It was never reachable from the open internet: a room code is
+  twelve characters from a cryptographic generator and is not guessable, so in
+  practice this meant the people you had deliberately shared a room with.
+
+  A relay can still see that two devices are talking, roughly how much data is
+  moving, and which games by id.
+
+  **Two things worth knowing.** Both devices need this version before either
+  protection applies; until then a pair keeps working exactly as before, so an
+  upgrade part-way through never looks like a device that stopped talking.
+
+  And **pair your devices again over the internet once both are updated.**
+  Encryption needs a key that the two devices exchange while pairing, and
+  pairing over a relay never stored one — it was sent and quietly discarded, on
+  every version up to this one, so no existing internet pairing has a key to
+  encrypt with. Nothing is lost by leaving it: those pairs keep syncing exactly
+  as they always have. Re-pairing is simply how you turn the new protection on.
+  Pairings made over a local network are unaffected and always kept their key.
+
+  LAN sync is unchanged: it never involves a relay, but it is not encrypted and
+  identifies a device by its network address, so treat an untrusted network
+  accordingly.
+
+### Fixed
+
+- **OpenSave no longer stops a game from deleting its own save (Windows).**
+  While a save was being read — to hash it, to send it, or to archive it into a
+  snapshot — Windows would not let anything else delete that file, and OpenSave
+  reads every tracked save on a timer. A game deleting a save slot at the wrong
+  moment got an error from an operation that normally cannot fail. Saves are
+  now opened in a way that permits it.
+
+  One related case is beyond our reach: Windows refuses to let any program
+  replace a file that is open, whatever we ask for, and some games save by
+  writing a new file and renaming it over the old one. The defence there is
+  reading less — the caching added this release means unchanged saves are not
+  opened at all, which is now the main reason it exists.
+
+- **A game whose watcher failed to start was never watched again.** Starting a
+  watch happened once — when a game was tracked, or when the daemon started —
+  and a failure was only written to the log. A save folder on a drive that
+  mounts a few seconds after login, a folder briefly held by another program,
+  a passing permission error: any of those left that game watched by nobody
+  for the rest of the session, with no auto-snapshots and no syncing on
+  change. Nothing said so, because a watch that does not exist raises no
+  events to reveal its absence. The watch set is now reconciled every minute,
+  which starts anything missing and leaves existing watches alone.
+
+  The same shape, one level down: a new subfolder is put under watch when its
+  creation event arrives, and if that registration failed the folder stayed
+  invisible. Failures are now remembered and retried on the next pass.
+
+- **Memory with a large library.** Watching a save folder costs 64 KB per
+  folder, and OpenSave watches every subfolder of every game it tracks, so a
+  library of a few hundred games was holding hundreds of megabytes in event
+  buffers before a single save had been read. That buffer is now 8 KB, which
+  is still around a hundred events in flight for one folder — save folders are
+  not high-event places.
+
+  Two things made that safe to do. Dropped events used to be discarded in
+  silence: every watcher error was ignored, including the one that means
+  "events were lost", so a missed change stayed missed. An overflow now
+  triggers a rescan, which finds whatever the lost events would have said.
+  And the hash cache, which was a fixed 64 MB sized for an ordinary library,
+  now scales with how many games are tracked — too small a cache evicts
+  entries it is about to want and quietly goes back to re-reading saves.
+
+  Reported by someone tracking 350+ games across three machines, whose drive
+  was audibly busy at idle.
+
+- **"Sync stalled" warnings appeared at random.** Two identical sweeps ran on
+  the same thirty-second interval looking for stuck syncs, and only one of
+  them raised the warning — so whichever fired first decided whether you were
+  told. The duplicate is gone.
+
+- **Configuring a self-hosted relay's secrets could silently do nothing.**
+  `install-relay.sh` runs the relay as its own `opensave-relay` account, but
+  `opensave-relay setup` is run with `sudo` and wrote the secrets file owned by
+  root and readable only by its owner — so the service could not read it. The
+  key was stored, `opensave-relay config` reported it as configured, and the
+  relay went on answering "no key configured". There was nothing to pull on.
+
+  Setup now hands the file to the account the service runs as, reading that
+  account from the unit rather than assuming it, and says plainly when it
+  cannot. `config` warns whenever the file's owner and the service account
+  disagree.
+
+  Separately, re-running the installer to add one secret used to erase the
+  other — adding a SteamGridDB key to a relay that already did Google Drive
+  sign-in silently removed the sign-in. It now replaces only the values passed
+  on that run.
+
+- **A relay could exhaust its SteamGridDB key and keep asking anyway, and its
+  artwork cache never stopped growing.** Both matter for the same reason: one
+  key serves everybody using that relay.
+
+  A rate-limited key produced no backoff at all — every client's every miss
+  became another request against a service already refusing them, which is how
+  a brief limit becomes a long one. A relay now stops asking when SteamGridDB
+  replies 429 or 503, honouring `Retry-After` where one is sent and capping it
+  at fifteen minutes so a stray header cannot disable artwork for a day. A
+  paused lookup is never recorded as "this game has no art", which would have
+  blanked a cover for hours because of a momentary limit.
+
+  The cache ignored expired entries on read but never removed them, so every
+  distinct game name anyone ever scanned stayed resident for the life of the
+  process — against a service unit that caps the relay at 512 MB. It is now
+  bounded, dropping expired entries first and only then the oldest live ones.
+
+  `/health` reports both, as `steamGridCached` and `steamGridPausedFor`, since
+  neither failure is visible from the outside otherwise.
+
+- **A scan location you added yourself was barely looked at.** Adding a folder
+  under Settings and running a scan checked neither the folder itself nor
+  anything below its immediate children, so the usual outcomes were "it found
+  nothing" or "it offered my whole game install".
+
+  Three causes, all in the one branch that handles user-added locations:
+  the folder you added was never a candidate itself, only its children — so
+  pointing straight at the folder your saves are in found nothing at all;
+  children were listed exactly one level deep; and the result was never
+  narrowed to where the saves actually are, which every other part of the
+  scanner does. A games library therefore proposed whole installs.
+
+  Measured against a real Steam library on a second drive: adding the library
+  folder offered 17 game installs, two of them over 100 GB, and neither of the
+  two real save folders inside them. It now finds
+  `Batman Arkham Knight\BmGame\SaveData` and `GarrysMod\garrysmod\saves`,
+  and pointing directly at either of those folders now works too.
+
+  A folder holding other folders is still not offered as a save itself, so
+  adding a games directory does not propose syncing the directory; and where
+  nothing inside looks like a save folder, the game folder is still offered as
+  before — a container you can correct beats nothing. The search below each
+  child reuses the existing bounded walk, so it cannot turn a scan into a
+  full-disk crawl.
+
+- **Cloud backups made on one device could not be restored on the other.** A
+  game's id is the slug of its display name, and a backup is stored as
+  `<id>__<branch>__<snapshot>.zip`. Track the same title by auto-scan on one
+  device and with **Track folder** on the other and the two names differ, so
+  the ids differ, so the provider ends up holding two differently named sets of
+  files — one of them shown under a bare slug, because the other device's id
+  matches nothing locally. Each device would only restore its own.
+
+  Linking the two under **Manage → Linked Copies** looked like the answer and
+  did nothing, which is what made this baffling rather than merely awkward:
+  links were resolved on the peer-to-peer sync path and nowhere in the cloud
+  screens. They are now resolved there too. A linked game lists and restores
+  the other device's backups, and the browse screen shows one game instead of
+  two.
+
+  Only ids you have actually linked are accepted — an unlinked backup is still
+  refused. Removing a game's cloud copies on untrack was deliberately left
+  alone: a linked id is another device's name for a title it is probably still
+  tracking, and deleting its backups because this device stopped following the
+  game would be silent data loss somewhere nobody was looking.
+
+- **Constant disk activity and high memory while completely idle.** With a
+  paired device online, OpenSave re-read and re-hashed *every byte of every
+  save file* roughly every twenty seconds, whether or not anything had
+  changed — once to answer the other device's ping, again for the sixty-second
+  reconcile, and again for every manifest the peer asked for. None of it was
+  visible, because the reading happens *before* the comparison that finds
+  nothing to do: the app truthfully reported "no syncs running" while keeping
+  a hard drive busy indefinitely. Reported as a machine slowing down for
+  everything else, with the drive audibly working and hundreds of megabytes
+  resident, all of it clearing the moment OpenSave was killed.
+
+  The memory was not a leak. Each pass built a fresh block list for every file
+  and dropped it moments later, and that churn keeps Go's heap target high
+  while the runtime returns pages to the system lazily.
+
+  File hashes are now remembered and reused while a file's size and
+  modification time are both unchanged, so an idle folder costs a directory
+  listing instead of a full read. Turning off auto-sync did not avoid any of
+  this, incidentally — the ping path hashed every tracked game regardless — so
+  quitting the app was the only workaround.
+
+  Reusing a hash is only safe if nothing can change a file without the app
+  noticing, so: anything OpenSave itself writes into a save folder drops that
+  folder's cached hashes outright rather than reasoning about which files it
+  touched; a filesystem event does the same; and every entry is re-read from
+  scratch after an hour regardless, which is what catches a program that
+  rewrites a file while preserving its size and timestamp. That last case is
+  the one a size-and-time check cannot see, and it is why the periodic re-read
+  exists rather than being optimised away.
+
+- **A deleted save could come back, even hours later.** Deleting a save was
+  never written down — it was worked out afterwards by subtraction, from a
+  record of which files both devices were known to share. That record is
+  rebuilt from what the two devices currently hold, so rebuilding it after a
+  deletion removed the very evidence the deletion depended on. The file then
+  looked like something the other device had and this one lacked, and it was
+  copied back onto the machine it had just been deleted from.
+
+  Deletions are now recorded when they happen, along with what the file
+  contained at the time. A recorded deletion is only ever applied to another
+  device whose copy is byte-for-byte what was deleted — if that device changed
+  the file in the meantime, its version is newer and is kept instead. So a
+  deletion can propagate reliably without ever being able to remove work
+  somebody else did afterwards.
+
+  There was a second way the same thing happened: a sync decides what to do and
+  then does it, so deleting a save while one was already running meant the sync
+  faithfully restored the file it had been told to copy. A transfer no longer
+  writes back a file that was deleted here while it was running.
+
+  Not claimed as closed. Deleting a save in the same instant it finishes
+  arriving on the other device still loses the deletion roughly one time in
+  twenty-five, measured over 135 attempts. The file comes back rather than
+  anything being lost, and every other timing tested propagates correctly, but
+  the race is narrower now rather than gone.
+
+- **A save deleted just after syncing could come back.** A file only counts as
+  deleted once both devices have recorded holding it, and that record was
+  written after a round trip to the other device. Deleting inside that window
+  read as "the other device has a new file" and pulled it back. The device that
+  received the files now reports which ones, so the record is written
+  immediately. Measured while the machine was busy: four deletions in twenty
+  were lost before, none after.
+
+- **OpenSave could refuse to close.** Stopping a save folder's watcher waited
+  for it without limit, and if a game created a subfolder at that moment the
+  wait never ended — the window stayed open and the process had to be killed.
+  Captured from a real hang, not theorised.
+
+- **A junction or symlink could be used to track a folder that is off limits.**
+  Pointing a game at your home or Documents folder was refused; pointing it at a
+  link to the same folder was not. That matters most for restoring, which
+  empties its target first. The same hole let one folder be tracked as two
+  separate games, giving it two watchers and duplicate snapshots.
+
+- **One badly-named file no longer stops a whole game syncing.** Names that are
+  ordinary on Linux and macOS — a `?`, a `*`, a trailing dot — cannot exist on
+  Windows, and the first one encountered aborted the entire transfer, so nothing
+  else arrived either. Those files are now skipped and reported by name. A colon
+  was worse than an error: Windows accepted the write and put the contents
+  somewhere the folder never shows.
+
+- **macOS devices now agree with Windows and Linux about accented filenames.**
+  macOS stores `café.sav` as `e` plus an accent mark; everyone else stores it as
+  a single character. Neither system treats the two as the same file, so a save
+  synced from a Mac never matched the copy already there and the devices could
+  not converge.
+
 ## [2.3.1-beta.1] — 2026-08-22
 
 Three things reported within a day of 2.3.0, and none of them lost anything —

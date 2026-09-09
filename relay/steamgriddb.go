@@ -2,9 +2,12 @@ package relay
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +35,9 @@ import (
 // and must never hold a connection long enough to matter to a sync.
 var steamGridClient = &http.Client{Timeout: 8 * time.Second}
 
-const steamGridAPI = "https://www.steamgriddb.com/api/v2"
+// steamGridAPI is a var, not a const, only so a test can point it at a fake
+// SteamGridDB. Nothing in production reassigns it.
+var steamGridAPI = "https://www.steamgriddb.com/api/v2"
 
 // steamGridCache remembers lookups, including the misses.
 //
@@ -54,7 +59,93 @@ type steamGridEntry struct {
 const (
 	steamGridHitTTL  = 24 * time.Hour
 	steamGridMissTTL = 6 * time.Hour
+
+	// steamGridMaxEntries bounds the cache.
+	//
+	// Every distinct game name anyone ever scans used to stay resident for
+	// the life of the process: entries past their TTL were ignored on read
+	// but never removed. One key serves every OpenSave user through this
+	// relay, so "how many game names exist" was the only limit, against a
+	// service unit that caps the process at 512 MB.
+	//
+	// Five thousand covers a very large shared library many times over while
+	// costing a few hundred kilobytes.
+	steamGridMaxEntries = 5000
+
+	// steamGridDefaultBackoff is how long to stop asking after a rate-limit
+	// reply that carries no Retry-After.
+	steamGridDefaultBackoff = time.Minute
+	// steamGridMaxBackoff caps what a Retry-After can ask for, so a hostile
+	// or mistaken header cannot disable artwork for a day.
+	steamGridMaxBackoff = 15 * time.Minute
 )
+
+// errSteamGridBackoff is returned instead of making a request while the
+// upstream has asked us to stop.
+//
+// It is an error rather than an empty result on purpose: handleCoverLookup
+// caches results and deliberately does not cache errors, and "we did not ask"
+// must never be stored as "this game has no art" — that would blank a cover
+// for six hours because of a momentary limit.
+var errSteamGridBackoff = errors.New("steamgriddb: backing off after a rate limit")
+
+// steamGridLimit is when it is safe to call SteamGridDB again.
+//
+// One key serves every user of this relay, so a rate limit is shared too, and
+// the response to one is to stop asking rather than to retry per request. With
+// no backoff a limited key means every client's every miss becomes another
+// request against a service already refusing them, which is how a brief limit
+// becomes a long one.
+var steamGridLimit struct {
+	sync.Mutex
+	until time.Time
+}
+
+// steamGridPaused reports whether a backoff is in force, and until when.
+func steamGridPaused() (bool, time.Time) {
+	steamGridLimit.Lock()
+	defer steamGridLimit.Unlock()
+	return time.Now().Before(steamGridLimit.until), steamGridLimit.until
+}
+
+// steamGridPause stops requests for d, never shortening a longer pause already
+// in force.
+func steamGridPause(d time.Duration) {
+	if d <= 0 {
+		d = steamGridDefaultBackoff
+	}
+	if d > steamGridMaxBackoff {
+		d = steamGridMaxBackoff
+	}
+	until := time.Now().Add(d)
+	steamGridLimit.Lock()
+	defer steamGridLimit.Unlock()
+	if until.After(steamGridLimit.until) {
+		steamGridLimit.until = until
+	}
+}
+
+// retryAfterDelay reads a Retry-After header in either form the RFC allows:
+// a number of seconds, or an HTTP date. Zero when absent or unreadable, which
+// the caller turns into the default.
+func retryAfterDelay(h string) time.Duration {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(h); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if when, err := http.ParseTime(h); err == nil {
+		if d := time.Until(when); d > 0 {
+			return d
+		}
+	}
+	return 0
+}
 
 // handleCoverLookup answers "where can I get art for this game?".
 //
@@ -139,7 +230,57 @@ func steamGridStore(key, url string, nsfw bool) {
 	if steamGridCache.entries == nil {
 		steamGridCache.entries = map[string]steamGridEntry{}
 	}
+	if len(steamGridCache.entries) >= steamGridMaxEntries {
+		steamGridEvictLocked()
+	}
 	steamGridCache.entries[key] = steamGridEntry{url: url, nsfw: nsfw, at: time.Now()}
+}
+
+// steamGridEvictLocked brings the cache back under its cap.
+//
+// Expired entries go first: they are dead weight that a read would reject
+// anyway, and dropping them is free of any cost to hit rate. Only if that is
+// not enough does it drop live entries, oldest first, and it trims below the
+// cap rather than to it so a cache sitting exactly at the limit does not
+// evict on every single insert.
+func steamGridEvictLocked() {
+	now := time.Now()
+	for k, e := range steamGridCache.entries {
+		ttl := steamGridHitTTL
+		if e.url == "" {
+			ttl = steamGridMissTTL
+		}
+		if now.Sub(e.at) > ttl {
+			delete(steamGridCache.entries, k)
+		}
+	}
+
+	target := steamGridMaxEntries * 3 / 4
+	if len(steamGridCache.entries) <= target {
+		return
+	}
+	type aged struct {
+		key string
+		at  time.Time
+	}
+	all := make([]aged, 0, len(steamGridCache.entries))
+	for k, e := range steamGridCache.entries {
+		all = append(all, aged{k, e.at})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
+	for _, a := range all {
+		if len(steamGridCache.entries) <= target {
+			return
+		}
+		delete(steamGridCache.entries, a.key)
+	}
+}
+
+// steamGridCacheSize reports how many entries are held, for /health and tests.
+func steamGridCacheSize() int {
+	steamGridCache.Lock()
+	defer steamGridCache.Unlock()
+	return len(steamGridCache.entries)
 }
 
 // steamGridArtURL resolves a game to one artwork URL, or "" when SteamGridDB
@@ -235,6 +376,14 @@ func (s *Server) steamGridGameID(name, appID string) (int, error) {
 }
 
 func (s *Server) steamGridGet(endpoint string, out any) error {
+	// Every SteamGridDB call in this file goes through here, which is why the
+	// backoff lives here rather than at the handler: one gate covers the
+	// search and the artwork fetch, and a lookup that makes two calls cannot
+	// slip a second one past it.
+	if paused, _ := steamGridPaused(); paused {
+		return errSteamGridBackoff
+	}
+
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
@@ -250,6 +399,13 @@ func (s *Server) steamGridGet(endpoint string, out any) error {
 		// SteamGridDB does not know this game. Not an error: the caller wants
 		// to cache that as a miss rather than retry it.
 		return nil
+	}
+	// 429 is the explicit "stop asking" reply, and 503 means the service is
+	// already struggling; continuing to ask in either case makes a shared
+	// key's problem worse for every user of this relay.
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+		steamGridPause(retryAfterDelay(resp.Header.Get("Retry-After")))
+		return errSteamGridBackoff
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("steamgriddb: %d", resp.StatusCode)
@@ -271,4 +427,14 @@ func normalizeTitle(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// steamGridPausedSeconds is how long the backoff still has to run, 0 when not
+// paused. Reported by /health.
+func steamGridPausedSeconds() int {
+	paused, until := steamGridPaused()
+	if !paused {
+		return 0
+	}
+	return int(time.Until(until).Seconds()) + 1
 }

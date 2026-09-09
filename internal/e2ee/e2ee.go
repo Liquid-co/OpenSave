@@ -10,7 +10,16 @@
 // The shape here is deliberately small. Each device holds one long-lived
 // X25519 key pair. Pairing exchanges the public halves, each side pins the
 // other's, and the pair derives one shared key that neither the relay nor the
-// network ever sees. Save payloads are sealed with it.
+// network ever sees.
+//
+// Relay payloads are sealed with it — see internal/p2p/payloadseal.go, which
+// matters more than "the operator could read it" suggests, because a relay
+// hands every frame to every member of the room. LAN sync is still plain HTTP
+// and is NOT sealed: say so plainly rather than letting this package's
+// existence imply otherwise.
+//
+// A second key is derived from the same agreement, with its own HKDF label,
+// to authenticate requests — see auth.go.
 package e2ee
 
 import (

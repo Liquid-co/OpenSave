@@ -24,12 +24,18 @@ that runs entirely on your own devices.
   routes WebSocket frames between paired devices. It writes no save to disk and
   keeps nothing once a device disconnects.
 
-  The connection to it is encrypted, but that encryption ends at the relay
-  rather than at your other device: save data is not sealed end-to-end yet, so
-  whoever operates a relay is in a position to read what passes through it.
-  Ours is `wss://relay.opensave.org`, running on hardware the project rents.
-  If you would rather not take our word for how it behaves, self-hosting one is
-  a single command, and LAN sync never involves a relay at all.
+  Save data sent through it is sealed end-to-end, with a key derived from the
+  two devices' own keys when they paired. Neither the relay operator nor
+  anyone else who has your room code can read it — which matters because a
+  relay passes every message to every device in the room, so "who could read
+  this" was never only the operator. What a relay can still see is that two
+  devices are talking, roughly how much data, and which games by id.
+
+  Two caveats. Both devices need a recent version, and a pairing made before
+  key exchange existed has no key to seal with — re-pair those two devices.
+  Ours is `wss://relay.opensave.org`, running on hardware the project rents;
+  self-hosting one is a single command, and LAN sync never involves a relay at
+  all.
 
 ## Outbound network requests
 

@@ -103,3 +103,78 @@ func TestNoKeyIsNotAnError(t *testing.T) {
 	}
 	_ = err // a missing peer may error; what matters is ok == false
 }
+
+// The same, for a pairing made over the relay.
+//
+// Everything above uses PairWith, which pairs across the LAN, and every one of
+// them passed while pairing over the internet pinned no key at all. The two
+// paths do not share a handler: the LAN handshake is an HTTP route, the WAN one
+// is a case in the relay client's dispatcher, and that copy decoded the
+// handshake into a struct with no publicKey field. An unknown JSON field is
+// not an error, so the key arrived, was discarded, and the pairing reported
+// success.
+//
+// The effect was the exact inverse of what anyone would want. LAN pairings —
+// traffic that never leaves the building — got encryption. Relay pairings, the
+// ones whose every frame is broadcast to everyone holding the room code, got
+// none, because sealing needs a shared key and there wasn't one. So this test
+// matters more than its LAN twin, and it is the one that did not exist.
+func TestPairingOverRelayExchangesEncryptionKeys(t *testing.T) {
+	relayURL := startRelay(t)
+	a := testutil.NewTestDaemon(t, "WanKey-A")
+	b := testutil.NewTestDaemon(t, "WanKey-B")
+	pairOverRelay(t, a, b, relayURL, "wan-key-room")
+
+	aSeesB, err := a.Daemon.Store.GetPeer(b.NodeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bSeesA, err := b.Daemon.Store.GetPeer(a.NodeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aSeesB.PublicKey == "" {
+		t.Error("the initiating device pinned no key for a peer it paired with over the relay; " +
+			"every sync with that peer would cross the relay in the clear")
+	}
+	if bSeesA.PublicKey == "" {
+		t.Error("the approving device pinned no key for a peer it paired with over the relay")
+	}
+
+	keyOnA, okA, err := a.Daemon.Store.SharedKeyWith(b.NodeID())
+	if err != nil || !okA {
+		t.Fatalf("the initiating device could not derive a shared key: ok=%v err=%v", okA, err)
+	}
+	keyOnB, okB, err := b.Daemon.Store.SharedKeyWith(a.NodeID())
+	if err != nil || !okB {
+		t.Fatalf("the approving device could not derive a shared key: ok=%v err=%v", okB, err)
+	}
+	if !bytes.Equal(keyOnA, keyOnB) {
+		t.Fatal("the two devices derived different keys over the relay")
+	}
+}
+
+// Fingerprints have to match across a relay pairing too, or the check a user
+// is told to perform silently stops working precisely when they are pairing
+// with someone far away — the case where verifying out of band is the point.
+func TestPairingFingerprintMatchesOverRelay(t *testing.T) {
+	relayURL := startRelay(t)
+	a := testutil.NewTestDaemon(t, "WanFP-A")
+	b := testutil.NewTestDaemon(t, "WanFP-B")
+	pairOverRelay(t, a, b, relayURL, "wan-fp-room")
+
+	onA, err := a.Daemon.Store.PairingFingerprint(b.NodeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	onB, err := b.Daemon.Store.PairingFingerprint(a.NodeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if onA == "" {
+		t.Fatal("a relay pairing produced no fingerprint to compare")
+	}
+	if onA != onB {
+		t.Fatalf("the devices show different fingerprints for a relay pairing:\n  A: %s\n  B: %s", onA, onB)
+	}
+}

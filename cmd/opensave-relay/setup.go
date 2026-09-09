@@ -71,6 +71,24 @@ func runSetup() int {
 	}
 
 	fmt.Printf("\n  Saved to %s\n", path)
+
+	// Hand the file to the account the service runs as.
+	//
+	// Without this, running setup under sudo on a machine installed by
+	// install-relay.sh writes a root-owned 0600 file the service account
+	// cannot read: the key is saved, reported as configured, and never
+	// reaches the relay. Nothing surfaces that — the relay answers "no key
+	// configured" while `config` says the opposite.
+	if owner, err := relay.HandOverToServiceUser(path); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"\n  WARNING: saved, but this file could not be handed to the %q account the\n"+
+				"  relay service runs as: %v\n"+
+				"  The relay will not be able to read it. Fix the ownership, or put these\n"+
+				"  values in /etc/opensave-relay/env instead, which systemd reads as root.\n",
+			relay.ServiceUser(), err)
+	} else if owner != "" {
+		fmt.Printf("  Owner: %s (the account the relay service runs as).\n", owner)
+	}
 	// Only claimed where it is true. Go's Chmod on Windows toggles the
 	// read-only bit and nothing else, so the 0600 this is written with has no
 	// effect there — saying "readable only by you" on Windows would be a plain
@@ -161,6 +179,19 @@ func runShowConfig() int {
 		relay.MaskSecret(secrets.GoogleClientSecret), sources["googleClientSecret"])
 	fmt.Printf("  SteamGridDB API key:        %-14s from %s\n",
 		relay.MaskSecret(secrets.SteamGridDBKey), sources["steamGridDBKey"])
+
+	// Say who owns the file when a service account is involved. This command
+	// is usually run as root, and root can read a file the service cannot —
+	// so reporting "configured" while the relay sees nothing is exactly the
+	// dead end this line exists to prevent.
+	if svc := relay.ServiceUser(); svc != "" {
+		if owner := relay.FileOwner(path); owner != "" && owner != svc {
+			fmt.Printf("\n  WARNING: %s is owned by %q, but the relay service runs as %q.\n"+
+				"  A 0600 file owned by another account cannot be read by the service, so\n"+
+				"  these values will not reach it however correct they look here.\n"+
+				"  Run `opensave-relay setup` again to fix the ownership.\n", path, owner, svc)
+		}
+	}
 	fmt.Println()
 	return 0
 }

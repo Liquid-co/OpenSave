@@ -1,0 +1,29 @@
+-- Records that a peer has proved it can authenticate its requests.
+--
+-- Background: over the relay, a request's sender was whoever the message said
+-- it was. The relay never stamps identity — it is a room broadcaster — and the
+-- receiving side authorised by looking up the peer ID carried in the message.
+-- Every device also announces the IDs it is paired with, so the one value
+-- needed to impersonate a paired device was published to the whole room. The
+-- room code was the only control. Requests are now authenticated with a MAC
+-- derived from the X25519 keys pairing already pins; see internal/e2ee/auth.go.
+--
+-- Why a stored flag rather than simply requiring the MAC everywhere:
+--
+-- Both devices have to be running a build that sends it, and they will not be
+-- upgraded at the same moment. Requiring it outright would break syncing for
+-- anyone mid-upgrade — which, in a program that moves save files, looks
+-- exactly like the failure people are most afraid of. Refusing to enforce at
+-- all would mean an attacker simply omits the MAC and nothing changes.
+--
+-- So enforcement latches. The first time a peer sends a valid MAC, that is
+-- recorded here; from then on an unauthenticated request claiming to be that
+-- peer is refused. An upgraded pair is protected from the first authenticated
+-- request onward and cannot be talked back down, while a not-yet-upgraded pair
+-- keeps working exactly as before. The exposure is the window between the two
+-- devices upgrading, and it closes by itself.
+--
+-- Millisecond timestamp rather than a boolean so support can tell "never
+-- authenticated" from "authenticated, but not since a reinstall" — the second
+-- is the one worth asking about.
+ALTER TABLE peers ADD COLUMN auth_verified_ms INTEGER NOT NULL DEFAULT 0;

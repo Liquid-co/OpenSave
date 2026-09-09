@@ -398,9 +398,15 @@ go build ./cmd/opensave-relay
 Run the test suite:
 
 ```bash
-go test ./...          # unit tests
-go test ./e2e/...      # end-to-end pairing & sync tests
+go test ./... -timeout 2700s     # everything
+go test ./e2e/... -timeout 2700s # end-to-end pairing & sync tests only
 ```
+
+The timeout is not optional. `e2e` drives real daemons over real HTTP with
+real file watching, and a large part of its ten minutes is spent deliberately
+waiting for background work to settle. That is comfortably past Go's default
+of ten minutes *per package*, and overrunning it prints a goroutine dump that
+reads like a crash rather than a clock running out. CI uses the same 2700s.
 
 ## Self-hosting the relay
 
@@ -457,7 +463,9 @@ No accounts, no telemetry, no analytics. See [PRIVACY.md](PRIVACY.md) for the fu
 No. Devices sync directly. The optional relay only matters for syncing across the internet, and you can self-host it.
 
 **Is my data encrypted in transit?**
-Yes, to the relay — the connection is TLS, and the relay writes no save to disk. But that encryption ends at the relay rather than at your other device, so saves are not sealed end-to-end yet and a relay operator could read what passes through. LAN sync is direct and involves no relay; self-hosting the relay puts the whole WAN path under your control too.
+Over the relay, yes, end-to-end: save data is sealed with a key derived from the two devices' own keys when they paired, so neither the relay nor anyone else in your room can read it. Both devices need a recent version, and a pairing made before key exchange existed has no key to use — re-pair those two to protect them.
+
+LAN sync is direct, involves no relay, and is **not** encrypted: anything on the same network can read a save as it transfers. Treat a network you do not control as one that can see your saves.
 
 **What if two devices change the same save while offline?**
 OpenSave detects the divergence by sync lineage and asks you to keep yours, theirs, or both (on a new branch). It never silently overwrites.
@@ -470,7 +478,7 @@ Yes, during the transition. They share the same wire protocol and your data migr
 
 ## Contributing
 
-Issues and pull requests are welcome. Please run `go test ./...` before opening a PR, and keep changes focused. For larger features, open an issue first so we can align on approach.
+Issues and pull requests are welcome. Please run `go test ./... -timeout 2700s` before opening a PR (see [Build from source](#build-from-source) for why the timeout is needed), and keep changes focused. For larger features, open an issue first so we can align on approach.
 
 ## Documentation
 

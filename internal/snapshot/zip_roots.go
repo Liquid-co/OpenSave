@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -195,6 +196,16 @@ func rootOfEntry(entry string) (string, bool) {
 // restore — the operation someone reaches for when things have already gone
 // wrong.
 func UnzipRoots(zipPath, primary string, extra map[string]string) (unplaced []string, err error) {
+	// Every location this can write into, dropped from the hash cache. See
+	// UnzipTo for why this is defence in depth rather than the guard that is
+	// currently doing the work.
+	defer func() {
+		delta.InvalidateRoot(primary)
+		for _, path := range extra {
+			delta.InvalidateRoot(path)
+		}
+	}()
+
 	roots, err := ArchivedRoots(zipPath)
 	if err != nil {
 		return nil, err

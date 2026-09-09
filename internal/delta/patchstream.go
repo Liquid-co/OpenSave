@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // PatchWriter reconstructs a file incrementally, so a sync never has to hold
@@ -91,7 +93,7 @@ func (w *PatchWriter) SeedUnchanged(srcPath string, incoming map[int]bool) error
 		return nil
 	}
 
-	src, err := os.Open(srcPath)
+	src, err := fsx.OpenShared(srcPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%d block(s) were not sent by the peer and there is no local file to copy them from", len(missing))

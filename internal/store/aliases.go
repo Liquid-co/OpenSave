@@ -3,6 +3,8 @@ package store
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -182,4 +184,71 @@ func (s *Store) RemoveGameAlias(aliasID string) error {
 		return fmt.Errorf("remove game alias %s: %w", aliasID, err)
 	}
 	return nil
+}
+
+// maxAliasHops bounds the walk from an alias to its canonical game.
+//
+// The schema does not stop a chain: AddGameAlias refuses only a self-link, so
+// "a -> b" and "b -> c" can both exist, and nothing forbids a cycle. Resolving
+// with an unbounded loop would hang the daemon on one, which is a poor trade
+// for a case that should never arise. Eight is far past any real linking depth
+// and terminates regardless.
+const maxAliasHops = 8
+
+// LinkedGameIDs returns every id that refers to the same game on this device:
+// the canonical id, plus every alias pointing at it.
+//
+// Cloud backups are named after the id of the game that uploaded them, and two
+// devices derive that id from the display name — so the same title tracked as
+// "Elden Ring" on one and "ELDEN RING" on the other produces two differently
+// named sets of files, and neither device would restore the other's. Linking
+// them already fixes peer-to-peer sync, because that path resolves aliases;
+// the cloud path did not, so linking appeared to work and half of it did not.
+//
+// The returned set is exactly the ids the user has said are the same game.
+// Nothing else is admitted: an id that is neither the canonical one nor an
+// alias of it is absent, so this widens what a game will accept only as far as
+// the links actually recorded.
+//
+// Sorted, with the canonical id first, so callers and tests see a stable order.
+func (s *Store) LinkedGameIDs(gameID string) ([]string, error) {
+	if strings.TrimSpace(gameID) == "" {
+		return nil, fmt.Errorf("game id is required")
+	}
+
+	// Walk to the canonical id. gameID may itself be an alias — the UI links
+	// "this game" to another and either end can be the one asking.
+	canonical := gameID
+	seen := map[string]bool{canonical: true}
+	for i := 0; i < maxAliasHops; i++ {
+		next, ok := s.ResolveGameAlias(canonical)
+		if !ok || next == "" || seen[next] {
+			break
+		}
+		canonical = next
+		seen[canonical] = true
+	}
+
+	aliases, err := s.ListGameAliases(canonical)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(aliases)+1)
+	out = append(out, canonical)
+	added := map[string]bool{canonical: true}
+	for _, a := range aliases {
+		if a == "" || added[a] {
+			continue
+		}
+		added[a] = true
+		out = append(out, a)
+	}
+	// The id asked about is always in the set, even when it is an orphan with
+	// no links at all — a game with no aliases must still match its own files.
+	if !added[gameID] {
+		out = append(out, gameID)
+	}
+	sort.Strings(out[1:])
+	return out, nil
 }

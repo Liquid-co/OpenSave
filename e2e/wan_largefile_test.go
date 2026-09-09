@@ -176,6 +176,12 @@ func TestWan_LargeFileDeltaTransfersOnlyChangedBlocks(t *testing.T) {
 
 	gameID := a.TrackGame("Delta Game")
 	b.API(http.MethodPost, "/api/games", map[string]string{"name": "Delta Game", "savePath": b.SaveDir}, nil)
+
+	// The first transfer is this test's own control: it is the whole file
+	// going across, which is precisely what the delta must not look like.
+	// Measuring it means the limit below is checked against a real full send
+	// on this machine rather than asserted from arithmetic.
+	startBytes := relayHealth(t, relayURL)["totalBytes"].(float64)
 	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
 
 	if !testutil.WaitFor(180*time.Second, func() bool {
@@ -183,8 +189,20 @@ func TestWan_LargeFileDeltaTransfersOnlyChangedBlocks(t *testing.T) {
 	}) {
 		t.Fatal("initial large sync never completed")
 	}
+	fullSendBytes := relayHealth(t, relayURL)["totalBytes"].(float64) - startBytes
 
-	before := relayHealth(t, relayURL)["totalMessages"].(float64)
+	// Bytes, not messages.
+	//
+	// This assertion used to count relayed messages, and that made it a clock
+	// as much as a measurement: peers exchange presence and pings while a sync
+	// runs, so a transfer that merely took longer registered as one that sent
+	// more. It failed at 63 messages against a limit of 40 while the delta
+	// path was working perfectly — 21 of those were the transfer and the rest
+	// was half a minute of ordinary chatter. Bytes are what the delta actually
+	// changes, they are what a relay operator pays for, and they do not
+	// accumulate while nothing is being sent.
+	beforeBytes := relayHealth(t, relayURL)["totalBytes"].(float64)
+	beforeMsgs := relayHealth(t, relayURL)["totalMessages"].(float64)
 
 	// Change one block's worth of bytes in the middle.
 	time.Sleep(syncSettleWindow)
@@ -198,17 +216,28 @@ func TestWan_LargeFileDeltaTransfersOnlyChangedBlocks(t *testing.T) {
 		t.Fatal("delta sync never converged")
 	}
 
-	after := relayHealth(t, relayURL)["totalMessages"].(float64)
-	delta := after - before
+	deltaBytes := relayHealth(t, relayURL)["totalBytes"].(float64) - beforeBytes
+	deltaMsgs := relayHealth(t, relayURL)["totalMessages"].(float64) - beforeMsgs
 
-	// The initial transfer of 25 MB takes ~50 blocks over several batches.
-	// A one-block edit must cost far less than that; a full re-send would be
-	// a comparable number of messages again.
-	if delta > 40 {
-		t.Errorf("a single-block edit cost %v relay messages — the delta path looks broken, "+
-			"the whole file is probably being re-sent", delta)
+	// One 512 KB block, base64-encoded and wrapped in an envelope, is a couple
+	// of megabytes at the very most. Re-sending the file would be 25 MB before
+	// encoding. The gap between those two is wide enough that the limit needs
+	// no tuning: anything at or above 8 MB means whole blocks are moving that
+	// should not be.
+	const limit = 8 << 20
+	if fullSendBytes <= limit {
+		t.Fatalf("sending the whole 25 MB file moved only %.1f MB, which is already under the "+
+			"%d MB limit — the limit cannot tell a full re-send from a delta, so the check "+
+			"below would pass either way", fullSendBytes/(1<<20), limit>>20)
 	}
-	t.Logf("one-block edit in a 25 MB file cost %v relay messages", delta)
+	if deltaBytes > limit {
+		t.Errorf("a single-block edit moved %.1f MB through the relay (limit %d MB) — the delta "+
+			"path looks broken, the whole file is probably being re-sent",
+			deltaBytes/(1<<20), limit>>20)
+	}
+	t.Logf("one-block edit in a 25 MB file moved %.2f MB in %v relay messages; "+
+		"the full send of the same file moved %.1f MB, so the delta is %.0fx smaller",
+		deltaBytes/(1<<20), deltaMsgs, fullSendBytes/(1<<20), fullSendBytes/deltaBytes)
 }
 
 func writeRaw(t *testing.T, dir, rel string, content []byte) {

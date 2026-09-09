@@ -55,8 +55,25 @@ func localIPv4() (string, error) {
 	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }
 
+// LeaseSeconds is how long a mapping lasts before the router drops it.
+//
+// A lease, rather than the permanent mapping this used to ask for. A permanent
+// one survives everything: the app crashing, the machine being reimaged, the
+// user uninstalling — the hole stays open on their router with, eventually,
+// nothing behind it or something else listening. That was a defensible risk
+// while this was reachable only from a command somebody ran deliberately. It
+// is not defensible now that a checkbox does it, because the people most
+// likely to tick it are the least likely to know a mapping exists to remove.
+//
+// An hour, refreshed while hosting: long enough that a refresh failure is not
+// an outage, short enough that a crash cleans itself up by lunchtime.
+const LeaseSeconds = 3600
+
 // Forward maps external:port -> thisMachine:port (TCP) on the gateway.
 // Returns the gateway's external IP when available.
+//
+// Call it again before the lease expires to renew; asking for a mapping that
+// already exists renews it rather than failing.
 func Forward(ctx context.Context, port int) (externalIP string, err error) {
 	clients := discoverClients(ctx)
 	if len(clients) == 0 {
@@ -69,7 +86,16 @@ func Forward(ctx context.Context, port int) (externalIP string, err error) {
 
 	var errs []string
 	for _, client := range clients {
-		if err := client.AddPortMapping("", uint16(port), "TCP", uint16(port), localIP, true, mappingDescription, 0); err != nil {
+		// Leased first, permanent as a fallback. Plenty of IGDv1
+		// implementations reject any non-zero lease outright, and refusing to
+		// forward at all on those routers would trade a real feature for a
+		// tidiness the user cannot see. Removal on quit still covers the
+		// ordinary case there.
+		err := client.AddPortMapping("", uint16(port), "TCP", uint16(port), localIP, true, mappingDescription, LeaseSeconds)
+		if err != nil {
+			err = client.AddPortMapping("", uint16(port), "TCP", uint16(port), localIP, true, mappingDescription, 0)
+		}
+		if err != nil {
 			errs = append(errs, err.Error())
 			continue
 		}

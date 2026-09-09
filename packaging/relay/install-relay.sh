@@ -29,6 +29,14 @@ SERVICE_USER="opensave-relay"
 ENV_DIR="/etc/opensave-relay"
 ENV_PATH="$ENV_DIR/env"
 GOOGLE_SECRET_FILE=""
+STEAMGRIDDB_KEY_FILE=""
+# Whether we hold each secret, however it arrived — a file, or the guided
+# prompts. The write block keys off these rather than the file paths so
+# both routes end up in the same place.
+HAVE_GOOGLE=0
+HAVE_STEAMGRID=0
+GUIDED=0
+ASSUME_YES=0
 PORT="8386"
 DOMAIN=""
 VERSION=""
@@ -85,6 +93,28 @@ opensave-relay installer
                     using this relay supply their own OAuth credentials in the
                     app — that path talks to Google directly and never reaches
                     the relay.
+  --steamgriddb-key-file <path>
+                    File holding a SteamGridDB API key, so this relay can look
+                    up cover art for games Steam has none for — anything sold
+                    only on GOG, itch or Epic, and anything found under a
+                    folder name no AppID could be resolved from. Same handling
+                    as the Google secret: read once, copied to
+                    /etc/opensave-relay/env, root-only, never printed.
+
+                    Get a key free at
+                    https://www.steamgriddb.com/profile/preferences/api
+
+                    Every relay needs its own. A key is rate-limited per key,
+                    so sharing one across relays means the busiest of them
+                    exhausts it for the rest. Without it the relay starts
+                    normally and clients simply fall back to Steam's own
+                    artwork.
+  --guided          Ask the questions instead of expecting flags. This is
+                    also what happens by default when the script is run with
+                    no configuration and a terminal attached, so most people
+                    never need to pass it. Piping the script into bash never
+                    triggers it, because stdin is the script itself.
+  --yes, -y         Skip the confirmation at the end of the guided setup.
   --version <tag>   Install a specific release (default: the latest).
   --skip-verify     Do not check the download against SHA256SUMS. Only if the
                     release genuinely has no checksums file.
@@ -100,14 +130,158 @@ while [ $# -gt 0 ]; do
 		--domain) DOMAIN="${2:-}"; shift 2 ;;
 		--port) PORT="${2:-}"; shift 2 ;;
 		--google-secret-file) GOOGLE_SECRET_FILE="${2:-}"; shift 2 ;;
+		--steamgriddb-key-file) STEAMGRIDDB_KEY_FILE="${2:-}"; shift 2 ;;
 		--version) VERSION="${2:-}"; shift 2 ;;
 		--skip-verify) SKIP_VERIFY=1; shift ;;
 		--uninstall) UNINSTALL=1; shift ;;
+		--guided) GUIDED=1; shift ;;
+		--yes|-y) ASSUME_YES=1; shift ;;
 		--dry-run) DRY=1; shift ;;
 		--help|-h) usage; exit 0 ;;
 		*) die "unknown option: $1 (try --help)" ;;
 	esac
 done
+
+# ── Guided setup ─────────────────────────────────────────────────────
+#
+# Run with no configuration and a terminal attached, this asks rather than
+# expecting flags to be known in advance. Self-hosting a relay is a thing
+# people do once, and "read --help, pick the right four options" is a worse
+# first contact than four questions with the reasoning attached.
+#
+# It never triggers where it would break something: piping the script into
+# bash leaves stdin pointing at the script itself, so prompting there would
+# eat the script and hang. Passing any configuration flag means the caller
+# already knows what they want, and --guided forces it back on for someone
+# who wants the questions with a flag or two pre-set.
+
+ask() { # ask <prompt> <default>; answer on stdout
+	local prompt="$1" default="${2:-}" reply=""
+	if [ -n "$default" ]; then
+		printf '  %s [%s]: ' "$prompt" "$default" >&2
+	else
+		printf '  %s: ' "$prompt" >&2
+	fi
+	IFS= read -r reply || reply=""
+	printf '%s' "${reply:-$default}"
+}
+
+ask_secret() { # ask_secret <prompt>; answer on stdout, never echoed
+	local prompt="$1" reply=""
+	printf '  %s: ' "$prompt" >&2
+	stty -echo 2>/dev/null || true
+	IFS= read -r reply || reply=""
+	stty echo 2>/dev/null || true
+	printf '
+' >&2
+	printf '%s' "$reply"
+}
+
+guided_setup() {
+	printf '
+  OpenSave relay setup
+  --------------------
+
+'
+	printf '  Installs the relay as a service on this machine and starts it.
+
+'
+
+	printf '  1. Domain name
+'
+	printf '     A name pointed at this machine lets the relay use wss://, which is
+'
+	printf '     what OpenSave requires for syncing across the internet. Leave this
+'
+	printf '     blank and it serves ws://, which is accepted only on a LAN or a VPN.
+'
+	printf '     DNS has to already point here — this cannot do that part.
+'
+	DOMAIN="$(ask 'Domain (blank for LAN/VPN only)' "$DOMAIN")"
+	printf '
+'
+
+	printf '  2. Port
+'
+	PORT="$(ask 'Port to listen on' "$PORT")"
+	printf '
+'
+
+	printf '  3. Cover art (optional)
+'
+	printf '     A SteamGridDB key lets this relay find artwork for games Steam has
+'
+	printf '     none for. Free, takes a minute:
+'
+	printf '     https://www.steamgriddb.com/profile/preferences/api
+'
+	printf '     Use your own rather than sharing one — the limit is per key.
+'
+	# Stripped exactly as the --steamgriddb-key-file path strips: a key
+	# pasted with a stray space or newline is sent as part of the bearer
+	# token, and SteamGridDB answers that with a bare 401 indistinguishable
+	# from a key that was never valid. Pasting is the normal way to enter
+	# this, which makes stray whitespace the normal way to get it wrong.
+	STEAMGRIDDB_KEY="$(ask_secret 'SteamGridDB key (blank to skip)' | tr -d '[:space:]')"
+	if [ -n "$STEAMGRIDDB_KEY" ]; then HAVE_STEAMGRID=1; fi
+	printf '
+'
+
+	printf '  4. Google Drive sign-in (optional)
+'
+	printf '     Only needed if people using this relay sign in to Drive with
+'
+	printf "     OpenSave's built-in credentials. Most self-hosters skip this.
+"
+	# Same reasoning: whitespace here reaches Google as part of the secret,
+	# and the only thing it says back is "invalid_client".
+	GOOGLE_SECRET="$(ask_secret 'Google client secret (blank to skip)' | tr -d '[:space:]')"
+	if [ -n "$GOOGLE_SECRET" ]; then HAVE_GOOGLE=1; fi
+
+	printf '
+  ----------------------------------------
+'
+	if [ -n "$DOMAIN" ]; then
+		printf '  Address:      wss://%s  (certificate obtained automatically)
+' "$DOMAIN"
+	else
+		printf '  Address:      ws:// on this machine — LAN or VPN only
+'
+	fi
+	printf '  Port:         %s
+' "$PORT"
+	if [ "$HAVE_STEAMGRID" -eq 1 ]; then printf '  Cover art:    key provided
+'; else printf '  Cover art:    skipped
+'; fi
+	if [ "$HAVE_GOOGLE" -eq 1 ]; then printf '  Drive log-in: secret provided
+'; else printf '  Drive log-in: skipped
+'; fi
+	printf '  ----------------------------------------
+
+'
+
+	if [ "$ASSUME_YES" -eq 0 ]; then
+		local go
+		go="$(ask 'Install with these settings? (y/n)' 'y')"
+		case "$go" in
+			[Nn]*) printf '
+  Nothing was changed.
+
+'; exit 0 ;;
+		esac
+	fi
+	printf '
+'
+}
+
+# Configuration on the command line means the caller has already decided.
+CONFIGURED=0
+if [ -n "$DOMAIN" ] || [ -n "$GOOGLE_SECRET_FILE" ] || [ -n "$STEAMGRIDDB_KEY_FILE" ] || [ -n "$VERSION" ]; then
+	CONFIGURED=1
+fi
+if [ "$UNINSTALL" -eq 0 ] && { [ "$GUIDED" -eq 1 ] || { [ "$CONFIGURED" -eq 0 ] && [ -t 0 ]; }; }; then
+	guided_setup
+fi
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
 	die "run this as root: sudo $0 $*
@@ -138,6 +312,17 @@ if [ -n "$GOOGLE_SECRET_FILE" ]; then
 	# part of the secret and the failure that causes says only "invalid_client".
 	GOOGLE_SECRET="$(tr -d '[:space:]' < "$GOOGLE_SECRET_FILE")"
 	[ -n "$GOOGLE_SECRET" ] || die "$GOOGLE_SECRET_FILE is empty"
+	HAVE_GOOGLE=1
+fi
+
+if [ -n "$STEAMGRIDDB_KEY_FILE" ]; then
+	[ -r "$STEAMGRIDDB_KEY_FILE" ] || die "cannot read $STEAMGRIDDB_KEY_FILE"
+	# Stripped for the same reason: a trailing newline would be sent as part of
+	# the bearer token, and SteamGridDB answers that with a bare 401 that looks
+	# exactly like a key that was never valid.
+	STEAMGRIDDB_KEY="$(tr -d '[:space:]' < "$STEAMGRIDDB_KEY_FILE")"
+	[ -n "$STEAMGRIDDB_KEY" ] || die "$STEAMGRIDDB_KEY_FILE is empty"
+	HAVE_STEAMGRID=1
 fi
 
 # ── Uninstall ────────────────────────────────────────────────────────
@@ -236,10 +421,11 @@ Wants=network-online.target
 Type=simple
 User=$SERVICE_USER
 Environment=PORT=$PORT
-# Optional, hence the leading dash: a relay without a Google secret starts
-# normally and simply does not offer the sign-in proxy. The secret lives here
-# rather than on an Environment= line because this unit file is world-readable
-# and that file is not.
+# Optional, hence the leading dash: a relay with no secrets configured starts
+# normally and simply does not offer the features that need them — no Google
+# sign-in proxy, no cover-art lookup. They live here rather than on
+# Environment= lines because this unit file is world-readable and that file is
+# not.
 EnvironmentFile=-$ENV_PATH
 ExecStart=$BIN_PATH
 Restart=always
@@ -258,25 +444,70 @@ MemoryMax=512M
 WantedBy=multi-user.target
 EOF
 
-# The credential, if one was given. Deliberately not through write_file():
+# The credentials, if any were given. Deliberately not through write_file():
 # that helper echoes content on a dry run, which is right for a unit file and
-# wrong for this. Nothing below prints the value on any path.
-if [ -n "$GOOGLE_SECRET_FILE" ]; then
+# wrong for these. Nothing below prints a value on any path.
+#
+# Both secrets share one env file, so it is truncated once and then appended
+# to. Writing each with > would mean installing the second erased the first,
+# and the relay would come up with the feature configured last and without the
+# one configured a moment earlier — with nothing in the output to say so.
+if [ "$HAVE_GOOGLE" -eq 1 ] || [ "$HAVE_STEAMGRID" -eq 1 ]; then
 	if [ "$DRY" -eq 1 ]; then
 		printf '   [2mwould write %s (0600, root):[0m
 ' "$ENV_PATH"
-		printf '     | GOOGLE_DRIVE_CLIENT_SECRET=<%s bytes, not shown>
+		if [ "$HAVE_GOOGLE" -eq 1 ]; then
+			printf '     | GOOGLE_DRIVE_CLIENT_SECRET=<%s bytes, not shown>
 ' "${#GOOGLE_SECRET}"
+		fi
+		if [ "$HAVE_STEAMGRID" -eq 1 ]; then
+			printf '     | STEAMGRIDDB_KEY=<%s bytes, not shown>
+' "${#STEAMGRIDDB_KEY}"
+		fi
 	else
 		install -d -m 0700 "$ENV_DIR"
-		# Created empty at 0600 before the secret goes in, so it is never
-		# briefly readable by anyone else — a umask that allowed 0644 would
-		# otherwise leave a window between creation and chmod.
-		: >"$ENV_PATH"
+		# Built beside the real file and renamed into place, so an interrupted
+		# run cannot leave a half-written env file — and created at 0600
+		# before a secret goes in, never briefly readable by anyone else.
+		NEW_ENV="$ENV_PATH.new"
+		: >"$NEW_ENV"
+		chmod 0600 "$NEW_ENV"
+
+		# Carry forward any secret this run was not given.
+		#
+		# This used to truncate, so installing one secret silently erased the
+		# other: someone adding a SteamGridDB key to a relay that already did
+		# Google Drive sign-in lost the sign-in, with nothing said. Re-running
+		# the installer to add a feature is the normal way to use it, which
+		# made that the normal way to hit it.
+		if [ -f "$ENV_PATH" ]; then
+			while IFS= read -r line || [ -n "$line" ]; do
+				keep=1
+				case "$line" in
+					GOOGLE_DRIVE_CLIENT_SECRET=*)
+						if [ "$HAVE_GOOGLE" -eq 1 ]; then keep=0; fi ;;
+					STEAMGRIDDB_KEY=*)
+						if [ "$HAVE_STEAMGRID" -eq 1 ]; then keep=0; fi ;;
+				esac
+				if [ "$keep" -eq 1 ]; then
+					printf '%s
+' "$line" >>"$NEW_ENV"
+				fi
+			done <"$ENV_PATH"
+		fi
+
+		if [ "$HAVE_GOOGLE" -eq 1 ]; then
+			printf 'GOOGLE_DRIVE_CLIENT_SECRET=%s
+' "$GOOGLE_SECRET" >>"$NEW_ENV"
+			say "Google client secret installed to $ENV_PATH (root only)"
+		fi
+		if [ "$HAVE_STEAMGRID" -eq 1 ]; then
+			printf 'STEAMGRIDDB_KEY=%s
+' "$STEAMGRIDDB_KEY" >>"$NEW_ENV"
+			say "SteamGridDB key installed to $ENV_PATH (root only)"
+		fi
+		mv "$NEW_ENV" "$ENV_PATH"
 		chmod 0600 "$ENV_PATH"
-		printf 'GOOGLE_DRIVE_CLIENT_SECRET=%s
-' "$GOOGLE_SECRET" >"$ENV_PATH"
-		say "Google client secret installed to $ENV_PATH (root only)"
 	fi
 fi
 

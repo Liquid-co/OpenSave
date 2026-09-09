@@ -10,7 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
+
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // ZipPath archives sourcePath into a ZIP at outPath. A directory is
@@ -107,7 +110,7 @@ func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []
 // this function on their way into the archive, so hashing them is a second
 // writer on the same copy rather than a second pass over the disk.
 func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
-	f, err := os.Open(filePath)
+	f, err := fsx.OpenShared(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -138,6 +141,16 @@ func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
 // directory and extracts into it — both matching unzipDirectory() in the
 // JS app.
 func UnzipTo(zipPath, targetPath string) error {
+	// Defence in depth, not the load-bearing guard. Extraction does not
+	// restore the archived modification time — the written file gets the
+	// current one — so the hash cache would notice on its own today. It is
+	// here because the archive DOES record each entry's mtime (see
+	// header.Modified above), restoring it is the obvious future improvement,
+	// and on the day someone makes that change this line is what stops it
+	// silently serving pre-restore hashes. A restore is rare; the re-read
+	// costs nothing worth measuring.
+	defer delta.InvalidateRoot(targetPath)
+
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("open zip archive: %w", err)

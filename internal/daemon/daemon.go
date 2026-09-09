@@ -16,6 +16,7 @@ import (
 
 	"github.com/opensave/opensave/internal/cloud"
 	"github.com/opensave/opensave/internal/config"
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/presets"
@@ -191,10 +192,23 @@ func New(opts Options) (*Daemon, error) {
 
 // Start begins watching every tracked game with auto-sync enabled.
 func (d *Daemon) Start() error {
+	// Deletion records expire. Swept once per launch rather than on a timer:
+	// the retention is measured in months, so anything finer is noise, and a
+	// stale record is what lets a long-deleted file come back.
+	if err := d.Store.PruneDeletedFiles(); err != nil {
+		d.Log.Log("warn", "could not expire old deletion records: "+err.Error())
+	}
+
 	games, err := d.Store.ListGames()
 	if err != nil {
 		return err
 	}
+	// Size the manifest hash cache to the library. A fixed budget is either
+	// wasteful for someone with ten games or too small for someone with three
+	// hundred — and too small is the expensive direction, because the cache
+	// then evicts entries it is about to want and starts re-reading saves.
+	delta.SetHashCacheBudgetForGames(len(games))
+
 	for _, game := range games {
 		// Backfill cover art for games tracked before covers existed (or
 		// migrated from the JS app without one).
@@ -228,6 +242,33 @@ func (d *Daemon) Start() error {
 	if settings, err := d.Store.GetSettings(); err == nil {
 		d.P2P.ApplyRelayHosting(settings.HostRelay, settings.RelayPort)
 	}
+
+	// Keep the watch set honest.
+	//
+	// Starting a watch is a one-shot: it happens when a game is tracked or
+	// when the daemon starts, and a failure was only ever logged. A save
+	// folder on a drive that mounts a few seconds after login, a folder
+	// briefly held by another process, a transient permission — any of those
+	// left that game watched by nobody for the rest of the session. No
+	// auto-snapshots, no sync on change, and nothing on screen to say so,
+	// because a watch that does not exist raises no events to reveal its
+	// absence.
+	//
+	// ResyncWatchers already knew how to fix this and was only ever called
+	// from an endpoint nothing in the app calls. Running it on a timer costs
+	// one query a minute and leaves existing watches strictly alone.
+	d.P2P.GoSync(func(ctx context.Context) {
+		ticker := time.NewTicker(watchResyncInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.ResyncWatchers()
+			}
+		}
+	})
 
 	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
 	return nil
@@ -341,6 +382,14 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 		return true
 	}, game.MaxSnapshots)
 }
+
+// watchResyncInterval is how often the watch set is reconciled against the
+// database.
+//
+// A minute is far below the point where a missing watch costs anything a user
+// would notice, and far above the point where the query matters: it lists
+// games and compares a map.
+const watchResyncInterval = time.Minute
 
 // ResyncWatchers reconciles the live watch set with what the database says,
 // starting watches for games that should have one and stopping those that
@@ -552,12 +601,39 @@ func (d *Daemon) ValidateSavePath(rawPath string) (string, error) {
 
 	// One folder, one game: a second tracker on the same path means double
 	// watchers, duplicate snapshots, and sync confusion.
+	//
+	// Two checks, because neither alone is enough.
+	//
+	// The textual one catches spellings of a path that may not exist any more
+	// — a game whose folder is currently missing still holds its claim.
+	//
+	// os.SameFile catches the aliases no amount of string work can see: a
+	// junction or symlink pointing at an already-tracked folder is a
+	// different string naming the same directory. It is the identity
+	// comparison the filesystem itself uses (volume serial + file index on
+	// Windows, device + inode on Unix). Note filepath.EvalSymlinks is NOT
+	// used here: on Windows it leaves a junction unresolved, returning the
+	// link's own path, so it would have missed exactly the case that prompted
+	// this — `mklink /J`, the usual way a Windows user moves a save folder to
+	// another drive.
 	norm := strings.ToLower(abs)
+	absInfo, absStatErr := os.Stat(abs)
 	games, err := d.Store.ListGames()
 	if err == nil {
 		for _, g := range games {
 			if strings.ToLower(filepath.Clean(g.SavePath)) == norm {
 				return "", fmt.Errorf("%q already tracks this folder", g.Name)
+			}
+			if absStatErr != nil {
+				continue
+			}
+			// Stat failures here are ordinary: a tracked game's folder can be
+			// on a drive that is not plugged in. Such a game simply cannot be
+			// compared by identity, and the textual check above still stands.
+			gInfo, gErr := os.Stat(g.SavePath)
+			if gErr == nil && os.SameFile(absInfo, gInfo) {
+				return "", fmt.Errorf("%q already tracks this folder (%s is the same "+
+					"directory as %s)", g.Name, abs, g.SavePath)
 			}
 		}
 	}
@@ -615,6 +691,18 @@ func (d *Daemon) checkSavePathShape(abs string) error {
 	if v := os.Getenv("PUBLIC"); v != "" {
 		broad = append(broad, filepath.Join(v, "Documents"))
 	}
+	// Compared textually AND by filesystem identity. The textual check is the
+	// only one available for a path that does not exist yet (CheckRestoreTarget
+	// allows those), but on its own it is trivially sidestepped: a junction or
+	// symlink is a different string naming the same directory, so
+	// `mklink /J C:\games\saves C:\Users\me` was accepted and the whole profile
+	// became one game's save folder. Measured, not theorised — the direct path
+	// was refused and the junction to it was not.
+	//
+	// What that costs is not just a slow snapshot: a restore empties its target
+	// before unpacking, and this guard is what stands between that and a home
+	// folder.
+	absInfo, absStatErr := os.Stat(abs)
 	for _, b := range broad {
 		if b == "" {
 			continue
@@ -623,6 +711,15 @@ func (d *Daemon) checkSavePathShape(abs string) error {
 			return fmt.Errorf(
 				"refusing to use %q — that's a system or profile folder, not a save location; pick the game's own folder inside it", abs)
 		}
+		if absStatErr != nil {
+			continue
+		}
+		bInfo, bErr := os.Stat(b)
+		if bErr == nil && os.SameFile(absInfo, bInfo) {
+			return fmt.Errorf(
+				"refusing to use %q — it points at %q, which is a system or profile "+
+					"folder, not a save location; pick the game's own folder inside it", abs, b)
+		}
 	}
 
 	// Never OpenSave's own data dir (snapshotting the backups folder would
@@ -630,6 +727,15 @@ func (d *Daemon) checkSavePathShape(abs string) error {
 	dataDir := strings.ToLower(filepath.Clean(d.Paths.HomeDir))
 	if norm == dataDir || strings.HasPrefix(norm, dataDir+sep) || strings.HasPrefix(dataDir, norm+sep) {
 		return fmt.Errorf("refusing to use OpenSave's own data folder (%s)", abs)
+	}
+	// And by identity, for the same reason as above: a link pointing at the
+	// data folder is a different string for it, and snapshotting the folder
+	// the snapshots live in recurses.
+	if absStatErr == nil {
+		if dataInfo, err := os.Stat(d.Paths.HomeDir); err == nil && os.SameFile(absInfo, dataInfo) {
+			return fmt.Errorf("refusing to use %q — it points at OpenSave's own data folder (%s)",
+				abs, d.Paths.HomeDir)
+		}
 	}
 	return nil
 }
@@ -697,6 +803,10 @@ func (d *Daemon) UntrackGame(gameID string) error {
 	// (they remove it and tombstone it). Re-tracking on any device clears
 	// the tombstones (NotifyRetrack) and re-shares via sync-on-track.
 	_ = d.Store.AddUntrackedTombstone(gameID)
+	// The deletion records describe a folder this device no longer has an
+	// opinion about. Kept, they would outlive the game and could still
+	// remove a peer's file if it were tracked again later.
+	_ = d.Store.ClearDeletedFilesForGame(gameID)
 	d.P2P.ClearPendingResync(gameID)
 	d.P2P.NotifyUntrack(gameID)
 	return nil
@@ -819,6 +929,10 @@ func (d *Daemon) untrackFromPeer(gameID string) {
 		d.Log.Log("warn", fmt.Sprintf("untrack from peer: delete %q failed: %v", gameID, err))
 	}
 	_ = d.Store.AddUntrackedTombstone(gameID)
+	// The deletion records describe a folder this device no longer has an
+	// opinion about. Kept, they would outlive the game and could still
+	// remove a peer's file if it were tracked again later.
+	_ = d.Store.ClearDeletedFilesForGame(gameID)
 	d.P2P.ClearPendingResync(gameID)
 	d.Log.Log("info", fmt.Sprintf("game %q untracked on a paired device", gameID))
 }

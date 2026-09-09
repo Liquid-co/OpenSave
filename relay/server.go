@@ -56,6 +56,7 @@ type Server struct {
 	rooms            map[string]map[*client]struct{}
 	totalConnections int64
 	totalMessages    int64
+	totalBytes       int64
 	droppedMessages  int64
 	startedAt        time.Time
 
@@ -194,6 +195,14 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	// Read outside s.mu. These have nothing to do with the room state that
+	// lock protects, and s.mu is taken on every forwarded message — holding
+	// it across an unrelated subsystem's mutex couples the relay's hottest
+	// path to the artwork cache for no reason. Cheap either way; the point is
+	// that the coupling does not exist to reason about later.
+	gridCached := steamGridCacheSize()
+	gridPausedFor := steamGridPausedSeconds()
+
 	s.mu.Lock()
 	roomCount := len(s.rooms)
 	clientCount := 0
@@ -208,7 +217,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"rooms":            roomCount,
 		"clients":          clientCount,
 		"totalConnections": s.totalConnections,
-		"totalMessages":    s.totalMessages,
+		// Artwork lookup state, so an operator can see the two things that
+		// otherwise go wrong quietly: a shared key that has been
+		// rate-limited, and a cache that used to grow without limit.
+		"steamGridCached":    gridCached,
+		"steamGridPausedFor": gridPausedFor,
+		"totalMessages":      s.totalMessages,
+		"totalBytes":         s.totalBytes,
 		// Queue health: a non-zero drop count means a client couldn't keep up
 		// and the sync protocol had to retry, which is the signal that the
 		// budgets below are too tight for real traffic.
@@ -324,6 +339,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		// enqueue never blocks, so this stays a short critical section.
 		s.mu.Lock()
 		s.totalMessages++
+		// Bytes as well as messages. A message count answers "how chatty is
+		// this room", which is time-proportional and says nothing about load;
+		// bytes answer "what is this relay actually carrying", which is the
+		// number an operator is billed for and the one that shows whether
+		// delta sync is doing its job.
+		s.totalBytes += int64(len(raw))
 		for other := range s.rooms[roomCode] {
 			if other == c {
 				continue

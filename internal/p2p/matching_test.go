@@ -37,7 +37,7 @@ func TestEnsureManifestGameMatching(t *testing.T) {
 	// Matching OFF (default): a peer game with the same App ID but a
 	// different id must NOT resolve to the local game. With no name/path to
 	// auto-track, it's simply reported not-found here.
-	if _, err := e.ensureManifestGame("nevergrave-cracked", manifestGameQuery{AppID: "2069710"}); err == nil {
+	if _, err := e.ensureManifestGame("nevergrave-cracked", manifestGameQuery{AppID: "2069710"}, "test-peer"); err == nil {
 		t.Error("with App ID matching off, a shared App ID should not resolve to the local game")
 	}
 
@@ -52,7 +52,7 @@ func TestEnsureManifestGameMatching(t *testing.T) {
 	}
 
 	// Now the same shared App ID resolves to the canonical game.
-	g, err := e.ensureManifestGame("nevergrave-cracked", manifestGameQuery{AppID: "2069710"})
+	g, err := e.ensureManifestGame("nevergrave-cracked", manifestGameQuery{AppID: "2069710"}, "test-peer")
 	if err != nil {
 		t.Fatalf("ensureManifestGame (App ID on) error = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestEnsureManifestGameMatching(t *testing.T) {
 	if err := s.AddGameAlias("some-portable-id", "nevergrave"); err != nil {
 		t.Fatal(err)
 	}
-	g, err = e.ensureManifestGame("some-portable-id", manifestGameQuery{})
+	g, err = e.ensureManifestGame("some-portable-id", manifestGameQuery{}, "test-peer")
 	if err != nil {
 		t.Fatalf("ensureManifestGame (alias) error = %v", err)
 	}

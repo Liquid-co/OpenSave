@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,6 +83,11 @@ type Engine struct {
 	// constant disk/CPU churn with the 20s retry loop pinging both ways.
 	hashCacheMu sync.Mutex
 	hashCache   map[string]cachedManifestHash
+
+	// Replay protection for authenticated relay requests. Lazily built so a
+	// zero Engine (tests construct several) needs no extra setup.
+	nonceOnce  sync.Once
+	nonceCache *nonceCache
 
 	// Live per-peer app build info (version + build time) learned from
 	// pings/hellos, powering the "update from this device" flow.
@@ -268,7 +274,7 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 	e.Wan = newWanClient(e)
 	e.RelayHost = NewRelayHost(logf)
 	e.Sync = syncengine.New(s, snaps, &routingTransport{
-		lan: &lanTransport{},
+		lan: &lanTransport{engine: e},
 		wan: &wanTransport{wan: e.Wan},
 	})
 	e.Sync.Log = logf
@@ -320,8 +326,51 @@ func (e *Engine) manifestHashCached(gameID, savePath string) string {
 		e.hashCache = map[string]cachedManifestHash{}
 	}
 	e.hashCache[gameID] = cachedManifestHash{hash: hash, at: time.Now()}
+	// Drop entries for games no longer being asked about.
+	//
+	// Bounded by the number of tracked games, so this was never going to run
+	// away — but an untracked game's entry stayed for the life of the process,
+	// and a cache with no removal at all is the shape of the leak this file's
+	// neighbours had. Swept here rather than on a timer: entries only appear
+	// when something asks, so that is when clearing them is worth doing.
+	for id, c := range e.hashCache {
+		if time.Since(c.at) > manifestHashTTL*4 {
+			delete(e.hashCache, id)
+		}
+	}
 	e.hashCacheMu.Unlock()
 	return hash
+}
+
+// requestAuthKey derives the key this device and one peer use to authenticate
+// requests to each other.
+//
+// Returns an error when the peer has no pinned public key — a pairing made
+// before end-to-end encryption existed, or by a build without it. That is an
+// ordinary state, not a fault: callers treat it as "this pair cannot
+// authenticate yet" and fall back to the behaviour that came before. It is
+// resolved by re-pairing the two devices.
+func (e *Engine) requestAuthKey(peerID string) ([]byte, error) {
+	peer, err := e.Store.GetPeer(peerID)
+	if err != nil {
+		return nil, err
+	}
+	return e.requestAuthKeyFor(peer)
+}
+
+func (e *Engine) requestAuthKeyFor(peer store.Peer) ([]byte, error) {
+	if strings.TrimSpace(peer.PublicKey) == "" {
+		return nil, fmt.Errorf("peer %s has no pinned public key", peer.ID)
+	}
+	theirPublic, err := e2ee.DecodeKey(peer.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("peer %s has an unreadable public key: %w", peer.ID, err)
+	}
+	id, err := e.Store.DeviceIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("read this device's key: %w", err)
+	}
+	return e2ee.AuthKey(id.Private, theirPublic)
 }
 
 // OnlinePeers returns paired peers currently marked online, as sync-engine

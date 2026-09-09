@@ -156,6 +156,13 @@ func (e *Engine) markResolvedLocal(gameID string, peer Peer) error {
 // touchSaveMtimes bumps every file's mtime under root to now without
 // changing its content, marking this side as the most recent version.
 func touchSaveMtimes(root string) {
+	// Defence in depth. This moves every mtime to now, which a size+mtime
+	// cache notices by itself — the entries miss and are re-read to the same
+	// hashes, since the content is untouched. Kept so the rule stays "every
+	// writer invalidates", and so that changing this to set any time other
+	// than now cannot quietly become a correctness bug.
+	defer delta.InvalidateRoot(root)
+
 	now := time.Now()
 	info, err := os.Stat(root)
 	if err != nil {
@@ -191,6 +198,10 @@ func (e *Engine) overwriteLocalWithRemote(ctx context.Context, gameID string, pe
 	if err != nil {
 		return err
 	}
+	// This replaces local content wholesale, via helpers that each invalidate
+	// on their own. Repeated here so the guarantee does not depend on which
+	// path through them a given conflict resolution happens to take.
+	defer delta.InvalidateRoot(game.SavePath)
 
 	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL})
 	if err != nil {

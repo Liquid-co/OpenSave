@@ -17,6 +17,57 @@
 
   export let params = {};
 
+
+  // ── Games a peer syncs that this device has no folder for ─────────
+  //
+  // Only ever populated when "Ask me where to keep it" is chosen in Settings;
+  // with the default an unknown game is tracked automatically and never
+  // reaches this list. Shown at the top of the page on purpose: an offer
+  // nobody notices is worse than a folder guessed slightly wrong, because a
+  // wrong guess is at least visible and can be moved afterwards.
+  let offeredGames = [];
+  async function loadOfferedGames() {
+    try {
+      offeredGames = (await api.get('/api/offered-games')) ?? [];
+    } catch {
+      offeredGames = [];
+    }
+  }
+  loadOfferedGames();
+  // Refresh with the game list: placing or declining broadcasts a games
+  // update, and so does a peer offering something new.
+  $: if ($gameList) loadOfferedGames();
+
+  async function placeOffer(offer) {
+    const dir = await native.selectDirectory(`Folder for "${offer.name}" on this device`);
+    if (!dir) return;
+    try {
+      await api.post(`/api/offered-games/${offer.gameId}/place`, { path: dir });
+      toast(`${offer.name} is now tracked here`, 'success');
+      await loadOfferedGames();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function declineOffer(offer) {
+    if (
+      !(await askConfirm(
+        `Stop being asked about "${offer.name}"?
+
+It will not sync to this device. You can still track it yourself later, which undoes this.`,
+        { title: 'Decline this game?', confirmText: 'Decline' }
+      ))
+    )
+      return;
+    try {
+      await api.post(`/api/offered-games/${offer.gameId}/decline`);
+      await loadOfferedGames();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
   let showAdd = params.add ?? false;
   $: if (params.add) showAdd = true;
 
@@ -412,6 +463,32 @@
     <button class="btn primary" on:click={() => (showAdd = !showAdd)}>+ Track folder</button>
   </div>
 </div>
+
+{#if offeredGames.length > 0}
+  <div class="card offers-card">
+    <h3>Waiting for a folder</h3>
+    <p class="offers-intro">
+      {offeredGames.length === 1 ? 'Another device syncs this game' : 'Other devices sync these games'},
+      but this one doesn't know where to keep
+      {offeredGames.length === 1 ? 'it' : 'them'} yet. Nothing syncs until you choose.
+    </p>
+    {#each offeredGames as offer (offer.gameId + offer.peerId)}
+      <div class="offer-row">
+        <div class="offer-info">
+          <strong>{offer.name}</strong>
+          <span class="hint">
+            Kept at <code>{offer.peerPath}</code> on the other device.
+          </span>
+        </div>
+        <div class="offer-actions">
+          <button class="btn primary" on:click={() => placeOffer(offer)}>Choose folder…</button>
+          <button class="btn" on:click={() => declineOffer(offer)}>Decline</button>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
 
 {#if showAdd}
   <div class="card add-card">
@@ -1355,5 +1432,39 @@
     font-size: 0.78rem;
     color: var(--accent);
     font-weight: 600;
+  }
+
+  /* Games a peer syncs that this device has no folder for. Given the accent
+     border because being noticed IS the feature: an offer nobody sees leaves a
+     save silently not syncing, which is worse than a folder guessed wrong. */
+  .offers-card {
+    border-left: 3px solid var(--accent);
+  }
+  .offers-intro {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin: 0 0 12px;
+  }
+  .offer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .offer-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .offer-info code {
+    word-break: break-all;
+  }
+  .offer-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
   }
 </style>

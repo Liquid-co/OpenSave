@@ -212,6 +212,16 @@ func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto bo
 			snapshotID, game.Name, err))
 	}
 
+	// Write down what disappeared since the previous snapshot.
+	//
+	// A deletion has to be recorded when it happens, because it cannot be
+	// recovered afterwards: the shared lineage is rebuilt from the intersection
+	// of two devices' current manifests, so once the file is gone locally the
+	// lineage stops proving it was ever shared. Working it out here costs one
+	// comparison against a list already stored, and it is the only moment when
+	// both the before and after states are in hand.
+	m.recordDeletionsSince(gameID, branch, snapshotID, captured)
+
 	m.pruneRetention(game)
 
 	// A snapshot with no files inside is almost always a wrong tracked
@@ -805,6 +815,9 @@ func clearSavePathGuarded(savePath string) error {
 // clearSavePath removes a single save file, or empties a save directory
 // while keeping the directory itself.
 func clearSavePath(savePath string) error {
+	// Whatever this removes, no cached hash under it is true afterwards.
+	defer delta.InvalidateRoot(savePath)
+
 	info, err := os.Stat(savePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -825,4 +838,83 @@ func clearSavePath(savePath string) error {
 		}
 	}
 	return nil
+}
+
+// recordDeletionsSince compares what this snapshot captured against the
+// previous one and writes down the paths that vanished.
+//
+// Nothing here may fail a snapshot: the archive is already on disk and the row
+// already written, so a bookkeeping problem must not turn a good backup into an
+// error. A missing record only means a deletion falls back to the old
+// lineage-based inference, which is where it was before.
+func (m *Manager) recordDeletionsSince(gameID, branch, snapshotID string, captured []store.CapturedFile) {
+	snaps, err := m.Store.ListSnapshots(gameID, branch)
+	if err != nil {
+		return
+	}
+	// Newest first, so the previous snapshot is the first that is not this one.
+	var previousID string
+	for _, s := range snaps {
+		if s.ID != snapshotID {
+			previousID = s.ID
+			break
+		}
+	}
+	if previousID == "" {
+		return // first snapshot of this branch: nothing existed before it
+	}
+	before, err := m.Store.SnapshotFiles(previousID)
+	if err != nil || len(before) == 0 {
+		return
+	}
+
+	type key struct{ root, path string }
+	now := make(map[key]struct{}, len(captured))
+	for _, f := range captured {
+		now[key{f.Root, f.Path}] = struct{}{}
+	}
+
+	var gone []store.DeletedFile
+	for _, f := range before {
+		if _, still := now[key{f.Root, f.Path}]; still {
+			continue
+		}
+		gone = append(gone, store.DeletedFile{
+			Root: f.Root, Path: f.Path, Hash: f.Hash,
+		})
+	}
+	if len(gone) > 0 {
+		if err := m.Store.RecordDeletedFiles(gameID, gone); err != nil && m.Log != nil {
+			m.Log("warn", fmt.Sprintf(
+				"could not record %d deletion(s) in %s; they will fall back to being "+
+					"inferred, which is what lets a deleted save come back: %v",
+				len(gone), gameID, err))
+		}
+	}
+
+	// A file that is present again must stop being remembered as deleted, or a
+	// later sync would remove the peer's copy of something this device now has.
+	//
+	// Done by reading the records once per root and clearing only the paths
+	// that actually have one. Calling the store for every captured file would
+	// mean hundreds of statements on a large save to delete rows that almost
+	// never exist.
+	roots := map[string]struct{}{}
+	for _, f := range captured {
+		roots[f.Root] = struct{}{}
+	}
+	for root := range roots {
+		records, err := m.Store.DeletedFiles(gameID, root)
+		if err != nil || len(records) == 0 {
+			continue
+		}
+		for _, f := range captured {
+			if f.Root != root {
+				continue
+			}
+			if _, remembered := records[f.Path]; remembered {
+				_ = m.Store.ClearDeletedFile(gameID, root, f.Path)
+			}
+		}
+	}
 }

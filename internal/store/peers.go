@@ -53,6 +53,15 @@ type Peer struct {
 	// or by a build that does not have it — which means "cannot encrypt with
 	// this one", not "encryption failed".
 	PublicKey string `db:"public_key" json:"-"`
+	// AuthVerifiedMs is when this peer last proved it holds the private half
+	// of PublicKey, by sending a correctly authenticated request. Zero means
+	// it never has.
+	//
+	// Once non-zero, an unauthenticated request claiming to be this peer is
+	// refused. That latch is what stops an attacker downgrading a pair that
+	// has already upgraded, without breaking a pair where only one side has.
+	// See migrations/0023_peer_request_auth.sql.
+	AuthVerifiedMs int64 `db:"auth_verified_ms" json:"-"`
 }
 
 // UpsertPeer inserts a new paired peer or updates an existing one's
@@ -96,6 +105,20 @@ func (s *Store) ListPeers() ([]Peer, error) {
 		return nil, fmt.Errorf("list peers: %w", err)
 	}
 	return peers, nil
+}
+
+// MarkPeerAuthVerified records that this peer has authenticated a request.
+//
+// Only ever moves forward, and only ever from a request whose MAC already
+// verified — so it cannot be set by anyone who does not hold the key.
+func (s *Store) MarkPeerAuthVerified(id string, whenMs int64) error {
+	_, err := s.db.Exec(
+		`UPDATE peers SET auth_verified_ms = ? WHERE id = ? AND auth_verified_ms < ?`,
+		whenMs, id, whenMs)
+	if err != nil {
+		return fmt.Errorf("mark peer %s authenticated: %w", id, err)
+	}
+	return nil
 }
 
 // SetPeerPairedAt overrides a peer's paired_at timestamp (used by the
@@ -171,6 +194,16 @@ func (s *Store) UnpairPeer(id string) error {
 	}
 	if _, err := tx.Exec(`DELETE FROM game_root_sync_state WHERE peer_id = ?`, id); err != nil {
 		return fmt.Errorf("delete root sync state for peer %s: %w", id, err)
+	}
+	// Offers this device never answered. An offer is a request to place a
+	// game so it can sync with the device that asked; once that device is
+	// unpaired there is nothing to sync it with, and leaving the row would
+	// invite the user to create a game with no peer behind it.
+	//
+	// Done here rather than at the four call sites that unpair, so it cannot
+	// be forgotten by whichever one is added next.
+	if _, err := tx.Exec(`DELETE FROM offered_games WHERE peer_id = ?`, id); err != nil {
+		return fmt.Errorf("delete offered games for peer %s: %w", id, err)
 	}
 	res, err := tx.Exec(`DELETE FROM peers WHERE id = ?`, id)
 	if err != nil {

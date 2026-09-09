@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // BlockSource supplies the bytes for one block index, either from the
@@ -98,7 +100,7 @@ func removeWithRetry(path string) {
 }
 
 func hashFileWhole(path string) (string, error) {
-	f, err := os.Open(path)
+	f, err := fsx.OpenShared(path)
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +120,7 @@ func ReadBlocks(filePath string, blockIndices []int, blockSize int) ([]BlockSour
 	if blockSize <= 0 {
 		blockSize = defaultBlockSize
 	}
-	f, err := os.Open(filePath)
+	f, err := fsx.OpenShared(filePath)
 	if err != nil {
 		return nil, err
 	}

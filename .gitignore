@@ -6,6 +6,10 @@
 /dist/
 /build/
 
+# Local test builds. Hundreds of megabytes of binaries produced by hand for
+# testing a specific commit; useful to keep on disk, never to commit.
+/localbuild/
+
 # Test artifacts
 *.test
 *.out

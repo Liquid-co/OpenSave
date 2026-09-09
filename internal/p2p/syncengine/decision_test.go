@@ -186,7 +186,8 @@ func TestBatchIndices(t *testing.T) {
 		indices[i] = i
 	}
 
-	// 64KB blocks: 2MB/64KB = 32, capped at 32 LAN / 16 WAN.
+	// 64KB blocks: LAN 2MB/64KB = 32, capped at 32. WAN targets 1.5MB
+	// (=24) but is capped at 16 either way, so the cap decides here.
 	lan := BatchIndices(indices, 65536, false)
 	if len(lan[0]) != 32 {
 		t.Errorf("LAN batch size = %d, want 32", len(lan[0]))
@@ -204,18 +205,26 @@ func TestBatchIndices(t *testing.T) {
 		t.Errorf("2MB blocks should go one per batch, got %v", big)
 	}
 
-	// 512KB blocks (the 20-100MB file range) pack four to a 2MB batch.
+	// 512KB blocks (the 20-100MB file range): four to a 2MB LAN batch, three
+	// to a 1.5MB relay batch. The relay target is lower because those payloads
+	// are sealed, and sealing costs a second base64 — see BatchIndices.
+	midLAN := BatchIndices(indices, 512<<10, false)
+	if len(midLAN[0]) != 4 {
+		t.Errorf("512KB LAN batch size = %d, want 4", len(midLAN[0]))
+	}
 	mid := BatchIndices(indices, 512<<10, true)
-	if len(mid[0]) != 4 {
-		t.Errorf("512KB batch size = %d, want 4", len(mid[0]))
+	if len(mid[0]) != 3 {
+		t.Errorf("512KB relay batch size = %d, want 3", len(mid[0]))
 	}
 
-	// Batches must stay inside the 16MB frame limit after base64 (+33%).
+	// Batches must stay inside the 16MB frame limit once encoded. On the relay
+	// that is base64 twice: the blocks are base64 inside the request JSON, and
+	// the sealed form of that JSON is itself base64 in the envelope.
 	for _, blockSize := range []int{64 << 10, 512 << 10, 2 << 20} {
 		batches := BatchIndices(indices, blockSize, true)
-		onWire := len(batches[0]) * blockSize * 4 / 3
+		onWire := len(batches[0]) * blockSize * 4 / 3 * 4 / 3
 		if onWire > 16<<20 {
-			t.Errorf("blockSize %d: batch is %d bytes base64-encoded, over the 16MB frame limit", blockSize, onWire)
+			t.Errorf("blockSize %d: batch is %d bytes sealed and encoded, over the 16MB frame limit", blockSize, onWire)
 		}
 	}
 

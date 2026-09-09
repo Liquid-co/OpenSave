@@ -19,24 +19,32 @@ type TranslationRule struct {
 
 // Settings is the singleton device configuration row.
 type Settings struct {
-	ID                int               `db:"id" json:"-"`
-	DeviceName        string            `db:"device_name" json:"deviceName"`
-	NodeID            string            `db:"node_id" json:"nodeId"`
-	DeviceType        string            `db:"device_type" json:"deviceType"`
-	Port              int               `db:"port" json:"port"`
-	SyncInterval      int               `db:"sync_interval" json:"syncInterval"`
-	SyncOnWatch       bool              `db:"sync_on_watch" json:"syncOnWatch"`
-	DataDir           string            `db:"data_dir" json:"dataDir"`
-	BackupsDir        string            `db:"backups_dir" json:"backupsDir"`
-	SyncBackupsDir    string            `db:"sync_backups_dir" json:"syncBackupsDir"`
-	AutoDeleteBackups bool              `db:"auto_delete_backups" json:"autoDeleteBackups"`
-	AutoDeleteDays    int               `db:"auto_delete_days" json:"autoDeleteDays"`
-	AutoSyncOnTrack   bool              `db:"auto_sync_on_track" json:"autoSyncOnTrack"`
-	MatchByAppID      bool              `db:"match_by_app_id" json:"matchByAppId"`
-	CustomScanPaths   []string          `db:"-" json:"customScanPaths"`
-	ExcludePaths      []string          `db:"-" json:"excludePaths"`
-	PathTranslations  []TranslationRule `db:"-" json:"pathTranslations"`
-	RelayURL          string            `db:"relay_url" json:"relayUrl"`
+	ID                int    `db:"id" json:"-"`
+	DeviceName        string `db:"device_name" json:"deviceName"`
+	NodeID            string `db:"node_id" json:"nodeId"`
+	DeviceType        string `db:"device_type" json:"deviceType"`
+	Port              int    `db:"port" json:"port"`
+	SyncInterval      int    `db:"sync_interval" json:"syncInterval"`
+	SyncOnWatch       bool   `db:"sync_on_watch" json:"syncOnWatch"`
+	DataDir           string `db:"data_dir" json:"dataDir"`
+	BackupsDir        string `db:"backups_dir" json:"backupsDir"`
+	SyncBackupsDir    string `db:"sync_backups_dir" json:"syncBackupsDir"`
+	AutoDeleteBackups bool   `db:"auto_delete_backups" json:"autoDeleteBackups"`
+	AutoDeleteDays    int    `db:"auto_delete_days" json:"autoDeleteDays"`
+	AutoSyncOnTrack   bool   `db:"auto_sync_on_track" json:"autoSyncOnTrack"`
+	MatchByAppID      bool   `db:"match_by_app_id" json:"matchByAppId"`
+	// UnknownGameFromPeer is what happens when a peer asks about a game this
+	// device does not track: "track" (the default, and what OpenSave has
+	// always done) guesses a folder from the peer's save path and starts
+	// syncing; "ask" records an offer and syncs nothing until a person
+	// chooses where the game lives here. Anything unrecognised is read as
+	// "track", so a database written by a newer build cannot silently stop an
+	// older one from syncing.
+	UnknownGameFromPeer string            `db:"unknown_game_from_peer" json:"unknownGameFromPeer"`
+	CustomScanPaths     []string          `db:"-" json:"customScanPaths"`
+	ExcludePaths        []string          `db:"-" json:"excludePaths"`
+	PathTranslations    []TranslationRule `db:"-" json:"pathTranslations"`
+	RelayURL            string            `db:"relay_url" json:"relayUrl"`
 	// RelayURLLocked reports that RelayURL came from the environment rather
 	// than the database, so nothing should offer to edit it. Not a column.
 	RelayURLLocked bool   `db:"-" json:"relayUrlLocked"`
@@ -270,6 +278,7 @@ func (s *Store) UpdateSettings(settings Settings) error {
 			auto_delete_days = :auto_delete_days,
 			auto_sync_on_track = :auto_sync_on_track,
 			match_by_app_id = :match_by_app_id,
+			unknown_game_from_peer = :unknown_game_from_peer,
 			custom_scan_paths = :custom_scan_paths,
 			exclude_paths = :exclude_paths,
 			path_translations = :path_translations,

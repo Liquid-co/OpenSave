@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
@@ -92,6 +92,18 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 		}
 
 	case "sync-event":
+		// Unseal before anything reads the payload. Every branch below uses
+		// msg.Data, so decrypting in place here keeps them all unchanged
+		// rather than leaving one of them reading ciphertext.
+		if len(msg.SealedData) > 0 {
+			plain, err := w.engine.openFromPeer(msg.From, msg.SealedData)
+			if err != nil {
+				w.engine.Log("warn", fmt.Sprintf(
+					"could not decrypt a sync update from %s: %v", msg.From, err))
+				return
+			}
+			msg.Data = plain
+		}
 		var ev syncengine.ProgressEvent
 		_ = json.Unmarshal(msg.Data, &ev)
 		switch msg.EventType {
@@ -111,6 +123,13 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			// shared lineage so pushed files start counting as synced.
 			if peer, err := w.engine.Store.GetPeer(msg.From); err == nil {
 				sp := syncengine.Peer{ID: peer.ID, Name: peer.Name, Address: "relay", Port: peer.Port, IsWan: true}
+				// Same as the LAN path: the peer named the files it wrote, so
+				// record them now instead of waiting on a manifest round trip
+				// — over the relay that trip is slower still, so the window
+				// this closes is wider here than on a LAN.
+				var raw map[string]any
+				_ = json.Unmarshal(msg.Data, &raw)
+				w.engine.Sync.AddConfirmedLineage(msg.GameID, sp.ID, stringsFromEventData(raw, "pulledFiles"))
 				go func() {
 					refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 					defer cancel()
@@ -144,13 +163,37 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 
 	case "response":
 		w.mu.Lock()
-		ch, ok := w.pending[msg.MsgID]
+		pr, ok := w.pending[msg.MsgID]
 		w.mu.Unlock()
-		if ok {
-			select {
-			case ch <- msg:
-			default:
+		if !ok {
+			return
+		}
+		// Only the peer this request was sent to may answer it, and it must
+		// prove that the same way a request does. Checked here rather than
+		// where the answer is consumed so a forgery never reaches the
+		// one-slot channel and displaces the real reply.
+		if msg.From != pr.peerID {
+			w.engine.Log("warn", fmt.Sprintf(
+				"discarded a reply to %s from %s — it was sent to %s", msg.MsgID, msg.From, pr.peerID))
+			return
+		}
+		if !w.engine.verifyResponseAuth(pr.peerID, msg) {
+			return
+		}
+		// Decrypt only after the reply has been shown to come from the peer
+		// this request went to, and to be unaltered.
+		if len(msg.SealedData) > 0 {
+			plain, err := w.engine.openFromPeer(pr.peerID, msg.SealedData)
+			if err != nil {
+				w.engine.Log("warn", fmt.Sprintf(
+					"could not decrypt a reply from %s: %v", pr.peerID, err))
+				return
 			}
+			msg.Data = plain
+		}
+		select {
+		case pr.ch <- msg:
+		default:
 		}
 	}
 }
@@ -248,16 +291,53 @@ func (w *WanClient) recordDiscovered(msg RelayMessage) {
 // serveRequest answers an HTTP-shaped RPC from a WAN peer — the relay-side
 // equivalent of the /api/p2p/* routes, with the same pairing guard.
 func (w *WanClient) serveRequest(ctx context.Context, msg RelayMessage) {
+	// Decrypt before routing. Done after the caller has already verified the
+	// message's MAC, so this only ever opens ciphertext that came from the
+	// paired peer.
+	if len(msg.SealedBody) > 0 {
+		plain, err := w.engine.openFromPeer(msg.From, msg.SealedBody)
+		if err != nil {
+			w.engine.Log("warn", fmt.Sprintf("could not decrypt a request from %s: %v", msg.From, err))
+			w.send(RelayMessage{
+				Type: "response", To: msg.From, From: w.localPeerID(),
+				MsgID: msg.MsgID, Status: 400,
+				Data: []byte(`{"error":"payload could not be decrypted"}`),
+			})
+			return
+		}
+		msg.Body = plain
+	}
+
 	status, data := w.routeRequest(ctx, msg)
 	raw, err := json.Marshal(data)
 	if err != nil {
 		status = 500
 		raw = []byte(`{"error":"response serialization failed"}`)
 	}
-	w.send(RelayMessage{
+	resp := RelayMessage{
 		Type: "response", To: msg.From, From: w.localPeerID(),
-		MsgID: msg.MsgID, Status: status, Data: raw,
-	})
+		MsgID: msg.MsgID, Status: status,
+	}
+	// Replies carry the save data itself — manifests, blocks — so this is the
+	// direction that matters most for confidentiality.
+	if sealed, ok := w.engine.sealForPeer(msg.From, raw); ok {
+		resp.SealedData = sealed
+	} else {
+		resp.Data = raw
+	}
+	// Authenticate the answer as well as the question. The relay broadcasts
+	// to the room, so every member sees the request id and could race a reply
+	// to it — and an accepted forged reply means attacker-chosen bytes
+	// written into a save folder, which is worse than being read.
+	if key, keyErr := w.engine.requestAuthKey(msg.From); keyErr == nil {
+		if nonce, nonceErr := e2ee.NewNonce(); nonceErr == nil {
+			resp.Nonce = nonce
+			resp.AuthMs = time.Now().UnixMilli()
+			resp.Auth = e2ee.ResponseMAC(key, resp.From, resp.To, resp.MsgID, resp.Status,
+				wireBody(resp.SealedData, resp.Data), nonce, resp.AuthMs)
+		}
+	}
+	w.send(resp)
 }
 
 func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, any) {
@@ -273,12 +353,32 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		route == "/games" ||
 		route == "/unpair"
 
-	_, pairedErr := w.engine.Store.GetPeer(from)
+	peer, pairedErr := w.engine.Store.GetPeer(from)
 	isPaired := pairedErr == nil
 
 	if requiresPairing && !isPaired {
 		w.engine.Log("warn", fmt.Sprintf("blocked %s from unpaired WAN peer %s", route, from))
 		return 401, map[string]string{"error": "Unauthorized: Requesting peer is not paired."}
+	}
+
+	// Being paired is a claim, not proof: "from" is written by the sender and
+	// the relay does not check it, while the room publishes every device's
+	// paired peer IDs. Requests that read or destroy save data have to prove
+	// the sender holds the key pinned at pairing. See requestauth.go.
+	if requiresPairing && isPaired {
+		outcome, authErr := w.engine.verifyRequestAuth(peer, msg)
+		switch outcome {
+		case authRefused:
+			w.engine.Log("warn", fmt.Sprintf("blocked %s from %s: %v", route, from, authErr))
+			return 401, map[string]string{"error": "Unauthorized: Request failed authentication."}
+		case authNotPossible:
+			// Paired before end-to-end encryption existed, or the other side
+			// has not upgraded yet. Allowed, as it was before, and said out
+			// loud once it matters rather than failing silently.
+			w.engine.Log("warn", fmt.Sprintf(
+				"%s from %q is not authenticated — re-pair the two devices to protect it",
+				route, peer.Name))
+		}
 	}
 
 	switch {
@@ -287,11 +387,23 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		return 200, map[string]any{"status": "ok", "deviceName": settings.DeviceName, "deviceType": settings.DeviceType}
 
 	case route == "/handshake":
+		// publicKey is decoded here for the same reason the LAN handler
+		// decodes it, and its absence here was the whole of the bug: the
+		// sender has always put a key in the handshake, and this struct
+		// dropped it on the floor. A field the JSON decoder does not know
+		// about is not an error, so nothing failed and nothing warned — the
+		// pairing completed, looked identical, and had no shared secret.
+		//
+		// The consequence was exact and inverted: pairing on a LAN pinned a
+		// key and encrypted traffic that never leaves the house, while
+		// pairing over the internet pinned nothing and sent saves through
+		// the relay in the clear, which is the one place sealing exists for.
 		var body struct {
 			PeerID     string `json:"peerId"`
 			DeviceName string `json:"deviceName"`
 			DeviceType string `json:"deviceType"`
 			Port       int    `json:"port"`
+			PublicKey  string `json:"publicKey"`
 		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil || body.PeerID == "" {
 			return 400, map[string]string{"error": "peerId is required"}
@@ -300,6 +412,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 			PeerID: body.PeerID, DeviceName: body.DeviceName,
 			DeviceType: orDefault(body.DeviceType, "desktop"),
 			Address:    "relay", Port: body.Port, IsWan: true,
+			PublicKey: body.PublicKey,
 		})
 		w.engine.notifyPeerUpdate()
 		return 200, map[string]any{"status": "pending", "message": "Pairing request received via WAN. Waiting for approval."}
@@ -310,6 +423,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 			DeviceName string `json:"deviceName"`
 			DeviceType string `json:"deviceType"`
 			Port       int    `json:"port"`
+			PublicKey  string `json:"publicKey"`
 		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil || body.PeerID == "" {
 			return 400, map[string]string{"error": "peerId is required"}
@@ -324,6 +438,31 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 			Address: "relay", Port: body.Port, Status: "online", LastSeenMs: time.Now().UnixMilli(),
 		}); err != nil {
 			return 500, map[string]string{"error": err.Error()}
+		}
+		// Pinned after the row exists and separately from it, matching the
+		// LAN handler: a key written through UpsertPeer would be blanked by
+		// the next ordinary status update.
+		if body.PublicKey != "" {
+			if err := w.engine.Store.SetPeerPublicKey(body.PeerID, body.PublicKey); err != nil {
+				w.engine.Log("warn", fmt.Sprintf(
+					"could not pin %q's encryption key, so syncs with it stay unencrypted: %v",
+					body.DeviceName, err))
+			} else {
+				// This message arrived before there was a key to check it
+				// with, so it was let through unauthenticated — correctly,
+				// since the key it carries is the one needed to check it.
+				// Now that the key is pinned, check it retrospectively.
+				//
+				// Worth the second pass for one reason: encryption only turns
+				// on once a peer has proved it can decrypt, and without this
+				// the proof waits for the peer's next message. That leaves the
+				// first request after pairing — a manifest, which names every
+				// file in the save — travelling in the clear through a room
+				// that may have anyone in it. Verifying here means a pairing
+				// is encrypted from its first byte instead of its second
+				// exchange.
+				w.engine.latchIfAuthentic(body.PeerID, msg)
+			}
 		}
 		w.engine.notifyPeerUpdate()
 		return 200, map[string]any{"success": true, "message": "Pairing confirmed."}
@@ -341,7 +480,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		return 200, w.engine.PeerGameList()
 
 	case strings.HasPrefix(route, "/manifest/"):
-		return w.serveManifest(route)
+		return w.serveManifest(route, msg.From)
 
 	case strings.HasPrefix(route, "/blocks/"):
 		return w.serveBlocks(route, msg.Body)
@@ -374,7 +513,9 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 	}
 }
 
-func (w *WanClient) serveManifest(route string) (int, any) {
+// peerID is the relay sender, needed only to record who is waiting when this
+// device is set to ask before tracking an unknown game.
+func (w *WanClient) serveManifest(route string, peerID string) (int, any) {
 	u, err := url.Parse(route)
 	if err != nil {
 		return 400, map[string]string{"error": "bad route"}
@@ -384,7 +525,7 @@ func (w *WanClient) serveManifest(route string) (int, any) {
 	// Same auto-track + cover-backfill behavior as the LAN route — relay
 	// peers were previously auto-tracked without cover art, which is why
 	// covers didn't propagate between WAN-paired devices.
-	game, err := w.engine.ensureManifestGame(gameID, manifestQueryFromURL(u.Query()))
+	game, err := w.engine.ensureManifestGame(gameID, manifestQueryFromURL(u.Query()), peerID)
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}
@@ -424,7 +565,11 @@ func (w *WanClient) serveBlocks(route string, rawBody json.RawMessage) (int, any
 		return 403, map[string]string{"error": "Access denied: path traversal attempt detected."}
 	}
 
-	fullPath := filepath.Join(game.SavePath, filepath.FromSlash(body.RelPath))
+	// Resolved, not joined: this device's manifest advertises the agreed
+	// (composed) spelling, while the file on this disk may be stored
+	// decomposed — a macOS save. Joining the key verbatim would fail to
+	// find the very file this device just offered.
+	fullPath := delta.LocalNameFor(game.SavePath, body.RelPath)
 	if isFile, _ := delta.ResolveLocalSaveFilePath(game.SavePath); isFile {
 		fullPath = game.SavePath
 	}
@@ -460,7 +605,11 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "invalid path"}
 	}
-	full := filepath.Join(game.SavePath, filepath.FromSlash(body.RelPath))
+	// Resolved, not joined: this device's manifest advertises the agreed
+	// (composed) spelling, while the file on this disk may be stored
+	// decomposed — a macOS save. Joining the key verbatim would fail to
+	// find the very file this device just offered.
+	full := delta.LocalNameFor(game.SavePath, body.RelPath)
 	_ = os.Chmod(full, 0o666)
 	_ = os.Remove(full)
 

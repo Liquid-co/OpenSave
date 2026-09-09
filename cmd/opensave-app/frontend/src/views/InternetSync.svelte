@@ -2,6 +2,7 @@
   import { settings, wanRoom, peers, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { generateRoomCode } from '../lib/roomcode.js';
+  import { roomProtection } from '../lib/protection.js';
 
   let codeDraft = '';
   let relayDraft = '';
@@ -32,6 +33,18 @@
   }
   $: pairedIds = new Set(Object.keys($peers));
   $: roomPeers = $wanRoom?.peers ?? [];
+
+  // Which of the devices paired over this relay are actually protected.
+  //
+  // Answered here, where somebody joins a room and decides how much to trust
+  // it, rather than left to a paragraph they have to map onto their own setup.
+  // The condition mirrors what the send path applies, so this can never say
+  // "encrypted" about traffic that is going out in the clear.
+  $: ({
+    relayPeers,
+    encrypted: encryptedPeers,
+    unprotected: unprotectedPeers,
+  } = roomProtection(Object.values($peers)));
 
   function randomCode() {
     codeDraft = generateRoomCode();
@@ -106,17 +119,33 @@
 <!-- Said here, at the point where somebody decides whether to use the public
      relay, rather than only in the documentation.
 
-     The encryption is transport-level and ends AT the relay: there is no
-     end-to-end layer, so the relay process handles save data in the clear.
-     Calling that "an encrypted tunnel" and stopping was true enough to be
-     misleading — it invites the reading that nobody in the middle can see the
-     save, which is the opposite of the case. Whoever runs the relay is being
-     trusted, and the person choosing is the one who should get to weigh it. -->
+     This text used to say the relay could read the saves passing through it,
+     which was true and is not any more: save payloads are now sealed between
+     the two paired devices with the keys pinned when they paired. What the
+     relay still sees is metadata — that two devices are talking, roughly how
+     much data, and which games by id — and that is what the second sentence
+     is for. Overstating this would be worse than the old wording was: someone
+     deciding whether to trust a relay deserves the actual boundary, not a
+     reassuring version of it. -->
 <p class="lead subtle">
-  That encryption ends at the relay rather than at your other device, so whoever runs the relay could
-  read the saves passing through it. For the public relay, that is us. Running
+  Saves are sealed between your two devices, so the relay passes on data it cannot read — not even
+  ours. It can still see that two devices are talking, roughly how much data moves, and which games
+  by id. Running
   <a href="https://github.com/Liquid-co/OpenSave/blob/main/docs/RELAY.md" target="_blank" rel="noreferrer">your own relay</a>
-  makes it you instead.
+  keeps that from us too.
+</p>
+
+<!-- Stated as a plain instruction rather than a condition the reader has to
+     work out. Every pairing made over a relay before this version has no key:
+     the key was sent during pairing and quietly discarded on the receiving
+     side, so "a pairing made before keys existed" was the wrong caveat — it
+     let someone on the previous version conclude this did not apply to them.
+     It applied to all of them. -->
+<p class="lead subtle">
+  Both devices need a recent version for this, and internet pairings made before it need to be made
+  again: pairing over a relay never kept the key, so an older pair still sends in the clear. Unpair
+  and pair those two devices again to protect them. Pairings made over a local network kept their key
+  and are unaffected.
 </p>
 
 <!-- Always-visible connection status: exactly one of four states. Keyed
@@ -136,6 +165,27 @@
     <div class="status-text">
       <strong>In room “{$wanRoom.roomCode}”</strong>
       <span>{roomPeers.length === 0 ? 'Waiting for your other device to join with the same code.' : `${roomPeers.length} other device${roomPeers.length === 1 ? '' : 's'} here.`}</span>
+      <!-- Said at the moment of joining, because that is when it matters:
+           every device in a room receives every other device's traffic, so
+           whether that traffic is readable is part of what joining means. -->
+      {#if relayPeers.length > 0}
+        <span class="encryption-line">
+          {#if unprotectedPeers.length === 0}
+            🔒 Saves to
+            {relayPeers.length === 1 ? 'your other device' : `all ${relayPeers.length} of your devices`}
+            here are encrypted — nobody else in this room can read them.
+          {:else if encryptedPeers.length === 0}
+            🔓 Saves sent through this room are <strong>not encrypted</strong>, so anyone
+            holding this room code can read them. Pair
+            {unprotectedPeers.length === 1 ? `“${unprotectedPeers[0].name}”` : 'those devices'}
+            again to fix it.
+          {:else}
+            🔓 {encryptedPeers.length} of {relayPeers.length} paired devices here are
+            encrypted. Pair the {unprotectedPeers.length === 1 ? 'other one' : 'others'} again to
+            protect {unprotectedPeers.length === 1 ? 'it' : 'them'} too.
+          {/if}
+        </span>
+      {/if}
     </div>
   </div>
 {:else if $wanRoom?.state === 'connecting'}
@@ -276,6 +326,10 @@
   .status.err {
     border-color: rgba(217, 87, 87, 0.45);
     background: rgba(217, 87, 87, 0.08);
+  }
+  .encryption-line {
+    display: block;
+    margin-top: 0.3rem;
   }
   .status-text {
     flex: 1;

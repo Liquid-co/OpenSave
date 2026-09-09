@@ -207,6 +207,7 @@ func cmdConfig(d *daemon.Daemon, args []string) int {
 		fmt.Printf("relay:            %s\n", settings.RelayURL)
 		fmt.Printf("relay room:       %s\n", orNone(settings.SyncCode))
 		fmt.Printf("match by app id:  %v\n", settings.MatchByAppID)
+		fmt.Printf("unknown game:     %s\n", unknownGameLabel(settings.UnknownGameFromPeer))
 		fmt.Printf("snapshot limit:   %d\n", settings.DefaultMaxSnapshots)
 		fmt.Printf("manual limit:     %s\n", manualLimitLabel(settings.DefaultMaxManualSnapshots))
 		fmt.Printf("update channel:   %s\n", updateChannelLabel(settings.UpdateChannel))
@@ -226,6 +227,20 @@ func cmdConfig(d *daemon.Daemon, args []string) int {
 		settings.DeviceName = value
 	case "match-by-app-id":
 		settings.MatchByAppID = value == "true" || value == "yes" || value == "1"
+	case "unknown-game-from-peer":
+		// Rejected rather than coerced. The two answers do materially different
+		// things — one starts syncing a game, the other waits for a person —
+		// and quietly reading a typo as "track" would be the wrong way round
+		// for anyone who typed this deliberately to stop guessing.
+		switch value {
+		case store.UnknownGameTrack, store.UnknownGameAsk:
+			settings.UnknownGameFromPeer = value
+		default:
+			return fail(asJSON, fmt.Errorf(
+				"unknown-game-from-peer must be %q (work out a folder and start syncing) "+
+					"or %q (wait for someone to choose one)",
+				store.UnknownGameTrack, store.UnknownGameAsk))
+		}
 	case "snapshot-limit":
 		var n int
 		if _, err := fmt.Sscanf(value, "%d", &n); err != nil || n < 0 {
@@ -293,6 +308,10 @@ const configUsage = `usage:
   opensave config [list]                    Show current settings
   opensave config set device-name <name>    How other devices see this one
   opensave config set match-by-app-id <t/f> Link same-App-ID games across devices
+  opensave config set unknown-game-from-peer <track|ask>
+                                            Another device syncs a game this one
+                                            lacks: work out a folder and start
+                                            (default), or wait to be told where
   opensave config set snapshot-limit <n>    Automatic snapshots kept per branch (0 = all)
   opensave config set manual-snapshot-limit <n>
                                             Manual snapshots kept per branch (0 = keep forever)
@@ -332,3 +351,12 @@ func orNone(s string) string {
 }
 
 var _ = json.Marshal // settings marshal through emitJSON
+
+// unknownGameLabel describes the policy in the words the setting means, rather
+// than echoing a stored token. "track" on its own reads as a noun.
+func unknownGameLabel(v string) string {
+	if (store.Settings{UnknownGameFromPeer: v}).ShouldAskBeforeTracking() {
+		return "ask where to keep it"
+	}
+	return "track it automatically"
+}

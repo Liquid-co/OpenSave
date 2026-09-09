@@ -114,6 +114,28 @@ func Compute(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[s
 // on, so an mtime tie can be broken by content rather than by direction. See
 // the tie case below for why that matters.
 func ComputeWithBase(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[string]struct{}, baseHash string) Decision {
+	return ComputeWithDeletions(local, remote, lastSyncedFiles, lastSyncedDirs, baseHash, nil)
+}
+
+// ComputeWithDeletions is ComputeWithBase told which files this device
+// recorded deleting, keyed by relative path.
+//
+// It exists because the lineage cannot be trusted to still hold the evidence.
+// The lineage is rebuilt from the intersection of the two devices' current
+// manifests, so a rebuild landing after a local deletion removes the very path
+// that proved the file was once shared. The deletion then reads as "the peer
+// has something we lack", the file is pulled back, and a save the user deleted
+// reappears on the machine they deleted it from.
+//
+// A recorded deletion does not depend on that. It is only ever acted on when
+// the peer's copy hashes to exactly what was deleted — if they changed it
+// since, their bytes are newer and are taken instead. Content is the substitute
+// for the version vectors Syncthing uses to tell a later change from a
+// concurrent one; for this single decision it is stricter, because it cannot
+// remove content that differs from what was deleted.
+//
+// A nil map is the old behaviour exactly.
+func ComputeWithDeletions(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDirs map[string]struct{}, baseHash string, deleted map[string]DeletedRecord) Decision {
 	var d Decision
 	localHash, remoteHash := local.ManifestHash(), remote.ManifestHash()
 
@@ -133,7 +155,21 @@ func ComputeWithBase(local, remote delta.Manifest, lastSyncedFiles, lastSyncedDi
 		case hasRemote && !hasLocal:
 			if _, synced := lastSyncedFiles[relPath]; synced {
 				d.FilesToDeleteOnPeer = append(d.FilesToDeleteOnPeer, relPath)
+			} else if rec, recorded := deleted[relPath]; recorded && rec.Hash == remoteFile.Hash {
+				// Not in the lineage, but this device wrote down deleting it,
+				// and the peer still holds byte-for-byte what was deleted. That
+				// is a deletion to propagate, not a file to take back.
+				//
+				// The hash comparison is the whole safety argument: if the peer
+				// had edited the file, its hash would differ and this falls
+				// through to a pull, so a recorded deletion can never destroy
+				// content that is not exactly what was deleted.
+				d.FilesToDeleteOnPeer = append(d.FilesToDeleteOnPeer, relPath)
 			} else {
+				// Includes the case where a deletion IS recorded but the peer's
+				// copy differs: they changed it after this device last saw it,
+				// so their version wins and is pulled. Same outcome Syncthing
+				// reaches by version vector, arrived at by content.
 				d.FilesToPull = append(d.FilesToPull, relPath)
 			}
 
@@ -257,7 +293,20 @@ func BatchIndices(indices []int, blockSize int, isWan bool) [][]int {
 	if blockSize <= 0 {
 		blockSize = 64 * 1024
 	}
-	const targetBatchBytes = 2 << 20 // ~2.7 MB once base64-encoded
+	// Relay batches are smaller because they are sealed, and sealing costs a
+	// second base64: the block bytes are already base64 inside the request's
+	// JSON, and encrypting that JSON produces bytes which JSON encodes as
+	// base64 again. 2 MB of blocks would leave ~3.6 MB on the wire instead of
+	// ~2.7 MB, and with eight batches outstanding that takes a peer from about
+	// 22 MB in flight to about 29 MB — against a relay budget of 32 MB per
+	// client, where overflow is dropped messages and a failed sync.
+	//
+	// 1.5 MB restores the wire size the relay's limits were chosen for, so
+	// sealing needs no relay to be upgraded. LAN is unsealed and unchanged.
+	targetBatchBytes := 2 << 20 // ~2.7 MB once base64-encoded
+	if isWan {
+		targetBatchBytes = 3 << 19 // 1.5 MB; ~2.7 MB once sealed and encoded
+	}
 	calculated := targetBatchBytes / blockSize
 	if calculated < 1 {
 		calculated = 1
@@ -303,4 +352,12 @@ func toSet(items []string) map[string]struct{} {
 		set[item] = struct{}{}
 	}
 	return set
+}
+
+// DeletedRecord is what the decision needs to know about a deletion this
+// device made: which content was removed, so a peer holding something else can
+// be recognised as having edited it rather than merely lagging behind.
+type DeletedRecord struct {
+	Hash        string
+	DeletedAtMs int64
 }

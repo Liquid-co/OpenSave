@@ -219,24 +219,14 @@ export function applyMessage(msg) {
 
 const lastSyncErrorToast = {}; // gameId -> ms timestamp of last error toast
 
-// Safety sweep: if the other device died mid-sync, no sync-complete or
-// sync-error ever arrives and the "syncing…" spinner would stay forever.
-// Any running entry that hasn't reported progress in 3 minutes is dropped
-// (live transfers report at least every 500ms).
-setInterval(() => {
-  syncActivity.update((s) => {
-    const now = Date.now();
-    let changed = false;
-    const copy = { ...s };
-    for (const [gid, entry] of Object.entries(copy)) {
-      if (entry.state === 'running' && entry.at && now - entry.at > 180_000) {
-        delete copy[gid];
-        changed = true;
-      }
-    }
-    return changed ? copy : s;
-  });
-}, 30_000);
+// The stale-sync sweep lives at the top of this file, beside SYNC_STALE_MS.
+//
+// There was a second copy here doing the same thing on the same 30s interval,
+// and the duplication was not merely redundant: the version above also raises
+// a "sync stalled" toast, and whichever timer fired first removed the entry.
+// So the toast appeared or did not appear depending on which interval won a
+// race — the same stall telling one user and not another, for no reason
+// either could see.
 
 let wasWanConnected = false;
 

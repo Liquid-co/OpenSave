@@ -43,6 +43,17 @@ firewall, and a certificate if you have a domain pointed here:
 
 ```bash
 curl -fsSL https://opensave.org/relay.sh -o install-relay.sh
+sudo bash install-relay.sh
+```
+
+Run with no options and it asks: the domain name, the port, whether you want
+cover art, and whether you need Google Drive sign-in — each with the reasoning
+attached, and a summary to confirm before it changes anything. Nothing is
+echoed while you type a key.
+
+Every answer is also a flag, if you would rather say it all up front:
+
+```bash
 sudo bash install-relay.sh --domain relay.example.com
 ```
 
@@ -93,18 +104,58 @@ install, run it under systemd.
 
 ### Settings
 
-Both forms are configured with environment variables — there are no flags:
+Settings that are not secrets are environment variables — there are no flags:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `PORT` | `8386` (`10000` in the image) | Port to listen on |
 | `MAX_PER_ROOM` | `20` | Most devices allowed in one room |
-| `GOOGLE_DRIVE_CLIENT_SECRET` | unset | Only for the optional OAuth token proxy. Leave it alone unless you know you need it |
+| `OPENSAVE_RELAY_SECRETS` | see below | Where the secrets file lives |
 
-`opensave-relay --help` prints the same list. It takes **no commands** — if you
-give it one it says so and exits rather than starting a server that ignored
-half its command line. In particular `relay-url` is a *client* setting and does
-nothing here; see step 4.
+### Secrets
+
+Two optional features need a credential. Neither affects sync, and a relay
+with neither configured starts normally and simply does not offer them:
+
+| Secret | Enables | Section |
+| --- | --- | --- |
+| Google OAuth client secret | Google Drive sign-in through this relay | [3b](#3b-google-drive-sign-in-optional) |
+| SteamGridDB API key | Cover art for games Steam has none for | [3c](#3c-cover-art-optional) |
+
+The way to set them is `opensave-relay setup`, which asks for each in turn:
+
+```bash
+opensave-relay setup
+```
+
+Nothing is echoed while you type, and the file it writes is created `0600`
+before a byte goes into it. That is the point of the command: a secret given
+any other way tends to end up somewhere it outlives its usefulness — on a
+command line your shell records, or in a unit file that gets committed.
+
+It writes to `/etc/opensave/relay-secrets.json` where that is writable, and
+`~/.opensave/relay-secrets.json` otherwise. `OPENSAVE_RELAY_SECRETS` overrides
+the location.
+
+Run it with `sudo` on a machine set up by `install-relay.sh` and it hands the
+file to the `opensave-relay` account the service runs as, and says so. That
+step matters more than it sounds: the file is `0600`, so a root-owned one is
+unreadable to the service — the key would be stored, reported as configured by
+`opensave-relay config`, and never reach the relay. If the handover cannot be
+done it says so instead of reporting success, and `config` warns whenever the
+owner and the service account disagree.
+
+`GOOGLE_DRIVE_CLIENT_SECRET` and `STEAMGRIDDB_KEY` still work as environment
+variables, and **take precedence over the file**, so a container or systemd
+unit that already injects them keeps working untouched. `opensave-relay
+config` prints what is configured and which of the two it came from — worth
+running when a value you did not expect is in effect, because "it is in the
+file but the environment is overriding it" is otherwise a genuinely confusing
+hour. Both commands show only the last four characters of a key, enough to
+tell two apart without revealing either.
+
+`opensave-relay --help` prints all of this. Note that `relay-url` is a
+*client* setting and does nothing here; see step 4.
 
 ## 2. Check it is up
 
@@ -167,6 +218,16 @@ OpenSave's built-in credentials. Sync itself needs none of this, and neither
 does anyone who enters their own OAuth client ID and secret in the app — that
 path talks to Google directly and never touches the relay.
 
+**Running your own relay? You almost certainly want to skip this section.**
+The relay sends Google the client ID the app gave it, paired with the secret
+configured here, and Google refuses the pair unless both halves belong to the
+same OAuth app. The app sends OpenSave's built-in client ID, whose secret only
+the official relay holds — so there is nothing you could put here that would
+work. Anyone syncing to Drive through your relay should enter their own OAuth
+client ID and secret in OpenSave instead: that path talks to Google directly,
+never touches your relay, and needs nothing from you. This section is for
+whoever operates the relay the built-in credentials belong to.
+
 The relay completes the token exchange on behalf of those clients, which needs
 the client secret for the OAuth app whose ID they are using. Put it in a file
 and point the installer at it:
@@ -191,6 +252,63 @@ Delete your copy of the secret file afterwards; the installed one is enough.
 Without it the relay starts normally and simply does not offer the sign-in
 proxy — Drive sign-in through this relay returns an error, and everything else
 works.
+
+## 3c. Cover art (optional)
+
+OpenSave gets a game's cover from Steam by AppID. That covers most of a
+library and none of the rest: a game sold only on GOG, itch or Epic has no
+AppID at all, and one found under a folder name nothing could be resolved from
+has none either. Those are the games that show up blank.
+
+SteamGridDB catalogues artwork for them, searchable by name, and this relay
+can look it up — if you give it a key.
+
+**Get one free.** Sign in at [steamgriddb.com](https://www.steamgriddb.com/)
+and generate a key at
+[Preferences → API](https://www.steamgriddb.com/profile/preferences/api). It
+is a 32-character string, and it takes about a minute.
+
+**Then either** put it in a file and point the installer at it:
+
+```bash
+sudo bash install-relay.sh --domain relay.example.com --steamgriddb-key-file /root/sgdb-key.txt
+```
+
+**or** run setup on the server and paste it at the prompt:
+
+```bash
+opensave-relay setup
+```
+
+Both end up in the same place, root-readable only. As with the Google secret,
+there is no `--steamgriddb-key <value>` flag on purpose: an argument is
+visible in `ps` to every user on the machine for as long as the command runs,
+and stays in your shell history afterwards. Delete your copy of the key file
+once it is installed. Restart the relay for it to take effect.
+
+Re-running the installer to add this to a relay that already has a Google
+secret keeps the Google secret: it only replaces the values you pass on that
+run. Adding one feature has never been a reason to lose another.
+
+**Use your own key, not somebody else's.** SteamGridDB rate-limits per key, so
+a key shared between relays is exhausted for everyone by whichever relay is
+busiest. This is also why the key lives on the relay and not in the app: a key
+compiled into an open-source client is a key anyone can lift out of the
+binary, and the first person who does gets it limited for every user.
+
+Without a key the relay starts normally, `/api/cover/lookup` answers `503`
+with a message saying this relay has no key configured — which the app treats
+differently from "this game has no art" — and covers fall back to Steam's own
+artwork. Nothing else is affected.
+
+Check it from your workstation:
+
+```bash
+curl 'https://relay.example.com/api/cover/lookup?name=Hollow%20Knight'
+```
+
+`200` with a `url` means it is working. `503` means the key did not reach the
+relay; `opensave-relay config` will say whether it sees one.
 
 ## 4. Point your devices at it
 
@@ -263,12 +381,21 @@ and keeps nothing after a device disconnects — the room disappears when the
 last member leaves. Restarting it drops live connections; clients reconnect on
 their own.
 
-What it *can* see is the traffic itself. The connection is encrypted in
-transit, but that encryption terminates at the relay rather than at the far
-device, so whoever runs the relay is in a position to read what passes through
-it. Saves are not sealed end-to-end yet. This is the honest reason to run your
-own rather than use ours: not that ours is hostile, but that "you do not have
-to take our word for it" is a better property than a promise.
+What it *cannot* see is the saves. Save payloads are sealed end-to-end
+between the two paired devices, with a key derived from the keys they pinned
+when pairing, so a relay operator forwards ciphertext. That also closes
+something less obvious: a relay hands every frame to every member of the room,
+so before this, anyone you had given your room code to received your save data
+whether or not you had paired with them.
+
+What it *can* still see is that two devices are talking, roughly how much data
+is moving, and which games by id. Running your own is still the better
+property — not because ours is hostile, but because "you do not have to take
+our word for it" beats a promise.
+
+Both devices need a version with this. A pairing made before key exchange
+existed has no key to seal with and still sends in the clear; re-pair those two
+devices.
 
 The health endpoint is public and reports counts only — how many rooms and
 clients, never codes or contents.

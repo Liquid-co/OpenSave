@@ -145,6 +145,12 @@ func (a *App) InstallUpdateFromURL(url string) string {
 				a.updateEvent("error", 0, "download failed: "+err.Error())
 				return
 			}
+			// Before unpacking: an archive that fails its checksum should
+			// never get as far as writing files out.
+			if err := selfupdate.VerifyDownload(url, archivePath); err != nil {
+				a.updateEvent("error", 0, err.Error())
+				return
+			}
 			if err := selfupdate.ExtractFromTarGz(archivePath, "opensave", newBinary); err != nil {
 				a.updateEvent("error", 0, "unpack failed: "+err.Error())
 				return
@@ -163,6 +169,12 @@ func (a *App) InstallUpdateFromURL(url string) string {
 					return
 				}
 				a.updateEvent("error", 0, "download failed: "+err.Error())
+				return
+			}
+			// Before the swap: this file is about to be renamed over the
+			// running program.
+			if err := selfupdate.VerifyDownload(url, newBinary); err != nil {
+				a.updateEvent("error", 0, err.Error())
 				return
 			}
 		}

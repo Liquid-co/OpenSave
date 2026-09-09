@@ -2,6 +2,8 @@
   import { peers, discoveredPeers, wanRoom, appUpdate, toast, askConfirm } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
   import InternetSync from './InternetSync.svelte';
+  import ProtectionBadge from '../components/ProtectionBadge.svelte';
+  import { protectionState } from '../lib/protection.js';
 
   export let params = {};
 
@@ -36,6 +38,24 @@
   const unpair = async (peer) => {
     if (!(await askConfirm(`Unpair "${peer.name}"? Their games stay on both devices; syncing between you stops.`, { title: 'Unpair device?', confirmText: 'Unpair', danger: true }))) return;
     run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
+  };
+
+  // The only repair for a pairing with no encryption key is to make it again,
+  // and this button can only do the first half of that. Saying "Pair again to
+  // encrypt" on a control that just unpairs would leave someone believing they
+  // had fixed it, with two devices that no longer sync at all.
+  const repairPairing = async (peer) => {
+    const ok = await askConfirm(
+      `Unpair "${peer.name}", then pair the two devices again so they exchange an encryption key. ` +
+        `Their games and saves stay where they are. Nothing syncs between these two devices until ` +
+        `you pair them again.`,
+      { title: 'Unpair, so you can pair again?', confirmText: 'Unpair now' }
+    );
+    if (!ok) return;
+    run(
+      () => api.del(`/api/peers/${peer.id}`),
+      `Unpaired ${peer.name} — pair the two devices again to encrypt what you sync`
+    );
   };
 
   // Peer-to-peer app update: pull the newer build the peer is running and
@@ -79,6 +99,16 @@
             {peer.address === 'relay' ? '🌐 internet relay' : `🖧 ${peer.address}:${peer.port}`}
             · last synced {fmtTime(peer.lastSynced)}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
+          </div>
+          <!-- Per device, next to how it is reached, because that is the
+               context the answer depends on. -->
+          <div class="peer-protection">
+            <ProtectionBadge {peer} compact />
+            {#if protectionState(peer) === 'open'}
+              <button class="linkish" disabled={busy} on:click={() => repairPairing(peer)}>
+                Fix this
+              </button>
+            {/if}
           </div>
         </div>
         {#if peer.hasNewerBuild && peer.status === 'online'}
@@ -187,6 +217,27 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .peer-protection {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .linkish {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--accent, #3b6fd4);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .linkish:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .peer-meta {
     font-size: 0.78rem;
