@@ -1,12 +1,30 @@
 package presets
 
-import "testing"
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func disc(name, appID, path string) DiscoveredSave {
 	return DiscoveredSave{
-		ID: name, Name: name, AppID: appID, SavePath: path, Type: "game",
+		ID: name, Name: name, AppID: appID, SavePath: hostPath(path), Type: "game",
 		Measured: true, FileCount: 1,
 	}
+}
+
+// hostPath rewrites the Windows-shaped paths these tests are written with into
+// the separator the host actually uses.
+//
+// The paths below are real examples from real machines, and they read best as
+// the users' own spelling — but nesting is detected with filepath.Separator,
+// which is correct (a backslash is an ordinary character in a Linux filename,
+// so accepting it as a separator there would be wrong). Left literal, every
+// one of these tests silently became Windows-only: on Linux no path was ever a
+// prefix of another, nothing nested, and five tests failed on the first CI run
+// that included them.
+func hostPath(p string) string {
+	return strings.ReplaceAll(p, `\`, string(filepath.Separator))
 }
 
 func groupsOf(saves []DiscoveredSave) map[string][]string {

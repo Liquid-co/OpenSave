@@ -389,25 +389,55 @@ func (sc *Scanner) ludusaviVarSets(g indexedGame, protonIdx map[string][]string)
 // placeholders are intentionally absent so win-only templates don't
 // resolve to bogus native paths (they resolve under Proton instead).
 func linuxNativeVars(home string) map[string]string {
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		dataHome = filepath.Join(home, ".local", "share")
+	// $XDG_DATA_HOME, $XDG_CONFIG_HOME and $USER describe the account this
+	// PROCESS is running as. They describe `home` only when `home` IS that
+	// account's home directory, and taking them when it is not sends the scan
+	// looking somewhere else entirely — for a home that was passed in
+	// precisely because it is not the default one.
+	//
+	// That is not hypothetical. It is why a scan of a supplied home directory
+	// found nothing on any machine where XDG_CONFIG_HOME happened to be set,
+	// while passing everywhere it was not: the caller said which home to look
+	// in, and this quietly used a different one.
+	//
+	// When the two do agree, the environment still wins, because a user who
+	// has moved their config directory keeps their saves there and the whole
+	// point of the variable is to say so.
+	forThisUser := ownHome(home)
+
+	dataHome := filepath.Join(home, ".local", "share")
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" && forThisUser {
+		dataHome = v
 	}
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		configHome = filepath.Join(home, ".config")
+	configHome := filepath.Join(home, ".config")
+	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" && forThisUser {
+		configHome = v
 	}
 	return map[string]string{
 		"<home>":      home,
 		"<xdgData>":   dataHome,
 		"<xdgConfig>": configHome,
 		"<osUserName>": func() string {
-			if u := os.Getenv("USER"); u != "" {
+			if u := os.Getenv("USER"); u != "" && forThisUser {
 				return u
 			}
 			return filepath.Base(home)
 		}(),
 	}
+}
+
+// ownHome reports whether home is the home directory of the account this
+// process is running as.
+//
+// Unknown counts as "no": with nothing to compare against, the home the caller
+// named is the better answer than an environment variable that may describe
+// somebody else.
+func ownHome(home string) bool {
+	own := os.Getenv("HOME")
+	if own == "" || home == "" {
+		return false
+	}
+	return filepath.Clean(own) == filepath.Clean(home)
 }
 
 // protonWinVars maps Windows placeholders to their location inside a Proton
