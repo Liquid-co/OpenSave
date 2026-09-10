@@ -135,6 +135,23 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **A save deleted right after it synced no longer comes back.** OpenSave
+  keeps a record of which files both devices have held, and "in that record
+  but missing on one side" is how it knows the missing side deleted a file
+  rather than never having had it. That record was rebuilt after every
+  transfer from a fresh look at the folder — and a file deleted in the moment
+  after it arrived was already gone from the folder by then, so the rebuild
+  erased the one entry that proved it had been shared. The next sync saw the
+  other device's copy as something new and pulled it back, undoing the
+  deletion with no sign anything had happened. On Linux this hit five times in
+  six.
+
+  An entry now stays in the record until the deletion has reached both sides.
+  And for the case where a device deletes a file and the other device creates
+  a new one under the same name before that propagates, the newer file wins
+  rather than being deleted: the record of what was removed says so, and it is
+  now trusted over the older evidence.
+
 - **Typing a Steam App ID now tells you whether it's right.** As you enter
   one, the field checks with Steam and shows the store title it belongs to —
   or says that no game has that number, or that Steam couldn't be reached from

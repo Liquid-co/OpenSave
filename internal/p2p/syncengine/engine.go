@@ -629,8 +629,31 @@ func (e *Engine) lineageSets(gameID, peerID string) (files, dirs map[string]stru
 // peer" was misread as "the peer deleted it" — and the local original was
 // removed. Unconfirmed pushes must never enter the lineage; they join it
 // on the first sync after the peer's manifest actually contains them.
+//
+// And the mirror of that, learned the same way: a path that IS in the lineage
+// must not leave it while either side still holds the file. The intersection
+// alone drops it the moment one side lacks it — but "in the lineage and
+// missing on one side" is precisely the evidence that side deleted it, and it
+// is the only evidence the next sync has. This is rebuilt from a fresh walk by
+// three separate paths that all run asynchronously after a transfer (the end
+// of a pull, RefreshLineage on the peer's sync-complete, ConfirmInSync on an
+// in-sync report), so a file deleted right after it arrived was reliably
+// erased from the record before any sync could act on it. The next sync then
+// read the peer's copy as something new, pulled it back, and the deletion
+// undid itself. Roughly five runs in six on Linux.
+//
+// So an entry is dropped only once BOTH sides lack it — a deletion that has
+// propagated — and entries that at least one side still has survive every
+// rebuild. Nothing new enters by this rule: a path has to have been in the
+// intersection once already, which is the confirmation the paragraph above
+// insists on.
 func (e *Engine) persistLineage(gameID, peerID string, local, remote delta.Manifest) {
 	files, dirs := IntersectLineage(local, remote)
+	oldFiles, oldDirs, err := e.Store.GetSyncState(gameID, peerID)
+	if err == nil {
+		files = keepPendingDeletions(files, oldFiles, local.Files, remote.Files)
+		dirs = keepPendingDirDeletions(dirs, oldDirs, local.Dirs, remote.Dirs)
+	}
 	// Excluded paths must never re-enter the record of what both sides hold.
 	// RefreshLineage rebuilds this from unfiltered manifests, so without a
 	// filter here an excluded file would be written back in — and the next
@@ -642,6 +665,66 @@ func (e *Engine) persistLineage(gameID, peerID string, local, remote delta.Manif
 	if err := e.Store.SetSyncState(gameID, peerID, files, dirs); err != nil {
 		e.Log("warn", fmt.Sprintf("persist sync lineage failed: %v", err))
 	}
+}
+
+// keepPendingDeletions adds back the previously recorded paths that exactly
+// one side still holds. Those are deletions in flight, and the record of them
+// is what lets the next sync propagate rather than reverse them. Paths neither
+// side has any more are converged and stay dropped. Sorted, so the stored
+// lineage stays deterministic whichever rebuild wrote it.
+func keepPendingDeletions(fresh, previous []string, local, remote map[string]delta.FileEntry) []string {
+	if len(previous) == 0 {
+		return fresh
+	}
+	seen := make(map[string]struct{}, len(fresh)+len(previous))
+	out := make([]string, 0, len(fresh)+len(previous))
+	for _, p := range fresh {
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	for _, p := range previous {
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		_, onLocal := local[p]
+		_, onRemote := remote[p]
+		if onLocal || onRemote {
+			seen[p] = struct{}{}
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// keepPendingDirDeletions is keepPendingDeletions for directories.
+func keepPendingDirDeletions(fresh, previous, localDirs, remoteDirs []string) []string {
+	if len(previous) == 0 {
+		return fresh
+	}
+	local, remote := toSet(localDirs), toSet(remoteDirs)
+	seen := make(map[string]struct{}, len(fresh)+len(previous))
+	out := make([]string, 0, len(fresh)+len(previous))
+	for _, d := range fresh {
+		seen[d] = struct{}{}
+		out = append(out, d)
+	}
+	for _, d := range previous {
+		if _, dup := seen[d]; dup {
+			continue
+		}
+		if _, ok := local[d]; ok {
+			seen[d] = struct{}{}
+			out = append(out, d)
+			continue
+		}
+		if _, ok := remote[d]; ok {
+			seen[d] = struct{}{}
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // AddConfirmedLineage records paths a peer has told us it just pulled from us.

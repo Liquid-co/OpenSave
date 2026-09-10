@@ -153,9 +153,24 @@ func ComputeWithDeletions(local, remote delta.Manifest, lastSyncedFiles, lastSyn
 
 		switch {
 		case hasRemote && !hasLocal:
-			if _, synced := lastSyncedFiles[relPath]; synced {
+			rec, recorded := deleted[relPath]
+			_, synced := lastSyncedFiles[relPath]
+			if recorded && rec.Hash != remoteFile.Hash {
+				// This device wrote down deleting the file, and what the peer
+				// holds now is NOT what was deleted: they changed it since, or
+				// wrote a new file under the same name. Their bytes are the
+				// newer fact, whatever the lineage says. The lineage can only
+				// say "this was once shared"; the record says what was
+				// removed, and the two disagreeing is the one case where
+				// following the lineage destroys content nobody deleted.
+				//
+				// Lineage entries now survive until a deletion has propagated
+				// (see persistLineage), which is right, and which also makes
+				// this check load-bearing rather than theoretical.
+				d.FilesToPull = append(d.FilesToPull, relPath)
+			} else if synced {
 				d.FilesToDeleteOnPeer = append(d.FilesToDeleteOnPeer, relPath)
-			} else if rec, recorded := deleted[relPath]; recorded && rec.Hash == remoteFile.Hash {
+			} else if recorded && rec.Hash == remoteFile.Hash {
 				// Not in the lineage, but this device wrote down deleting it,
 				// and the peer still holds byte-for-byte what was deleted. That
 				// is a deletion to propagate, not a file to take back.
