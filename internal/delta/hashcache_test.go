@@ -321,3 +321,97 @@ func TestHashCacheBudget_ShrinkingEvictsNow(t *testing.T) {
 		t.Errorf("cache holds %d bytes after the budget dropped to %d", bytes, cacheMinBytes)
 	}
 }
+
+// A file rewritten within one timestamp tick must not keep its old hash.
+//
+// Size and mtime identify content only when a second write cannot leave both
+// unchanged, and within a filesystem's timestamp granularity it can. Games
+// write fixed-size saves, and two writes in quick succession are ordinary — a
+// save followed by an immediate re-save, or a write and a fix-up. Handing back
+// the first write's hash for the second tells the sync nothing changed, for a
+// save that did. Found on Linux, where the kernel tick makes the window wide;
+// it passed on Windows only by luck of the clock.
+//
+// The same-tick condition is forced with Chtimes rather than raced, so the
+// test is deterministic on every platform: both writes are stamped with the
+// same current time, which is what two writes inside one tick look like.
+//
+// Deliberately NOT tested here: a program that rewrites a file and then puts
+// the OLD mtime back. That defeats any stamp-based cache by construction, and
+// is what cacheMaxAge — the hourly forced re-read — exists for.
+func TestHashCache_ARewriteInTheSameTickIsNotServedStale(t *testing.T) {
+	ClearHashCache()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "player.sav")
+	tick := time.Now()
+
+	if err := os.WriteFile(path, []byte("fullscreen=1"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, tick, tick); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	first, err := cachedHashFile(path, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Same size, same stamp, different bytes.
+	if err := os.WriteFile(path, []byte("fullscreen=0"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, tick, tick); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = os.Stat(path)
+	second, err := cachedHashFile(path, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if first.Hash == second.Hash {
+		t.Errorf("a same-size rewrite with an identical stamp was served the old hash %s; "+
+			"the sync would see no change in a save that changed", first.Hash[:12])
+	}
+}
+
+// The window closes: once a file has been still long enough, its hash IS
+// cached, or the cache would never hold anything a game has ever written.
+func TestHashCache_ACoolFileIsCached(t *testing.T) {
+	ClearHashCache()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "player.sav")
+	if err := os.WriteFile(path, []byte("settled"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	if _, err := cachedHashFile(path, info); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := hashCacheStats(); entries != 1 {
+		t.Errorf("a file modified a minute ago was not cached (%d entries); nothing would ever be", entries)
+	}
+}
+
+// And a hot file is not — the other half of the same rule.
+func TestHashCache_AHotFileIsNotCached(t *testing.T) {
+	ClearHashCache()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "player.sav")
+	if err := os.WriteFile(path, []byte("just written"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	if _, err := cachedHashFile(path, info); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := hashCacheStats(); entries != 0 {
+		t.Errorf("a file written this instant was cached (%d entries); a second write in the "+
+			"same tick would now be served its hash", entries)
+	}
+}

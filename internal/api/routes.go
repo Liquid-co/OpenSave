@@ -62,6 +62,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Get("/api/presets/scan", s.handlePresetScan)
 	r.Get("/api/cover", s.handleCover)
+	r.Get("/api/steam/app", s.handleSteamApp)
 
 	s.peerRoutes(r)
 	s.cloudRoutes(r)
@@ -327,6 +328,7 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	oldSavePath := game.SavePath
 	oldAutoSync := game.AutoSync
 	oldIgnore := game.SyncIgnore
+	oldAppID := game.AppID
 	if err := readJSON(r, &game); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -356,6 +358,14 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	// AppID — so changing the AppID refreshes the art.
 	if game.CoverURL == "" || isSteamCover(game.CoverURL) {
 		game.CoverURL = daemon.SteamCoverURL(game.AppID)
+	}
+	// A changed App ID is a request to look the art up again, and the miss
+	// cache must not veto it. A cover that failed to load once — a blip, a
+	// number typed wrong and corrected a minute later — was remembered as
+	// "no art" for six hours, and nothing the person did with the field could
+	// shorten that. Typing a new ID now means the next request actually asks.
+	if game.AppID != oldAppID && game.AppID != "" {
+		forgetCoverMiss(game.AppID)
 	}
 
 	if game.SyncIgnore != oldIgnore {

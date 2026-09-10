@@ -90,6 +90,33 @@ func (a *App) quitFromTray() {
 	wailsruntime.Quit(a.ctx)
 }
 
+// trayGrace is how long a hidden start waits for the tray before giving up
+// and showing the window. systray is up within a few hundred milliseconds
+// where a host exists; where none does, it never will be, and nobody should
+// stare at an empty desktop for long wondering whether the app started.
+const trayGrace = 5 * time.Second
+
+// showIfTrayNeverAppears is the safety net for a hidden start.
+//
+// StartHidden asks Wails not to show the window, on the assumption that the
+// tray icon is the way back to it. When that assumption fails — a Linux
+// desktop with no StatusNotifier host — a hidden window is an app the person
+// has no way to reach, so it is shown after all. Mirrors beforeClose, which
+// declines to hide to a tray that is not there.
+func (a *App) showIfTrayNeverAppears() {
+	deadline := time.Now().Add(trayGrace)
+	for time.Now().Before(deadline) {
+		if trayReady.Load() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if a.daemon != nil {
+		a.daemon.Log.Log("warn", "started hidden but no tray icon appeared; showing the window so it can be reached")
+	}
+	wailsruntime.WindowShow(a.ctx)
+}
+
 // beforeClose intercepts the window X button: hide to tray instead of
 // quitting, so syncing keeps running in the background. If the tray never
 // materialized (Linux DE without a StatusNotifier host), fall through to a

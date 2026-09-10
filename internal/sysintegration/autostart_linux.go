@@ -42,15 +42,21 @@ func SetAutostart(enabled bool) error {
 	// Inside a Flatpak sandbox os.Executable() is /app/bin/opensave, a path
 	// that doesn't exist on the host session that runs autostart entries —
 	// launch through flatpak instead.
+	//
+	// Hidden at login either way, for the same reason as on Windows: the app
+	// belongs in the tray at that moment, not over the desktop. See
+	// StartHiddenFlag. The bare path is quoted because a home directory with
+	// a space in it is not rare and an Exec line splits on whitespace; the
+	// flatpak form is three words on purpose and must not be.
 	launch := ""
 	if id := os.Getenv("FLATPAK_ID"); id != "" {
-		launch = "flatpak run " + id
+		launch = "flatpak run " + id + " " + StartHiddenFlag
 	} else {
 		exe, err := os.Executable()
 		if err != nil {
 			return fmt.Errorf("resolve executable path: %w", err)
 		}
-		launch = exe
+		launch = `"` + exe + `" ` + StartHiddenFlag
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

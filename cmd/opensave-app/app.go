@@ -16,6 +16,7 @@ import (
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/changelog"
 	"github.com/opensave/opensave/internal/daemon"
+	"github.com/opensave/opensave/internal/sysintegration"
 	"github.com/opensave/opensave/internal/version"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -118,6 +119,25 @@ func (a *App) startup(ctx context.Context) {
 	d.Log.Log("info", "desktop app connected to daemon at "+addr)
 
 	a.startTray()
+
+	// Repair the autostart entry every launch. The entry written by earlier
+	// versions launched the bare executable, so every boot brought the
+	// window up; and after an update or a move the path it holds can be
+	// stale. SetAutostart writes only when the value differs, so on a
+	// healthy install this reads one registry value and stops.
+	if settings.StartOnBoot {
+		if err := sysintegration.SetAutostart(true); err != nil {
+			d.Log.Log("warn", "could not refresh the start-with-system entry: "+err.Error())
+		}
+	}
+
+	// Started hidden, but with nowhere to come back from? Show the window.
+	// Not every Linux desktop has a StatusNotifier host, and a hidden window
+	// with no tray icon is an app the person cannot reach — the same reason
+	// closing the window quits outright when the tray never appeared.
+	if launchedHidden() {
+		go a.showIfTrayNeverAppears()
+	}
 }
 
 // onSecondInstanceLaunch fires when OpenSave is launched again while it is

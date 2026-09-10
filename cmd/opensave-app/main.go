@@ -48,6 +48,10 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 12, G: 12, B: 13, A: 1},
 		Frameless:        true,
+		// Launched by the autostart entry: sit in the tray, do not bring the
+		// window up over whatever the person is doing. startup() shows it
+		// anyway if no tray ever appears, so this cannot strand the app.
+		StartHidden: launchedHidden(),
 		// Only one OpenSave window ever; a second launch focuses the existing
 		// one instead of opening a duplicate (blank) window.
 		SingleInstanceLock: &options.SingleInstanceLock{

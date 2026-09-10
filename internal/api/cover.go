@@ -78,6 +78,14 @@ func coverMissKey(appID string, portrait bool) string {
 	return appID
 }
 
+// forgetCoverMiss drops the "no art" memory for an App ID, both orientations,
+// so the next request for it goes to the network. Called when someone changes
+// a game's App ID: that is an explicit request to look again.
+func forgetCoverMiss(appID string) {
+	coverMisses.Delete(coverMissKey(appID, false))
+	coverMisses.Delete(coverMissKey(appID, true))
+}
+
 func recentCoverMiss(key string) bool {
 	if v, ok := coverMisses.Load(key); ok {
 		if at, ok := v.(time.Time); ok && time.Since(at) < coverMissTTL {

@@ -135,6 +135,42 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Typing a Steam App ID now tells you whether it's right.** As you enter
+  one, the field checks with Steam and shows the store title it belongs to —
+  or says that no game has that number, or that Steam couldn't be reached from
+  this network. Before, the only feedback was whether a cover eventually
+  appeared, and a cover that doesn't appear looks the same whether the number
+  was mistyped, the game has no art, or the network blocks Steam's CDN. That
+  is how "I added the App ID but nothing happens — am I doing something
+  wrong?" gets asked, with no way to answer it from the app.
+
+  Changing an App ID also clears the app's memory that art for that ID was
+  missing. A cover that failed to load once was remembered as absent for six
+  hours, so correcting a number a minute later — or the network coming back —
+  changed nothing until then. Reported by mufaaf.
+
+- **A save rewritten twice within one clock tick no longer keeps its old
+  hash.** File size and modification time identify a file's contents only if a
+  second write can't leave both unchanged, and within a filesystem's timestamp
+  granularity it can — a fixed-size save written twice in quick succession
+  would have the first write's hash handed back for the second, and the sync
+  would see nothing to do for a save that had changed. A file is now only
+  remembered once it has been still for a couple of seconds, the same rule git
+  applies. Caught on Linux, where the kernel's coarser file times made it
+  reproducible; it had passed on Windows by luck of the clock.
+
+- **"Start when the computer starts" now starts in the tray, as it always said
+  it would.** The setting's own description promised a launch minimised to the
+  system tray, and it did not: the entry it registered launched OpenSave
+  exactly as a double-click does, so every boot brought the full window up over
+  whatever you sat down to do. It now launches hidden, with the tray icon as
+  the way back in. Entries registered by earlier versions are repaired the
+  next time OpenSave runs, so there is nothing to re-tick.
+
+  If no tray is available — some Linux desktops have none without an
+  extension — the window is shown after all rather than left unreachable.
+  Reported by mufaaf.
+
 - **A watch that lost track of a folder now finds its way back.** Watching a
   folder tells you what happens next, and everything the watcher did to correct
   itself was driven by another change arriving. When the change was the thing

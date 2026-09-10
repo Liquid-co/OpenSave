@@ -17,7 +17,7 @@ const runValueName = "OpenSave"
 // SetAutostart registers or removes OpenSave in the current user's Run
 // key (no admin rights needed).
 func SetAutostart(enabled bool) error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE|registry.QUERY_VALUE)
 	if err != nil {
 		return fmt.Errorf("open Run key: %w", err)
 	}
@@ -35,7 +35,17 @@ func SetAutostart(enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
-	if err := key.SetStringValue(runValueName, `"`+exe+`"`); err != nil {
+	// Launched hidden: at boot the app belongs in the tray, not over
+	// whatever the person sat down to do. See StartHiddenFlag.
+	want := `"` + exe + `" ` + StartHiddenFlag
+	// Skipped when already right. This is also called at every startup to
+	// repair an entry written before the flag existed, or one pointing at a
+	// binary that has since moved, and a registry write per launch for a
+	// value that has not changed is noise in anyone's audit log.
+	if current, _, readErr := key.GetStringValue(runValueName); readErr == nil && current == want {
+		return nil
+	}
+	if err := key.SetStringValue(runValueName, want); err != nil {
 		return fmt.Errorf("set autostart entry: %w", err)
 	}
 	return nil

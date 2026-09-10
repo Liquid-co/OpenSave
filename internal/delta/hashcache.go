@@ -135,6 +135,34 @@ const cacheMaxAge = time.Hour
 // string header, plus the 64 hex characters of the hash itself.
 const approxBlockCost = 8 + 16 + 8 + 64
 
+// hotWindow is how recently a file may have been modified and still be cached.
+//
+// Size and modification time identify content only if a second write cannot
+// produce the same pair — and within one clock tick, it can. A filesystem's
+// timestamp granularity is far coarser than a write: milliseconds on Linux
+// (it follows the kernel tick), tens of milliseconds on some Windows volumes,
+// whole seconds on FAT and some network mounts. Two writes of a fixed-size
+// save inside that window leave the stamp unchanged and the bytes different,
+// so the first write's hash would be handed back for the second — and the
+// sync would then see nothing to do, for a save that had in fact changed.
+//
+// Caught by a test on Linux that rewrote a 12-byte file twice in a row: the
+// content hash did not move. It passed on Windows only because the two writes
+// happened to straddle a tick there.
+//
+// The rule is git's ("racy git"): a stamp is only trusted once the file has
+// been still for longer than any granularity could hide a rewrite. Two seconds
+// covers every filesystem in use. The cost is that a save is re-read on the
+// passes immediately after it changes, which is a handful of reads of a file
+// the game just wrote — the thing this cache exists to avoid is re-reading
+// files that are NOT changing.
+const hotWindow = 2 * time.Second
+
+// isHot reports whether a stamp is too fresh to be trusted as an identity.
+func (st cacheStamp) isHot() bool {
+	return time.Since(time.Unix(0, st.mtimeNs)) < hotWindow
+}
+
 var hashCache = struct {
 	sync.Mutex
 	entries map[string]cacheEntry
@@ -185,6 +213,14 @@ func cachedHashFile(path string, info os.FileInfo) (FileEntry, error) {
 		// always returned for a file written mid-read, so nothing is made
 		// worse; what must not happen is that value becoming a cache hit for
 		// every later pass.
+		return entry, nil
+	}
+
+	// A file this fresh may be written again within the same timestamp tick,
+	// which would make this hash a hit for content it does not describe.
+	// Returned but not stored; the next pass re-reads it, and by the pass
+	// after that it is old enough to keep. See hotWindow.
+	if stamp.isHot() {
 		return entry, nil
 	}
 
