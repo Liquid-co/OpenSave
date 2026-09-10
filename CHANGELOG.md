@@ -135,6 +135,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Placing an offered game no longer leaves its own offer behind.** When
+  you chose a folder for a game another device offered, the offer could
+  reappear a moment later: the other device asks about the game every few
+  seconds, and if one of those requests was already being answered while you
+  placed it, its "this device has no folder for that" conclusion was written
+  down after your placement had made it false. The check and the write are
+  now one step, so an offer can never be recorded for a game that is tracked.
+
 - **A save deleted right after it synced no longer comes back.** OpenSave
   keeps a record of which files both devices have held, and "in that record
   but missing on one side" is how it knows the missing side deleted a file

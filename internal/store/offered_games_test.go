@@ -197,3 +197,61 @@ func TestUnpairingADeviceRemovesItsOffers(t *testing.T) {
 			"unpaired device would invite creating a game with no peer to sync it", all)
 	}
 }
+
+// An offer must not be recorded for a game this device already tracks.
+//
+// The caller checks that before offering, but on the goroutine answering the
+// peer — while the user placing that very offer runs on another. The peer's
+// request finds no game; the user's placement creates the game and clears the
+// offer; then the peer's write lands and puts the offer back, for a game that
+// now exists. Closed here so the check and the insert are one statement.
+func TestOfferedGameIsRefusedForATrackedGame(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.CreateGame(Game{ID: "placed", Name: "Placed", SavePath: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RecordOfferedGame(offerFixture("placed", "peer-1")); err != nil {
+		t.Fatalf("recording must not error, only decline: %v", err)
+	}
+	all, _ := s.ListOfferedGames()
+	if len(all) != 0 {
+		t.Errorf("an offer was recorded for a game that is already tracked (%d offers); "+
+			"placing a game would then leave its own offer behind", len(all))
+	}
+}
+
+// The same through an alias: a peer's id linked to a local game is tracked
+// too, and an offer under the peer's id would be an offer for a game that is
+// already syncing.
+func TestOfferedGameIsRefusedForAnAliasedGame(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.CreateGame(Game{ID: "local-id", Name: "Local", SavePath: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddGameAlias("peers-id", "local-id"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RecordOfferedGame(offerFixture("peers-id", "peer-1")); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := s.ListOfferedGames(); len(all) != 0 {
+		t.Errorf("an offer was recorded under a peer id that is linked to a tracked game (%d offers)", len(all))
+	}
+}
+
+// And a genuinely untracked game is still offered — the refusal must not
+// become a refusal of everything.
+func TestOfferedGameIsStillRecordedForAnUntrackedGame(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.CreateGame(Game{ID: "other", Name: "Other", SavePath: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordOfferedGame(offerFixture("new-one", "peer-1")); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := s.ListOfferedGames(); len(all) != 1 {
+		t.Errorf("an offer for a game this device does not track was not recorded (%d offers)", len(all))
+	}
+}

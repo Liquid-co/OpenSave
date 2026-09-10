@@ -30,6 +30,16 @@ type OfferedGame struct {
 // for. Repeated offers of the same game by the same peer refresh the details
 // without moving first_seen, so the list keeps its order and a peer that asks
 // every few minutes does not keep jumping to the top.
+//
+// Refused, silently, for a game this device already tracks — by its own id or
+// through an alias. An offer is by definition for a game with no folder here,
+// and the caller's own check for that is not enough: it runs on the goroutine
+// answering the peer, while the user placing that very offer runs on another.
+// The peer's request could find no game, the user's placement could then
+// create the game and clear the offer, and only afterwards would this write
+// land — putting back an offer for a game that now exists. The user placed a
+// game and watched the offer for it reappear. One statement, so the check and
+// the insert cannot be separated by anything.
 func (s *Store) RecordOfferedGame(o OfferedGame) error {
 	if strings.TrimSpace(o.GameID) == "" || strings.TrimSpace(o.PeerID) == "" {
 		return fmt.Errorf("an offered game needs both a game id and a peer id")
@@ -39,7 +49,9 @@ func (s *Store) RecordOfferedGame(o OfferedGame) error {
 	}
 	_, err := s.db.NamedExec(`
 		INSERT INTO offered_games (game_id, peer_id, name, app_id, cover_url, peer_path, first_seen)
-		VALUES (:game_id, :peer_id, :name, :app_id, :cover_url, :peer_path, :first_seen)
+		SELECT :game_id, :peer_id, :name, :app_id, :cover_url, :peer_path, :first_seen
+		WHERE NOT EXISTS (SELECT 1 FROM games        WHERE id       = :game_id)
+		  AND NOT EXISTS (SELECT 1 FROM game_aliases WHERE alias_id = :game_id)
 		ON CONFLICT(game_id, peer_id) DO UPDATE SET
 			name      = excluded.name,
 			app_id    = excluded.app_id,
