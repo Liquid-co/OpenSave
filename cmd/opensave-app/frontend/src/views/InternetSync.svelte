@@ -168,7 +168,17 @@
       <!-- Said at the moment of joining, because that is when it matters:
            every device in a room receives every other device's traffic, so
            whether that traffic is readable is part of what joining means. -->
-      {#if relayPeers.length > 0}
+      {#if relayPeers.length === 0}
+        <!-- Nothing paired through this room yet, which is exactly when
+             someone looks here wanting to know what joining means. Said as a
+             forward-looking fact, and conditional on both devices being on a
+             version that exchanges keys over a relay — earlier ones did not. -->
+        <span class="encryption-line">
+          🔒 Devices you pair here sync encrypted end to end, so nobody else holding this
+          code — including the relay — can read your saves. Both devices need this version;
+          each one shows its own state here and under Devices once it's paired.
+        </span>
+      {:else}
         <span class="encryption-line">
           {#if unprotectedPeers.length === 0}
             🔒 Saves to
