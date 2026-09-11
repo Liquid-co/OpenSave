@@ -794,6 +794,12 @@ func snapIDToTimestamp(snapID string) string {
 // is removed — same as the JS app.
 func (d *Daemon) UntrackGame(gameID string) error {
 	d.Watcher.Unwatch(gameID)
+	// Read before deleting: the tombstone remembers where this game was, so
+	// a later re-track puts it back there instead of guessing.
+	name, savePath := "", ""
+	if game, err := d.Store.GetGame(gameID); err == nil {
+		name, savePath = game.Name, game.SavePath
+	}
 	if err := d.Store.DeleteGame(gameID); err != nil {
 		return err
 	}
@@ -802,11 +808,16 @@ func (d *Daemon) UntrackGame(gameID string) error {
 	// bounce). Propagate the untrack so it registers on paired devices too
 	// (they remove it and tombstone it). Re-tracking on any device clears
 	// the tombstones (NotifyRetrack) and re-shares via sync-on-track.
-	_ = d.Store.AddUntrackedTombstone(gameID)
+	_ = d.Store.AddUntrackedTombstone(gameID, name, savePath)
 	// The deletion records describe a folder this device no longer has an
 	// opinion about. Kept, they would outlive the game and could still
 	// remove a peer's file if it were tracked again later.
 	_ = d.Store.ClearDeletedFilesForGame(gameID)
+	// The same holds for everything this game agreed with any peer: lineage,
+	// merge bases, push records. Game IDs are slugs, so a re-track has the
+	// same ID and would inherit all of it — and a stale lineage reads a file
+	// that went missing while untracked as a deletion to propagate.
+	_ = d.Store.ForgetGameSyncState(gameID)
 	d.P2P.ClearPendingResync(gameID)
 	d.P2P.NotifyUntrack(gameID)
 	return nil
@@ -925,22 +936,69 @@ func (d *Daemon) UnlinkGame(aliasID string) error {
 // WITHOUT re-notifying (no loop).
 func (d *Daemon) untrackFromPeer(gameID string) {
 	d.Watcher.Unwatch(gameID)
+	// Remember where THIS device kept the game before the record goes. A
+	// re-track on the peer used to bring the game back by auto-tracking from
+	// the peer's manifest request, which invents a local folder by
+	// translating the peer's path — right for a game never seen here, wrong
+	// for one that was: the folder actually being synced, saves and all, was
+	// left behind for a new empty one at a guessed path, and syncing of the
+	// real saves stopped without a word.
+	name, savePath := "", ""
+	if game, err := d.Store.GetGame(gameID); err == nil {
+		name, savePath = game.Name, game.SavePath
+	}
 	if err := d.Store.DeleteGame(gameID); err != nil && err != store.ErrNotFound {
 		d.Log.Log("warn", fmt.Sprintf("untrack from peer: delete %q failed: %v", gameID, err))
 	}
-	_ = d.Store.AddUntrackedTombstone(gameID)
+	_ = d.Store.AddUntrackedTombstone(gameID, name, savePath)
 	// The deletion records describe a folder this device no longer has an
 	// opinion about. Kept, they would outlive the game and could still
 	// remove a peer's file if it were tracked again later.
 	_ = d.Store.ClearDeletedFilesForGame(gameID)
+	// And everything it agreed with any peer, for the reason given in
+	// UntrackGame: the ID comes back, and this must not come back with it.
+	_ = d.Store.ForgetGameSyncState(gameID)
 	d.P2P.ClearPendingResync(gameID)
 	d.Log.Log("info", fmt.Sprintf("game %q untracked on a paired device", gameID))
 }
 
-// retrackFromPeer clears a tombstone a peer's re-track cleared, so this
-// device will accept the game again when the peer's sync-on-track arrives.
+// retrackFromPeer answers a peer re-tracking a game this device had untracked
+// on its behalf.
+//
+// Where the game's folder is still here, the game is restored to it now,
+// before the peer's sync-on-track arrives — so that request finds a game by
+// ID and syncs, instead of finding nothing and auto-tracking at a path
+// guessed from the peer's. Where the folder is gone, or nothing was
+// remembered, the tombstone is simply cleared and auto-track proceeds as it
+// always did.
 func (d *Daemon) retrackFromPeer(gameID string) {
+	name, savePath := d.Store.RememberedGame(gameID)
 	_ = d.Store.ClearUntrackedTombstone(gameID)
+	if savePath == "" {
+		return
+	}
+	if _, err := d.Store.GetGame(gameID); err == nil {
+		return // already tracked here; nothing to restore
+	}
+	if info, err := os.Stat(savePath); err != nil || (!info.IsDir() && !isFileSave(savePath)) {
+		d.Log.Log("info", fmt.Sprintf("game %q re-tracked on a paired device; its old folder here (%s) is gone, so it will be placed afresh", gameID, savePath))
+		return
+	}
+	if name == "" {
+		name = gameID
+	}
+	if _, err := d.TrackGame(store.Game{ID: gameID, Name: name, SavePath: savePath}); err != nil {
+		d.Log.Log("warn", fmt.Sprintf("could not restore %q at %s after a peer re-tracked it: %v", name, savePath, err))
+		return
+	}
+	d.Log.Log("info", fmt.Sprintf("restored %q at %s after a paired device re-tracked it", name, savePath))
+}
+
+// isFileSave reports whether a remembered path is a single-file save rather
+// than a folder — those are tracked at the file itself.
+func isFileSave(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // watchGame starts watching a game's main save folder and every extra save

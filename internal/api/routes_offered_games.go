@@ -102,7 +102,9 @@ func (s *Server) handlePlaceOfferedGame(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleDeclineOfferedGame(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
 
-	if err := s.Daemon.Store.AddUntrackedTombstone(gameID); err != nil {
+	// A declined offer was never tracked here, so there is no folder or name
+	// to remember for it.
+	if err := s.Daemon.Store.AddUntrackedTombstone(gameID, "", ""); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

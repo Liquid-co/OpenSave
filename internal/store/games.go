@@ -193,15 +193,61 @@ func (s *Store) DeleteGame(id string) error {
 
 // AddUntrackedTombstone records that a game was deliberately untracked, so
 // a peer that still tracks it can't silently auto-re-create it here.
-func (s *Store) AddUntrackedTombstone(gameID string) error {
+//
+// It also remembers where the game's saves were and what it was called, so
+// that when the game is tracked again it can be restored to that folder
+// rather than re-invented at a path guessed from a peer's. See
+// RememberedGame. Either may be empty when nothing is known.
+func (s *Store) AddUntrackedTombstone(gameID, name, savePath string) error {
 	_, err := s.db.Exec(
-		`INSERT INTO untracked_games (game_id, untracked_at_ms) VALUES (?, ?)
-		 ON CONFLICT(game_id) DO UPDATE SET untracked_at_ms = excluded.untracked_at_ms`,
-		gameID, time.Now().UnixMilli())
+		`INSERT INTO untracked_games (game_id, untracked_at_ms, name, save_path) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(game_id) DO UPDATE SET
+		   untracked_at_ms = excluded.untracked_at_ms,
+		   name = CASE WHEN excluded.name = '' THEN untracked_games.name ELSE excluded.name END,
+		   save_path = CASE WHEN excluded.save_path = '' THEN untracked_games.save_path ELSE excluded.save_path END`,
+		gameID, time.Now().UnixMilli(), name, savePath)
 	if err != nil {
 		return fmt.Errorf("add untracked tombstone %s: %w", gameID, err)
 	}
 	return nil
+}
+
+// RememberedGame returns the name and save path a tombstone kept for a game,
+// or empty strings when it kept none.
+func (s *Store) RememberedGame(gameID string) (name, savePath string) {
+	var row struct {
+		Name     string `db:"name"`
+		SavePath string `db:"save_path"`
+	}
+	if err := s.db.Get(&row, `SELECT name, save_path FROM untracked_games WHERE game_id = ?`, gameID); err != nil {
+		return "", ""
+	}
+	return row.Name, row.SavePath
+}
+
+// ForgetGameSyncState drops every record of what this game shared with any
+// peer: the lineage, the merge bases and the push records, for the main
+// folder and every extra location.
+//
+// Called when a game is untracked. Game IDs are slugs of the name, so a game
+// tracked again later has the same ID — and these rows, left behind, would
+// come back live with it. The lineage would say "both sides held b.sav"; if
+// the folder lost b.sav while untracked, the first sync reads that as "this
+// side deleted it" and removes the peer's copy. The deletion records were
+// already cleared on untrack for exactly that reason; this is the rest of it.
+func (s *Store) ForgetGameSyncState(gameID string) error {
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM game_peer_sync_state WHERE game_id = ?`, gameID); err != nil {
+		return fmt.Errorf("forget sync state for %s: %w", gameID, err)
+	}
+	if _, err := tx.Exec(`DELETE FROM game_root_sync_state WHERE game_id = ?`, gameID); err != nil {
+		return fmt.Errorf("forget root sync state for %s: %w", gameID, err)
+	}
+	return tx.Commit()
 }
 
 // IsUntracked reports whether a game id carries an untrack tombstone.

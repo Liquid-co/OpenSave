@@ -135,6 +135,23 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Re-tracking a game puts it back where it was on every device.** Untracking
+  a game on one device removes it on the others, and tracking it again brought
+  it back — by guessing each device's folder from the re-tracking device's
+  path. For a device that had never had the game that is the right thing to
+  do; for one that had, it was wrong: the folder it was actually syncing, saves
+  and all, was left behind for a new empty one at the guessed path, and the
+  real saves stopped syncing without a word. Each device now remembers where
+  it kept the game and restores it there, as long as that folder still exists.
+
+  Untracking also now forgets everything the game had agreed with its peers.
+  Game IDs come from the name, so a game tracked again has the same ID, and
+  the old record of "both devices held this file" came back with it. If the
+  folder had lost a file in the meantime, the first sync read that as a
+  deletion to pass on and removed the peer's copy. A game tracked afresh now
+  starts with no history, and a file the peer has that this device lacks is
+  simply pulled.
+
 - **Placing an offered game no longer leaves its own offer behind.** When
   you chose a folder for a game another device offered, the offer could
   reappear a moment later: the other device asks about the game every few
