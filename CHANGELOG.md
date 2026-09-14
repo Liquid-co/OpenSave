@@ -3,7 +3,21 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0-beta.1] — 2026-09-14
+
+Saves that travel between your devices over the internet are now sealed so
+that only those two devices can read them — not the relay, and not anyone
+else you have shared a room code with — and each device shows you, pairing by
+pairing, whether that protection is on.
+
+Underneath, a run of faults that were hard to see from the outside is fixed:
+a deleted save that could come back, a game whose sync could fall silent over
+one unreadable file, a watched folder that could drift and never recover, and
+a game re-tracked on one device losing its folder on the other. Before any of
+it shipped, a security review closed the doors it found.
+
+Both devices need this version for the encryption, and internet pairings
+made on earlier versions need to be made again — the app tells you which.
 
 ### Added
 
