@@ -783,33 +783,47 @@ func (e *Engine) RejectPairing(peerID string) {
 func (e *Engine) Unpair(peerID string) error {
 	peer, peerErr := e.Store.GetPeer(peerID)
 
+	// Build the goodbye BEFORE the record goes: the key it is signed with
+	// lives in that record. Signed on both transports, so the peer can tell
+	// this device from anyone else in its relay room or on its network
+	// saying the same thing — see notifyPeersGameOp for why that matters.
+	// Built after the delete it went out unsigned, and a peer that had seen
+	// this device authenticate before refused it, so the unpair never
+	// registered on the other side.
+	var wanGoodbye RelayMessage
+	var wanReady bool
+	var lanGoodbye *http.Request
+	if peerErr == nil {
+		if settings, err := e.Store.GetSettings(); err == nil {
+			payload := map[string]string{"peerId": settings.NodeID}
+			if peer.Address == "relay" {
+				wanGoodbye, wanReady = e.Wan.PrepareNotify(peerID, "/unpair", "POST", payload)
+			} else {
+				body, _ := json.Marshal(payload)
+				url := fmt.Sprintf("http://%s:%d/api/p2p/unpair", peer.Address, peer.Port)
+				if req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body)); err == nil {
+					req.Header.Set("Content-Type", "application/json")
+					e.signLANRequest(req, peerID, body)
+					lanGoodbye = req
+				}
+			}
+		}
+	}
+
 	if err := e.Store.UnpairPeer(peerID); err != nil {
 		return err
 	}
 	e.notifyPeerUpdate()
 
-	// Best-effort notification — the peer may be offline, which is fine:
-	// the reactive unpair-notify (on their next hello) still covers them.
-	if peerErr == nil {
+	// Best-effort delivery — the peer may be offline, which is fine: the
+	// reactive unpair-notify (on their next hello) still covers them.
+	switch {
+	case wanReady:
+		go e.Wan.SendRelayMessage(wanGoodbye)
+	case lanGoodbye != nil:
 		go func() {
-			settings, err := e.Store.GetSettings()
-			if err != nil {
-				return
-			}
-			if peer.Address == "relay" {
-				e.Wan.SendRelayMessage(RelayMessage{Type: "unpair-notify", To: peerID, From: settings.NodeID})
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			body, _ := json.Marshal(map[string]string{"peerId": settings.NodeID})
-			url := fmt.Sprintf("http://%s:%d/api/p2p/unpair", peer.Address, peer.Port)
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-			if err != nil {
-				return
-			}
-			req.Header.Set("Content-Type", "application/json")
-			if resp, err := http.DefaultClient.Do(req); err == nil {
+			client := &http.Client{Timeout: 5 * time.Second}
+			if resp, err := client.Do(lanGoodbye); err == nil {
 				resp.Body.Close()
 			}
 		}()
@@ -843,13 +857,19 @@ func (e *Engine) notifyPeersGameOp(op, gameID string) {
 	if err != nil {
 		return
 	}
+	// Signed, on both transports. These used to be bare frames and bare
+	// HTTP posts with no proof of origin. Over a relay that meant anyone
+	// holding the room code could untrack a game on a device, or unpair
+	// two devices, by writing a paired peer's ID into the frame — the room
+	// publishes every device's paired IDs, so there was nothing to guess.
+	// On a LAN it meant the opposite failure: a peer that had authenticated
+	// before correctly refused the unsigned post, and the untrack simply
+	// never registered there.
 	for _, peer := range peers {
 		peer := peer
 		go func() {
 			if peer.Address == "relay" {
-				e.Wan.SendRelayMessage(RelayMessage{
-					Type: op + "-notify", To: peer.ID, From: settings.NodeID, GameID: gameID,
-				})
+				e.Wan.Notify(peer.ID, "/"+op, "POST", map[string]string{"gameId": gameID})
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -861,6 +881,7 @@ func (e *Engine) notifyPeersGameOp(op, gameID string) {
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
+			e.signLANRequest(req, peer.ID, body)
 			if resp, err := http.DefaultClient.Do(req); err == nil {
 				resp.Body.Close()
 			}

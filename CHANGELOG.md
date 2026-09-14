@@ -74,6 +74,40 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Security
 
+- **Web pages can no longer drive the app.** The app's local API answered
+  every request from this computer with a blanket "any website may call me",
+  and the default port is a well-known number. A page on any site you had
+  open could read your settings — node ID, room code, relay address —
+  untrack games, restore an old snapshot over a current save, or point your
+  relay setting at a server of its choosing, all from JavaScript, all without
+  you noticing. Only the app's own window is allowed now; a request from any
+  other page is refused outright rather than merely denied a reply, because
+  a plain POST has already happened by the time a browser decides whether to
+  show the answer. The command line and the Steam Deck plugin are not
+  browsers and are unaffected.
+
+- **Nobody else in your relay room can unpair your devices or untrack your
+  games.** The three messages that carry those actions were sent with no
+  proof of who sent them, and the relay hands every message to every device
+  in the room while also announcing each device's paired IDs. Anyone holding
+  the room code could have switched your sync off in a paired device's name.
+  Those messages are now signed like everything else and act only on the
+  device that provably sent them — never on a name written inside the
+  message. On a local network the same omission had the opposite effect: a
+  device that had authenticated before correctly refused the unsigned
+  message, so an untrack never registered there. Fixed together.
+
+- **Your private key and Google tokens are no longer readable by other
+  accounts on a shared Linux or Mac.** The folder holding the database was
+  created open to everyone on the machine, and the database inside it with
+  the system default. It is now private to your account, and an existing
+  install is tightened the next time OpenSave starts. Windows was never
+  exposed; its profile folder carries its own protection.
+
+- A replayed request could slip past the nonce check if the sender's clock
+  ran ahead: the nonce was forgotten before the timestamp went stale. Nonces
+  are now remembered for twice the allowed clock skew.
+
 - **Updates are checked against the checksums published with them.** The only
   thing between a downloaded update and a rename over the running program was
   a size check and the first two bytes of the file — anything beginning "MZ"

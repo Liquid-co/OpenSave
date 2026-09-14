@@ -58,7 +58,13 @@ func (h *Hub) Broadcast(msgType string, data any) {
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		// Local dashboard only; the daemon binds localhost.
-		InsecureSkipVerify: true,
+		// The app's window is the only browser that may open this socket;
+		// browsers do not apply CORS to WebSockets, so this check is the
+		// whole protection. corsLocalhost refuses unknown origins before the
+		// upgrade is reached, so this is the second wall, not the first. A
+		// request with no Origin (the CLI, the Deck plugin) is not a browser
+		// and passes.
+		OriginPatterns: []string{"wails.localhost", "wails", "localhost:34115"},
 	})
 	if err != nil {
 		return

@@ -250,13 +250,45 @@ func (s *Server) Stop() {
 // own origin (http://wails.localhost), so without this the browser blocks
 // every non-simple request. Runs at the top level so the OPTIONS preflight
 // is handled before chi's per-route method matching returns 405.
+// allowedBrowserOrigins are the only web origins that may call this API.
+//
+// The app's own window is a browser: Wails serves the interface from these
+// origins and it fetches the API cross-origin, so they need CORS headers. No
+// other page does. The API used to answer every loopback request with
+// Access-Control-Allow-Origin: *, and loopback is not a boundary a browser
+// respects — a page on any website the user has open runs on this machine
+// too, and could read the settings (node ID, room code, relay URL), untrack
+// games, restore an old snapshot over a current save, or point the relay
+// setting at a server of its choosing. The default port is 8383, so there
+// was nothing to find first.
+//
+// The Steam Deck plugin and the CLI are not browsers: they send no Origin
+// header at all, and requests without one pass untouched.
+var allowedBrowserOrigins = map[string]bool{
+	"http://wails.localhost": true, // Windows: WebView2 cannot use a custom scheme
+	"wails://wails":          true, // macOS and Linux
+	"http://localhost:34115": true, // `wails dev`
+}
+
+// corsLocalhost handles browser cross-origin rules for the API.
+//
+// A request carrying an Origin this API does not recognise is REFUSED, not
+// merely denied CORS headers. Withholding the headers only stops the page
+// reading the reply; a "simple" request — a POST with no custom headers —
+// has already executed on the server by then, and several routes here act
+// on a bare POST. Refusing at the door is the only version that holds.
 func corsLocalhost(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err == nil && isLoopback(host) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if !allowedBrowserOrigins[origin] {
+				writeError(w, http.StatusForbidden, "cross-origin access denied")
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

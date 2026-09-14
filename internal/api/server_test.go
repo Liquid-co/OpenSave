@@ -108,8 +108,11 @@ func TestCORSPreflight(t *testing.T) {
 		if resp.StatusCode != http.StatusNoContent {
 			t.Errorf("preflight %s status = %d, want 204", path, resp.StatusCode)
 		}
-		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
-			t.Errorf("preflight %s Allow-Origin = %q, want *", path, got)
+		// The app's own origin, echoed back — never the wildcard. This test
+		// used to demand "*", which is to say it pinned a hole: every page on
+		// the web could call this API. See allowedBrowserOrigins.
+		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "http://wails.localhost" {
+			t.Errorf("preflight %s Allow-Origin = %q, want the app's origin echoed", path, got)
 		}
 		if got := resp.Header.Get("Access-Control-Allow-Methods"); got == "" {
 			t.Errorf("preflight %s missing Allow-Methods", path)

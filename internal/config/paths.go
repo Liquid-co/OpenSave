@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const (
@@ -72,11 +73,23 @@ func resolveWithin(home string) (Paths, error) {
 }
 
 func buildPaths(homeDir string) (Paths, error) {
-	if err := os.MkdirAll(homeDir, 0o777); err != nil {
+	// Private to this user. The database in here holds the device's private
+	// key — the one that decrypts every save sent to it and proves who it is
+	// to every peer — plus the Google tokens and the vault keys. With the
+	// usual umask, 0o777 became a world-readable directory and SQLite's
+	// default made a world-readable file inside it, so on a shared Linux or
+	// macOS machine any other account could read all of that. Windows was
+	// never exposed: the profile folder carries its own per-user ACL.
+	//
+	// 0o700 is what ssh and gpg use for the same reason, and an existing
+	// directory is tightened too, because the ones already out there are
+	// the ones that matter.
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		return Paths{}, fmt.Errorf("create home dir: %w", err)
 	}
+	tightenPermissions(homeDir)
 	backupsDir := filepath.Join(homeDir, backupsDirName)
-	if err := os.MkdirAll(backupsDir, 0o777); err != nil {
+	if err := os.MkdirAll(backupsDir, 0o700); err != nil {
 		return Paths{}, fmt.Errorf("create backups dir: %w", err)
 	}
 
@@ -98,4 +111,23 @@ func dirExists(path string) bool {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+// tightenPermissions makes a directory private to its owner if it is not
+// already, on the platforms where mode bits are the access control.
+//
+// Best-effort: a failure here is not worth refusing to start over, and on
+// Windows the call is a no-op in all but name — the profile folder's ACL is
+// what protects the data there.
+func tightenPermissions(dir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(dir, 0o700)
+	}
 }

@@ -139,7 +139,10 @@ func (e *Engine) requirePairedPeer(next http.Handler) http.Handler {
 				e.notifyPeerUpdate()
 			}
 		}
-		next.ServeHTTP(w, r)
+		// The identity this request was matched to — proven where the peer
+		// signs, address-matched where it cannot yet. Handlers that act on a
+		// peer's behalf act on this, never on an ID in the body.
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), lanPeerKey{}, matched.ID)))
 	})
 }
 
@@ -256,14 +259,23 @@ func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Engine) handleUnpair(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		PeerID string `json:"peerId"`
+	// The sender is unpairing itself. Which peer that is comes from the
+	// middleware's match, not from the body — a signed request from one
+	// paired device could otherwise unpair a different one by naming it.
+	// The body's peerId is still read for a loopback caller (the dashboard
+	// and CLI), which the middleware lets through without matching a peer.
+	peerID := lanPeerID(r)
+	if peerID == "" {
+		var body struct {
+			PeerID string `json:"peerId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == "" {
+			jsonError(w, http.StatusBadRequest, "peerId is required")
+			return
+		}
+		peerID = body.PeerID
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == "" {
-		jsonError(w, http.StatusBadRequest, "peerId is required")
-		return
-	}
-	_ = e.Store.UnpairPeer(body.PeerID)
+	_ = e.Store.UnpairPeer(peerID)
 	e.notifyPeerUpdate()
 	jsonOK(w, map[string]any{"success": true})
 }

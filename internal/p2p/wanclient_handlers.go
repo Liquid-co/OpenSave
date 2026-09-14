@@ -65,13 +65,26 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			w.recordDiscovered(msg)
 		}
 
+	// The three bare notify frames carry no proof of who sent them: "from"
+	// is written by the sender and the relay passes every frame to every
+	// device in the room, which also publishes each device's paired peer
+	// IDs. Anyone holding the room code could therefore unpair two devices
+	// or untrack a game on one, by writing a paired peer's ID into "from".
+	//
+	// Current builds send these as signed requests instead (/unpair,
+	// /untrack, /retrack in routeRequest). The bare frames remain only for
+	// a peer on an older build, under the same rule as every other
+	// unauthenticated message: accepted from a peer that has never proved
+	// itself, refused from one that has. A device claiming to be a peer
+	// that authenticates its requests, while sending a frame that could not
+	// be authenticated, is not that peer.
 	case "unpair-notify":
 		if msg.From == localID {
 			return
 		}
-		if _, err := w.engine.Store.GetPeer(msg.From); err == nil {
-			w.engine.Log("warn", fmt.Sprintf("received unpair-notify from WAN peer %s — unpairing", msg.From))
-			_ = w.engine.Store.UnpairPeer(msg.From)
+		if peer, ok := w.acceptBareNotify(msg, "unpair-notify"); ok {
+			w.engine.Log("warn", fmt.Sprintf("received unpair-notify from WAN peer %s — unpairing", peer.ID))
+			_ = w.engine.Store.UnpairPeer(peer.ID)
 			w.engine.notifyPeerUpdate()
 		}
 
@@ -79,7 +92,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 		if msg.From == localID || msg.GameID == "" {
 			return
 		}
-		if _, err := w.engine.Store.GetPeer(msg.From); err == nil {
+		if _, ok := w.acceptBareNotify(msg, "untrack-notify"); ok {
 			w.engine.applyPeerUntrack(msg.GameID)
 		}
 
@@ -87,7 +100,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 		if msg.From == localID || msg.GameID == "" {
 			return
 		}
-		if _, err := w.engine.Store.GetPeer(msg.From); err == nil {
+		if _, ok := w.acceptBareNotify(msg, "retrack-notify"); ok {
 			w.engine.applyPeerRetrack(msg.GameID)
 		}
 
@@ -351,7 +364,9 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		strings.HasPrefix(route, "/sync/trigger/") ||
 		strings.HasPrefix(route, "/delete-file/") ||
 		route == "/games" ||
-		route == "/unpair"
+		route == "/unpair" ||
+		route == "/untrack" ||
+		route == "/retrack"
 
 	peer, pairedErr := w.engine.Store.GetPeer(from)
 	isPaired := pairedErr == nil
@@ -468,13 +483,34 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		return 200, map[string]any{"success": true, "message": "Pairing confirmed."}
 
 	case route == "/unpair":
-		var body struct {
-			PeerID string `json:"peerId"`
-		}
-		_ = json.Unmarshal(msg.Body, &body)
-		_ = w.engine.Store.UnpairPeer(body.PeerID)
+		// The sender is unpairing ITSELF. Acted on msg.From — the identity
+		// the authentication above just proved — and never on a peer ID
+		// named in the body: a signed request from one paired device could
+		// otherwise unpair a different one, and the body is whatever the
+		// sender chose to write there.
+		_ = w.engine.Store.UnpairPeer(from)
 		w.engine.notifyPeerUpdate()
 		return 200, map[string]any{"success": true, "message": "Unpaired successfully."}
+
+	case route == "/untrack", route == "/retrack":
+		// Signed replacements for the bare untrack-notify / retrack-notify
+		// frames, which carried no proof of who sent them. Those frames are
+		// still accepted from a peer that has never authenticated — an older
+		// build — and refused from one that has; see the notify cases in
+		// handleMessage. This is the path every current build takes.
+		var body struct {
+			GameID string `json:"gameId"`
+		}
+		_ = json.Unmarshal(msg.Body, &body)
+		if body.GameID == "" {
+			return 400, map[string]string{"error": "gameId is required"}
+		}
+		if route == "/untrack" {
+			w.engine.applyPeerUntrack(body.GameID)
+		} else {
+			w.engine.applyPeerRetrack(body.GameID)
+		}
+		return 200, map[string]any{"success": true}
 
 	case route == "/games":
 		return 200, w.engine.PeerGameList()
@@ -650,4 +686,25 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// acceptBareNotify decides whether an unsigned notify frame may act.
+//
+// Only from a paired peer, and only one that has never authenticated a
+// request — the latch every other unauthenticated path applies. A peer that
+// has proved it holds its key sends these as signed requests now, so a bare
+// frame in its name is either a downgraded device or a forgery, and in
+// neither case should it be able to unpair devices or untrack games.
+func (w *WanClient) acceptBareNotify(msg RelayMessage, kind string) (store.Peer, bool) {
+	peer, err := w.engine.Store.GetPeer(msg.From)
+	if err != nil {
+		return store.Peer{}, false
+	}
+	if peer.AuthVerifiedMs > 0 {
+		w.engine.Log("warn", fmt.Sprintf(
+			"refused an unsigned %s claiming to be %q, which authenticates its requests — "+
+				"a current build sends this signed, so this was not it", kind, peer.Name))
+		return store.Peer{}, false
+	}
+	return peer, true
 }

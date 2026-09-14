@@ -8,10 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
-	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
 )
@@ -149,21 +147,7 @@ func (t *lanTransport) sign(req *http.Request, peer syncengine.Peer, body []byte
 	if t.engine == nil {
 		return
 	}
-	key, err := t.engine.requestAuthKey(peer.ID)
-	if err != nil {
-		return
-	}
-	nonce, err := e2ee.NewNonce()
-	if err != nil {
-		return
-	}
-	from := t.engine.localNodeID()
-	at := time.Now().UnixMilli()
-	route := req.URL.RequestURI()
-	req.Header.Set(lanAuthPeerHeader, from)
-	req.Header.Set(lanAuthNonceHeader, nonce)
-	req.Header.Set(lanAuthTimeHeader, strconv.FormatInt(at, 10))
-	req.Header.Set(lanAuthHeader, e2ee.RequestMAC(key, from, peer.ID, route, req.Method, body, nonce, at))
+	t.engine.signLANRequest(req, peer.ID, body)
 }
 
 func doJSON(req *http.Request, out any) error {

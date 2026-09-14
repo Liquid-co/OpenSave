@@ -63,9 +63,17 @@ func (n *nonceCache) remember(nonce string, nowMs int64) bool {
 	if exp, seen := n.expires[nonce]; seen && exp >= nowMs {
 		return false
 	}
-	// Held for the full skew window: any earlier and a request could be
-	// replayed while its timestamp was still considered fresh.
-	n.expires[nonce] = nowMs + e2ee.MaxAuthSkew
+	// Held for TWICE the skew window, not once.
+	//
+	// The timestamp check accepts a stamp within MaxAuthSkew of now in
+	// either direction, so a request from a sender whose clock is ahead
+	// stays fresh for longer than the window measured from arrival: stamped
+	// four minutes ahead, it passes the check for the next nine. Held for
+	// only one window, its nonce was forgotten after five, and the identical
+	// frame — which every device in the relay room received and could keep
+	// — was accepted again in the four minutes after that. Two windows
+	// covers the furthest-ahead stamp the check will take.
+	n.expires[nonce] = nowMs + 2*e2ee.MaxAuthSkew
 	return true
 }
 
@@ -277,6 +285,45 @@ func (e *Engine) localNodeID() string {
 		return ""
 	}
 	return settings.NodeID
+}
+
+// signLANRequest attaches proof that a LAN request came from this device.
+//
+// On the engine rather than the transport so that every LAN request to a
+// peer can use it — the sync transport, and the unpair/untrack/retrack
+// notifications that were built by hand without it and were therefore
+// refused by any peer that had authenticated before.
+func (e *Engine) signLANRequest(req *http.Request, peerID string, body []byte) {
+	key, err := e.requestAuthKey(peerID)
+	if err != nil {
+		return // no key for this pairing: sent as it always was
+	}
+	nonce, err := e2ee.NewNonce()
+	if err != nil {
+		return
+	}
+	from := e.localNodeID()
+	at := time.Now().UnixMilli()
+	route := req.URL.RequestURI()
+	req.Header.Set(lanAuthPeerHeader, from)
+	req.Header.Set(lanAuthNonceHeader, nonce)
+	req.Header.Set(lanAuthTimeHeader, strconv.FormatInt(at, 10))
+	req.Header.Set(lanAuthHeader, e2ee.RequestMAC(key, from, peerID, route, req.Method, body, nonce, at))
+}
+
+// lanPeerKey is the request-context key under which requirePairedPeer stores
+// the ID of the peer a LAN request was matched to.
+type lanPeerKey struct{}
+
+// lanPeerID returns the peer requirePairedPeer matched a request to, or "".
+//
+// Handlers that act on a peer's behalf — unpair, untrack, retrack — must use
+// this and never an ID carried in the body: the body is whatever the sender
+// wrote, and a signed request from one paired device could otherwise act as
+// another.
+func lanPeerID(r *http.Request) string {
+	id, _ := r.Context().Value(lanPeerKey{}).(string)
+	return id
 }
 
 // verifyLANRequest checks the proof-of-key headers on a LAN request, and

@@ -556,16 +556,29 @@ func (w *WanClient) buildRequest(peerID, msgID, route, method string, rawBody js
 // Same frame as Request builds, minus the MsgID that a response would be
 // matched against — so it is sealed and authenticated like everything else.
 func (w *WanClient) Notify(peerID, route, method string, body any) {
+	if msg, ok := w.PrepareNotify(peerID, route, method, body); ok {
+		w.send(msg)
+	}
+}
+
+// PrepareNotify builds a reply-less request without sending it.
+//
+// For the one caller that has to sign a message and then destroy the key it
+// signed with: unpairing removes the peer record, and the key lives in it. A
+// goodbye built after the record is gone goes out unsigned, and a peer that
+// has seen this device authenticate before refuses it — correctly, and so the
+// unpair never registers there. Build first, delete, then send.
+func (w *WanClient) PrepareNotify(peerID, route, method string, body any) (RelayMessage, bool) {
 	var rawBody json.RawMessage
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
 			w.engine.Log("warn", "could not encode a notification for "+peerID+": "+err.Error())
-			return
+			return RelayMessage{}, false
 		}
 		rawBody = raw
 	}
-	w.send(w.buildRequest(peerID, "", route, method, rawBody))
+	return w.buildRequest(peerID, "", route, method, rawBody), true
 }
 
 // Request performs an HTTP-shaped RPC against a peer through the relay.

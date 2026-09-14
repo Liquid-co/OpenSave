@@ -7,6 +7,8 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"os"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -49,7 +51,26 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// The file holds the device's private key, the Google tokens and the
+	// vault keys. SQLite creates it with the process umask, which is usually
+	// world-readable; the directory around it is private now, but the file
+	// should be too, as an ssh key is — the directory is the first wall and
+	// this is the second. Best-effort, and a no-op in practice on Windows.
+	restrictToOwner(path)
+	restrictToOwner(path + "-wal")
+	restrictToOwner(path + "-shm")
 	return s, nil
+}
+
+// restrictToOwner sets a file to 0600 where mode bits are the access control.
+// Missing files are fine (the WAL and SHM files exist only while in use).
+func restrictToOwner(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if info, err := os.Stat(path); err == nil && info.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(path, 0o600)
+	}
 }
 
 // Close releases the underlying database connection.

@@ -464,3 +464,38 @@ func TestLANAuth_UnsignedRequestIsLeftToTheAddressCheck(t *testing.T) {
 		t.Errorf("an unsigned request proved an identity: %q", id)
 	}
 }
+
+// A nonce must be remembered for as long as its request could still pass the
+// timestamp check — which is longer than the skew window when the sender's
+// clock is ahead.
+//
+// The check accepts a timestamp within MaxAuthSkew of now, in either
+// direction. A request stamped four minutes into the future is fresh for the
+// next nine minutes. Forgetting its nonce after five leaves four in which the
+// exact same frame is accepted again: the timestamp is still within skew and
+// the cache has no memory of it. A clock a few minutes ahead is ordinary, and
+// the relay hands every frame to every device in the room to keep.
+func TestNonceCache_OutlivesAFutureSkewedTimestamp(t *testing.T) {
+	n := &nonceCache{expires: map[string]int64{}}
+	now := int64(1_000_000_000_000)
+	ahead := now + e2ee.MaxAuthSkew - 60_000 // sender's clock: 4 minutes ahead
+
+	// The request arrives and is accepted; its timestamp is within skew.
+	if skew := ahead - now; skew > e2ee.MaxAuthSkew {
+		t.Fatalf("setup: %dms is not within skew", skew)
+	}
+	if !n.remember("nonce-1", now) {
+		t.Fatal("setup: a fresh nonce was reported as seen")
+	}
+
+	// Six minutes later the SAME frame is replayed. Its timestamp is now two
+	// minutes in the past — still within skew — so only the nonce can stop it.
+	later := now + 6*60_000
+	if skew := later - ahead; skew > e2ee.MaxAuthSkew {
+		t.Fatalf("setup: the replay would fail on timestamp alone (%dms), so this proves nothing", skew)
+	}
+	if n.remember("nonce-1", later) {
+		t.Error("a replayed frame was accepted: its nonce had been forgotten while its " +
+			"timestamp was still within the skew window")
+	}
+}
