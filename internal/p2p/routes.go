@@ -367,24 +367,26 @@ func (e *Engine) FetchPeerGames(ctx context.Context, peerID string) ([]PeerGame,
 func (e *Engine) handlePeerUntrack(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		GameID string `json:"gameId"`
+		At     int64  `json:"at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.GameID == "" {
 		jsonError(w, http.StatusBadRequest, "gameId is required")
 		return
 	}
-	e.applyPeerUntrack(body.GameID)
+	e.applyPeerUntrack(body.GameID, body.At)
 	jsonOK(w, map[string]any{"success": true})
 }
 
 func (e *Engine) handlePeerRetrack(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		GameID string `json:"gameId"`
+		At     int64  `json:"at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.GameID == "" {
 		jsonError(w, http.StatusBadRequest, "gameId is required")
 		return
 	}
-	e.applyPeerRetrack(body.GameID)
+	e.applyPeerRetrack(body.GameID, body.At)
 	jsonOK(w, map[string]any{"success": true})
 }
 

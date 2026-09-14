@@ -50,7 +50,10 @@ func TestUntrackThenRetrack_DoesNotInheritStaleLineage(t *testing.T) {
 	a.API(http.MethodDelete, "/api/games/"+gameID, nil, nil)
 	a.RemoveSave("b.sav")
 
-	// Track it again: same name, same folder, same slug — same ID.
+	// Track it again, straight away: same name, same folder, same slug — same
+	// ID. Fired this close to the untrack, the two notifications can reach
+	// the peer in either order, which is a case the peer has to handle, not
+	// one the test should wait its way around.
 	var again struct {
 		ID string `json:"id"`
 	}
@@ -70,8 +73,25 @@ func TestUntrackThenRetrack_DoesNotInheritStaleLineage(t *testing.T) {
 			t.Fatal("a game tracked afresh inherited its old lineage and DELETED the peer's b.sav — " +
 				"the peer did nothing and lost a file")
 		}
-		t.Fatalf("b.sav was not pulled back to the retracked side (A=%q, B=%q)",
-			a.ReadSave("b.sav"), b.ReadSave("b.sav"))
+		// Everything about B's state, so a failure explains itself — and B's
+		// own log, which names every actor that touched the game.
+		hist := b.Daemon.Log.History()
+		if len(hist) > 14 {
+			hist = hist[len(hist)-14:]
+		}
+		for _, e := range hist {
+			t.Logf("B log: [%s] %s", e.Level, e.Message)
+		}
+		bGame, bErr := b.Daemon.Store.GetGame(gameID)
+		aGame, aErr := a.Daemon.Store.GetGame(gameID)
+		t.Fatalf("b.sav was not pulled back to the retracked side (A=%q, B=%q); "+
+			"B game: err=%v path=%q (B's real folder %s); "+
+			"B tombstone: %v; "+
+			"A game: err=%v path=%q",
+			a.ReadSave("b.sav"), b.ReadSave("b.sav"),
+			bErr, bGame.SavePath, b.SaveDir,
+			b.Daemon.Store.IsUntracked(gameID),
+			aErr, aGame.SavePath)
 	}
 	if b.ReadSave("b.sav") != "bravo" {
 		t.Fatalf("the peer's b.sav was disturbed: %q", b.ReadSave("b.sav"))

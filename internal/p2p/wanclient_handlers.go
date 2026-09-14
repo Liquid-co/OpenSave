@@ -93,7 +93,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			return
 		}
 		if _, ok := w.acceptBareNotify(msg, "untrack-notify"); ok {
-			w.engine.applyPeerUntrack(msg.GameID)
+			w.engine.applyPeerUntrack(msg.GameID, 0)
 		}
 
 	case "retrack-notify":
@@ -101,7 +101,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			return
 		}
 		if _, ok := w.acceptBareNotify(msg, "retrack-notify"); ok {
-			w.engine.applyPeerRetrack(msg.GameID)
+			w.engine.applyPeerRetrack(msg.GameID, 0)
 		}
 
 	case "sync-event":
@@ -500,15 +500,16 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		// handleMessage. This is the path every current build takes.
 		var body struct {
 			GameID string `json:"gameId"`
+			At     int64  `json:"at"`
 		}
 		_ = json.Unmarshal(msg.Body, &body)
 		if body.GameID == "" {
 			return 400, map[string]string{"error": "gameId is required"}
 		}
 		if route == "/untrack" {
-			w.engine.applyPeerUntrack(body.GameID)
+			w.engine.applyPeerUntrack(body.GameID, body.At)
 		} else {
-			w.engine.applyPeerRetrack(body.GameID)
+			w.engine.applyPeerRetrack(body.GameID, body.At)
 		}
 		return 200, map[string]any{"success": true}
 

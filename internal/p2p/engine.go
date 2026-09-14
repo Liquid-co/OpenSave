@@ -76,6 +76,13 @@ type Engine struct {
 	// they complete.
 	pendingMu     sync.Mutex
 	pendingResync map[string]bool
+
+	// gameOpMu guards gameOpAt and gameOpLocks. gameOpAt is the sender's
+	// stamp of the newest untrack or retrack applied per game; gameOpLocks
+	// serialises the operations themselves per game. See applyPeerUntrack.
+	gameOpMu    sync.Mutex
+	gameOpAt    map[string]int64
+	gameOpLocks map[string]*sync.Mutex
 	stopRetry     chan struct{}
 
 	// Short-lived manifest-hash cache for ping/hello responses. Every
@@ -865,16 +872,22 @@ func (e *Engine) notifyPeersGameOp(op, gameID string) {
 	// On a LAN it meant the opposite failure: a peer that had authenticated
 	// before correctly refused the unsigned post, and the untrack simply
 	// never registered there.
+	// Stamped once, here, so every peer sees the same ordering between this
+	// operation and the next one for the same game. Nanoseconds, because an
+	// untrack and a retrack can be a single syscall apart and milliseconds
+	// let them tie — and a tie is "neither is older", which applies both.
+	// See applyPeerUntrack.
+	at := time.Now().UnixNano()
 	for _, peer := range peers {
 		peer := peer
 		go func() {
 			if peer.Address == "relay" {
-				e.Wan.Notify(peer.ID, "/"+op, "POST", map[string]string{"gameId": gameID})
+				e.Wan.Notify(peer.ID, "/"+op, "POST", map[string]any{"gameId": gameID, "at": at})
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			body, _ := json.Marshal(map[string]string{"peerId": settings.NodeID, "gameId": gameID})
+			body, _ := json.Marshal(map[string]any{"peerId": settings.NodeID, "gameId": gameID, "at": at})
 			url := fmt.Sprintf("http://%s:%d/api/p2p/%s", peer.Address, peer.Port, op)
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 			if err != nil {
@@ -890,17 +903,95 @@ func (e *Engine) notifyPeersGameOp(op, gameID string) {
 }
 
 // applyPeerUntrack / applyPeerRetrack mirror a peer's game op locally.
-func (e *Engine) applyPeerUntrack(gameID string) {
+// applyPeerUntrack and applyPeerRetrack apply a peer's game operation,
+// unless a newer one for the same game has already been applied — and never
+// at the same time as another operation on the same game.
+//
+// The two are sent as independent requests, and a request is served on its
+// own goroutine, so an untrack and a retrack fired close together are applied
+// concurrently in whichever order they land. Both halves of that went wrong.
+// Landing backwards, an untrack undid the retrack that came after it; the
+// sender's stamp settles which is newer. Landing in the right order but
+// overlapping, the retrack looked for the folder the untrack remembers —
+// while the untrack was still writing it — found nothing, and returned; the
+// untrack then finished, and the device ended with no game and a tombstone
+// that refuses to take it back, while the other device believed it had
+// re-shared it. Reproduced under the race detector, where the two arrive
+// milliseconds apart; by hand they are seconds apart, which is why it was
+// never seen.
+//
+// So the operation is held under a per-game lock from the staleness check
+// through to the end of its side effects. The retrack then either waits for
+// the untrack to finish (and finds the remembered folder), or goes first and
+// leaves the stale untrack to be refused.
+//
+// at is the SENDER's clock at the moment of the operation, in nanoseconds,
+// so the comparison is between two stamps from the same clock and skew does
+// not enter into it. Zero means an older build that sends no stamp; those are
+// applied as they always were.
+func (e *Engine) applyPeerUntrack(gameID string, at int64) {
+	unlock := e.lockGameOp(gameID)
+	defer unlock()
+	if e.staleGameOpLocked(gameID, at, "untrack") {
+		return
+	}
 	if e.OnUntrackRequest != nil {
 		e.OnUntrackRequest(gameID)
 	}
 	e.notifyGamesUpdate()
 }
 
-func (e *Engine) applyPeerRetrack(gameID string) {
+func (e *Engine) applyPeerRetrack(gameID string, at int64) {
+	unlock := e.lockGameOp(gameID)
+	defer unlock()
+	if e.staleGameOpLocked(gameID, at, "retrack") {
+		return
+	}
 	if e.OnRetrackRequest != nil {
 		e.OnRetrackRequest(gameID)
 	}
+}
+
+// lockGameOp takes the per-game operation lock and returns its release.
+//
+// One mutex per game rather than one for all: an untrack of one game must
+// not wait behind a restore of another, and the restore does real work —
+// database writes, a watcher start, a sync.
+func (e *Engine) lockGameOp(gameID string) func() {
+	e.gameOpMu.Lock()
+	if e.gameOpLocks == nil {
+		e.gameOpLocks = map[string]*sync.Mutex{}
+	}
+	mu, ok := e.gameOpLocks[gameID]
+	if !ok {
+		mu = &sync.Mutex{}
+		e.gameOpLocks[gameID] = mu
+	}
+	e.gameOpMu.Unlock()
+	mu.Lock()
+	return mu.Unlock
+}
+
+// staleGameOpLocked records at as the newest operation seen for the game and
+// reports whether it was in fact older than one already applied. The caller
+// holds the game's operation lock.
+func (e *Engine) staleGameOpLocked(gameID string, at int64, op string) bool {
+	if at == 0 {
+		return false
+	}
+	e.gameOpMu.Lock()
+	defer e.gameOpMu.Unlock()
+	if e.gameOpAt == nil {
+		e.gameOpAt = map[string]int64{}
+	}
+	if newest, ok := e.gameOpAt[gameID]; ok && at < newest {
+		if e.Log != nil {
+			e.Log("info", fmt.Sprintf("ignored a %s of %q that arrived after a newer change to it", op, gameID))
+		}
+		return true
+	}
+	e.gameOpAt[gameID] = at
+	return false
 }
 
 func (e *Engine) notifyPeerUpdate() {
