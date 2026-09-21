@@ -212,6 +212,13 @@ func TestRelayEavesdropper_CannotReadASyncedSave(t *testing.T) {
 		t.Errorf("a device in the room read the save's file name in the clear (frame %d); "+
 			"names are save data too", i)
 	}
+	// And the save FOLDER's path — which on a real machine starts with the
+	// account name. It travelled as a query parameter on the manifest
+	// request's route, which is unsealed by necessity, on every request.
+	// Found by watching the wire; the save bytes beside it were sealed.
+	if i, _ := spy.leaked([]string{"savePath=", a.SaveDir}); i >= 0 {
+		t.Errorf("a device in the room read the local save path in the clear (frame %d)", i)
+	}
 }
 
 // The update path, separately. The first sync is mostly manifest exchange; the

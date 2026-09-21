@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/opensave/opensave/internal/p2p/syncengine"
@@ -15,23 +14,31 @@ type wanTransport struct {
 	wan *WanClient
 }
 
-func (t *wanTransport) FetchManifest(ctx context.Context, peer syncengine.Peer, gameID string, q syncengine.ManifestQuery) (syncengine.ManifestResponse, error) {
-	params := url.Values{}
-	if q.Name != "" {
-		params.Set("name", q.Name)
-	}
-	if q.SavePath != "" {
-		params.Set("savePath", q.SavePath)
-	}
-	params.Set("isFile", fmt.Sprintf("%t", q.IsFile))
-	if q.AppID != "" {
-		params.Set("appId", q.AppID)
-	}
-	if q.CoverURL != "" {
-		params.Set("coverUrl", q.CoverURL)
-	}
+// manifestRequestBody is what a manifest request says about the game, so the
+// peer can auto-track it if it does not have it yet.
+//
+// In the body, which is sealed, and not in the route, which is not. These
+// used to travel as query parameters on the route — and the route has to stay
+// readable so the receiver can dispatch it — which put the game's name and
+// the FULL local save path in front of everyone in the relay room on every
+// manifest request. A save path is not anonymous: on Windows it starts with
+// the account name, and under it are the profile folder and whatever the
+// game calls its slots. Found by watching the wire from a third socket; the
+// save data itself was sealed, and this was sitting next to it in the clear.
+type manifestRequestBody struct {
+	Name     string `json:"name,omitempty"`
+	SavePath string `json:"savePath,omitempty"`
+	IsFile   bool   `json:"isFile"`
+	AppID    string `json:"appId,omitempty"`
+	CoverURL string `json:"coverUrl,omitempty"`
+}
 
-	raw, err := t.wan.Request(ctx, peer.ID, "/manifest/"+gameID+"?"+params.Encode(), "GET", nil)
+func (t *wanTransport) FetchManifest(ctx context.Context, peer syncengine.Peer, gameID string, q syncengine.ManifestQuery) (syncengine.ManifestResponse, error) {
+	body := manifestRequestBody{
+		Name: q.Name, SavePath: q.SavePath, IsFile: q.IsFile,
+		AppID: q.AppID, CoverURL: q.CoverURL,
+	}
+	raw, err := t.wan.Request(ctx, peer.ID, "/manifest/"+gameID, "GET", body)
 	if err != nil {
 		return syncengine.ManifestResponse{}, err
 	}

@@ -5,6 +5,18 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ## [Unreleased]
 
+### Security
+
+- **The save folder's path no longer travels in the clear.** Every manifest
+  request carried the game's name and its full local save path as query
+  parameters on the route — and the route is the one part of a relayed
+  message that has to stay readable, so the receiving device can tell what
+  is being asked. On a real machine that path begins with the account name.
+  The save bytes beside it were sealed; this was not. It travels in the
+  sealed body now. Found by sitting a third socket in a relay room and
+  reading what it was handed — there is a runnable demonstration of that in
+  `e2e/wire_demo_test.go` for anyone who would rather see it than be told.
+
 ### Added
 
 - **`opensave peers` shows whether each pairing is encrypted.** The same four

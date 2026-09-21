@@ -517,7 +517,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		return 200, w.engine.PeerGameList()
 
 	case strings.HasPrefix(route, "/manifest/"):
-		return w.serveManifest(route, msg.From)
+		return w.serveManifest(route, msg.Body, msg.From)
 
 	case strings.HasPrefix(route, "/blocks/"):
 		return w.serveBlocks(route, msg.Body)
@@ -552,17 +552,35 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 
 // peerID is the relay sender, needed only to record who is waiting when this
 // device is set to ask before tracking an unknown game.
-func (w *WanClient) serveManifest(route string, peerID string) (int, any) {
+func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID string) (int, any) {
 	u, err := url.Parse(route)
 	if err != nil {
 		return 400, map[string]string{"error": "bad route"}
 	}
 	gameID := u.Path[strings.LastIndex(u.Path, "/")+1:]
 
+	// The game's details come in the sealed body. A peer on an earlier
+	// build still sends them as query parameters on the route, so those are
+	// read when the body carries nothing — the body is the thing this side
+	// unsealed, so it is trusted first.
+	query := manifestQueryFromURL(u.Query())
+	if len(body) > 0 {
+		var b struct {
+			Name     string `json:"name"`
+			SavePath string `json:"savePath"`
+			IsFile   bool   `json:"isFile"`
+			AppID    string `json:"appId"`
+			CoverURL string `json:"coverUrl"`
+		}
+		if json.Unmarshal(body, &b) == nil && (b.Name != "" || b.SavePath != "") {
+			query = manifestGameQuery{Name: b.Name, SavePath: b.SavePath, IsFile: b.IsFile, AppID: b.AppID, CoverURL: b.CoverURL}
+		}
+	}
+
 	// Same auto-track + cover-backfill behavior as the LAN route — relay
 	// peers were previously auto-tracked without cover art, which is why
 	// covers didn't propagate between WAN-paired devices.
-	game, err := w.engine.ensureManifestGame(gameID, manifestQueryFromURL(u.Query()), peerID)
+	game, err := w.engine.ensureManifestGame(gameID, query, peerID)
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}
