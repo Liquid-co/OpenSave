@@ -55,7 +55,6 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			w.send(RelayMessage{
 				Type: "hello-reply", To: msg.From, From: localID,
 				DeviceName: settings.DeviceName, DeviceType: settings.DeviceType, Port: settings.Port,
-				Games:      w.gamesStateJSON(),
 				AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
 			})
 		}

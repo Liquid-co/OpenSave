@@ -17,6 +17,19 @@ All notable changes to OpenSave are documented here. This project adheres to
   reading what it was handed — there is a runnable demonstration of that in
   `e2e/wire_demo_test.go` for anyone who would rather see it than be told.
 
+- **Your game list is no longer announced to the room.** Every time a device
+  said hello, and again every thirty seconds after, it sent everyone holding
+  the room code a map of every game it tracks: the id, the active branch,
+  the latest snapshot and the manifest hash. Presence is the one message that
+  cannot be sealed — it is how devices find each other before any key exists
+  — so this went out in the clear, to devices you never paired with, and
+  nothing on the receiving end ever read it. Branch names are typed by you,
+  which made this the last piece of personal data still visible on the wire.
+  Gone, along with the timer that re-hashed every tracked save to keep it
+  fresh. What a relay room can still see is the id of a game while it is
+  actually being synced, because the request has to name what it is asking
+  for. The eavesdropper test now checks presence for this too.
+
 ### Added
 
 - **`opensave peers` shows whether each pairing is encrypted.** The same four

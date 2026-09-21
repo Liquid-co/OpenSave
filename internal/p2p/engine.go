@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/p2p/discovery"
 	"github.com/opensave/opensave/internal/p2p/pairing"
@@ -34,15 +33,6 @@ const reconcileEveryNTicks = 3
 // to unwind. Long enough for a transfer to notice cancellation and close its
 // files, short enough that quitting the app still feels immediate.
 const bgSyncShutdownGrace = 5 * time.Second
-
-// GameState is the lightweight per-game summary exchanged in pings/hellos
-// so peers can see what each other has without a full manifest fetch.
-type GameState struct {
-	LatestSnapshotID   string `json:"latestSnapshotId"`
-	LatestSnapshotTime int64  `json:"latestSnapshotTime"`
-	ActiveBranch       string `json:"activeBranch"`
-	ManifestHash       string `json:"manifestHash"`
-}
 
 // Engine owns all P2P state for one daemon.
 type Engine struct {
@@ -83,13 +73,7 @@ type Engine struct {
 	gameOpMu    sync.Mutex
 	gameOpAt    map[string]int64
 	gameOpLocks map[string]*sync.Mutex
-	stopRetry     chan struct{}
-
-	// Short-lived manifest-hash cache for ping/hello responses. Every
-	// incoming ping used to re-hash every tracked save from scratch —
-	// constant disk/CPU churn with the 20s retry loop pinging both ways.
-	hashCacheMu sync.Mutex
-	hashCache   map[string]cachedManifestHash
+	stopRetry   chan struct{}
 
 	// Replay protection for authenticated relay requests. Lazily built so a
 	// zero Engine (tests construct several) needs no extra setup.
@@ -145,14 +129,6 @@ func (e *Engine) GoSync(fn func(ctx context.Context)) {
 		fn(e.ctx)
 	}()
 }
-
-type cachedManifestHash struct {
-	hash string
-	at   time.Time
-}
-
-// manifestHashTTL bounds how stale a ping-response manifest hash can be.
-const manifestHashTTL = 20 * time.Second
 
 // StartDiscovery begins UDP LAN presence broadcasting. Paired peers seen
 // on the LAN flip online (triggering auto-sync when they were offline);
@@ -290,63 +266,6 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 	// behind.
 	e.Sync.OnlinePeers = e.OnlinePeers
 	return e
-}
-
-// LocalGamesState builds the per-game summary for ping/hello responses.
-func (e *Engine) LocalGamesState() map[string]GameState {
-	out := map[string]GameState{}
-	games, err := e.Store.ListGames()
-	if err != nil {
-		return out
-	}
-	for _, g := range games {
-		state := GameState{ActiveBranch: g.ActiveBranch}
-		if latest, err := e.Snapshots.LatestSnapshot(g.ID, ""); err == nil {
-			state.LatestSnapshotID = latest.ID
-			if t, err := time.Parse("2006-01-02T15:04:05.000Z", latest.Timestamp); err == nil {
-				state.LatestSnapshotTime = t.UnixMilli()
-			}
-		}
-		state.ManifestHash = e.manifestHashCached(g.ID, g.SavePath)
-		out[g.ID] = state
-	}
-	return out
-}
-
-// manifestHashCached returns the game's manifest hash, re-hashing at most
-// once per manifestHashTTL per game.
-func (e *Engine) manifestHashCached(gameID, savePath string) string {
-	e.hashCacheMu.Lock()
-	if c, ok := e.hashCache[gameID]; ok && time.Since(c.at) < manifestHashTTL {
-		e.hashCacheMu.Unlock()
-		return c.hash
-	}
-	e.hashCacheMu.Unlock()
-
-	hash := ""
-	if m, err := delta.BuildManifest(savePath); err == nil {
-		hash = m.ManifestHash()
-	}
-
-	e.hashCacheMu.Lock()
-	if e.hashCache == nil {
-		e.hashCache = map[string]cachedManifestHash{}
-	}
-	e.hashCache[gameID] = cachedManifestHash{hash: hash, at: time.Now()}
-	// Drop entries for games no longer being asked about.
-	//
-	// Bounded by the number of tracked games, so this was never going to run
-	// away — but an untracked game's entry stayed for the life of the process,
-	// and a cache with no removal at all is the shape of the leak this file's
-	// neighbours had. Swept here rather than on a timer: entries only appear
-	// when something asks, so that is when clearing them is worth doing.
-	for id, c := range e.hashCache {
-		if time.Since(c.at) > manifestHashTTL*4 {
-			delete(e.hashCache, id)
-		}
-	}
-	e.hashCacheMu.Unlock()
-	return hash
 }
 
 // requestAuthKey derives the key this device and one peer use to authenticate

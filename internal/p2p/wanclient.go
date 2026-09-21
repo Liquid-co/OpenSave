@@ -324,8 +324,8 @@ func (w *WanClient) run(ctx context.Context, gen int, settings store.Settings) {
 	w.send(RelayMessage{
 		Type: "hello", From: w.localPeerID(),
 		DeviceName: settings.DeviceName, DeviceType: settings.DeviceType, Port: settings.Port,
-		Games: w.gamesStateJSON(), PairedPeers: pairedIDs,
-		AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
+		PairedPeers: pairedIDs,
+		AppVersion:  version.Version, BuildTimeMs: version.BuildTimeMs(),
 	})
 	w.engine.notifyPeerUpdate()
 
@@ -345,7 +345,6 @@ func (w *WanClient) run(ctx context.Context, gen int, settings store.Settings) {
 				w.send(RelayMessage{
 					Type: "ping", From: w.localPeerID(),
 					DeviceName: s.DeviceName, DeviceType: s.DeviceType, Port: s.Port,
-					Games:      w.gamesStateJSON(),
 					AppVersion: version.Version, BuildTimeMs: version.BuildTimeMs(),
 				})
 				w.expireStalePeers()
@@ -750,10 +749,15 @@ func (w *WanClient) pairedPeerIDs() []string {
 	return ids
 }
 
-func (w *WanClient) gamesStateJSON() json.RawMessage {
-	raw, err := json.Marshal(w.engine.LocalGamesState())
-	if err != nil {
-		return json.RawMessage("{}")
-	}
-	return raw
-}
+// Presence carries no game list.
+//
+// It used to: every hello and every 30-second ping broadcast, to everyone in
+// the room, a map of every game this device tracks — the id (a slug of the
+// name, so effectively the name), the active branch, the latest snapshot id
+// and the manifest hash. Presence is the one message that cannot be sealed,
+// because it is how devices find each other before any key exists. And
+// nothing on the receiving side ever read it; it was carried over from the
+// original JS client and consumed by no one. So the beta disclosed a full
+// game library to every room member, in the clear, twice a minute, for
+// nothing. The field stays in RelayMessage so an older peer's frames still
+// decode; it is simply never filled.

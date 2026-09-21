@@ -167,11 +167,15 @@ func (e *Engine) handlePing(w http.ResponseWriter, r *http.Request) {
 		paired = err == nil
 	}
 	jsonOK(w, map[string]any{
-		"status":      "ok",
-		"paired":      paired,
-		"deviceName":  settings.DeviceName,
-		"deviceType":  settings.DeviceType,
-		"games":       e.LocalGamesState(),
+		"status":     "ok",
+		"paired":     paired,
+		"deviceName": settings.DeviceName,
+		"deviceType": settings.DeviceType,
+		// No game list. This route answers ANY caller — it sits outside the
+		// paired-peer group on purpose, so a device can be probed before
+		// pairing — and it used to hand every caller the full tracked
+		// library. Neither caller read it. See wanclient.go for the same
+		// removal from relay presence.
 		"appVersion":  version.Version,
 		"buildTimeMs": version.BuildTimeMs(),
 	})

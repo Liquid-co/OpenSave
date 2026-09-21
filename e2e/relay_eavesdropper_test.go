@@ -219,6 +219,44 @@ func TestRelayEavesdropper_CannotReadASyncedSave(t *testing.T) {
 	if i, _ := spy.leaked([]string{"savePath=", a.SaveDir}); i >= 0 {
 		t.Errorf("a device in the room read the local save path in the clear (frame %d)", i)
 	}
+	// And presence must not carry a game list. It used to: every hello and
+	// every ping broadcast a map of every tracked game — id, active branch,
+	// latest snapshot, manifest hash — to the whole room, read by nobody.
+	// Presence cannot be sealed (it is how devices find each other before
+	// any key exists), so the only fix is to not say it.
+	//
+	// Deliberately NOT asserted: that no unsealed frame contains the game
+	// id at all. Routed requests carry it in the route — /manifest/<id>,
+	// /sync/trigger/<id> — which is unsealed because the receiver dispatches
+	// on it. That is the "which games, by id" a relay can still see, and it
+	// is disclosed as such. What must not be there is everything beyond the
+	// id, and the list of ALL games from a device that is merely present.
+	for i, raw := range spy.snapshot() {
+		var f struct {
+			Type  string          `json:"type"`
+			Games json.RawMessage `json:"games"`
+		}
+		_ = json.Unmarshal(raw, &f)
+		switch f.Type {
+		case "hello", "hello-reply", "ping":
+		default:
+			continue
+		}
+		if len(f.Games) > 0 && string(f.Games) != "null" && string(f.Games) != "{}" {
+			t.Errorf("presence frame %d (%s) carries a game list: %s", i, f.Type, clipFrame(f.Games))
+		}
+		if strings.Contains(string(raw), "activeBranch") || strings.Contains(string(raw), "manifestHash") {
+			t.Errorf("presence frame %d (%s) carries per-game state in the clear: %s", i, f.Type, clipFrame(raw))
+		}
+	}
+}
+
+func clipFrame(raw []byte) string {
+	s := string(raw)
+	if len(s) > 240 {
+		return s[:240] + "…"
+	}
+	return s
 }
 
 // The update path, separately. The first sync is mostly manifest exchange; the
