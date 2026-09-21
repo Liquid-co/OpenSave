@@ -50,7 +50,7 @@ OpenSave gives **every** game the Steam Cloud experience:
 - **Cross-device game matching** — the same title tracked under different names on two machines (a Steam install here, a differently-named folder there) can be matched by Steam App ID or linked by hand. App-ID matching is opt-in, so two separate copies of a game are never merged without asking.
 - **A full command line** — `opensave` does everything the app does, for a Steam Deck in Game Mode or a headless server. See [Command line](#command-line).
 - **In-app updates** — one-click update from GitHub releases, pull a newer build straight from a paired device, or `opensave update` from the terminal.
-- **Privacy-first** — no accounts, no telemetry. The relay only routes WebSocket frames and writes no save to disk; the hop to it is encrypted, and you can self-host it so nobody else is on the path at all.
+- **Privacy-first** — no accounts, no telemetry. As of v2.4.0, saves sent through the relay are encrypted end to end between your own two devices: the relay routes frames it cannot read and writes nothing to disk. You can self-host it so nobody else is on the path at all.
 
 ## Screenshots
 
@@ -246,8 +246,9 @@ opensave sync --all
 ```
 
 Different networks instead of a LAN? Run `opensave relay join <code>` with the
-same made-up code on both devices — no port forwarding, and the relay only
-passes encrypted data through without storing it.
+same made-up code on both devices — no port forwarding. As of v2.4.0 the relay
+passes data it cannot read: saves are encrypted end to end between your two
+devices, and nothing is stored on the way.
 
 ### Run it permanently
 
@@ -410,7 +411,7 @@ reads like a crash rather than a clock running out. CI uses the same 2700s.
 
 ## Self-hosting the relay
 
-The relay is stateless — it brokers room codes and proxies OAuth, and writes no save to disk. What it forwards is encrypted in transit, but that encryption ends at the relay rather than at your other device, so a relay operator could read what passes through. Ours is `wss://relay.opensave.org`; run your own so that nobody but you is on the path:
+The relay is stateless — it brokers room codes and proxies OAuth, and writes no save to disk. As of v2.4.0, what it forwards is encrypted end to end: saves are sealed with a key only your two devices hold, so a relay operator cannot read what passes through. What a relay can still see is that two devices are talking, roughly how much data moves, and which games by id. Ours is `wss://relay.opensave.org`; run your own to keep even that to yourself:
 
 ```bash
 ./opensave-relay                     # listens on :8386
@@ -463,7 +464,7 @@ No accounts, no telemetry, no analytics. See [PRIVACY.md](PRIVACY.md) for the fu
 No. Devices sync directly. The optional relay only matters for syncing across the internet, and you can self-host it.
 
 **Is my data encrypted in transit?**
-Over the relay, yes, end-to-end: save data is sealed with a key derived from the two devices' own keys when they paired, so neither the relay nor anyone else in your room can read it. Both devices need a recent version, and a pairing made before key exchange existed has no key to use — re-pair those two to protect them.
+Over the relay, yes — end to end as of v2.4.0: save data is sealed with a key derived from the two devices' own keys when they paired, so neither the relay nor anyone else in your room can read it. Both devices need v2.4.0 or later, and an internet pairing made on an earlier version has no key to use — unpair and pair those two again to protect them. The app shows each device's state under **Devices**.
 
 LAN sync is direct, involves no relay, and is **not** encrypted: anything on the same network can read a save as it transfers. Treat a network you do not control as one that can see your saves.
 
