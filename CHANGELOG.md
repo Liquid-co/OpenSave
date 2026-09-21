@@ -3,7 +3,21 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0-beta.2] — 2026-09-22
+
+Two things the first beta still let a relay room see are now sealed too:
+the folder your saves live in — which on Windows begins with your account
+name — no longer travels with every sync request, and a device no longer
+announces the full list of games it tracks to everyone holding the room
+code. If you tested beta.1 over the internet, update.
+
+Each game now says when it was last confirmed the same on each of your
+devices, in the app and in `opensave status`, so "is my Deck up to date?"
+has an answer. The terminal shows the encryption state of each pairing the
+way the app does, `install.sh` can uninstall what it installed, and the
+"auto-delete old backups" setting — which has been in Settings for a long
+time doing nothing — now does what it says. A macOS build is attached for
+the first time.
 
 ### Security
 
@@ -47,6 +61,18 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 - `opensave help` now lists `pair <node id>` beside `pair <host>`; the relay
   form was only mentioned inside `opensave pair` itself.
+
+- **macOS downloads are on the releases page.** The macOS build has been
+  made and checked on every release since August; the publish step's file
+  list was never updated to attach it, so `SHA256SUMS` named three files
+  nobody could download and `install.sh` on a Mac failed at the download.
+  The `.dmg` and both tarballs are attached now, and a release refuses to
+  publish at all if any platform's build is missing rather than quietly
+  shipping without it. The build is not signed: macOS will ask you to allow
+  it under Privacy & Security the first time. Separately, the Debian and RPM
+  package names in `SHA256SUMS` now match what GitHub actually publishes
+  (it rewrites the `~` in a pre-release version to `.`), so the checksums
+  can be looked up.
 
 - **Tracking a game at the moment another device syncs it here no longer
   fails with a database error.** Track "Game One" on the Deck while the
