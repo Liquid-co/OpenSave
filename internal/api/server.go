@@ -129,6 +129,11 @@ func (s *Server) wireSyncProgress() {
 	sync.Progress.OnConflict = func(gameID string) {
 		s.BroadcastPeersUpdate()
 	}
+	// A peer finished pulling from us, or confirmed we match: the game's
+	// last-synced time moved with no sync running here to announce it.
+	sync.Progress.OnSyncConfirmed = func(gameID string) {
+		s.BroadcastGamesUpdate()
+	}
 }
 
 // Start listens on 0.0.0.0:<port> (port 0 picks a free one) and serves
@@ -388,6 +393,14 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		}
 		branches[name] = map[string]any{"name": name, "snapshots": wireSnaps}
 	}
+	// When this game was last confirmed the same as each paired device's
+	// copy: peer id to ISO 8601. Never an error to the client — a game with
+	// nothing recorded and a game whose lookup failed both show "never",
+	// which is the honest answer in both cases.
+	lastSyncedWith, _ := s.Daemon.Store.GameLastSynced(g.ID)
+	if lastSyncedWith == nil {
+		lastSyncedWith = map[string]string{}
+	}
 	return map[string]any{
 		"id":                 g.ID,
 		"name":               g.Name,
@@ -402,10 +415,11 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		// Whether the art cached for this game is explicit, so the client can
 		// blur it until someone asks to see it. An <img src> cannot read a
 		// response header, so it travels with the game rather than the image.
-		"coverExplicit": s.CoverIsExplicit(coverKeyFor(g)),
-		"syncIgnore":    g.SyncIgnore,
-		"branches":      branches,
-		"createdAt":     g.CreatedAt,
+		"coverExplicit":  s.CoverIsExplicit(coverKeyFor(g)),
+		"syncIgnore":     g.SyncIgnore,
+		"branches":       branches,
+		"createdAt":      g.CreatedAt,
+		"lastSyncedWith": lastSyncedWith,
 	}
 }
 

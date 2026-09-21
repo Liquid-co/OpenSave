@@ -1,13 +1,28 @@
 <script>
-  import { games, navigate, toast, syncActivity, askConfirm } from '../lib/stores.js';
+  import { onDestroy } from 'svelte';
+  import { games, peers, navigate, toast, syncActivity, askConfirm } from '../lib/stores.js';
   import { api, native, coverURL, gameCover } from '../lib/api.js';
   import { addExclusion, addNegation, removeDirectExclusion } from '../lib/ignorerules.js';
   import { savePathChange } from '../lib/savepath.js';
+  import { timeAgo } from '../lib/timeago.js';
 
   export let params = {};
 
   $: game = $games[params.gameId];
   $: activity = $syncActivity[params.gameId];
+
+  // Is my Deck up to date with THIS save? One entry per paired device, in
+  // the header, because it is the question a person opens a game to ask.
+  // "never" is listed too: it is the answer that explains why a save is not
+  // on the other machine. A device that was unpaired is not shown even if a
+  // stamp for it survived somewhere — the list is the paired devices.
+  $: syncedWith = Object.values($peers)
+    .map((p) => ({ id: p.id, name: p.name, at: game?.lastSyncedWith?.[p.id] ?? '' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // "4 min ago" must not freeze at the moment the page was opened.
+  let now = Date.now();
+  const tick = setInterval(() => (now = Date.now()), 30_000);
+  onDestroy(() => clearInterval(tick));
 
   let tab = 'snapshots';
   let newBranch = '';
@@ -549,6 +564,17 @@
           · <span class="syncing">syncing {activity.percentage ?? 0}%</span>
         {/if}
       </div>
+      {#if syncedWith.length > 0}
+        <div class="sub synced-with">
+          {#each syncedWith as d, i (d.id)}
+            {#if i > 0}<span class="sep">·</span>{/if}
+            <span class="device" title={d.at ? `${d.name}: last synced ${new Date(d.at).toLocaleString()}` : `${d.name} has never synced this game`}>
+              {d.name}
+              <span class:never={!d.at}>{d.at ? `synced ${timeAgo(d.at, now)}` : 'never synced'}</span>
+            </span>
+          {/each}
+        </div>
+      {/if}
     </div>
     <div class="head-actions">
       {#if game.appId || game.exePath}
@@ -1064,6 +1090,24 @@
   .syncing {
     color: var(--accent);
     font-weight: 600;
+  }
+  .synced-with {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 6px;
+  }
+  .synced-with .device {
+    white-space: nowrap;
+  }
+  .synced-with .device > span {
+    color: var(--text);
+  }
+  .synced-with .device > span.never {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .synced-with .sep {
+    color: var(--text-dim);
   }
   .head-actions {
     display: flex;

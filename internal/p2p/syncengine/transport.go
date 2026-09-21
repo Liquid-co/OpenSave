@@ -120,4 +120,9 @@ type ProgressCallbacks struct {
 	OnSyncComplete func(gameID string, ev ProgressEvent)
 	OnSyncError    func(gameID string, ev ProgressEvent)
 	OnConflict     func(gameID string)
+	// OnSyncConfirmed fires when a game's sync state changed without a sync
+	// running here: a peer reported that it finished, and this side verified
+	// it. The dashboard shows a last-synced time per game, and this is the
+	// one path that moves it with no OnSyncComplete to carry the news.
+	OnSyncConfirmed func(gameID string)
 }

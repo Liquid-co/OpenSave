@@ -1,0 +1,12 @@
+-- When each game was last confirmed the same on this device and one peer.
+--
+-- peers.last_synced answers "when did these two devices last finish a
+-- sync", across every game. It cannot answer the question a person actually
+-- has, which is about one game: is my Deck up to date with THIS save? For
+-- that the moment has to be recorded per game and per peer, which is exactly
+-- the key of this table.
+--
+-- Display only. The conflict guard's legacy fallback keeps reading the
+-- per-device stamp, on purpose: it decides what is a conflict, and its window
+-- is not to be moved by a feature about what to print.
+ALTER TABLE game_peer_sync_state ADD COLUMN last_synced TEXT NOT NULL DEFAULT '';

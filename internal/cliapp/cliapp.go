@@ -608,6 +608,10 @@ type statusReportGame struct {
 	// headless install has no other way to confirm what it just set.
 	MaxSnapshots       int `json:"maxSnapshots"`
 	MaxManualSnapshots int `json:"maxManualSnapshots"`
+	// When this game was last confirmed the same as each paired device's
+	// copy: peer id to ISO 8601. A device missing here has never finished a
+	// sync of this game.
+	LastSyncedWith map[string]string `json:"lastSyncedWith"`
 }
 
 type statusReportPeer struct {
@@ -653,6 +657,10 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 				snaps, _ := d.Store.ListSnapshots(g.ID, b)
 				entry.Branches[b] = len(snaps)
 			}
+			entry.LastSyncedWith, _ = d.Store.GameLastSynced(g.ID)
+			if entry.LastSyncedWith == nil {
+				entry.LastSyncedWith = map[string]string{}
+			}
 			report.Games = append(report.Games, entry)
 		}
 		if peers, err := d.Store.ListPeers(); err == nil {
@@ -674,6 +682,11 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 		return 0
 	}
 
+	peers, err := d.Store.ListPeers()
+	if err != nil {
+		peers = nil
+	}
+
 	section(fmt.Sprintf("Tracked games %s %d", symDot(), len(games)))
 	for _, g := range games {
 		fmt.Printf("  %s %s  %s\n", symBullet(), bold(g.Name), faint(g.ID))
@@ -689,11 +702,23 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 			fmt.Printf("      %s %s\n", padRight(label, 28),
 				faint(fmt.Sprintf("%d snapshot(s)", len(snaps))))
 		}
+		// One line per paired device: is that device up to date with THIS
+		// save? "never" is an answer too — it is the one that explains why
+		// a save is not on the other machine.
+		if len(peers) > 0 {
+			stamps, _ := d.Store.GameLastSynced(g.ID)
+			for _, p := range peers {
+				when := faint("never synced")
+				if ts := stamps[p.ID]; ts != "" {
+					when = "synced " + timeAgo(ts, time.Now())
+				}
+				fmt.Printf("      %s %s\n", padRight(faint(p.Name), 28), when)
+			}
+		}
 		fmt.Println()
 	}
 
-	peers, err := d.Store.ListPeers()
-	if err == nil && len(peers) > 0 {
+	if len(peers) > 0 {
 		section("Paired devices")
 		t := newTable("device", "type", "address", "status")
 		for _, p := range peers {

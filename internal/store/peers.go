@@ -231,6 +231,10 @@ type GamePeerSyncState struct {
 	// PushedHash is the state this device last handed to the peer. Seeing the
 	// peer hold it proves the push landed even if the peer's report was lost.
 	PushedHash string `db:"pushed_hash"`
+	// LastSynced is when this game was last confirmed the same on both sides,
+	// ISO 8601 like peers.last_synced. Empty until the first completed sync.
+	// For display; the conflict guard does not read it.
+	LastSynced string `db:"last_synced"`
 }
 
 // GetAgreedHash returns the last-convergence manifest hash for a
@@ -344,4 +348,40 @@ func (s *Store) SetSyncState(gameID, peerID string, files, dirs []string) error 
 		return fmt.Errorf("set sync state %s/%s: %w", gameID, peerID, err)
 	}
 	return nil
+}
+
+// UpdateGamePeerLastSynced stamps the moment a game was confirmed the same on
+// this device and one peer. The row is created if the sync finished before
+// any lineage was written for it, so the stamp is never silently dropped.
+func (s *Store) UpdateGamePeerLastSynced(gameID, peerID, timestampISO8601 string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO game_peer_sync_state (game_id, peer_id, last_synced_files, last_synced_dirs, last_synced)
+		VALUES (?, ?, '[]', '[]', ?)
+		ON CONFLICT(game_id, peer_id) DO UPDATE SET last_synced = excluded.last_synced`,
+		gameID, peerID, timestampISO8601)
+	if err != nil {
+		return fmt.Errorf("update game last_synced %s/%s: %w", gameID, peerID, err)
+	}
+	return nil
+}
+
+// GameLastSynced returns, for one game, when it was last confirmed in sync
+// with each peer: peer id to ISO 8601 timestamp. Peers it has never finished
+// a sync with are absent, as are peers no longer paired — a device that was
+// unpaired takes its rows with it.
+func (s *Store) GameLastSynced(gameID string) (map[string]string, error) {
+	var rows []struct {
+		PeerID     string `db:"peer_id"`
+		LastSynced string `db:"last_synced"`
+	}
+	if err := s.db.Select(&rows, `
+		SELECT peer_id, last_synced FROM game_peer_sync_state
+		WHERE game_id = ? AND last_synced != ''`, gameID); err != nil {
+		return nil, fmt.Errorf("game last_synced %s: %w", gameID, err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.PeerID] = r.LastSynced
+	}
+	return out, nil
 }

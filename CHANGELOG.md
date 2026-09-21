@@ -32,6 +32,22 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Each game says when it last synced with each device.** "Is my Deck up
+  to date with this save?" had no answer anywhere in the app: the one
+  last-synced time was per device, across every game, so the game that was
+  skipped read as fresh as the two that moved. Now a game's page lists every
+  paired device with the moment that device was last confirmed to hold the
+  same save — "Steam Deck synced 4 min ago", or "never synced", which is the
+  line that explains why a save is not on the other machine. The shelf shows
+  the most recent device per game. `opensave status` prints the same lines,
+  and its `--json` carries the raw stamps as `lastSyncedWith`.
+
+  The time moves on either side of a sync: when this device runs one, and
+  when the other device runs one and this side confirms the match, so the
+  window is told without anyone pressing anything. A device that does not
+  hold a game — untracked there, or waiting to be told where to keep it — is
+  not stamped for it, even though the two devices did talk.
+
 - **`opensave peers` shows whether each pairing is encrypted.** The same four
   states the app shows — encrypted, encrypting shortly, not encrypted, direct
   — from the same rule, so a terminal user on a Steam Deck in Game Mode is not

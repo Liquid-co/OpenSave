@@ -238,11 +238,36 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// Advancing it on a conflict (or error) would hide the still-unresolved
 		// divergence from the NEXT sync, causing the peer to silently overwrite
 		// its own changes instead of detecting the conflict and asking.
-		if res.Status != "conflict" && res.Status != "error" {
-			_ = e.Store.UpdatePeerLastSynced(peer.ID, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		switch res.Status {
+		case "conflict", "error":
+		case "peer_missing", "peer_awaiting_folder":
+			// The two devices talked and finished, which is what the
+			// per-device stamp has always recorded. But nothing of THIS game
+			// moved — the peer does not track it, or is still waiting to be
+			// told where to keep it — so the per-game stamp stays where it
+			// was. "Synced with Deck just now" on a game the Deck does not
+			// hold would be the exact wrong answer to the question it exists
+			// to answer.
+			_ = e.Store.UpdatePeerLastSynced(peer.ID, syncedNow())
+		default:
+			e.recordSynced(gameID, peer.ID)
 		}
 	}
 	return results, nil
+}
+
+// syncedNow is the timestamp format peers.last_synced has always used.
+func syncedNow() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }
+
+// recordSynced stamps the moment a game was confirmed the same on this
+// device and one peer: per device, which the conflict guard's legacy fallback
+// reads, and per game and device, which is what a person asking "is my Deck
+// up to date with this save?" needs. The two are written together so they
+// cannot disagree about when.
+func (e *Engine) recordSynced(gameID, peerID string) {
+	ts := syncedNow()
+	_ = e.Store.UpdatePeerLastSynced(peerID, ts)
+	_ = e.Store.UpdateGamePeerLastSynced(gameID, peerID, ts)
 }
 
 // SyncWithPeer runs the full state machine against a single peer.
@@ -840,7 +865,8 @@ func (e *Engine) ConfirmInSync(ctx context.Context, gameID string, peer Peer, cl
 	if claimedHash != "" && local.ManifestHash() == claimedHash {
 		e.persistLineage(gameID, peer.ID, local, local) // identical sides: lineage = our own paths
 		_ = e.Store.SetAgreedHash(gameID, peer.ID, claimedHash)
-		_ = e.Store.UpdatePeerLastSynced(peer.ID, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		e.recordSynced(gameID, peer.ID)
+		e.notifySyncConfirmed(gameID)
 		return
 	}
 	e.RefreshLineage(ctx, gameID, peer)
@@ -870,11 +896,23 @@ func (e *Engine) RefreshLineage(ctx context.Context, gameID string, peer Peer) {
 	}
 	e.persistLineage(gameID, peer.ID, local, remoteData.Manifest)
 	// Peer finished pulling: if both sides now hash identically, that's a
-	// verified convergence — ratchet the merge-base.
+	// verified convergence — ratchet the merge-base. It is also the moment
+	// the sync this side started actually finished, on both sides, checked
+	// here against our own files and clock — the same footing ConfirmInSync
+	// stamps on. The push itself was stamped when it was handed over; this
+	// moves the time to when the peer really held it.
 	if local.ManifestHash() == remoteData.Manifest.ManifestHash() {
 		_ = e.Store.SetAgreedHash(gameID, peer.ID, local.ManifestHash())
+		e.recordSynced(gameID, peer.ID)
+		e.notifySyncConfirmed(gameID)
 	}
 	e.refreshRootLineage(gameID, remoteData, peer)
+}
+
+func (e *Engine) notifySyncConfirmed(gameID string) {
+	if e.Progress.OnSyncConfirmed != nil {
+		e.Progress.OnSyncConfirmed(gameID)
+	}
 }
 
 // refreshRootLineage does the same for a game's extra save locations.

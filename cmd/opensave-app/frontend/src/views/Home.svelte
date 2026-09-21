@@ -1,7 +1,9 @@
 <script>
+  import { onDestroy } from 'svelte';
   import { gameList, peers, navigate, toast, syncActivity, askConfirm, settings } from '../lib/stores.js';
   import { api, native, coverURL, gameCover } from '../lib/api.js';
   import { backdropClose } from '../lib/backdrop.js';
+  import { timeAgo, latestOf } from '../lib/timeago.js';
   import CoverImage from '../components/CoverImage.svelte';
   // The scan screen's decisions live in a plain module so they can be tested
   // without opening the app — see scan.test.js, where each case is a mistake
@@ -25,6 +27,21 @@
   // reaches this list. Shown at the top of the page on purpose: an offer
   // nobody notices is worse than a folder guessed slightly wrong, because a
   // wrong guess is at least visible and can be moved afterwards.
+  // The shelf gets one line per game — the most recent paired device to
+  // confirm this save; the game's own page lists every device. Only stamps
+  // from devices still paired count, and only when there is a device to be
+  // up to date with: a library with nothing paired has nothing to say here.
+  $: hasPeers = Object.keys($peers).length > 0;
+  // The peer map is passed in rather than read from the store inside, so the
+  // template re-evaluates when a device is unpaired, not only when a game
+  // changes.
+  const lastSyncedWithPaired = (game, paired) =>
+    Object.fromEntries(Object.entries(game.lastSyncedWith ?? {}).filter(([id]) => id in paired));
+  // "4 min ago" must not freeze at the moment the shelf was opened.
+  let now = Date.now();
+  const tick = setInterval(() => (now = Date.now()), 30_000);
+  onDestroy(() => clearInterval(tick));
+
   let offeredGames = [];
   async function loadOfferedGames() {
     try {
@@ -772,6 +789,12 @@ It will not sync to this device. You can still track it yourself later, which un
           <div class="gc-meta">
             branch <strong>{game.activeBranch}</strong>
             · {Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0)} snapshots
+            {#if hasPeers}
+              {@const at = latestOf(lastSyncedWithPaired(game, $peers))}
+              · <span class="gc-synced" class:never={!at} title={at ? 'Most recent device — open the game to see each one' : 'No paired device has synced this game yet'}>
+                {at ? `synced ${timeAgo(at, now)}` : 'never synced'}
+              </span>
+            {/if}
           </div>
           <div class="gc-path" title={game.savePath}>{game.savePath}</div>
           {#if $syncActivity[game.id]?.state === 'running'}
@@ -1432,6 +1455,9 @@ It will not sync to this device. You can still track it yourself later, which un
     font-size: 0.78rem;
     color: var(--accent);
     font-weight: 600;
+  }
+  .gc-synced.never {
+    font-style: italic;
   }
 
   /* Games a peer syncs that this device has no folder for. Given the accent
