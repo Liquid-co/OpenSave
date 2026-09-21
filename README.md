@@ -223,6 +223,17 @@ To choose where it lands or pin a version:
 OPENSAVE_INSTALL_DIR=/usr/local/bin OPENSAVE_VERSION=v2.2.0 sh install.sh
 ```
 
+To remove it, the same script reverses exactly what it and `opensave service
+install` put down — binaries, aliases, the service, the autostart entry, the
+PATH line — and **leaves your settings and backups where they are**:
+
+```bash
+curl -fsSL https://opensave.org/install.sh | sh -s -- --uninstall
+```
+
+Add `--purge` to delete `~/.opensave` as well; it says what it is about to
+delete, counts your backup files, and asks you to type a confirmation first.
+
 Or build it: `go build -o opensave ./cmd/opensave-cli`
 
 ### Keeping it current

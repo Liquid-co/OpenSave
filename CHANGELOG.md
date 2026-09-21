@@ -3,6 +3,20 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`install.sh --uninstall` on Linux and SteamOS.** The installer can now
+  reverse itself: it stops the daemon, removes the binaries and aliases, the
+  user service, the autostart entry and the PATH line it added — and only the
+  ones that are OpenSave's, so a command of your own that happens to be called
+  `os` is left alone. It never touches `~/.opensave` — your settings, pairings
+  and every local backup stay where they are. To remove those too, `--purge`
+  says what it will delete, counts the backup files, and makes you type a
+  confirmation; piped from `curl` with no terminal to confirm on, it refuses.
+  Requested in #13.
+
 ## [2.4.0-beta.1] — 2026-09-14
 
 Saves that travel between your devices over the internet are now sealed so
