@@ -515,6 +515,12 @@ func (d *Daemon) ResyncWatchers() (started, stopped int) {
 	return started, stopped
 }
 
+// isDuplicateGameID reports the one insert failure that means "this id is
+// taken", as SQLite phrases it.
+func isDuplicateGameID(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: games.id")
+}
+
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
@@ -529,7 +535,8 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	// game (e.g. two Balatro folders) can be tracked instead of failing on
 	// the games.id UNIQUE constraint. An attempt to track the exact same
 	// folder again is a clear duplicate, not a new location.
-	if game.ID == "" {
+	derivedID := game.ID == ""
+	if derivedID {
 		if existing, err := d.Store.FindGameBySavePath(abs); err == nil {
 			return store.Game{}, fmt.Errorf("this folder is already tracked (as %q)", existing.Name)
 		}
@@ -577,6 +584,22 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	}
 
 	if err := d.Store.CreateGame(game); err != nil {
+		// The id was free a moment ago. If it is taken now, a paired device
+		// that syncs this same game reached us in between and auto-tracked
+		// it — the two sides create the game concurrently when both people
+		// track it within the same second, and the peer's copy lands under
+		// the id this one was about to use. That is not a failure to report
+		// as a database constraint: the game exists, and the only thing the
+		// person needs to know is where it was put, since the peer guessed a
+		// folder and they chose one.
+		if derivedID && isDuplicateGameID(err) {
+			if existing, getErr := d.Store.GetGame(game.ID); getErr == nil {
+				return store.Game{}, fmt.Errorf(
+					"%q already exists: another device synced it here while you were tracking it, and it is kept at %q. "+
+						"If your save lives at %q instead, change the game's save path",
+					existing.Name, existing.SavePath, game.SavePath)
+			}
+		}
 		return store.Game{}, err
 	}
 

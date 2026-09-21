@@ -48,6 +48,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 - `opensave help` now lists `pair <node id>` beside `pair <host>`; the relay
   form was only mentioned inside `opensave pair` itself.
 
+- **Tracking a game at the moment another device syncs it here no longer
+  fails with a database error.** Track "Game One" on the Deck while the
+  desktop's sync of Game One arrives, and the two create the game at the
+  same instant; the loser used to see "UNIQUE constraint failed: games.id
+  (1555)". It now says what happened — the other device added it, and
+  where it was put — so you can move its save path if the guessed folder
+  is not yours.
+
 ### Added
 
 - **Each game says when it last synced with each device.** "Is my Deck up
