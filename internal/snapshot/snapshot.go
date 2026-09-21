@@ -401,8 +401,9 @@ func (m *Manager) pruneGameAllBranches(game store.Game) (removed int, freed int6
 // branches immediately — the "clean up old snapshots now" action. It also
 // sweeps abandoned conflict-* branches (non-active leftovers, chiefly from
 // resolved "keep both" conflicts), whose snapshots the per-branch limit
-// never touches because each branch stays under it. Returns the total
-// snapshots removed and bytes freed.
+// never touches because each branch stays under it, and, when the setting
+// is on, the age rule (see PruneOlderThan). Returns the total snapshots
+// removed and bytes freed.
 func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 	games, err := m.Store.ListGames()
 	if err != nil {
@@ -426,7 +427,69 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 			freed += f
 		}
 	}
+	if settings, sErr := m.Store.GetSettings(); sErr == nil && settings.AutoDeleteBackups && settings.AutoDeleteDays > 0 {
+		r, f, _ := m.PruneOlderThan(settings.AutoDeleteDays)
+		removed += r
+		freed += f
+	}
 	return removed, freed, nil
+}
+
+// PruneOlderThan deletes the automatic snapshots older than the given number
+// of days — the ones OpenSave took on its own: before a sync replaced files,
+// on a save, at a conflict, mirrored from a peer. It is the "auto-delete old
+// backups" setting, which was stored and shown for a long time and enforced
+// by nothing.
+//
+// Two things are never deleted by age. Snapshots a person took themselves:
+// those are budgeted separately everywhere else and a date is no reason to
+// discard a deliberate save point. And the newest snapshot on every branch,
+// whatever its kind and age: a branch with no snapshot at all has nothing to
+// roll back to, and a game that has not been played in months is exactly the
+// one whose only copy must not disappear on a timer.
+//
+// Returns the game ids that lost at least one snapshot, so a caller can tell
+// the dashboard which histories changed.
+func (m *Manager) PruneOlderThan(days int) (removed int, freed int64, touched []string) {
+	if days <= 0 {
+		return 0, 0, nil
+	}
+	cutoff := m.now().Add(-time.Duration(days) * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")
+	games, err := m.Store.ListGames()
+	if err != nil {
+		return 0, 0, nil
+	}
+	for _, game := range games {
+		branches, err := m.Store.ListBranches(game.ID)
+		if err != nil {
+			continue
+		}
+		gameTouched := false
+		for _, branch := range branches {
+			snaps, err := m.Store.ListSnapshots(game.ID, branch) // newest first
+			if err != nil || len(snaps) < 2 {
+				continue
+			}
+			for _, snap := range snaps[1:] { // [0] is the newest: always kept
+				if !snap.IsSystemAuto || snap.Timestamp >= cutoff {
+					continue
+				}
+				if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
+					continue
+				}
+				if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
+					freed += info.Size()
+				}
+				os.Remove(snap.ZipPath)
+				removed++
+				gameTouched = true
+			}
+		}
+		if gameTouched {
+			touched = append(touched, game.ID)
+		}
+	}
+	return removed, freed, touched
 }
 
 // DeleteSnapshot removes one snapshot (metadata row + its zip file) for a

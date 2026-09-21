@@ -148,9 +148,11 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	prevStartOnBoot := false
 	prevHostRelay := false
 	prevRelayPort := 0
+	prevAutoDelete, prevAutoDeleteDays := false, 0
 	if prev, err := s.Daemon.Store.GetSettings(); err == nil {
 		prevSyncCode, prevRelayURL, prevStartOnBoot = prev.SyncCode, prev.RelayURL, prev.StartOnBoot
 		prevHostRelay, prevRelayPort = prev.HostRelay, prev.RelayPort
+		prevAutoDelete, prevAutoDeleteDays = prev.AutoDeleteBackups, prev.AutoDeleteDays
 	}
 
 	// Refuse a cleartext relay before it is stored, not at the dial: saves
@@ -189,6 +191,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// Host-relay toggle / port change starts or stops the in-process relay.
 	if updated.HostRelay != prevHostRelay || updated.RelayPort != prevRelayPort {
 		s.Daemon.P2P.ApplyRelayHosting(updated.HostRelay, updated.RelayPort)
+	}
+	// Switching age-based retention on, or shortening it, sweeps now rather
+	// than at the next scheduled pass, so the person who just chose it sees
+	// the history change while they are looking at it.
+	if updated.AutoDeleteBackups && (!prevAutoDelete || updated.AutoDeleteDays != prevAutoDeleteDays) {
+		go s.Daemon.PruneOldSnapshots()
 	}
 
 	writeJSON(w, http.StatusOK, s.settingsWire())

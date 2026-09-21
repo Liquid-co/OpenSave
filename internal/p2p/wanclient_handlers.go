@@ -303,9 +303,10 @@ func (w *WanClient) recordDiscovered(msg RelayMessage) {
 // serveRequest answers an HTTP-shaped RPC from a WAN peer — the relay-side
 // equivalent of the /api/p2p/* routes, with the same pairing guard.
 func (w *WanClient) serveRequest(ctx context.Context, msg RelayMessage) {
-	// Decrypt before routing. Done after the caller has already verified the
-	// message's MAC, so this only ever opens ciphertext that came from the
-	// paired peer.
+	// Decrypt before routing. The request's MAC is checked in routeRequest,
+	// after this, and that order is fine: the MAC covers the sealed bytes,
+	// which are left in place, and the seal is itself authenticated, so a
+	// body that opens at all came from the holder of this pairing's key.
 	if len(msg.SealedBody) > 0 {
 		plain, err := w.engine.openFromPeer(msg.From, msg.SealedBody)
 		if err != nil {

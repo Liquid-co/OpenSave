@@ -30,6 +30,24 @@ All notable changes to OpenSave are documented here. This project adheres to
   actually being synced, because the request has to name what it is asking
   for. The eavesdropper test now checks presence for this too.
 
+### Fixed
+
+- **"Auto-delete old backups" now deletes old backups.** The setting has
+  been in Settings, with a retention period, since the app was rewritten —
+  and nothing read it. Ticking it changed a row in the database and
+  nothing else. It now does what it says: the snapshots OpenSave took on
+  its own (before a sync replaced files, when a game saved, at a conflict)
+  that are older than the chosen period are removed, shortly after start
+  and every few hours, and at once when the setting is switched on.
+  Snapshots you took yourself are never deleted by age, and neither is the
+  newest one on any branch, however old — a game you have not played in a
+  year keeps its one copy. `opensave prune` applies the same rule when the
+  setting is on. The label now says "automatic snapshots" rather than
+  "pre-sync backups", because that is what they are.
+
+- `opensave help` now lists `pair <node id>` beside `pair <host>`; the relay
+  form was only mentioned inside `opensave pair` itself.
+
 ### Added
 
 - **Each game says when it last synced with each device.** "Is my Deck up

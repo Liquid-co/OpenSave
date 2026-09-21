@@ -270,8 +270,64 @@ func (d *Daemon) Start() error {
 		}
 	})
 
+	// Age-based retention, when the setting asks for it. Once shortly after
+	// start — a machine that is on for an hour a day would otherwise never
+	// reach a daily tick — and then every few hours, which is plenty for a
+	// rule measured in days.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(oldSnapshotFirstSweep)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.PruneOldSnapshots()
+		}
+		ticker := time.NewTicker(oldSnapshotSweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.PruneOldSnapshots()
+			}
+		}
+	})
+
 	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
 	return nil
+}
+
+// oldSnapshotFirstSweep is how long after start the first age sweep runs;
+// oldSnapshotSweepInterval is how often it runs after that.
+const (
+	oldSnapshotFirstSweep    = 2 * time.Minute
+	oldSnapshotSweepInterval = 6 * time.Hour
+)
+
+// PruneOldSnapshots applies the "auto-delete old backups" setting: the
+// automatic snapshots older than the configured number of days go, the
+// newest on each branch and every manual snapshot stay. A no-op with the
+// setting off. Safe to call from anywhere — the settings handler calls it
+// when the setting is switched on, so the effect is seen at once rather than
+// at the next sweep.
+func (d *Daemon) PruneOldSnapshots() {
+	settings, err := d.Store.GetSettings()
+	if err != nil || !settings.AutoDeleteBackups || settings.AutoDeleteDays <= 0 {
+		return
+	}
+	removed, freed, touched := d.Snapshots.PruneOlderThan(settings.AutoDeleteDays)
+	if removed == 0 {
+		return
+	}
+	d.Log.Log("info", fmt.Sprintf("removed %d automatic snapshot(s) older than %d days, freeing %.1f MB",
+		removed, settings.AutoDeleteDays, float64(freed)/(1024*1024)))
+	if d.OnGameChanged != nil {
+		for _, gameID := range touched {
+			d.OnGameChanged(gameID)
+		}
+	}
 }
 
 // Stop shuts the daemon down cleanly.

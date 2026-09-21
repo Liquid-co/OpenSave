@@ -398,11 +398,16 @@
       <h3 class="section-title">🧹 Retention</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.autoDeleteBackups} />
-        Auto-delete old pre-sync backups
+        Auto-delete old automatic snapshots
       </label>
+      <span class="hint">
+        The snapshots OpenSave takes on its own — before a sync replaces files, when a game saves, at a
+        conflict. Snapshots you took yourself are kept, and so is the newest one on every branch, whatever
+        its age. Runs shortly after start and every few hours.
+      </span>
       {#if draft.autoDeleteBackups}
         <div class="field" style="margin-top: 10px;">
-          <label for="s-days">Retention period</label>
+          <label for="s-days">Delete when older than</label>
           <select id="s-days" bind:value={draft.autoDeleteDays}>
             <option value={7}>7 days</option>
             <option value={14}>14 days</option>
