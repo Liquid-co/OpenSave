@@ -7,6 +7,20 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **`opensave peers` shows whether each pairing is encrypted.** The same four
+  states the app shows — encrypted, encrypting shortly, not encrypted, direct
+  — from the same rule, so a terminal user on a Steam Deck in Game Mode is not
+  the one person who cannot see the thing this release is about. A pairing
+  that needs to be made again is named, with the two commands that do it.
+  `--json` carries the raw fields and the pairing fingerprint for scripts.
+
+  Along the way: devices in your relay room are listed under their own
+  heading with their ids, instead of nameless under "Found on this network"
+  with a port that meant nothing; a device you are already paired with is no
+  longer offered as one to pair; and `opensave pair <node id>` now pairs
+  through the relay, where it used to look for a machine on the LAN called
+  "node_…" and report that it could not be reached.
+
 - **`install.sh --uninstall` on Linux and SteamOS.** The installer can now
   reverse itself: it stops the daemon, removes the binaries and aliases, the
   user service, the autostart entry and the PATH line it added — and only the

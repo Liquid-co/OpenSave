@@ -129,7 +129,27 @@ opensave relay status
 opensave peers                                          # they should find each other
 ```
 
-Then pair and approve exactly as on a LAN.
+The other device appears under **In your relay room** with its id. Pair with
+that id, then approve on the other side exactly as on a LAN:
+
+```bash
+opensave pair node_5e1c…                                # the id from `opensave peers`
+```
+
+### Is it encrypted?
+
+As of v2.4.0, saves sent through a relay are sealed between your two devices.
+`opensave peers` shows each pairing's state in its **PROTECTION** column:
+
+| Shown | Meaning |
+|---|---|
+| `encrypted` | Sealed end to end; the relay and anyone else in the room pass on bytes they cannot read |
+| `encrypting shortly` | The key is in place; encryption starts once that device next checks in |
+| `not encrypted` | Paired over the internet on an earlier version, so there is no key. Unpair and pair again — the output names which devices |
+| `direct` | Reached over your local network; no relay is involved (local traffic is not encrypted) |
+
+Both devices need v2.4.0 or later. `opensave peers --json` includes each
+pairing's fingerprint, which should read the same on both devices.
 
 The room code is the only thing deciding who can find whom, so treat it like a
 password. Somebody who has it can send your devices a pairing request — they

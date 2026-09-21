@@ -344,7 +344,8 @@ func cmdPeers(args []string) int {
 
 	if len(payload.Peers) > 0 {
 		section("Paired devices")
-		t := newTable("device", "status", "address", "id")
+		t := newTable("device", "status", "address", "protection", "id")
+		repair := []string{}
 		for id, p := range payload.Peers {
 			var status string
 			switch p.Status {
@@ -356,12 +357,26 @@ func cmdPeers(args []string) int {
 				status = warnText(p.Status)
 			}
 			addr := p.Address
-			if addr != "" && p.Port != 0 {
+			if addr == "relay" {
+				addr = "internet relay"
+			} else if addr != "" && p.Port != 0 {
 				addr = fmt.Sprintf("%s:%d", p.Address, p.Port)
 			}
-			t.add(bold(p.Name), status, faint(addr), faint(id))
+			t.add(bold(p.Name), status, faint(addr), p.protection(), faint(id))
+			if p.needsRepair() {
+				repair = append(repair, p.Name)
+			}
 		}
 		t.render()
+		// The one state a person can do something about, said where they
+		// can act on it. Pairing over a relay before 2.4.0 kept no key, so
+		// the fix is the same for every such device: unpair and pair again.
+		if len(repair) > 0 {
+			note("Not encrypted: pairing over the internet on an earlier version kept no key.")
+			note("Unpair and pair again to protect: " + strings.Join(repair, ", "))
+			hint("opensave unpair <id>", "opensave pair <other-device>")
+		}
+		note("Local-network pairings are direct and never touch a relay. Fingerprints: opensave peers --json")
 	}
 
 	if len(payload.PairingRequests) > 0 {
@@ -382,10 +397,31 @@ func cmdPeers(args []string) int {
 		hint("opensave pair approve <id>")
 	}
 
-	if len(payload.DiscoveredPeers) > 0 {
+	// The daemon lists LAN discoveries and relay room members together;
+	// they are found differently and paired differently, so they are shown
+	// apart. A room member used to appear under "on this network" with no
+	// name and a meaningless "relay:<port>" address.
+	// A device already paired is not a candidate to pair with; the daemon
+	// lists every room member regardless, so the paired ones are dropped
+	// here, as the app does.
+	lan, room := 0, 0
+	for _, d := range payload.DiscoveredPeers {
+		if _, paired := payload.Peers[d.ID]; paired {
+			continue
+		}
+		if d.IsWan {
+			room++
+		} else {
+			lan++
+		}
+	}
+	if lan > 0 {
 		section("Found on this network")
 		t := newTable("device", "address")
 		for _, d := range payload.DiscoveredPeers {
+			if _, paired := payload.Peers[d.ID]; paired || d.IsWan {
+				continue
+			}
 			addr := d.Address
 			if addr != "" && d.Port != 0 {
 				addr = fmt.Sprintf("%s:%d", d.Address, d.Port)
@@ -394,6 +430,22 @@ func cmdPeers(args []string) int {
 		}
 		t.render()
 		hint("opensave pair <address>")
+	}
+	if room > 0 {
+		section("In your relay room")
+		t := newTable("device", "id")
+		for _, d := range payload.DiscoveredPeers {
+			if _, paired := payload.Peers[d.ID]; paired || !d.IsWan {
+				continue
+			}
+			name := d.DeviceName
+			if name == "" {
+				name = d.Name
+			}
+			t.add(bold(name), faint(d.ID))
+		}
+		t.render()
+		hint("opensave pair <id>")
 	}
 
 	if len(payload.Peers) == 0 && len(payload.DiscoveredPeers) == 0 && len(payload.PairingRequests) == 0 {
@@ -411,16 +463,15 @@ func cmdPeers(args []string) int {
 // peersPayload is what /api/peers returns: the whole dashboard peer state,
 // not just paired devices.
 type peersPayload struct {
-	Peers map[string]struct {
-		Name    string `json:"name"`
-		Status  string `json:"status"`
-		Address string `json:"address"`
-		Port    int    `json:"port"`
-	} `json:"peers"`
+	Peers           map[string]peerRow `json:"peers"`
 	DiscoveredPeers []struct {
-		Name    string `json:"name"`
-		Address string `json:"address"`
-		Port    int    `json:"port"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		// A relay room member says deviceName where a LAN peer says name.
+		DeviceName string `json:"deviceName"`
+		Address    string `json:"address"`
+		Port       int    `json:"port"`
+		IsWan      bool   `json:"isWan"`
 	} `json:"discoveredPeers"`
 	PairingRequests []struct {
 		PeerID string `json:"peerId"`
@@ -432,6 +483,65 @@ type peersPayload struct {
 		Port       int    `json:"port"`
 		IsWan      bool   `json:"isWan"`
 	} `json:"pairingRequests"`
+}
+
+// peerRow is one paired device as the daemon describes it.
+//
+// The protection fields are what the app's per-device badge is built from;
+// see PeerProtection in internal/p2p/payloadseal.go. They are pointers so a
+// daemon from before they existed decodes to nil rather than to "not
+// encrypted" — an older daemon has not said the pairing is unprotected, it
+// has said nothing, and the two must not print the same.
+type peerRow struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+
+	Encrypted   *bool  `json:"encrypted"`
+	HasKey      *bool  `json:"hasKey"`
+	OverRelay   *bool  `json:"overRelay"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// protection renders the same four states the app shows, by the same rule.
+//
+// The rule lives in the daemon and in the app's protection.js, and this is
+// the third copy; all three must agree or a terminal user and an app user
+// looking at the same pairing get different answers. The condition for
+// "encrypted" is the one the send path applies — a key exists and the peer
+// has proved it holds the matching half — so this can never claim more
+// protection than is actually in force.
+func (p peerRow) protection() string {
+	overRelay := p.Address == "relay"
+	if p.OverRelay != nil {
+		overRelay = *p.OverRelay
+	}
+	if !overRelay {
+		return faint(sym("🖧 direct", "direct"))
+	}
+	if p.OverRelay == nil && p.Encrypted == nil {
+		// A relay pairing on a daemon that does not report protection at
+		// all. Saying "not encrypted" would be a guess dressed as a fact.
+		return faint(sym("? unknown", "unknown"))
+	}
+	if p.Encrypted != nil && *p.Encrypted {
+		return okText(sym("🔒 encrypted", "encrypted"))
+	}
+	if p.HasKey != nil && *p.HasKey {
+		return warnText(sym("🔐 encrypting shortly", "encrypting shortly"))
+	}
+	return warnText(sym("🔓 not encrypted", "not encrypted"))
+}
+
+// needsRepair reports whether the only fix for this pairing is to make it
+// again — a relay pairing with no key at all.
+func (p peerRow) needsRepair() bool {
+	overRelay := p.Address == "relay"
+	if p.OverRelay != nil {
+		overRelay = *p.OverRelay
+	}
+	return overRelay && p.HasKey != nil && !*p.HasKey
 }
 
 func decodePeersPayload(raw []byte) (peersPayload, error) {
@@ -516,8 +626,32 @@ func cmdPair(args []string) int {
 		return 0
 
 	default:
-		// `opensave pair <host[:port]>` — ask that device to pair.
-		host := args[0]
+		target := args[0]
+
+		// `opensave pair <node id>` — a device in the relay room. The ids
+		// are what `opensave peers` lists under "In your relay room", and
+		// the daemon pairs through the relay when given one. Sending it as
+		// a hostname, as this used to, asked the LAN for a machine called
+		// "node_…" and reported that it could not be reached.
+		if strings.HasPrefix(target, "node_") {
+			raw, err := daemonRequest("POST", "/api/peers/pair", map[string]any{
+				"peerId":  target,
+				"address": "relay",
+			})
+			if err != nil {
+				return fail(asJSON, err)
+			}
+			if asJSON {
+				return emitRawJSON(raw)
+			}
+			success("Pairing request sent through the relay to %s.", bold(target))
+			note("Pairing is mutual — approve it on that device to finish.")
+			hint("opensave pair requests     (on the other device)")
+			return 0
+		}
+
+		// `opensave pair <host[:port]>` — ask a device on the LAN to pair.
+		host := target
 		port := 8383
 		if h, p, ok := strings.Cut(host, ":"); ok {
 			host = h
@@ -542,6 +676,7 @@ func cmdPair(args []string) int {
 
 const pairUsage = `usage:
   opensave pair <host[:port]>     Ask a device on your LAN to pair
+  opensave pair <node id>         Ask a device in your relay room to pair (see: opensave peers)
   opensave pair requests          Show incoming pairing requests
   opensave pair approve <peerId>  Approve an incoming request
   opensave pair reject <peerId>   Reject an incoming request`
