@@ -40,11 +40,11 @@ func (s *Store) SetAgreedHashForRoot(gameID, peerID, root, hash string) error {
 	}
 	_, err := s.db.Exec(`
 		INSERT INTO game_root_sync_state (game_id, peer_id, root, agreed_hash)
-		VALUES (?, ?, ?, ?)
+		SELECT ?, ?, ?, ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET
 			agreed_hash = excluded.agreed_hash,
 			pushed_hash = ''`,
-		gameID, peerID, root, hash)
+		gameID, peerID, root, hash, gameID)
 	if err != nil {
 		return fmt.Errorf("set agreed hash %s/%s/%s: %w", gameID, peerID, root, err)
 	}
@@ -74,9 +74,9 @@ func (s *Store) SetPushedHashForRoot(gameID, peerID, root, hash string) error {
 	}
 	_, err := s.db.Exec(`
 		INSERT INTO game_root_sync_state (game_id, peer_id, root, pushed_hash)
-		VALUES (?, ?, ?, ?)
+		SELECT ?, ?, ?, ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET pushed_hash = excluded.pushed_hash`,
-		gameID, peerID, root, hash)
+		gameID, peerID, root, hash, gameID)
 	if err != nil {
 		return fmt.Errorf("set pushed hash %s/%s/%s: %w", gameID, peerID, root, err)
 	}
@@ -146,11 +146,11 @@ func (s *Store) SetSyncStateForRoot(gameID, peerID, root string, files, dirs []s
 	}
 	_, err = s.db.Exec(`
 		INSERT INTO game_root_sync_state (game_id, peer_id, root, last_synced_files, last_synced_dirs)
-		VALUES (?, ?, ?, ?, ?)
+		SELECT ?, ?, ?, ?, ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET
 			last_synced_files = excluded.last_synced_files,
 			last_synced_dirs  = excluded.last_synced_dirs`,
-		gameID, peerID, root, string(filesJSON), string(dirsJSON))
+		gameID, peerID, root, string(filesJSON), string(dirsJSON), gameID)
 	if err != nil {
 		return fmt.Errorf("set root sync state %s/%s/%s: %w", gameID, peerID, root, err)
 	}

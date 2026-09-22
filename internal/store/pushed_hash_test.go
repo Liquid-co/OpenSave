@@ -6,6 +6,7 @@ import (
 
 func TestPushedHashRoundTrip(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game")
 
 	if got := s.GetPushedHash("game", "peer"); got != "" {
 		t.Errorf("a game/peer with no row returns %q, want empty", got)
@@ -25,6 +26,7 @@ func TestPushedHashRoundTrip(t *testing.T) {
 // base backwards onto it and skip a conflict that should have been raised.
 func TestSetAgreedHashClearsThePushRecord(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game")
 
 	if err := s.SetPushedHash("game", "peer", "pushed-state"); err != nil {
 		t.Fatal(err)
@@ -46,6 +48,7 @@ func TestSetAgreedHashClearsThePushRecord(t *testing.T) {
 // peer's merge-base using evidence from the other.
 func TestPushedHashIsPerGameAndPeer(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game1", "game2")
 
 	if err := s.SetPushedHash("game1", "peerA", "hash-A"); err != nil {
 		t.Fatal(err)

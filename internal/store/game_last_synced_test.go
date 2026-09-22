@@ -8,6 +8,7 @@ import "testing"
 // did not.
 func TestGameLastSynced_PerGamePerPeer(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game", "other")
 
 	got, err := s.GameLastSynced("game")
 	if err != nil {

@@ -237,6 +237,28 @@ type GamePeerSyncState struct {
 	LastSynced string `db:"last_synced"`
 }
 
+// gameIsTracked guards every write that CREATES a row describing what a game
+// agreed with a peer.
+//
+// Untracking a game clears all of it, and then a write already in flight puts
+// some of it back: these are upserts, the table has no foreign key to games,
+// and the writers — a sync finishing its own work, and a peer's report of
+// what it just pulled, which arrives over the network and cannot be ordered
+// against a local untrack — do not ask whether the game is still tracked.
+//
+// Game ids are slugs, so tracking the same folder again produces the same id
+// and the game comes back holding a record of what it agreed with a peer in a
+// previous life. A file removed from the folder while it was untracked then
+// reads as a deletion to propagate, and the peer — which did nothing — loses
+// it. Observed as a CI failure on Windows under the race detector, and
+// reproducible on demand by making the late write by hand.
+//
+// Guarded here, at the single statement every such write goes through, rather
+// than at the call sites, so the next writer added cannot miss it. Updates to
+// a row that already exists are untouched: the game was tracked when it was
+// written, and UntrackGame removes the row itself.
+const gameIsTracked = `EXISTS (SELECT 1 FROM games WHERE id = ?)`
+
 // GetAgreedHash returns the last-convergence manifest hash for a
 // game+peer ("" if never converged).
 func (s *Store) GetAgreedHash(gameID, peerID string) string {
@@ -261,11 +283,11 @@ func (s *Store) GetAgreedHash(gameID, peerID string) string {
 func (s *Store) SetAgreedHash(gameID, peerID, hash string) error {
 	_, err := s.db.Exec(`
 		INSERT INTO game_peer_sync_state (game_id, peer_id, last_synced_files, last_synced_dirs, agreed_hash)
-		VALUES (?, ?, '[]', '[]', ?)
+		SELECT ?, ?, '[]', '[]', ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id) DO UPDATE SET
 			agreed_hash = excluded.agreed_hash,
 			pushed_hash = ''`,
-		gameID, peerID, hash)
+		gameID, peerID, hash, gameID)
 	if err != nil {
 		return fmt.Errorf("set agreed hash %s/%s: %w", gameID, peerID, err)
 	}
@@ -290,9 +312,9 @@ func (s *Store) GetPushedHash(gameID, peerID string) string {
 func (s *Store) SetPushedHash(gameID, peerID, hash string) error {
 	_, err := s.db.Exec(`
 		INSERT INTO game_peer_sync_state (game_id, peer_id, last_synced_files, last_synced_dirs, pushed_hash)
-		VALUES (?, ?, '[]', '[]', ?)
+		SELECT ?, ?, '[]', '[]', ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id) DO UPDATE SET pushed_hash = excluded.pushed_hash`,
-		gameID, peerID, hash)
+		gameID, peerID, hash, gameID)
 	if err != nil {
 		return fmt.Errorf("set pushed hash %s/%s: %w", gameID, peerID, err)
 	}
@@ -339,11 +361,11 @@ func (s *Store) SetSyncState(gameID, peerID string, files, dirs []string) error 
 	}
 	_, err = s.db.Exec(`
 		INSERT INTO game_peer_sync_state (game_id, peer_id, last_synced_files, last_synced_dirs)
-		VALUES (?, ?, ?, ?)
+		SELECT ?, ?, ?, ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id) DO UPDATE SET
 			last_synced_files = excluded.last_synced_files,
 			last_synced_dirs = excluded.last_synced_dirs`,
-		gameID, peerID, string(filesJSON), string(dirsJSON))
+		gameID, peerID, string(filesJSON), string(dirsJSON), gameID)
 	if err != nil {
 		return fmt.Errorf("set sync state %s/%s: %w", gameID, peerID, err)
 	}
@@ -356,9 +378,9 @@ func (s *Store) SetSyncState(gameID, peerID string, files, dirs []string) error 
 func (s *Store) UpdateGamePeerLastSynced(gameID, peerID, timestampISO8601 string) error {
 	_, err := s.db.Exec(`
 		INSERT INTO game_peer_sync_state (game_id, peer_id, last_synced_files, last_synced_dirs, last_synced)
-		VALUES (?, ?, '[]', '[]', ?)
+		SELECT ?, ?, '[]', '[]', ? WHERE `+gameIsTracked+`
 		ON CONFLICT(game_id, peer_id) DO UPDATE SET last_synced = excluded.last_synced`,
-		gameID, peerID, timestampISO8601)
+		gameID, peerID, timestampISO8601, gameID)
 	if err != nil {
 		return fmt.Errorf("update game last_synced %s/%s: %w", gameID, peerID, err)
 	}

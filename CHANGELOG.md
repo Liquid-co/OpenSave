@@ -3,6 +3,23 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **A peer could lose a file when a game was untracked and tracked again.**
+  Untracking clears everything a game had agreed with its paired devices —
+  which files both sides hold, what they last converged on. A sync already
+  in flight could write some of that back a moment later, because the write
+  is an upsert and nothing asked whether the game was still tracked. Track
+  the same folder again and it produces the same id, so the game returned
+  holding a record from its previous life: anything removed from the folder
+  while it was untracked then read as a deletion to send, and the other
+  device — which had done nothing — lost the file. Writes that would create
+  such a record for a game that is not tracked are now refused at the one
+  statement they all go through. Found in a CI run on Windows and then
+  reproduced on demand.
+
 ## [2.4.0-beta.2] — 2026-09-22
 
 Two things the first beta still let a relay room see are now sealed too:

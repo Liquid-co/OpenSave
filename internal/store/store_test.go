@@ -18,6 +18,26 @@ func openTestStore(t *testing.T) *Store {
 	return s
 }
 
+// trackGames creates the game rows a lineage test writes against.
+//
+// Needed since a write that would CREATE lineage for a game that is not
+// tracked is refused — see gameIsTracked. These tests used to write against
+// ids that were never in the games table, which is a state the daemon cannot
+// produce: every path that records lineage has already loaded the game.
+func trackGames(t *testing.T, s *Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if _, err := s.GetGame(id); err == nil {
+			continue
+		}
+		if err := s.CreateGame(Game{
+			ID: id, Name: id, SavePath: filepath.Join(t.TempDir(), id), ActiveBranch: "main",
+		}); err != nil {
+			t.Fatalf("creating game %q for the test: %v", id, err)
+		}
+	}
+}
+
 // TestUnknownColumnsDontBreakReads guards the downgrade-bricks-the-app bug:
 // a database written by a NEWER build carries columns this build's structs
 // have never heard of. Because the queries use SELECT *, an intolerant handle
@@ -238,6 +258,7 @@ func TestSnapshotsBeyondRetention(t *testing.T) {
 
 func TestPeerPairingAndSyncStateLifecycle(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game1")
 	peer := Peer{ID: "node_abc", Name: "Laptop", Address: "192.168.1.50", Port: 8383, Status: "online"}
 	if err := s.UpsertPeer(peer); err != nil {
 		t.Fatalf("UpsertPeer() error = %v", err)
@@ -307,6 +328,7 @@ func TestPeerLastSyncedWireShape(t *testing.T) {
 
 func TestPrunePeersAtAddress(t *testing.T) {
 	s := openTestStore(t)
+	trackGames(t, s, "game-1")
 	// Old identity of the machine at 10.0.0.2 (pre-reinstall)...
 	if err := s.UpsertPeer(Peer{ID: "old-id", Name: "LAPTOP-OLD", Address: "10.0.0.2", Port: 8383, Status: "offline"}); err != nil {
 		t.Fatal(err)
