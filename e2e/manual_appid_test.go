@@ -22,8 +22,21 @@ func TestManualAppID_DrivesCrossDeviceMatching(t *testing.T) {
 	a.PairWith(b)
 
 	// Both devices opt in to App-ID matching; it is off by default.
-	a.API(http.MethodPost, "/api/settings", map[string]any{"matchByAppId": true}, nil)
-	b.API(http.MethodPost, "/api/settings", map[string]any{"matchByAppId": true}, nil)
+	//
+	// And tracking does not sync by itself here. Tracking a game fires a
+	// sync at the peers in the background, which in this test would carry
+	// the game BEFORE the App ID below is set — so the peer, unable to match
+	// it, auto-tracks it as a second game, and every later sync resolves to
+	// that one by id. The save then lands in the auto-tracked folder and the
+	// wait below times out with an empty file, which is exactly how this
+	// test failed on CI: five of the last eight red runs, always here, always
+	// after waiting out the full scaled timeout. The App ID is set by hand
+	// after tracking because that is what a person does; what must not be in
+	// the middle of it is an unrelated sync.
+	for _, d := range []*testutil.TestDaemon{a, b} {
+		d.API(http.MethodPost, "/api/settings",
+			map[string]any{"matchByAppId": true, "autoSyncOnTrack": false}, nil)
+	}
 
 	// The same game, tracked under names that share nothing.
 	a.WriteSave("slot1.sav", "from-A")
@@ -49,6 +62,21 @@ func TestManualAppID_DrivesCrossDeviceMatching(t *testing.T) {
 	a.API(http.MethodGet, "/api/games", nil, &readBack)
 	if got := readBack[gameA].AppID; got != appID {
 		t.Fatalf("app id read back as %q, want %q", got, appID)
+	}
+
+	// Nothing has synced yet, so the peer still holds exactly the one game it
+	// tracked itself. Asserted rather than assumed: if a stray sync ever
+	// slips in again, this says so in a line instead of as a timeout four
+	// minutes later.
+	var beforeSync map[string]struct {
+		Name     string `json:"name"`
+		SavePath string `json:"savePath"`
+	}
+	b.API(http.MethodGet, "/api/games", nil, &beforeSync)
+	if len(beforeSync) != 1 {
+		t.Fatalf("the peer holds %d games before the first sync, want 1 — something "+
+			"synced before the App IDs were set, so the peer auto-tracked a duplicate: %+v",
+			len(beforeSync), beforeSync)
 	}
 
 	// The payoff: two names with nothing in common now sync, because the
