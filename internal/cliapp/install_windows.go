@@ -31,13 +31,54 @@ func normalizePathEntry(p string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(p), `\/`))
 }
 
+// aliasNames are the short spellings installed beside the binary, and
+// aliasSuffix is what they are called on this platform.
+var aliasNames = []string{"os", "opensave-cli"}
+
+const aliasSuffix = ".cmd"
+
+// aliasPointsAtUs reports whether a shim is still one of ours — it names our
+// binary and nothing else. An `os.cmd` somebody else wrote, or edited since,
+// is theirs, and an uninstaller that deletes a file because it recognises
+// the NAME has not checked anything at all.
+func aliasPointsAtUs(alias, dir string) bool {
+	body, err := os.ReadFile(alias)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(body), installedName)
+}
+
+// removeInstalledBinary deletes the installed copy.
+//
+// On Windows the file being removed may be the very process doing the
+// removing — `opensave install --uninstall` run from the installed copy —
+// and Windows will not delete a running image. Renaming it is allowed, so
+// the copy is moved aside and marked for deletion at the next reboot; the
+// name it occupied is free immediately, which is what a reinstall needs.
+func removeInstalledBinary(installed string) error {
+	if err := os.Remove(installed); err == nil {
+		return nil
+	}
+	aside := installed + ".old"
+	_ = os.Remove(aside)
+	if err := os.Rename(installed, aside); err != nil {
+		return err
+	}
+	if p, err := windows.UTF16PtrFromString(aside); err == nil {
+		// MOVEFILE_DELAY_UNTIL_REBOOT, with no destination: delete on boot.
+		_ = windows.MoveFileEx(p, nil, windows.MOVEFILE_DELAY_UNTIL_REBOOT)
+	}
+	return nil
+}
+
 // writeAliases drops `os` and `opensave-cli` next to the binary as .cmd
 // shims. Shims rather than copies of a 15 MB binary, and rather than
 // symlinks, which need admin rights or Developer Mode.
 func writeAliases(dir string) []string {
 	var out []string
-	for _, alias := range []string{"os", "opensave-cli"} {
-		shim := filepath.Join(dir, alias+".cmd")
+	for _, alias := range aliasNames {
+		shim := filepath.Join(dir, alias+aliasSuffix)
 		body := "@echo off\r\n\"%~dp0" + installedName + "\" %*\r\n"
 		if err := os.WriteFile(shim, []byte(body), 0o755); err == nil {
 			out = append(out, shim)
@@ -59,6 +100,68 @@ func nextPathValue(current, dir string) string {
 		return dir
 	}
 	return strings.TrimRight(current, ";") + ";" + dir
+}
+
+// pathWithout returns the PATH value with dir removed, or "" when dir is not
+// on it and nothing needs writing.
+//
+// Split out for the same reason nextPathValue is: this is the half that can
+// damage a PATH, and it must be testable without touching HKCU. Entries are
+// compared the way pathContains compares them — case-insensitively, ignoring
+// a trailing separator — so the spelling the user has is the one that is
+// matched, and every other entry is written back exactly as it was found,
+// %VAR% references included.
+func pathWithout(current, dir string) string {
+	if !pathContains(current, dir) {
+		return ""
+	}
+	want := normalizePathEntry(dir)
+	kept := make([]string, 0, 8)
+	for _, entry := range strings.Split(current, ";") {
+		if strings.TrimSpace(entry) == "" {
+			continue
+		}
+		if normalizePathEntry(entry) == want {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return strings.Join(kept, ";")
+}
+
+// removeFromPath takes dir back off the user's PATH, reporting whether it
+// changed anything. The mirror of ensureOnPath, and it preserves the value
+// type for the same reason.
+func removeFromPath(dir string) (bool, error) {
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return false, fmt.Errorf("open HKCU\\Environment: %w", err)
+	}
+	defer key.Close()
+
+	current, valType, err := key.GetStringValue("Path")
+	if err == registry.ErrNotExist {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read PATH: %w", err)
+	}
+	updated := pathWithout(current, dir)
+	if updated == "" && !pathContains(current, dir) {
+		return false, nil
+	}
+
+	switch valType {
+	case registry.EXPAND_SZ:
+		err = key.SetExpandStringValue("Path", updated)
+	default:
+		err = key.SetStringValue("Path", updated)
+	}
+	if err != nil {
+		return false, fmt.Errorf("write PATH: %w", err)
+	}
+	broadcastEnvironmentChange()
+	return true, nil
 }
 
 // ensureOnPath adds dir to the user's PATH, reporting whether it changed

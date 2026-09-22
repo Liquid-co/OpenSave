@@ -30,10 +30,36 @@ func normalizePathEntry(p string) string {
 
 // writeAliases links `os` and `opensave-cli` to the installed binary.
 // Symlinks are free here, unlike on Windows.
+// aliasNames are the short spellings installed beside the binary. They are
+// symlinks here, so they carry no suffix.
+var aliasNames = []string{"os", "opensave-cli"}
+
+const aliasSuffix = ""
+
+// aliasPointsAtUs reports whether a symlink still points at our binary. A
+// program of somebody else's called `os` is not ours to delete, and on a
+// shared ~/.local/bin that is not a hypothetical.
+func aliasPointsAtUs(alias, dir string) bool {
+	target, err := os.Readlink(alias)
+	if err != nil {
+		return false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(alias), target)
+	}
+	return filepath.Clean(target) == filepath.Join(dir, installedName)
+}
+
+// removeInstalledBinary deletes the installed copy. Unix unlinks a running
+// binary happily, so there is nothing to work around.
+func removeInstalledBinary(installed string) error {
+	return os.Remove(installed)
+}
+
 func writeAliases(dir string) []string {
 	var out []string
-	for _, alias := range []string{"os", "opensave-cli"} {
-		link := filepath.Join(dir, alias)
+	for _, alias := range aliasNames {
+		link := filepath.Join(dir, alias+aliasSuffix)
 		if _, err := os.Lstat(link); err == nil {
 			_ = os.Remove(link)
 		}
@@ -63,6 +89,56 @@ func shellProfiles() []string {
 	return out
 }
 
+// pathLineFor is the line ensureOnPath appends, and the one removeFromPath
+// looks for. Defined once so the writer and the remover cannot drift.
+func pathLineFor(dir string) string {
+	return fmt.Sprintf("export PATH=\"%s:$PATH\"", dir)
+}
+
+const pathMarker = "# added by opensave install"
+
+// removeFromPath strips the line ensureOnPath added from the shell profiles
+// that carry it, reporting whether anything changed.
+//
+// Only the exact line this tool wrote, with its marker comment if that sits
+// directly above it. A profile is a file the person edits by hand, and an
+// uninstaller that rewrites more of it than it wrote is worse than one that
+// leaves a line behind.
+func removeFromPath(dir string) (bool, error) {
+	line := pathLineFor(dir)
+	changed := false
+	for _, p := range shellProfiles() {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(raw), "\n")
+		kept := make([]string, 0, len(lines))
+		for i := 0; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == line {
+				// Drop the marker comment above it too, and the blank line
+				// that separated the pair from what came before.
+				if n := len(kept); n > 0 && strings.TrimSpace(kept[n-1]) == pathMarker {
+					kept = kept[:n-1]
+					if n := len(kept); n > 0 && strings.TrimSpace(kept[n-1]) == "" {
+						kept = kept[:n-1]
+					}
+				}
+				changed = true
+				continue
+			}
+			kept = append(kept, lines[i])
+		}
+		if !changed {
+			continue
+		}
+		if err := os.WriteFile(p, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
+			return changed, fmt.Errorf("update %s: %w", p, err)
+		}
+	}
+	return changed, nil
+}
+
 // ensureOnPath appends a PATH line to the user's shell profiles when the
 // directory isn't already reachable.
 func ensureOnPath(dir string) (bool, error) {
@@ -75,8 +151,8 @@ func ensureOnPath(dir string) (bool, error) {
 		return false, fmt.Errorf("found no shell profile to update (looked for ~/.bashrc, ~/.zshrc, ~/.profile)")
 	}
 
-	line := fmt.Sprintf("export PATH=\"%s:$PATH\"", dir)
-	marker := "# added by opensave install"
+	line := pathLineFor(dir)
+	marker := pathMarker
 	var wrote bool
 	for _, p := range profiles {
 		existing, err := os.ReadFile(p)

@@ -126,3 +126,107 @@ func TestCopyExecutableReplacesExisting(t *testing.T) {
 		t.Errorf("destination = %q, want the new build", got)
 	}
 }
+
+// pathWithout is the half of the uninstaller that can damage a PATH, so it
+// is exercised the way nextPathValue is: on strings, never on HKCU.
+func TestPathWithout(t *testing.T) {
+	const dir = `C:\Users\x\AppData\Local\OpenSave\bin`
+
+	for _, tc := range []struct {
+		name    string
+		current string
+		want    string
+	}{
+		{
+			name:    "removes the entry and keeps the rest in order",
+			current: `C:\Windows;` + dir + `;C:\Windows\System32`,
+			want:    `C:\Windows;C:\Windows\System32`,
+		},
+		{
+			name:    "the only entry leaves an empty PATH",
+			current: dir,
+			want:    "",
+		},
+		{
+			// The same rule the installer matched on, or an entry added in
+			// one spelling could never be removed in another.
+			name:    "matches a different case",
+			current: `C:\Windows;c:\users\x\appdata\local\opensave\BIN`,
+			want:    `C:\Windows`,
+		},
+		{
+			name:    "matches a trailing separator",
+			current: `C:\Windows;` + dir + `\`,
+			want:    `C:\Windows`,
+		},
+		{
+			// Nothing of ours is there; writing anything back would be an
+			// edit to a PATH we have no business editing.
+			name:    "absent leaves the value untouched",
+			current: `C:\Windows;C:\Windows\System32`,
+			want:    "",
+		},
+		{
+			// Unexpanded references belong to the user and must survive
+			// verbatim — the whole reason ensureOnPath preserves the type.
+			name:    "other entries keep their %VAR% references",
+			current: `%JAVA_HOME%\bin;` + dir + `;%USERPROFILE%\bin`,
+			want:    `%JAVA_HOME%\bin;%USERPROFILE%\bin`,
+		},
+		{
+			name:    "an empty segment is not mistaken for our entry",
+			current: `C:\Windows;;` + dir,
+			want:    `C:\Windows`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pathWithout(tc.current, dir); got != tc.want {
+				t.Errorf("pathWithout(%q) = %q, want %q", tc.current, got, tc.want)
+			}
+		})
+	}
+}
+
+// Adding then removing must return the PATH to where it started, or an
+// install/uninstall cycle leaves the user's environment slightly different
+// every time.
+func TestPathRoundTripLeavesNoTrace(t *testing.T) {
+	const dir = `C:\Users\x\AppData\Local\OpenSave\bin`
+	for _, start := range []string{
+		`C:\Windows;C:\Windows\System32`,
+		`%JAVA_HOME%\bin`,
+	} {
+		added := nextPathValue(start, dir)
+		if added == "" {
+			t.Fatalf("nextPathValue(%q) added nothing", start)
+		}
+		if got := pathWithout(added, dir); got != start {
+			t.Errorf("add then remove turned %q into %q", start, got)
+		}
+	}
+}
+
+// An alias is deleted only when it is still ours. The check reads the shim,
+// so a file someone else put there under the same name survives.
+func TestAliasPointsAtUs(t *testing.T) {
+	dir := t.TempDir()
+	ours := filepath.Join(dir, "os.cmd")
+	if err := os.WriteFile(ours, []byte("@echo off\r\n\"%~dp0"+installedName+"\" %*\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !aliasPointsAtUs(ours, dir) {
+		t.Error("our own shim was not recognised, so an uninstall would leave it behind")
+	}
+
+	theirs := filepath.Join(dir, "opensave-cli.cmd")
+	if err := os.WriteFile(theirs, []byte("@echo off\r\necho something else\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if aliasPointsAtUs(theirs, dir) {
+		t.Error("someone else's script would have been deleted because of its name")
+	}
+
+	if aliasPointsAtUs(filepath.Join(dir, "missing.cmd"), dir) {
+		t.Error("a file that does not exist was reported as ours")
+	}
+}

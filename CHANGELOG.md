@@ -5,7 +5,36 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **The Windows installer asks what you want, and looks like the app.** Run
+  it when OpenSave is already installed and it says so, and offers the two
+  things you might have opened it for: install this version over the top, or
+  remove OpenSave from the computer. It used to reinstall silently, and
+  someone who downloaded it to uninstall had no way in at all.
+
+  Two checkboxes on the last page: start OpenSave now, and start it when
+  Windows starts. The second writes the same setting the app's own Settings
+  screen does, and the app picks it up, so the two never disagree.
+
+  It also closes a running OpenSave before touching anything — asking it to
+  shut down properly rather than killing it, since this is an app that writes
+  a database and zips save archives, and a snapshot interrupted halfway is
+  not a snapshot. Installing over a running copy used to leave files it could
+  not replace.
+
+  And it is dark, in the app's own colours, with the app's icon.
+
 ### Fixed
+
+- **Uninstalling leaves less behind.** It now removes the start-with-Windows
+  entry, which otherwise had Windows trying to launch a program that was no
+  longer there at every boot. It offers to remove the command-line tool as
+  well, if `opensave install` put one on this machine, and to delete your
+  snapshots and settings - defaulting to keeping them, and keeping them
+  without asking when it runs silently. Your games' own save files are never
+  touched either way.
+
 
 - **A peer could lose a file when a game was untracked and tracked again.**
   Untracking clears everything a game had agreed with its paired devices —

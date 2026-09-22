@@ -14,8 +14,18 @@ import (
 // straight from os.Args rather than the flag package, because Wails owns the
 // process's argument handling and a second parser would fight it.
 func launchedHidden() bool {
+	return hasArg(sysintegration.StartHiddenFlag)
+}
+
+// quitRequested reports whether this process was asked to stop a running
+// OpenSave rather than be one. See sysintegration.QuitFlag.
+func quitRequested() bool {
+	return hasArg(sysintegration.QuitFlag)
+}
+
+func hasArg(want string) bool {
 	for _, arg := range os.Args[1:] {
-		if arg == sysintegration.StartHiddenFlag {
+		if arg == want {
 			return true
 		}
 	}

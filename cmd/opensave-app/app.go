@@ -48,6 +48,14 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// Asked to stop a running OpenSave, and we ARE the only one: there is
+	// nothing to stop. Exit without booting a daemon, claiming a port or
+	// opening the database — this process was never meant to be the app.
+	if quitRequested() {
+		a.quitFromTray()
+		return
+	}
+
 	d, err := daemon.New(daemon.Options{})
 	if err != nil {
 		a.bootErr = err.Error()
@@ -129,6 +137,19 @@ func (a *App) startup(ctx context.Context) {
 		if err := sysintegration.SetAutostart(true); err != nil {
 			d.Log.Log("warn", "could not refresh the start-with-system entry: "+err.Error())
 		}
+	} else if sysintegration.AutostartEnabled() {
+		// The other direction: something outside the app turned it on. The
+		// installer's "start OpenSave when Windows starts" checkbox does
+		// exactly this — it writes the entry, being unable to open the
+		// database the setting lives in. Adopt it, or Settings would show
+		// the switch off while Windows starts the app every morning, and
+		// turning it "on" and off again would be the only way to fix it.
+		settings.StartOnBoot = true
+		if err := d.Store.UpdateSettings(settings); err != nil {
+			d.Log.Log("warn", "could not record that start-with-system is on: "+err.Error())
+		} else {
+			d.Log.Log("info", "start-with-system was switched on outside the app; Settings now agrees")
+		}
 	}
 
 	// Started hidden, but with nowhere to come back from? Show the window.
@@ -144,9 +165,18 @@ func (a *App) startup(ctx context.Context) {
 // already running — commonly because closing the window only hides it to the
 // tray, so the user thinks it's closed. Rather than spawn a second (blank)
 // window, surface the existing one.
-func (a *App) onSecondInstanceLaunch(_ options.SecondInstanceData) {
+func (a *App) onSecondInstanceLaunch(data options.SecondInstanceData) {
 	if a.ctx == nil {
 		return
+	}
+	// Unless it was the installer asking us to get out of the way, in which
+	// case shut down the way the tray's Quit does rather than being killed
+	// with a snapshot half written. See sysintegration.QuitFlag.
+	for _, arg := range data.Args {
+		if arg == sysintegration.QuitFlag {
+			a.quitFromTray()
+			return
+		}
 	}
 	runtime.WindowShow(a.ctx)
 	runtime.WindowUnminimise(a.ctx)
