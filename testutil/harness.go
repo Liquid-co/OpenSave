@@ -74,6 +74,22 @@ func TempDir(t *testing.T) string { return mustTempRoot(t, "opensave-test-*") }
 
 // NewTestDaemon boots a daemon with an isolated home dir and API server on
 // an OS-assigned port. Discovery is disabled; tests pair explicitly.
+//
+// One hazard worth knowing when a test tracks the SAME game on two of these:
+// tracking fires a sync at the paired peers in the background, so whichever
+// device tracks first can reach the second before its own track call does.
+// The second then auto-tracks the game under the same id, and the explicit
+// track that follows fails with 409 "already exists" — or, worse for a test,
+// succeeds against an entry pointing at the first device's folder, since both
+// daemons here share one filesystem and the peer's path translates to itself.
+// It needs load to happen and showed up as two long-standing CI failures on
+// Windows under the race detector.
+//
+// Ordering the two track calls only decides which one loses. If the test
+// invokes a sync itself, turn the background one off first:
+//
+//	d.API(http.MethodPost, "/api/settings",
+//		map[string]any{"autoSyncOnTrack": false}, nil)
 func NewTestDaemon(t *testing.T, name string) *TestDaemon {
 	t.Helper()
 

@@ -221,6 +221,16 @@ func TestSyncAll_SyncsEveryTrackedGame(t *testing.T) {
 	b := testutil.NewTestDaemon(t, "SyncAll-B")
 	a.PairWith(b)
 
+	// Tracking does not sync by itself here. It normally fires a sync at the
+	// paired peers in the background, and this test tracks the same game on
+	// both devices: whichever tracks first syncs it to the other, which
+	// auto-tracks it under the same id, and the second device's own track
+	// then loses with a 409. Ordering the two calls only decides who loses.
+	// Sync all is what this test invokes on purpose, and it does so below.
+	for _, d := range []*testutil.TestDaemon{a, b} {
+		d.API(http.MethodPost, "/api/settings", map[string]any{"autoSyncOnTrack": false}, nil)
+	}
+
 	// Each game needs its own folder: a daemon refuses to track two games
 	// against one directory.
 	names := []string{"Game One", "Game Two", "Game Three"}
@@ -237,15 +247,10 @@ func TestSyncAll_SyncsEveryTrackedGame(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(aDir, "save.sav"), []byte("content of "+name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		// B first. Tracking on A syncs to B at once, and if B has not tracked
-		// the game yet it auto-tracks it under the same id — racing the
-		// explicit track below, which then loses with a 409. Under the race
-		// detector on a busy machine it did. That race is real and has its
-		// own answer in TrackGame; this test is about Sync all.
-		b.API(http.MethodPost, "/api/games",
-			map[string]string{"name": name, "savePath": bDir}, nil)
 		a.API(http.MethodPost, "/api/games",
 			map[string]string{"name": name, "savePath": aDir}, nil)
+		b.API(http.MethodPost, "/api/games",
+			map[string]string{"name": name, "savePath": bDir}, nil)
 	}
 
 	a.API(http.MethodPost, "/api/games/sync-all", map[string]any{}, nil)
