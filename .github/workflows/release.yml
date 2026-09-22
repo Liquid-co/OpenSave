@@ -442,6 +442,19 @@ jobs:
             mv -v "$f" "$(echo "$f" | tr '~' '.')"
           done
 
+      # The Windows artifact is uploaded from two folders, and upload-artifact
+      # keeps each file's path relative to their common root — so they arrive
+      # as windows/cmd/opensave-app/build/bin/OpenSave.exe and
+      # windows/dist/opensave-cli.exe, not windows/OpenSave.exe. The publish
+      # step's windows/**/*.exe and the path-stripping in SHA256SUMS both
+      # tolerated that; the check below did not, and refused the first real
+      # release it ran on with every Windows file "missing". Flatten first,
+      # so one layout is what everything after this sees.
+      - name: Flatten the Windows artifact
+        run: |
+          find windows -mindepth 2 -type f -name '*.exe' -exec mv -v -t windows/ {} +
+          ls -la windows/
+
       # Every platform's build has to be here, or this is not a release of
       # OpenSave — it is a release of some of it. The macOS job built,
       # verified and uploaded a .dmg and two tarballs for a month before
