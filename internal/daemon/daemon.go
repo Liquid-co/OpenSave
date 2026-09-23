@@ -62,6 +62,14 @@ type Daemon struct {
 	OnCloudPulled func(CloudPulled)
 	cloudRd       cloudReader
 
+	// OnNewGames receives the newly installed games the background scan has
+	// found and nobody has looked at yet, whenever that list changes. See
+	// newgames.go.
+	OnNewGames func([]NewGame)
+	newGames   newGameState
+	// scanMu runs one save scan at a time. See ScanForSaves.
+	scanMu sync.Mutex
+
 	// uploads counts cloud mirrors still running, so Stop can wait for them
 	// rather than letting process exit truncate one.
 	uploads sync.WaitGroup
@@ -301,6 +309,29 @@ func (d *Daemon) Start() error {
 				return
 			case <-ticker.C:
 				d.PruneOldSnapshots()
+			}
+		}
+	})
+
+	// Look for newly installed games: a few minutes after start, then every
+	// hour. See newgames.go.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(newGameFirstScan)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.DetectNewGames()
+		}
+		ticker := time.NewTicker(newGameScanInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.DetectNewGames()
 			}
 		}
 	})

@@ -37,7 +37,34 @@ func saveAppCache(cacheFile string, cache map[string]string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(cacheFile, raw, 0o666)
+	_ = writeFileAtomic(cacheFile, raw)
+}
+
+// writeFileAtomic replaces a file whole: the new content goes to a temporary
+// file beside it, which is then renamed over the old one, so a reader sees
+// either the old file or the new one and never half of one.
+//
+// These caches are read by every scan, and scans now also run in the
+// background, beside the one a person starts and the terminal's. Written in
+// place, a scan reading mid-write got broken JSON and threw the cache away.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	_, werr := tmp.Write(data)
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil {
+		os.Remove(tmp.Name())
+		return errors.Join(werr, cerr)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		// On Windows a reader holding the old file open can refuse the
+		// rename. The cache is best-effort; the next write will land.
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 var steamAPIClient = &http.Client{Timeout: 3 * time.Second}

@@ -27,6 +27,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   save: a device keeps a copy of its save before replacing it, and that copy
   is dated after the save that replaced it. Older versions ignore the notes.
 
+- **New games are noticed without you scanning.** The save scan used to run
+  only when you pressed the button, so a game installed since sat untracked
+  — no snapshots, nothing synced — until you thought to scan again. OpenSave
+  now scans in the background, a few minutes after it starts and every hour,
+  and tells you when it finds a game with saves it hasn't seen before. It
+  never tracks anything on its own: Review opens the scan and you choose.
+  The first background scan takes stock quietly, so games you chose not to
+  track aren't announced. It can be switched off in Settings.
+
 ### Fixed
 
 - **Heroic games on an SD card or another drive are found.** Scanning

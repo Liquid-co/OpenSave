@@ -55,6 +55,9 @@ func New(d *daemon.Daemon) *Server {
 	// and the ones taken without asking.
 	d.OnCloudOffers = func(offers []daemon.CloudOffer) { s.Hub.Broadcast("cloud-offers", offers) }
 	d.OnCloudPulled = func(p daemon.CloudPulled) { s.Hub.Broadcast("cloud-pulled", p) }
+
+	// Newly installed games the background scan found.
+	d.OnNewGames = func(games []daemon.NewGame) { s.Hub.Broadcast("new-games", games) }
 	return s
 }
 
@@ -334,6 +337,7 @@ func (s *Server) initPayload() any {
 	payload["games"] = s.gamesPayload()
 	payload["logHistory"] = s.Daemon.Log.History()
 	payload["cloudOffers"] = s.Daemon.CloudOffers()
+	payload["newGames"] = s.Daemon.NewGames()
 	return payload
 }
 

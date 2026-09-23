@@ -86,15 +86,11 @@
 {/if}
 
 <style>
+  /* Placed by App.svelte's notice stack. */
   .offer-wrap {
-    position: fixed;
-    top: calc(var(--titlebar-h) + 10px);
-    right: 18px;
-    z-index: 110;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: min(460px, calc(100vw - 36px));
   }
   .offer-card {
     display: flex;

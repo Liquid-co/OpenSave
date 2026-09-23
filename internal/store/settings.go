@@ -76,6 +76,9 @@ type Settings struct {
 	// place without asking — only when it continues from the save this device
 	// has, and this device has not changed since. Anything else is asked.
 	CloudAutoPull bool `db:"cloud_auto_pull" json:"cloudAutoPull"`
+	// DetectNewGames runs the save scan in the background and says when it
+	// finds a newly installed game. Nothing is tracked without being asked.
+	DetectNewGames bool `db:"detect_new_games" json:"detectNewGames"`
 
 	CustomScanPathsJSON  string `db:"custom_scan_paths" json:"-"`
 	ExcludePathsJSON     string `db:"exclude_paths" json:"-"`
@@ -297,6 +300,7 @@ func (s *Store) UpdateSettings(settings Settings) error {
 			default_max_manual_snapshots = :default_max_manual_snapshots,
 			update_channel = :update_channel,
 			cloud_auto_pull = :cloud_auto_pull,
+			detect_new_games = :detect_new_games,
 			updated_at = datetime('now')
 		WHERE id = 1`, settings)
 	if err != nil {

@@ -12,6 +12,7 @@
   import LocationConflictModal from './components/LocationConflictModal.svelte';
   import PairingBanner from './components/PairingBanner.svelte';
   import CloudOfferBanner from './components/CloudOfferBanner.svelte';
+  import NewGamesBanner from './components/NewGamesBanner.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
 
   import Home from './views/Home.svelte';
@@ -191,10 +192,31 @@
   <LocationConflictModal />
   <ConfirmDialog />
   {#if ready}<PairingBanner />{/if}
-  {#if ready}<CloudOfferBanner />{/if}
+  {#if ready}
+    <!-- One stack, so two cards at once sit one under the other. -->
+    <div class="notices">
+      <CloudOfferBanner />
+      <NewGamesBanner />
+    </div>
+  {/if}
 </div>
 
 <style>
+  .notices {
+    position: fixed;
+    top: calc(var(--titlebar-h) + 10px);
+    right: 18px;
+    z-index: 110;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(460px, calc(100vw - 36px));
+    /* The stack spans a corner of the screen; only its cards take clicks. */
+    pointer-events: none;
+  }
+  .notices > :global(*) {
+    pointer-events: auto;
+  }
   .shell {
     display: flex;
     flex-direction: column;

@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
-	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/sysintegration"
 )
@@ -61,6 +60,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/snapshots/prune", s.handlePruneSnapshots)
 
 	r.Get("/api/presets/scan", s.handlePresetScan)
+	r.Post("/api/presets/new/dismiss", s.handleNewGamesDismiss)
 	r.Get("/api/cover", s.handleCover)
 	r.Get("/api/steam/app", s.handleSteamApp)
 
@@ -674,23 +674,20 @@ func (s *Server) handleDeleteBranch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePresetScan(w http.ResponseWriter, r *http.Request) {
-	settings, err := s.Daemon.Store.GetSettings()
+	// Through the daemon, which runs one scan at a time: the background scan
+	// for newly installed games uses the same scanner, and two at once would
+	// both be rewriting its name cache.
+	found, err := s.Daemon.ScanForSaves()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	found := s.Daemon.Scanner.Scan(settings.CustomScanPaths)
-	found = presets.FilterExcluded(found, settings.ExcludePaths)
-	// Measured after excluding, so the budget is spent only on locations that
-	// will actually be offered. Empty ones are reported, not dropped: the
-	// client hides them behind a toggle, and deciding that here would take
-	// away the only way to reach a folder a game has not written to yet.
-	presets.Measure(found)
-	// After measuring: which folder of a game is the one to track depends on
-	// which of them hold anything and when they were last written.
-	presets.Group(found)
-	if found == nil {
-		found = []presets.DiscoveredSave{} // never null on the wire
-	}
 	writeJSON(w, http.StatusOK, found)
+}
+
+// handleNewGamesDismiss clears the newly installed games waiting to be
+// looked at. They stay remembered, so they are not announced again.
+func (s *Server) handleNewGamesDismiss(w http.ResponseWriter, r *http.Request) {
+	s.Daemon.DismissNewGames()
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

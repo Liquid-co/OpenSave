@@ -9,6 +9,8 @@ export const discoveredPeers = writable([]);
 export const pairingRequests = writable([]);
 // Newer saves from other devices' cloud backups, waiting for a yes or a no.
 export const cloudOffers = writable([]);
+// Newly installed games the background scan found and nobody has looked at.
+export const newGames = writable([]);
 export const wanRoom = writable(null);
 export const conflicts = writable({});
 // Divergences in a game's EXTRA save locations, as a list: one game can
@@ -118,6 +120,10 @@ export function applyMessage(msg) {
       applyPeersPayload(data, true);
       logEntries.set(data.logHistory ?? []);
       cloudOffers.set(data.cloudOffers ?? []);
+      newGames.set(data.newGames ?? []);
+      break;
+    case 'new-games':
+      newGames.set(data ?? []);
       break;
     case 'cloud-offers':
       cloudOffers.set(data ?? []);

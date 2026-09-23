@@ -87,6 +87,14 @@ It will not sync to this device. You can still track it yourself later, which un
 
   let showAdd = params.add ?? false;
   $: if (params.add) showAdd = true;
+  // Opened from the new-games card. A token rather than a flag: this
+  // statement re-runs whenever the scan closes, and a flag still set would
+  // start the scan all over again.
+  let handledScan = null;
+  $: if (params.scan && params.scan !== handledScan) {
+    handledScan = params.scan;
+    scan();
+  }
 
   // ── Track-a-game form ────────────────────────────────────────────
   let newName = '';

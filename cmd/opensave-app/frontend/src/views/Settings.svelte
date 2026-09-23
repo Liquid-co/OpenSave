@@ -268,6 +268,14 @@
         Sync a game immediately when it's first tracked
       </label>
       <label class="check" style="margin-top: 18px;">
+        <input type="checkbox" bind:checked={draft.detectNewGames} />
+        Tell me when a newly installed game has saves to track
+      </label>
+      <span class="hint" style="margin-top: 6px;">
+        OpenSave looks every hour, in the background, and only mentions games it hasn't seen before.
+        Nothing is tracked until you choose it.
+      </span>
+      <label class="check" style="margin-top: 18px;">
         <input type="checkbox" bind:checked={draft.matchByAppId} />
         Match saves across PCs by Steam App ID
       </label>

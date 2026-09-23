@@ -651,7 +651,7 @@ func (sc *Scanner) loadManifestIndex() []indexedGame {
 	games := buildManifestIndex(yamlPath)
 	if len(games) > 0 {
 		if raw, err := json.Marshal(games); err == nil {
-			_ = os.WriteFile(indexPath, raw, 0o666)
+			_ = writeFileAtomic(indexPath, raw)
 		}
 		return games
 	}
