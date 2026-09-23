@@ -51,6 +51,9 @@ jobs:
         shell: bash
         run: |
           V="${GITHUB_REF_NAME#v}"
+          # The installer shows this rather than wails.json's plain 2.4.0,
+          # which cannot carry the -beta suffix (see project.nsi).
+          export OPENSAVE_VERSION="$V"
           wails build -nsis -ldflags "-X github.com/opensave/opensave/internal/version.Version=$V -X github.com/opensave/opensave/internal/version.BuildTime=$(date +%s)"
       # Stamped with the same version and build time as the app.
       #

@@ -34,13 +34,30 @@ Unicode true
 ####
 !include "wails_tools.nsh"
 
+####
+## The version a person should see: "2.4.0-beta.3", not "2.4.0".
+##
+## INFO_PRODUCTVERSION is the plain number from wails.json, and has to stay
+## plain - VIProductVersion below must be four numbers, and NSIS refuses a
+## hyphen in it. So a beta tester upgrading from one beta to the next would
+## be told "OpenSave 2.4.0 is already installed - install version 2.4.0 over
+## it", which reads as a pointless reinstall. The release build exports the tag's
+## version as OPENSAVE_VERSION before running wails; without it (a local
+## build) this falls back to the plain number.
+####
+!if "$%OPENSAVE_VERSION%" == "${U+24}%OPENSAVE_VERSION%"
+    !define OPENSAVE_VERSION "${INFO_PRODUCTVERSION}"
+!else
+    !define OPENSAVE_VERSION "$%OPENSAVE_VERSION%"
+!endif
+
 # The version information for this two must consist of 4 parts
 VIProductVersion "${INFO_PRODUCTVERSION}.0"
 VIFileVersion    "${INFO_PRODUCTVERSION}.0"
 
 VIAddVersionKey "CompanyName"     "${INFO_COMPANYNAME}"
 VIAddVersionKey "FileDescription" "${INFO_PRODUCTNAME} Installer"
-VIAddVersionKey "ProductVersion"  "${INFO_PRODUCTVERSION}"
+VIAddVersionKey "ProductVersion"  "${OPENSAVE_VERSION}"
 VIAddVersionKey "FileVersion"     "${INFO_PRODUCTVERSION}"
 VIAddVersionKey "LegalCopyright"  "${INFO_COPYRIGHT}"
 VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
@@ -272,7 +289,7 @@ Function .onInit
 
     MessageBox MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON1 \
         "${INFO_PRODUCTNAME} $R1 is already installed on this computer.$\r$\n$\r$\n\
-        Yes  -  Install version ${INFO_PRODUCTVERSION} over it$\r$\n\
+        Yes  -  Install version ${OPENSAVE_VERSION} over it$\r$\n\
         No  -  Remove ${INFO_PRODUCTNAME} from this computer$\r$\n\
         Cancel  -  Leave everything as it is$\r$\n$\r$\n\
         Your games, snapshots and paired devices are kept either way. Removing asks about them separately." \
@@ -337,6 +354,9 @@ Section
     ; rest of the uninstall key, the size included.
     SetRegView 64
     WriteRegStr ${UNINST_ROOT} "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    ; And the full version, over the plain one wails writes, so "Apps &
+    ; features" and the next run of an installer both say which beta this is.
+    WriteRegStr ${UNINST_ROOT} "${UNINST_KEY}" "DisplayVersion" "${OPENSAVE_VERSION}"
 SectionEnd
 
 ####
