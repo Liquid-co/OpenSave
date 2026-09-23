@@ -3,7 +3,27 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0-beta.3] — 2026-09-23
+
+A fix for a way a paired device could lose a save file: untracking a game
+while a sync was still running, then tracking it again, could make
+OpenSave send a deletion the other device never asked for. If you sync
+between devices, update. And on Windows, a game's watch could freeze and
+stop sending that game's saves on as they happened; it no longer does.
+
+The Windows installer is new. Run it over an existing install and it asks
+whether to reinstall or remove OpenSave; it can start OpenSave when it
+finishes, and with Windows; it closes a running copy properly first; and it
+matches the app. Sidebar cover art that failed to load once now comes back,
+and `opensave install --uninstall` takes the command-line tool off again.
+
+### Added
+
+- **`opensave install --uninstall`.** It removes what `opensave install` —
+  or `install.ps1` — put on this computer: the program, the `os` and
+  `opensave-cli` shortcuts, and the entry on your PATH. Your snapshots and
+  settings are left alone. It asks first; with no terminal to ask in, it
+  refuses unless given `--yes`. The Windows uninstaller offers to run it.
 
 ### Changed
 
@@ -23,9 +43,42 @@ All notable changes to OpenSave are documented here. This project adheres to
   not a snapshot. Installing over a running copy used to leave files it could
   not replace.
 
-  And it is dark, in the app's own colours, with the app's icon.
+  And it is dark, in the app's own colours, with the app's icon. It also
+  shows which version it is installing, down to the beta. Every beta used
+  to call itself plain 2.4.0, there and in Installed apps.
 
 ### Fixed
+
+- **A peer could lose a file when a game was untracked and tracked again.**
+  Untracking clears everything a game had agreed with its paired devices —
+  which files both sides hold, what they last converged on. A sync already
+  in flight could write some of that back a moment later, because the write
+  is an upsert and nothing asked whether the game was still tracked. Track
+  the same folder again and it produces the same id, so the game returned
+  holding a record from its previous life: anything removed from the folder
+  while it was untracked then read as a deletion to send, and the other
+  device — which had done nothing — lost the file. Writes that would create
+  such a record for a game that is not tracked are now refused at the one
+  statement they all go through. Found in a CI run on Windows and then
+  reproduced on demand.
+
+- **On Windows, a game's watch could freeze for good.** When a new folder
+  appeared in a save folder with more changes right behind it — a new
+  profile folder and the files written into it — the watcher could end up
+  waiting on itself. From then on that game's saves were no longer
+  snapshotted or sent to your other devices as they happened; the
+  fifteen-minute check still found them, late. Starting to watch a large
+  save folder while a game was busy writing to it could hang the same way,
+  and since OpenSave starts its watches one after another, startup stalled
+  there. Both came from asking Windows to watch a folder from the one place
+  that had to keep reading its changes. Found by a test that failed on
+  Windows two runs in five.
+
+- **`opensave install` no longer replaces someone else's `os` command.** It
+  puts a short `os` command next to the program, and if a file by that name
+  was already there it was overwritten, whatever it was. One that is not
+  OpenSave's is now left where it is, and the install says so.
+  `install.ps1` already worked this way.
 
 - **Cover art that failed to load once now comes back.** A cover was asked
   for exactly once: if that request did not arrive — the daemon still
@@ -44,20 +97,6 @@ All notable changes to OpenSave are documented here. This project adheres to
   snapshots and settings - defaulting to keeping them, and keeping them
   without asking when it runs silently. Your games' own save files are never
   touched either way.
-
-
-- **A peer could lose a file when a game was untracked and tracked again.**
-  Untracking clears everything a game had agreed with its paired devices —
-  which files both sides hold, what they last converged on. A sync already
-  in flight could write some of that back a moment later, because the write
-  is an upsert and nothing asked whether the game was still tracked. Track
-  the same folder again and it produces the same id, so the game returned
-  holding a record from its previous life: anything removed from the folder
-  while it was untracked then read as a deletion to send, and the other
-  device — which had done nothing — lost the file. Writes that would create
-  such a record for a game that is not tracked are now refused at the one
-  statement they all go through. Found in a CI run on Windows and then
-  reproduced on demand.
 
 ## [2.4.0-beta.2] — 2026-09-22
 
