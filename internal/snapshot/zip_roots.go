@@ -67,7 +67,7 @@ func ZipRootsCapturing(primary string, extra map[string]string, outPath string) 
 		return nil, nil, err
 	}
 	defer f.Close()
-	w := zip.NewWriter(f)
+	w := newSnapshotWriter(f)
 
 	primarySkipped, primaryFiles, err := archiveInto(w, primary, "", "")
 	skipped = append(skipped, primarySkipped...)

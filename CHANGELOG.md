@@ -36,6 +36,17 @@ All notable changes to OpenSave are documented here. This project adheres to
   The first background scan takes stock quietly, so games you chose not to
   track aren't announced. It can be switched off in Settings.
 
+### Changed
+
+- **Snapshots take less room.** Every file went into a snapshot
+  uncompressed, on the theory that saves are already compressed or small.
+  Plenty are neither — JSON, XML, an engine's own uncompressed format — and
+  every snapshot is a whole copy, so those cost several times their size for
+  every version kept, on your disk and in your cloud backup. Each file is now
+  compressed if a quick test shows it compresses, and stored as before if it
+  doesn't, so saves that are already compressed cost no extra time. Older
+  versions restore the new snapshots as they always have.
+
 ### Fixed
 
 - **Heroic games on an SD card or another drive are found.** Scanning

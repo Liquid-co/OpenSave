@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/flate"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -20,7 +22,8 @@ import (
 // archived as its contents (entries relative to the directory root, not
 // wrapped in a top-level folder — matching adm-zip's addLocalFolder); a
 // single file is archived as one root-level entry (addLocalFile).
-// Entries use the Store method (no compression), matching the JS app.
+// Each file is compressed if it compresses and stored as-is if it does not;
+// see addFileEntry.
 //
 // Unreadable files (locked by a running game or AV, special/junction
 // entries) are skipped and reported rather than failing the whole
@@ -45,7 +48,7 @@ func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []
 	}
 	defer out.Close()
 
-	w := zip.NewWriter(out)
+	w := newSnapshotWriter(out)
 	defer w.Close()
 
 	if !info.IsDir() {
@@ -120,7 +123,21 @@ func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	header := &zip.FileHeader{Name: entryName, Method: zip.Store}
+	// Read the start of the file first, to decide how to store it; the bytes
+	// read are written from memory and the rest streamed after them, so the
+	// file is still read once.
+	head := make([]byte, compressProbeBytes)
+	n, err := io.ReadFull(f, head)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
+	head = head[:n]
+
+	method := zip.Store
+	if compresses(head) {
+		method = zip.Deflate
+	}
+	header := &zip.FileHeader{Name: entryName, Method: method}
 	header.Modified = info.ModTime()
 
 	entry, err := w.CreateHeader(header)
@@ -128,10 +145,70 @@ func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
 		return "", err
 	}
 	sum := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(entry, sum), f); err != nil {
+	if _, err := io.Copy(io.MultiWriter(entry, sum), io.MultiReader(bytes.NewReader(head), f)); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+// Snapshots used to store every file uncompressed, on the grounds that saves
+// are usually compressed already or small. Many are neither — JSON, XML, a
+// game engine's own uncompressed binary — and every snapshot is a whole copy,
+// so a save that deflates to a fifth of its size was costing five times the
+// disk, locally and in the cloud mirror, for every version kept.
+//
+// So each file is tried: the first compressProbeBytes are deflated at the
+// fastest level, and the file is compressed only if that sample shrank by at
+// least compressMinSaving. A save that is already compressed fails the test
+// and is stored exactly as before, costing a 64 KiB trial and nothing more.
+// Every reader goes through archive/zip, which reads either method, so older
+// versions restore these archives unchanged.
+const (
+	compressProbeBytes = 64 << 10
+	// compressMinSaving is the fraction the sample must shrink by.
+	compressMinSaving = 0.10
+	// compressMinBytes: below this there is too little to judge, and too
+	// little to save.
+	compressMinBytes = 512
+)
+
+// compresses reports whether a file whose first bytes are sample is worth
+// deflating.
+func compresses(sample []byte) bool {
+	if len(sample) < compressMinBytes {
+		return false
+	}
+	var out countingWriter
+	fw, err := flate.NewWriter(&out, flate.BestSpeed)
+	if err != nil {
+		return false
+	}
+	if _, err := fw.Write(sample); err != nil {
+		return false
+	}
+	if err := fw.Close(); err != nil {
+		return false
+	}
+	return float64(out.n) <= float64(len(sample))*(1-compressMinSaving)
+}
+
+type countingWriter struct{ n int }
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.n += len(p)
+	return len(p), nil
+}
+
+// newSnapshotWriter is a zip writer whose deflate is the fastest level. A
+// snapshot is taken every time a game saves, often while it is still
+// running; the default level buys a little more space for several times the
+// CPU, which is the wrong trade on a handheld mid-game.
+func newSnapshotWriter(out io.Writer) *zip.Writer {
+	w := zip.NewWriter(out)
+	w.RegisterCompressor(zip.Deflate, func(dst io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(dst, flate.BestSpeed)
+	})
+	return w
 }
 
 // UnzipTo extracts a snapshot ZIP over targetPath. Single-file save mode
