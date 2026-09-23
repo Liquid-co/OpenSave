@@ -677,98 +677,176 @@ func (s *Service) List() ([]CloudFile, error) {
 			return nil, err
 		}
 		query := fmt.Sprintf("trashed = false and mimeType = 'application/zip' and '%s' in parents", folderID)
-		listURL := s.Endpoints.GoogleAPI + "/drive/v3/files?q=" + url.QueryEscape(query) + "&fields=" + url.QueryEscape("files(id,name,size,createdTime)")
-		req, _ := http.NewRequest(http.MethodGet, listURL, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+		base := s.Endpoints.GoogleAPI + "/drive/v3/files?q=" + url.QueryEscape(query) +
+			"&pageSize=1000&fields=" + url.QueryEscape("nextPageToken,files(id,name,size,createdTime)")
 
-		var out struct {
-			Files []struct {
-				ID          string `json:"id"`
-				Name        string `json:"name"`
-				Size        string `json:"size"`
-				CreatedTime string `json:"createdTime"`
-			} `json:"files"`
+		// Every page, not the first. Drive answers 100 files at a time unless
+		// asked for more, and this read one page: past a hundred snapshots the
+		// cloud screens showed an arbitrary hundred of them, a restore could
+		// not find the rest, and `cloud push` re-uploaded files it could not
+		// see — which on Drive, where a name is not unique, meant duplicates.
+		files := []CloudFile{}
+		pageToken := ""
+		for page := 0; page < maxListPages; page++ {
+			listURL := base
+			if pageToken != "" {
+				listURL += "&pageToken=" + url.QueryEscape(pageToken)
+			}
+			req, _ := http.NewRequest(http.MethodGet, listURL, nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			var out struct {
+				NextPageToken string `json:"nextPageToken"`
+				Files         []struct {
+					ID          string `json:"id"`
+					Name        string `json:"name"`
+					Size        string `json:"size"`
+					CreatedTime string `json:"createdTime"`
+				} `json:"files"`
+			}
+			if err := s.doJSON(req, &out); err != nil {
+				return nil, googleDriveErr(err)
+			}
+			for _, f := range out.Files {
+				size, _ := strconv.ParseInt(f.Size, 10, 64)
+				files = append(files, CloudFile{ID: f.ID, Name: f.Name, SizeBytes: size, CreatedTime: f.CreatedTime})
+			}
+			if out.NextPageToken == "" {
+				return files, nil
+			}
+			if out.NextPageToken == pageToken {
+				return nil, errListTooLong("Google Drive")
+			}
+			pageToken = out.NextPageToken
 		}
-		if err := s.doJSON(req, &out); err != nil {
-			return nil, googleDriveErr(err)
-		}
-		files := make([]CloudFile, len(out.Files))
-		for i, f := range out.Files {
-			size, _ := strconv.ParseInt(f.Size, 10, 64)
-			files[i] = CloudFile{ID: f.ID, Name: f.Name, SizeBytes: size, CreatedTime: f.CreatedTime}
-		}
-		return files, nil
+		return nil, errListTooLong("Google Drive")
 
 	case "dropbox":
 		token, err := s.getOrRefreshAccessToken("dropbox")
 		if err != nil {
 			return nil, err
 		}
+		// Following the cursor while Dropbox says there is more, for the same
+		// reason as Drive above: one call is one page, and a page is not the
+		// folder.
+		endpoint := "/2/files/list_folder"
 		body, _ := json.Marshal(map[string]string{"path": "/OpenSave"})
-		req, _ := http.NewRequest(http.MethodPost, s.Endpoints.DropboxAPI+"/2/files/list_folder", bytes.NewReader(body))
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := s.httpClient().Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusConflict {
-			return []CloudFile{}, nil // /OpenSave folder doesn't exist yet
-		}
-		if resp.StatusCode >= 400 {
-			raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			return nil, fmt.Errorf("Dropbox: HTTP %d - %s", resp.StatusCode, raw)
-		}
-		var out struct {
-			Entries []struct {
-				Tag            string `json:".tag"`
-				Name           string `json:"name"`
-				Size           int64  `json:"size"`
-				ClientModified string `json:"client_modified"`
-			} `json:"entries"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			return nil, err
-		}
 		var files []CloudFile
-		for _, e := range out.Entries {
-			if e.Tag == "file" && strings.HasSuffix(e.Name, ".zip") {
-				files = append(files, CloudFile{Name: e.Name, SizeBytes: e.Size, CreatedTime: e.ClientModified})
+		for page := 0; page < maxListPages; page++ {
+			req, _ := http.NewRequest(http.MethodPost, s.Endpoints.DropboxAPI+endpoint, bytes.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+
+			var out struct {
+				Entries []struct {
+					Tag            string `json:".tag"`
+					Name           string `json:"name"`
+					Size           int64  `json:"size"`
+					ClientModified string `json:"client_modified"`
+				} `json:"entries"`
+				Cursor  string `json:"cursor"`
+				HasMore bool   `json:"has_more"`
 			}
+			missing, err := s.dropboxList(req, &out)
+			if err != nil {
+				return nil, err
+			}
+			if missing && page == 0 {
+				return []CloudFile{}, nil // /OpenSave folder doesn't exist yet
+			}
+			if missing {
+				// Mid-listing, a conflict is a cursor Dropbox has reset, not
+				// an empty folder.
+				return nil, fmt.Errorf("Dropbox: the listing was reset part-way through; try again")
+			}
+			for _, e := range out.Entries {
+				if e.Tag == "file" && strings.HasSuffix(e.Name, ".zip") {
+					files = append(files, CloudFile{Name: e.Name, SizeBytes: e.Size, CreatedTime: e.ClientModified})
+				}
+			}
+			if !out.HasMore {
+				return files, nil
+			}
+			if out.Cursor == "" {
+				return nil, errListTooLong("Dropbox")
+			}
+			endpoint = "/2/files/list_folder/continue"
+			body, _ = json.Marshal(map[string]string{"cursor": out.Cursor})
 		}
-		return files, nil
+		return nil, errListTooLong("Dropbox")
 
 	case "onedrive":
 		token, err := s.getOrRefreshAccessToken("onedrive")
 		if err != nil {
 			return nil, err
 		}
-		req, _ := http.NewRequest(http.MethodGet, s.Endpoints.Graph+"/v1.0/me/drive/special/approot/children", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		var out struct {
-			Value []struct {
-				Name            string          `json:"name"`
-				Size            int64           `json:"size"`
-				CreatedDateTime string          `json:"createdDateTime"`
-				File            json.RawMessage `json:"file"`
-			} `json:"value"`
-		}
-		if err := s.doJSON(req, &out); err != nil {
-			return nil, fmt.Errorf("OneDrive: %w", err)
-		}
+		// And OneDrive pages by handing back the next page's URL.
+		next := s.Endpoints.Graph + "/v1.0/me/drive/special/approot/children"
 		var files []CloudFile
-		for _, f := range out.Value {
-			if f.File != nil && strings.HasSuffix(f.Name, ".zip") {
-				files = append(files, CloudFile{Name: f.Name, SizeBytes: f.Size, CreatedTime: f.CreatedDateTime})
+		for page := 0; page < maxListPages && next != ""; page++ {
+			req, _ := http.NewRequest(http.MethodGet, next, nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			var out struct {
+				Value []struct {
+					Name            string          `json:"name"`
+					Size            int64           `json:"size"`
+					CreatedDateTime string          `json:"createdDateTime"`
+					File            json.RawMessage `json:"file"`
+				} `json:"value"`
+				NextLink string `json:"@odata.nextLink"`
 			}
+			if err := s.doJSON(req, &out); err != nil {
+				return nil, fmt.Errorf("OneDrive: %w", err)
+			}
+			for _, f := range out.Value {
+				if f.File != nil && strings.HasSuffix(f.Name, ".zip") {
+					files = append(files, CloudFile{Name: f.Name, SizeBytes: f.Size, CreatedTime: f.CreatedDateTime})
+				}
+			}
+			if out.NextLink == next {
+				return nil, errListTooLong("OneDrive")
+			}
+			next = out.NextLink
+		}
+		if next != "" {
+			return nil, errListTooLong("OneDrive")
 		}
 		return files, nil
 
 	default:
 		return []CloudFile{}, nil
 	}
+}
+
+// maxListPages bounds how many pages one listing will follow: a thousand
+// pages is past a million files, so reaching it means a provider handing back
+// the same page forever, not a big folder.
+const maxListPages = 1000
+
+// errListTooLong reports a listing that never ended. An error rather than
+// the pages read so far: a partial listing is what every caller already
+// trusted as the whole folder, which is the bug the paging exists to fix.
+func errListTooLong(provider string) error {
+	return fmt.Errorf("%s: the file listing did not end after %d pages", provider, maxListPages)
+}
+
+// dropboxList runs one list_folder or list_folder/continue call. missing
+// reports the OpenSave folder not existing yet, which Dropbox answers with a
+// conflict and which is an empty listing, not an error.
+func (s *Service) dropboxList(req *http.Request, out any) (missing bool, err error) {
+	resp, err := s.httpClient().Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		return true, nil
+	}
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return false, fmt.Errorf("Dropbox: HTTP %d - %s", resp.StatusCode, raw)
+	}
+	return false, json.NewDecoder(resp.Body).Decode(out)
 }
 
 // Download fetches a remote snapshot to localPath.
