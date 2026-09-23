@@ -88,6 +88,7 @@ var commandGroups = []commandGroup{
 		{"daemon stop", "Stop a daemon started by the CLI"},
 		{"service install|uninstall", "Install a systemd --user service (Linux)"},
 		{"install [--dir D]", "Put this binary on your PATH"},
+		{"install --uninstall", "Take it off again (keeps your data)"},
 		{"completion bash|zsh|fish", "Shell completion script"},
 		{"upnp <port> [--delete]", "Forward or remove a router port via UPnP"},
 		{"update [--check]", "Update this CLI to the latest release"},

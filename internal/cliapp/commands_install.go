@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // cmdInstall copies this binary somewhere permanent and puts that directory
@@ -106,8 +108,12 @@ func cmdInstall(args []string) int {
 		fmt.Printf("Installed %s\n", dest)
 	}
 
-	for _, line := range writeAliases(dir) {
+	written, skipped := writeAliases(dir)
+	for _, line := range written {
 		fmt.Printf("  %s\n", line)
+	}
+	for _, p := range skipped {
+		fmt.Printf("  %s already exists and is not OpenSave's - left alone\n", p)
 	}
 
 	added, err := ensureOnPath(dir)
@@ -168,9 +174,19 @@ func uninstallCLI(dir string, assumeYes bool) int {
 		return 0
 	}
 
-	if !assumeYes && !confirmRemoval(installed, dir) {
-		fmt.Println("Left alone.")
-		return 0
+	if !assumeYes {
+		if !stdinIsTerminal() {
+			// Nobody to ask and no --yes. Refused, and as a failure: exiting
+			// 0 here told a script its uninstall had worked when nothing had
+			// been removed at all.
+			fmt.Fprintln(os.Stderr, "error: refusing to uninstall without --yes when there is no terminal to ask")
+			return 1
+		}
+		if !confirmRemoval(installed, dir) {
+			// A person said no. That is an answer, not a failure.
+			fmt.Println("Left alone.")
+			return 0
+		}
 	}
 
 	if err := removeInstalledBinary(installed); err != nil {
@@ -208,14 +224,9 @@ func uninstallCLI(dir string, assumeYes bool) int {
 	return 0
 }
 
-// confirmRemoval asks, unless there is nobody to ask.
+// confirmRemoval asks the person at the terminal. The caller has already
+// made sure there is one.
 func confirmRemoval(installed, dir string) bool {
-	if !stdinIsTerminal() {
-		// Non-interactive and no --yes: refusing is the safe answer, because
-		// whoever started this never saw the question.
-		fmt.Fprintln(os.Stderr, "error: refusing to uninstall without --yes when there is no terminal to ask")
-		return false
-	}
 	fmt.Printf("Remove %s and take %s off your PATH? [y/N] ", installed, dir)
 	var answer string
 	_, _ = fmt.Scanln(&answer)
@@ -223,15 +234,14 @@ func confirmRemoval(installed, dir string) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// stdinIsTerminal reports whether there is a person to ask. The same test
-// detectColor uses on stdout, pointed the other way: a character device is a
-// console, a pipe or a redirect is not.
+// stdinIsTerminal reports whether there is a person to ask.
+//
+// A real terminal check, not "is it a character device": the null device is
+// one too, on Windows and Unix alike, so stdin redirected from it passed as a
+// console, the prompt read nothing, and a script without --yes was told it
+// had been "Left alone" with exit 0.
 func stdinIsTerminal() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
 // aliasPaths lists the short names writeAliases drops beside the binary.

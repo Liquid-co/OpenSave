@@ -77,7 +77,7 @@ func TestNextPathValue(t *testing.T) {
 func TestWriteAliasesProducesForwardingShims(t *testing.T) {
 	dir := t.TempDir()
 
-	written := writeAliases(dir)
+	written, _ := writeAliases(dir)
 	if len(written) != 2 {
 		t.Fatalf("expected shims for os and opensave-cli, got %v", written)
 	}
@@ -228,5 +228,32 @@ func TestAliasPointsAtUs(t *testing.T) {
 
 	if aliasPointsAtUs(filepath.Join(dir, "missing.cmd"), dir) {
 		t.Error("a file that does not exist was reported as ours")
+	}
+}
+
+// Someone else's os.cmd is not replaced, and a re-install still refreshes
+// our own. install.ps1 and the README both promise this; `opensave install`
+// used to overwrite whatever was there.
+func TestWriteAliasesLeavesSomeoneElsesShimAlone(t *testing.T) {
+	dir := t.TempDir()
+	theirs := "@echo off\r\necho not opensave\r\n"
+	if err := os.WriteFile(filepath.Join(dir, "os.cmd"), []byte(theirs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	written, skipped := writeAliases(dir)
+	if len(skipped) != 1 || filepath.Base(skipped[0]) != "os.cmd" {
+		t.Errorf("skipped = %v, want just os.cmd", skipped)
+	}
+	if len(written) != 1 || filepath.Base(written[0]) != "opensave-cli.cmd" {
+		t.Errorf("written = %v, want just opensave-cli.cmd", written)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "os.cmd")); string(got) != theirs {
+		t.Errorf("their os.cmd was changed to %q", got)
+	}
+
+	// A second run over our own shims rewrites them rather than skipping.
+	if written, skipped := writeAliases(dir); len(written) != 1 || len(skipped) != 1 {
+		t.Errorf("re-run: written=%v skipped=%v, want our one refreshed and theirs still skipped", written, skipped)
 	}
 }

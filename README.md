@@ -234,6 +234,11 @@ curl -fsSL https://opensave.org/install.sh | sh -s -- --uninstall
 Add `--purge` to delete `~/.opensave` as well; it says what it is about to
 delete, counts your backup files, and asks you to type a confirmation first.
 
+On Windows, `opensave install --uninstall` does the same for what
+`install.ps1` put down — the binary, the `os` and `opensave-cli` shims, and the
+`PATH` entry — and never touches your data. The desktop app's own uninstaller
+offers to run it for you.
+
 Or build it: `go build -o opensave ./cmd/opensave-cli`
 
 ### Keeping it current

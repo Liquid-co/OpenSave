@@ -56,18 +56,24 @@ func removeInstalledBinary(installed string) error {
 	return os.Remove(installed)
 }
 
-func writeAliases(dir string) []string {
-	var out []string
+func writeAliases(dir string) (written, skipped []string) {
 	for _, alias := range aliasNames {
 		link := filepath.Join(dir, alias+aliasSuffix)
 		if _, err := os.Lstat(link); err == nil {
+			// Somebody else's `os` is not ours to replace. This removed
+			// whatever was there, while install.sh and the README promised
+			// to leave it alone.
+			if !aliasPointsAtUs(link, dir) {
+				skipped = append(skipped, link)
+				continue
+			}
 			_ = os.Remove(link)
 		}
 		if err := os.Symlink(filepath.Join(dir, installedName), link); err == nil {
-			out = append(out, link)
+			written = append(written, link)
 		}
 	}
-	return out
+	return written, skipped
 }
 
 // shellProfiles lists the startup files worth appending a PATH line to.

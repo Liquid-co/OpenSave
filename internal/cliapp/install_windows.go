@@ -75,16 +75,21 @@ func removeInstalledBinary(installed string) error {
 // writeAliases drops `os` and `opensave-cli` next to the binary as .cmd
 // shims. Shims rather than copies of a 15 MB binary, and rather than
 // symlinks, which need admin rights or Developer Mode.
-func writeAliases(dir string) []string {
-	var out []string
+func writeAliases(dir string) (written, skipped []string) {
 	for _, alias := range aliasNames {
 		shim := filepath.Join(dir, alias+aliasSuffix)
+		// An os.cmd that is not ours is left where it is, as install.ps1
+		// does. This overwrote it.
+		if _, err := os.Stat(shim); err == nil && !aliasPointsAtUs(shim, dir) {
+			skipped = append(skipped, shim)
+			continue
+		}
 		body := "@echo off\r\n\"%~dp0" + installedName + "\" %*\r\n"
 		if err := os.WriteFile(shim, []byte(body), 0o755); err == nil {
-			out = append(out, shim)
+			written = append(written, shim)
 		}
 	}
-	return out
+	return written, skipped
 }
 
 // nextPathValue returns the PATH value that should replace current once dir
