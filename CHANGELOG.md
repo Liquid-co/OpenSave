@@ -29,6 +29,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Heroic games on an SD card or another drive are found.** Scanning
+  looked for Wine prefixes only under your home folder, and Heroic asks where
+  to install — so on a Steam Deck with games on the SD card, or a desktop
+  with a second disk, their saves were never offered. OpenSave now reads
+  where Heroic says each game's prefix is, and also looks in the usual
+  launcher folders on every mounted drive, including both ways SteamOS has
+  mounted SD cards.
+
 - **The cloud screens saw only the first page of your backups.** Google
   Drive answers a listing a hundred files at a time, and OpenSave read one
   page — so past a hundred snapshots the cloud screens showed an arbitrary

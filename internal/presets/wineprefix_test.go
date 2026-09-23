@@ -1,7 +1,9 @@
 package presets
 
 import (
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -117,5 +119,122 @@ func TestScanWinePrefixes_NonLinuxNoop(t *testing.T) {
 
 	if found := (&Scanner{GOOS: "windows", HomeDir: home}).scanWinePrefixes(map[string]bool{}); len(found) != 0 {
 		t.Errorf("wine prefix scan should be Linux-only, got %+v", found)
+	}
+}
+
+// A Steam Deck's games are as often on its SD card as in the home folder, and
+// Heroic asks where to install. A prefix there was never looked at: every
+// place searched was under home.
+func TestScanWinePrefixes_HeroicOnAnSDCard(t *testing.T) {
+	home := t.TempDir()
+	drives := t.TempDir()
+	sd := filepath.Join(drives, "run", "media", "deck", "SDCARD")
+	mkPrefixSave(t, filepath.Join(sd, "Heroic", "Prefixes", "default", "Card Game"),
+		"deck", filepath.Join("AppData", "Roaming"), "CardGameSaves")
+
+	found := (&Scanner{GOOS: "linux", HomeDir: home, MountRoots: []string{sd}}).scanWinePrefixes(map[string]bool{})
+	if len(found) != 1 || !strings.Contains(found[0].SavePath, "CardGameSaves") {
+		t.Fatalf("the save in a Heroic prefix on the SD card was not found: %+v", found)
+	}
+	if !strings.Contains(found[0].Name, "Heroic") {
+		t.Errorf("labelled %q, want it to mention Heroic", found[0].Name)
+	}
+}
+
+// Heroic writes down where each game's prefix is. Reading that finds a prefix
+// wherever it was put, where guessing the usual folders cannot.
+func TestScanWinePrefixes_HeroicConfiguredPrefixAnywhere(t *testing.T) {
+	home := t.TempDir()
+	elsewhere := filepath.Join(t.TempDir(), "my stuff", "Odd Place")
+	mkPrefixSave(t, elsewhere, "deck", filepath.Join("Documents", "My Games"), "OddGame")
+
+	cfgDir := filepath.Join(home, ".var", "app", "com.heroicgameslauncher.hgl", "config", "heroic", "GamesConfig")
+	body := `{"a1b2c3": {"winePrefix": ` + strconv.Quote(elsewhere) + `, "wineVersion": {"name": "GE-Proton"}}, "version": "v0", "explicit": true}`
+	writeFile(t, filepath.Join(cfgDir, "a1b2c3.json"), body)
+
+	found := (&Scanner{GOOS: "linux", HomeDir: home}).scanWinePrefixes(map[string]bool{})
+	if len(found) != 1 || !strings.Contains(found[0].SavePath, "OddGame") {
+		t.Fatalf("the prefix Heroic's config points at was not searched: %+v", found)
+	}
+}
+
+// config.json names the folder new prefixes go in, often with a ~.
+func TestScanWinePrefixes_HeroicDefaultPrefixFolder(t *testing.T) {
+	home := t.TempDir()
+	mkPrefixSave(t, filepath.Join(home, "Custom", "Prefixes", "Some Game"),
+		"deck", filepath.Join("AppData", "Local"), "CustomFolderGame")
+	writeFile(t, filepath.Join(home, ".config", "heroic", "config.json"),
+		`{"defaultSettings": {"defaultWinePrefix": "~/Custom/Prefixes", "winePrefix": "~/Custom/Prefixes/default"}, "version": "v0"}`)
+
+	found := (&Scanner{GOOS: "linux", HomeDir: home}).scanWinePrefixes(map[string]bool{})
+	if len(found) != 1 || !strings.Contains(found[0].SavePath, "CustomFolderGame") {
+		t.Fatalf("a prefix in Heroic's configured prefix folder was not found: %+v", found)
+	}
+}
+
+// The same prefix reached two ways — Heroic's config and the usual folder —
+// is one prefix, offered once.
+func TestScanWinePrefixes_OnePrefixFoundTwiceIsOfferedOnce(t *testing.T) {
+	home := t.TempDir()
+	prefix := filepath.Join(home, "Games", "Heroic", "Prefixes", "default", "Twice")
+	mkPrefixSave(t, prefix, "deck", filepath.Join("AppData", "Roaming"), "TwiceGame")
+	writeFile(t, filepath.Join(home, ".config", "heroic", "GamesConfig", "x.json"),
+		`{"x": {"winePrefix": `+strconv.Quote(prefix)+`}}`)
+
+	found := (&Scanner{GOOS: "linux", HomeDir: home}).scanWinePrefixes(map[string]bool{})
+	if len(found) != 1 {
+		t.Errorf("one prefix reached two ways was offered %d times: %+v", len(found), found)
+	}
+}
+
+// Two installs of one game — at home and on the SD card — have prefixes with
+// the same name. They are two saves, and the app keys its grid on the id, so
+// the ids must differ.
+func TestScanWinePrefixes_SameGameOnTwoDrivesGetsTwoIDs(t *testing.T) {
+	home := t.TempDir()
+	sd := filepath.Join(t.TempDir(), "mmcblk0p1")
+	mkPrefixSave(t, filepath.Join(home, "Games", "Heroic", "Prefixes", "default", "Same Game"),
+		"deck", filepath.Join("AppData", "Roaming"), "SameSaves")
+	mkPrefixSave(t, filepath.Join(sd, "Heroic", "Prefixes", "default", "Same Game"),
+		"deck", filepath.Join("AppData", "Roaming"), "SameSaves")
+
+	found := (&Scanner{GOOS: "linux", HomeDir: home, MountRoots: []string{sd}}).scanWinePrefixes(map[string]bool{})
+	if len(found) != 2 {
+		t.Fatalf("want both installs, got %+v", found)
+	}
+	if found[0].ID == found[1].ID {
+		t.Errorf("both installs have the id %q", found[0].ID)
+	}
+}
+
+// The drives to search: both SD card layouts SteamOS has used, a desktop's
+// removable drive, and fixed mounts under /mnt.
+func TestMountRootsUnder(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{
+		filepath.Join("run", "media", "mmcblk0p1"),
+		filepath.Join("run", "media", "deck", "SDCARD"),
+		filepath.Join("media", "sam", "USB"),
+		filepath.Join("mnt", "games"),
+		filepath.Join("mnt", "games", "SteamLibrary"),
+	} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o777); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[string]bool{}
+	for _, r := range mountRootsUnder([]string{
+		filepath.Join(root, "run", "media"), filepath.Join(root, "media"), filepath.Join(root, "mnt"),
+	}) {
+		rel, _ := filepath.Rel(root, r)
+		got[filepath.ToSlash(rel)] = true
+	}
+	for _, want := range []string{"run/media/mmcblk0p1", "run/media/deck/SDCARD", "media/sam/USB", "mnt/games"} {
+		if !got[want] {
+			t.Errorf("%s is not searched; roots were %v", want, got)
+		}
+	}
+	if got["mnt/games/SteamLibrary"] {
+		t.Error("a folder inside a drive under /mnt was treated as a drive of its own")
 	}
 }

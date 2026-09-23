@@ -48,6 +48,9 @@ type Scanner struct {
 	// InstallParentDirs overrides the non-Steam launcher folders whose
 	// children are game install directories when non-nil. Tests only.
 	InstallParentDirs []string
+	// MountRoots overrides the Linux drive roots searched for launcher
+	// prefixes (an SD card, a second disk) when non-nil. Tests only.
+	MountRoots []string
 }
 
 // linuxHome returns the home dir used to resolve Linux save paths.
