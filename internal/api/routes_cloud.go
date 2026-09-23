@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/cloud"
+	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/snapshot"
 )
 
@@ -32,6 +34,57 @@ func (s *Server) cloudRoutes(r chi.Router) {
 	r.Post("/api/cloud/delete/{gameId}", s.handleCloudDelete)
 	r.Post("/api/cloud/delete-game/{gameId}", s.handleCloudDeleteGame)
 	r.Post("/api/cloud/sync-local/{gameId}", s.handleCloudSyncLocal)
+
+	r.Get("/api/cloud/offers", s.handleCloudOffers)
+	r.Post("/api/cloud/offers/accept", s.handleCloudOfferAnswer(true))
+	r.Post("/api/cloud/offers/dismiss", s.handleCloudOfferAnswer(false))
+	r.Post("/api/cloud/check", s.handleCloudCheck)
+}
+
+// handleCloudOffers lists the saves from other devices waiting for an answer.
+func (s *Server) handleCloudOffers(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.Daemon.CloudOffers())
+}
+
+// handleCloudOfferAnswer takes or declines one offered save.
+func (s *Server) handleCloudOfferAnswer(accept bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			GameID     string `json:"gameId"`
+			SnapshotID string `json:"snapshotId"`
+		}
+		if err := readJSON(r, &body); err != nil || body.GameID == "" || body.SnapshotID == "" {
+			writeError(w, http.StatusBadRequest, "gameId and snapshotId are required")
+			return
+		}
+		var err error
+		if accept {
+			err = s.Daemon.AcceptCloudOffer(body.GameID, body.SnapshotID)
+		} else {
+			err = s.Daemon.DismissCloudOffer(body.GameID, body.SnapshotID)
+		}
+		if errors.Is(err, daemon.ErrCloudOfferGone) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if accept {
+			s.BroadcastGamesUpdate()
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+	}
+}
+
+// handleCloudCheck reads the cloud for newer saves now rather than at the
+// next scheduled check, and answers with what is left waiting once anything
+// that could be taken without asking has been. It waits for the check: the
+// terminal asks this and has nowhere else to hear the answer.
+func (s *Server) handleCloudCheck(w http.ResponseWriter, r *http.Request) {
+	s.Daemon.CheckCloud()
+	writeJSON(w, http.StatusOK, s.Daemon.CloudOffers())
 }
 
 // handleCloudBrowse lists every cloud snapshot the provider holds, grouped
@@ -293,6 +346,7 @@ func (s *Server) handleCloudRestore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("downloaded but restore failed: %v", err))
 		return
 	}
+	s.Daemon.ForgetCloudOffers(gameID)
 	s.BroadcastGamesUpdate()
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "snapshotId": snapID})
 }

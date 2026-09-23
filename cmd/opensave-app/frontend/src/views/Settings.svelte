@@ -350,6 +350,15 @@
         On by default — uploads only happen once a provider is connected on the
         <strong>Cloud Backup</strong> page. Snapshots are stored in an <strong>OpenSave</strong> folder.
       </p>
+      <label class="check" style="margin-top: 18px;">
+        <input type="checkbox" bind:checked={draft.cloudAutoPull} />
+        Bring newer saves from my other devices automatically
+      </label>
+      <p class="hint" style="margin-top: 6px;">
+        When another device's backup carries on from the save this one has, and this one hasn't
+        changed since, it's put in place without asking — the way syncing between your devices works.
+        Anything else is asked about first, and this device's save is kept as a snapshot either way.
+      </p>
       <div class="field" style="margin-top: 14px;">
         <label for="s-driveid">Google Drive folder ID (optional)</label>
         <input id="s-driveid" bind:value={draft.cloudSync.folderId} placeholder="Leave blank to use the auto-created OpenSave folder" />

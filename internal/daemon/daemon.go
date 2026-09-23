@@ -55,6 +55,13 @@ type Daemon struct {
 	// Start.
 	OnGameChanged func(gameID string)
 
+	// OnCloudOffers receives the saves from other devices' cloud backups
+	// that are waiting for an answer, whenever that list changes, and
+	// OnCloudPulled each one put in place without asking. See cloudsync.go.
+	OnCloudOffers func([]CloudOffer)
+	OnCloudPulled func(CloudPulled)
+	cloudRd       cloudReader
+
 	// uploads counts cloud mirrors still running, so Stop can wait for them
 	// rather than letting process exit truncate one.
 	uploads sync.WaitGroup
@@ -148,6 +155,9 @@ func New(opts Options) (*Daemon, error) {
 		d.uploads.Add(1)
 		go d.runCloudUpload(zipPath, remoteFileName, log)
 	}
+	// Which snapshot is each game's save, for reading the mirror back.
+	snaps.OnCreated = d.noteSnapshotForCloud
+	snaps.OnRestored = d.noteRestoreForCloud
 
 	d.Watcher = watcher.New(watcher.Callbacks{
 		IgnoreRules: func(gameID string) string {
@@ -295,6 +305,29 @@ func (d *Daemon) Start() error {
 		}
 	})
 
+	// Read the cloud mirror back: shortly after start, which is "when I open
+	// the app", and every few minutes after. See cloudsync.go.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(cloudCheckDelay)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.CheckCloud()
+		}
+		ticker := time.NewTicker(cloudCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.CheckCloud()
+			}
+		}
+	})
+
 	d.Log.Log("info", fmt.Sprintf("daemon started; watching %d game(s)", len(games)))
 	return nil
 }
@@ -403,6 +436,16 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 			log.Log("error", fmt.Sprintf("cloud upload of %s failed: %v", remoteFileName, err))
 		}
 		return
+	}
+	// Now that it is up there, say it is this device's save — if it is. A
+	// copy kept before a restore uploads the same way and is not.
+	if gameID, _, snapID, ok := snapshot.ParseExportEntryName(remoteFileName); ok {
+		d.cloudRd.heads.Lock()
+		rec, _, err := d.Store.GetCloudHead(gameID)
+		d.cloudRd.heads.Unlock()
+		if err == nil && rec.Snapshot == snapID {
+			_ = d.publishHead(gameID)
+		}
 	}
 	// Cloud-side retention mirrors the game's local snapshot limit: keep the
 	// newest maxSnapshots per branch, delete the rest.
@@ -1113,3 +1156,9 @@ func (d *Daemon) RewatchGame(gameID string) {
 		d.Log.Log("warn", fmt.Sprintf("could not re-watch %q after its save locations changed: %v", game.Name, err))
 	}
 }
+
+// WaitForTracking blocks until the background work every TrackGame starts —
+// the first snapshot, then the watch — has finished. For tests that go on to
+// change the game's folders: that work walks them, and on Windows a folder
+// being walked or put under watch cannot be deleted from under it.
+func (d *Daemon) WaitForTracking() { d.initialSnapshots.Wait() }

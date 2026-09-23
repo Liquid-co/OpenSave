@@ -711,12 +711,11 @@ func (e *Engine) handleChange(ctx context.Context, gw *gameWatch) {
 	// change", which has to cover every one of its folders. For a game with
 	// one folder the two are the same value, so nothing already recorded is
 	// invalidated by the upgrade.
+	ignoreText := ""
 	if e.cb.IgnoreRules != nil {
-		if rules := ignore.Parse(e.cb.IgnoreRules(gw.gameID)); !rules.Empty() {
-			manifest = filterForHash(manifest, rules)
-		}
+		ignoreText = e.cb.IgnoreRules(gw.gameID)
 	}
-	currentHash := manifest.ContentHash()
+	currentHash := ContentHash(manifest, ignoreText)
 
 	lastHash, err := e.cb.GetLastManifestHash(gw.gameID)
 	if err == nil && lastHash == currentHash {
@@ -754,6 +753,13 @@ func (e *Engine) handleChange(ctx context.Context, gw *gameWatch) {
 // anyFileLocked walks the save location and reports whether any file in it
 // is currently held with an incompatible sharing mode.
 func anyFileLocked(savePath string) bool {
+	return AnyFileLocked(savePath)
+}
+
+// AnyFileLocked reports whether the game still has a save file open in a way
+// that would stop it being read or replaced — the gameplay guard, for callers
+// outside the watcher that must not write under a running game either.
+func AnyFileLocked(savePath string) bool {
 	info, err := os.Stat(savePath)
 	if err != nil {
 		return false
@@ -919,6 +925,18 @@ func (e *Engine) log(level, msg string) {
 	if e.cb.Log != nil {
 		e.cb.Log(level, msg)
 	}
+}
+
+// ContentHash is the value recorded at each automatic snapshot: the game's
+// content across all its locations, less what its ignore rules exclude.
+// Anything asking "has this save changed since its last snapshot" compares
+// against that recorded value, so it has to compute it this way — one
+// definition, or the question gets two answers.
+func ContentHash(m delta.Manifest, ignoreRules string) string {
+	if rules := ignore.Parse(ignoreRules); !rules.Empty() {
+		m = filterForHash(m, rules)
+	}
+	return m.ContentHash()
 }
 
 // filterForHash drops excluded paths before the content hash is taken, so the

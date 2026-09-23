@@ -7,6 +7,8 @@ export const games = writable({});
 export const peers = writable({});
 export const discoveredPeers = writable([]);
 export const pairingRequests = writable([]);
+// Newer saves from other devices' cloud backups, waiting for a yes or a no.
+export const cloudOffers = writable([]);
 export const wanRoom = writable(null);
 export const conflicts = writable({});
 // Divergences in a game's EXTRA save locations, as a list: one game can
@@ -115,6 +117,16 @@ export function applyMessage(msg) {
       games.set(data.games ?? {});
       applyPeersPayload(data, true);
       logEntries.set(data.logHistory ?? []);
+      cloudOffers.set(data.cloudOffers ?? []);
+      break;
+    case 'cloud-offers':
+      cloudOffers.set(data ?? []);
+      break;
+    case 'cloud-pulled':
+      // Taken without asking, because it carried on from the save this
+      // device had and this device had not changed since. Said out loud all
+      // the same: a save that changes by itself should say who changed it.
+      toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
       break;
     case 'games-update':
       games.set(data ?? {});

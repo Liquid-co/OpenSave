@@ -53,7 +53,7 @@ func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution
 		// can always be undone from the Snapshots tab. (merge-branch gets
 		// this for free via SwitchBranch's safety snapshot; this path
 		// otherwise wouldn't.)
-		if _, err := e.Snapshots.Create(gameID, fmt.Sprintf("This device's version (before keeping %s's)", peer.Name), true); err != nil {
+		if _, err := e.Snapshots.CreateBeforeReplacing(gameID, fmt.Sprintf("This device's version (before keeping %s's)", peer.Name)); err != nil {
 			e.Log("warn", fmt.Sprintf("safety snapshot before keep-remote failed: %v", err))
 		}
 		if err := e.overwriteLocalWithRemote(ctx, gameID, peer, "Resolved conflict: Overwrite with remote"); err != nil {

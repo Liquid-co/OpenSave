@@ -3,6 +3,44 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Your other devices' newer saves come to you through the cloud.** Cloud
+  backup used to be one-way: every device uploaded its snapshots, and none
+  ever looked at the others'. So the thing a cloud copy is best at — getting
+  a save onto one machine while the one that made it is switched off — only
+  happened if you opened the cloud screen and knew to look. OpenSave now
+  checks when it starts and every few minutes after. A newer save from
+  another device that carries on from the one you have, when you haven't
+  played here since, is put in place on its own, the way syncing between
+  two devices that are both on already works. Anything else — both devices
+  played, or you'd rather decide — is asked about in a card that says which
+  device and when, with this device's save kept as a snapshot if you take
+  the other one. The terminal has the same: `opensave cloud check`, `take`
+  and `skip`. It can be switched off in Settings. Asked for in GitHub
+  issue #12.
+
+  Each device keeps a small note beside its backups saying which snapshot
+  is its current save, because "the newest backup" is not always the newest
+  save: a device keeps a copy of its save before replacing it, and that copy
+  is dated after the save that replaced it. Older versions ignore the notes.
+
+### Fixed
+
+- **The cloud screens saw only the first page of your backups.** Google
+  Drive answers a listing a hundred files at a time, and OpenSave read one
+  page — so past a hundred snapshots the cloud screens showed an arbitrary
+  hundred, a restore could not find the rest, and `opensave cloud push`
+  uploaded again what it could not see, which on Drive makes duplicates.
+  Dropbox and OneDrive paged the same way at their own sizes. Every page is
+  read now.
+
+- `opensave cloud restore` said the backup "landed as a snapshot" to roll
+  back to. It restores it over the live save, keeping the one it replaces;
+  it now says so.
+
 ## [2.4.0-beta.3] — 2026-09-23
 
 A fix for a way a paired device could lose a save file: untracking a game

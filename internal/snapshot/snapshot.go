@@ -44,6 +44,14 @@ type UploadHook func(zipPath, remoteFileName string)
 type Manager struct {
 	Store    *store.Store
 	OnUpload UploadHook
+	// OnCreated fires for every snapshot written, before its upload starts.
+	// current is false for a copy kept of a save about to be replaced (see
+	// CreateBeforeReplacing). Optional; runs on the snapshotting goroutine
+	// and must return promptly.
+	OnCreated func(snap store.Snapshot, current bool)
+	// OnRestored fires after a snapshot has been put back in place as the
+	// game's save. Optional; same rules as OnCreated.
+	OnRestored func(snap store.Snapshot)
 	// Log receives operational warnings (skipped unreadable files, …).
 	// Optional; nil disables.
 	Log func(level, msg string)
@@ -120,14 +128,33 @@ func (m *Manager) Create(gameID, comment string, isSystemAuto bool) (store.Snaps
 	if err != nil {
 		return store.Snapshot{}, err
 	}
-	return m.createOnBranch(gameID, game.ActiveBranch, comment, isSystemAuto)
+	return m.createOnBranch(gameID, game.ActiveBranch, comment, isSystemAuto, true)
+}
+
+// CreateBeforeReplacing keeps a copy of a save that is about to be replaced —
+// by a restore, a sync, the other side of a conflict, a branch switch.
+//
+// The archive is the same as Create's. What differs is what it means: the
+// save it holds is on its way out, so it is not "the save this device has",
+// which is what OnCreated's current flag tells the cloud mirror. Taken with
+// Create, the copy was the newest snapshot a device had, and another device
+// reading the mirror would have been offered the old save under a new date.
+func (m *Manager) CreateBeforeReplacing(gameID, comment string) (store.Snapshot, error) {
+	game, err := m.Store.GetGame(gameID)
+	if err != nil {
+		return store.Snapshot{}, err
+	}
+	return m.createOnBranch(gameID, game.ActiveBranch, comment, true, false)
 }
 
 // createOnBranch snapshots the current save state onto a named branch, which
 // is usually the active one. Seeding a freshly created branch is the
 // exception: the state being captured is the one being branched FROM, and it
 // has to land on the new branch for switching to it to restore anything.
-func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto bool) (store.Snapshot, error) {
+//
+// current reports whether the snapshot is of the save as it now stands and
+// will go on standing, as opposed to a copy kept before replacing it.
+func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto, current bool) (store.Snapshot, error) {
 	m.inFlight.Add(1)
 	defer m.inFlight.Done()
 
@@ -221,6 +248,12 @@ func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto bo
 	// comparison against a list already stored, and it is the only moment when
 	// both the before and after states are in hand.
 	m.recordDeletionsSince(gameID, branch, snapshotID, captured)
+
+	// Before the upload hook, so anything the upload does afterwards sees a
+	// record that already names this snapshot.
+	if m.OnCreated != nil {
+		m.OnCreated(snap, current)
+	}
 
 	m.pruneRetention(game)
 
@@ -566,7 +599,7 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 			defer os.Remove(tmp)
 		}
 		safetyComment := fmt.Sprintf("Pre-rollback safety restore point (before restoring %s)", snapshotID)
-		if _, err := m.Create(gameID, safetyComment, true); err != nil {
+		if _, err := m.CreateBeforeReplacing(gameID, safetyComment); err != nil {
 			// Non-fatal, same as JS: warn and continue the restore.
 			fmt.Fprintf(os.Stderr, "[snapshot] safety snapshot before restore failed: %v\n", err)
 		}
@@ -603,6 +636,9 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 				m.Log("warn", w)
 			}
 		}
+	}
+	if m.OnRestored != nil {
+		m.OnRestored(snap)
 	}
 	return snap, nil
 }
@@ -668,7 +704,7 @@ func (m *Manager) CreateBranch(gameID, branchName string, copyCurrentSave bool) 
 	// reported, reasonably, as branches being broken.
 	if copyCurrentSave && savePathHasContent(gameOf(m, gameID).SavePath) {
 		comment := fmt.Sprintf("Branch %q created from %q", clean, gameOf(m, gameID).ActiveBranch)
-		if _, err := m.createOnBranch(gameID, clean, comment, true); err != nil {
+		if _, err := m.createOnBranch(gameID, clean, comment, true, false); err != nil {
 			// The branch exists but has nothing in it, which is the state that
 			// loses saves on the first switch. Undo it rather than leave that
 			// trap set.
@@ -739,7 +775,7 @@ func (m *Manager) SwitchBranch(gameID, targetBranch string) error {
 	}
 	if hasContent {
 		comment := fmt.Sprintf("Auto backup before switching to branch %q", targetBranch)
-		if _, err := m.Create(gameID, comment, true); err != nil {
+		if _, err := m.CreateBeforeReplacing(gameID, comment); err != nil {
 			return fmt.Errorf("could not back up the current save before switching, so nothing was changed: %w", err)
 		}
 	}

@@ -72,6 +72,10 @@ type Settings struct {
 	// pre-releases). Running a pre-release implies beta whatever this says;
 	// see selfupdate.WantsPreReleases.
 	UpdateChannel string `db:"update_channel" json:"updateChannel"`
+	// CloudAutoPull puts a newer save from another device's cloud backup in
+	// place without asking — only when it continues from the save this device
+	// has, and this device has not changed since. Anything else is asked.
+	CloudAutoPull bool `db:"cloud_auto_pull" json:"cloudAutoPull"`
 
 	CustomScanPathsJSON  string `db:"custom_scan_paths" json:"-"`
 	ExcludePathsJSON     string `db:"exclude_paths" json:"-"`
@@ -292,6 +296,7 @@ func (s *Store) UpdateSettings(settings Settings) error {
 			default_max_snapshots = :default_max_snapshots,
 			default_max_manual_snapshots = :default_max_manual_snapshots,
 			update_channel = :update_channel,
+			cloud_auto_pull = :cloud_auto_pull,
 			updated_at = datetime('now')
 		WHERE id = 1`, settings)
 	if err != nil {

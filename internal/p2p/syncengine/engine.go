@@ -508,7 +508,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	// fixable — a full disk, a missing backups folder — where overwriting a
 	// save with no copy behind it is neither.
 	if len(atRisk) > 0 {
-		if _, err := e.Snapshots.Create(gameID, "before sync replaced local files", true); err != nil {
+		if _, err := e.Snapshots.CreateBeforeReplacing(gameID, "before sync replaced local files"); err != nil {
 			e.Log("error", fmt.Sprintf(
 				"not syncing %q with %q: %d local file(s) would be replaced and they could not be snapshotted first: %v",
 				game.Name, peer.Name, len(atRisk), err))

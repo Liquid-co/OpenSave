@@ -125,7 +125,7 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 	}
 
 	comment := fmt.Sprintf("Before resolving the %q save location with %s", root, peer.Name)
-	if _, err := e.Snapshots.Create(gameID, comment, true); err != nil {
+	if _, err := e.Snapshots.CreateBeforeReplacing(gameID, comment); err != nil {
 		e.Log("warn", fmt.Sprintf("safety snapshot before resolving a location failed: %v", err))
 	}
 

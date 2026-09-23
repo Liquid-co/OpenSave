@@ -244,6 +244,12 @@ func (s *Service) fetchToFile(req *http.Request, localPath string) error {
 // Upload sends a snapshot zip to the configured provider. Errors are
 // returned (the snapshot hook logs them without failing the snapshot).
 func (s *Service) Upload(filePath, fileName string) error {
+	return s.upload(filePath, fileName, true)
+}
+
+// upload is Upload, with the activity log optional: a head is bookkeeping,
+// and announcing each one would double every line a snapshot upload writes.
+func (s *Service) upload(filePath, fileName string, logged bool) error {
 	cfg, err := s.config()
 	if err != nil {
 		return err
@@ -259,7 +265,9 @@ func (s *Service) Upload(filePath, fileName string) error {
 		return err
 	}
 	size := info.Size()
-	s.Log("info", fmt.Sprintf("cloud: uploading %s (%.1f MB) via %s", fileName, float64(size)/(1<<20), strings.ToUpper(cfg.Provider)))
+	if logged {
+		s.Log("info", fmt.Sprintf("cloud: uploading %s (%.1f MB) via %s", fileName, float64(size)/(1<<20), strings.ToUpper(cfg.Provider)))
+	}
 
 	switch cfg.Provider {
 	case "local":
@@ -397,7 +405,9 @@ func (s *Service) Upload(filePath, fileName string) error {
 		return fmt.Errorf("unsupported cloud sync provider: %s", cfg.Provider)
 	}
 
-	s.Log("success", fmt.Sprintf("cloud: uploaded %q to %s", fileName, cfg.Provider))
+	if logged {
+		s.Log("success", fmt.Sprintf("cloud: uploaded %q to %s", fileName, cfg.Provider))
+	}
 	return nil
 }
 

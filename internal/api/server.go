@@ -50,6 +50,11 @@ func New(d *daemon.Daemon) *Server {
 	// Watcher auto-snapshots and async initial snapshots update the games
 	// state outside any HTTP handler — push those to dashboards too.
 	d.OnGameChanged = func(string) { s.BroadcastGamesUpdate() }
+
+	// Saves in the cloud from other devices: the ones waiting for an answer,
+	// and the ones taken without asking.
+	d.OnCloudOffers = func(offers []daemon.CloudOffer) { s.Hub.Broadcast("cloud-offers", offers) }
+	d.OnCloudPulled = func(p daemon.CloudPulled) { s.Hub.Broadcast("cloud-pulled", p) }
 	return s
 }
 
@@ -328,6 +333,7 @@ func (s *Server) initPayload() any {
 	payload["settings"] = s.settingsWire()
 	payload["games"] = s.gamesPayload()
 	payload["logHistory"] = s.Daemon.Log.History()
+	payload["cloudOffers"] = s.Daemon.CloudOffers()
 	return payload
 }
 

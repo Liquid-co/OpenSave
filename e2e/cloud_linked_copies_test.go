@@ -116,8 +116,8 @@ func TestCloudLinkedCopies_ListingFoldsLinkedIDsIntoOneGame(t *testing.T) {
 	idB := b.TrackGame("Hollow Knight Silksong Save")
 	b.API(http.MethodPost, "/api/games/"+idB+"/snapshot", map[string]string{"comment": "B"}, nil)
 	b.API(http.MethodPost, "/api/cloud/sync-local/"+idB, nil, nil)
-	if !testutil.WaitFor(30*time.Second, func() bool { return len(cloudFiles(t, dir)) >= 2 }) {
-		t.Fatalf("expected both devices' backups in the provider, saw %v", cloudFiles(t, dir))
+	if !testutil.WaitFor(30*time.Second, func() bool { return len(cloudSnapshots(t, dir)) >= 2 }) {
+		t.Fatalf("expected both devices' backups in the provider, saw %v", cloudSnapshots(t, dir))
 	}
 
 	b.API(http.MethodPost, "/api/games/"+idB+"/link", map[string]string{"alias": idA}, nil)

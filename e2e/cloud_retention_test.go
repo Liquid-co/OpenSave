@@ -52,9 +52,9 @@ func TestCloudRetention_ManualSnapshotsAreNotPrunedFromTheCloud(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	var names []string
 	for time.Now().Before(deadline) {
-		names = cloudFiles(t, cloudDir)
+		names = cloudSnapshots(t, cloudDir)
 		time.Sleep(500 * time.Millisecond)
-		if sameStringSet(names, cloudFiles(t, cloudDir)) {
+		if sameStringSet(names, cloudSnapshots(t, cloudDir)) {
 			break // stopped changing
 		}
 	}

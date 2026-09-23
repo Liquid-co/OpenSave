@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/testutil"
 )
 
@@ -54,7 +55,22 @@ func cloudFiles(t *testing.T, dir string) []string {
 	return out
 }
 
-// waitForUpload waits until the cloud folder holds a finished file.
+// cloudSnapshots lists the snapshots in the cloud folder, leaving out the heads
+// each device writes beside them (see internal/cloud/heads.go). Tests that took
+// "the first file" as the backup started picking up a head once devices began
+// announcing their saves, and a head sorts before its game's snapshots.
+func cloudSnapshots(t *testing.T, dir string) []string {
+	t.Helper()
+	out := []string{}
+	for _, n := range cloudFiles(t, dir) {
+		if _, _, _, ok := snapshot.ParseExportEntryName(n); ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// waitForUpload waits until the cloud folder holds a finished snapshot.
 //
 // Presence is not completion: uploads create the destination and then stream
 // into it, so a file that exists may still be zero bytes for a moment. A test
@@ -64,7 +80,7 @@ func waitForUpload(t *testing.T, dir string) []string {
 	t.Helper()
 	var names []string
 	ok := testutil.WaitFor(30*time.Second, func() bool {
-		names = cloudFiles(t, dir)
+		names = cloudSnapshots(t, dir)
 		if len(names) == 0 {
 			return false
 		}

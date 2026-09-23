@@ -19,6 +19,10 @@ func TestSaveFiles_MissingLocationDoesNotBreakTheListing(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts.do(t, http.MethodPost, "/api/games", map[string]string{"name": "Gone Loc", "savePath": ts.saveDir})
+	// Tracking starts a snapshot and then a watch in the background, and both
+	// walk the game's folders. Deleting one while the watch is being put on it
+	// fails on Windows, which is this test racing the app, not the app failing.
+	ts.daemon.WaitForTracking()
 
 	cfg := filepath.Join(t.TempDir(), "config")
 	if err := os.MkdirAll(cfg, 0o777); err != nil {

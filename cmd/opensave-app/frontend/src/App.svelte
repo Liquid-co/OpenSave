@@ -11,6 +11,7 @@
   import ConflictModal from './components/ConflictModal.svelte';
   import LocationConflictModal from './components/LocationConflictModal.svelte';
   import PairingBanner from './components/PairingBanner.svelte';
+  import CloudOfferBanner from './components/CloudOfferBanner.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
 
   import Home from './views/Home.svelte';
@@ -190,6 +191,7 @@
   <LocationConflictModal />
   <ConfirmDialog />
   {#if ready}<PairingBanner />{/if}
+  {#if ready}<CloudOfferBanner />{/if}
 </div>
 
 <style>

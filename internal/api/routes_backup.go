@@ -105,7 +105,7 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	safetyComment := fmt.Sprintf("Safety snapshot before restoring file %q from %s", body.RelPath, snapshotID)
-	if _, err := s.Daemon.Snapshots.Create(gameID, safetyComment, true); err != nil {
+	if _, err := s.Daemon.Snapshots.CreateBeforeReplacing(gameID, safetyComment); err != nil {
 		s.Daemon.Log.Log("warn", "safety snapshot before file restore failed: "+err.Error())
 	}
 
