@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -178,9 +179,25 @@ type gameWatch struct {
 	// missing raises no events to tell you it is missing, which is what makes
 	// this class of failure invisible.
 	//
-	// Only ever written from the watch's own goroutine, so no lock is needed.
-	rewatch bool
+	// Atomic because two goroutines set it: the event loop, and
+	// registerFolders when an Add fails.
+	rewatch atomic.Bool
+
+	// folders carries directories to put under watch to registerFolders. See
+	// there for why the event loop does not register them itself.
+	folders chan string
+	// rescan asks the event loop to read the tree again once things are
+	// quiet: sent when a batch of folders has come under watch, and when a
+	// watch starts on a folder that was busy while it was being registered.
+	// Buffered by one, and sent without waiting — one pending request covers
+	// any number more.
+	rescan chan struct{}
 }
+
+// folderQueueSize bounds the directories waiting to be registered. A burst
+// that creates more than this at once is not lost: the overflow sets rewatch,
+// and the next pass re-registers the whole tree.
+const folderQueueSize = 1024
 
 // New creates a watcher Engine.
 func New(cb Callbacks) *Engine {
@@ -341,6 +358,9 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	if err != nil {
 		return fmt.Errorf("create fs watcher: %w", err)
 	}
+	// Something must take events while the folders are added, or adding them
+	// can wait forever. See drainWhileRegistering.
+	registering := drainWhileRegistering(fsw)
 
 	// Single-file saves: watch the parent directory (survives the file
 	// being unlinked+recreated by safe-write); directory saves: watch the
@@ -379,6 +399,7 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 		}
 		watched[name] = path
 	}
+	busy := registering()
 
 	e.mu.Lock()
 	if e.closed {
@@ -403,6 +424,12 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 		cancel:   cancel,
 		done:     make(chan struct{}),
 		log:      e.log,
+		folders:  make(chan string, folderQueueSize),
+		rescan:   make(chan struct{}, 1),
+	}
+	if busy {
+		gw.rewatch.Store(true)
+		gw.rescan <- struct{}{} // buffered and empty: cannot block
 	}
 	e.games[gameID] = gw
 	e.mu.Unlock()
@@ -521,6 +548,22 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 
 	var debounce *time.Timer
 	var debounceC <-chan time.Time
+	resetDebounce := func() {
+		if debounce == nil {
+			debounce = time.NewTimer(debounceDelay)
+			debounceC = debounce.C
+			return
+		}
+		if !debounce.Stop() {
+			select {
+			case <-debounce.C:
+			default:
+			}
+		}
+		debounce.Reset(debounceDelay)
+	}
+
+	go e.registerFolders(ctx, gw)
 
 	for {
 		select {
@@ -534,33 +577,21 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			if !gw.eventRelevant(event) {
 				continue
 			}
-			// New subdirectory in directory mode: extend the watch.
+			// New subdirectory in directory mode: extend the watch — on
+			// registerFolders, never here. See registerFolders.
 			if !gw.isFile && event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					if addErr := addRecursive(ctx, gw.fsw, event.Name); addErr != nil && ctx.Err() == nil {
-						// Not fatal, and not ignorable either: this folder is
-						// now invisible to the watcher. Remember to re-register
-						// on the next pass rather than discovering it never
-						// again.
-						gw.rewatch = true
-						e.log("warn", fmt.Sprintf(
-							"could not watch new folder %q for %q (%v) — will retry",
-							event.Name, gw.gameID, addErr))
-					}
+					gw.queueFolder(event.Name)
 				}
 			}
-			if debounce == nil {
-				debounce = time.NewTimer(debounceDelay)
-				debounceC = debounce.C
-			} else {
-				if !debounce.Stop() {
-					select {
-					case <-debounce.C:
-					default:
-					}
-				}
-				debounce.Reset(debounceDelay)
-			}
+			resetDebounce()
+
+		case <-gw.rescan:
+			// Folders just came under watch, or the watch started on a folder
+			// that was busy. Anything written into a folder before its watch
+			// existed raised no event of its own, so read the tree again once
+			// things are quiet.
+			resetDebounce()
 
 		case err, ok := <-gw.fsw.Errors:
 			if !ok {
@@ -587,40 +618,28 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 				// again. Re-adding is idempotent: fsnotify keeps one watch per
 				// directory and allocates no second buffer for one it already
 				// has.
-				gw.rewatch = true
+				gw.rewatch.Store(true)
 			} else {
 				e.log("warn", fmt.Sprintf("watching %q: %v", gw.gameID, err))
 				continue
 			}
-			if debounce == nil {
-				debounce = time.NewTimer(debounceDelay)
-				debounceC = debounce.C
-			} else {
-				if !debounce.Stop() {
-					select {
-					case <-debounce.C:
-					default:
-					}
-				}
-				debounce.Reset(debounceDelay)
-			}
+			resetDebounce()
 
 		case <-debounceC:
 			debounce = nil
 			debounceC = nil
-			// Re-register before reading, so a folder that went unwatched is
-			// both found now and watched from here on. Doing only one of those
-			// leaves it correct today and silent tomorrow.
-			if gw.rewatch {
-				gw.rewatch = false
-				if err := addRecursive(ctx, gw.fsw, gw.savePath); err != nil && ctx.Err() == nil {
-					gw.rewatch = true
-					e.log("warn", fmt.Sprintf("re-watching %q: %v", gw.gameID, err))
-				}
+			// Re-register, so a folder that went unwatched is watched from
+			// here on, and read the tree below, so it is found now. Doing only
+			// one of those leaves it correct today and silent tomorrow.
+			//
+			// The registering is handed to registerFolders rather than done
+			// here, so it may finish after the read below. That leaves no gap:
+			// registerFolders asks for another read once the folders are in
+			// place, which covers anything written between the two.
+			if gw.rewatch.Swap(false) {
+				gw.queueFolder(gw.savePath)
 				for _, extra := range gw.extra {
-					if err := addRecursive(ctx, gw.fsw, extra); err != nil && ctx.Err() == nil {
-						gw.rewatch = true
-					}
+					gw.queueFolder(extra)
 				}
 			}
 			// The filesystem said these folders changed, which is better
@@ -756,7 +775,115 @@ func anyFileLocked(savePath string) bool {
 	return locked
 }
 
+// registerFolders puts directories under watch on behalf of the event loop.
+//
+// It has to be a goroutine of its own. fsnotify's Windows backend serves Add
+// from the goroutine that delivers events, and only between deliveries: an Add
+// waits for that goroutine to be free, and that goroutine waits for someone to
+// take the event it is holding. The event loop used to register new subfolders
+// itself, so when a folder was created with more events right behind it — a
+// new profile folder and the files written into it — the loop sat in Add
+// waiting on a reader that was waiting on the loop. Neither ever moved again.
+// The game's watch was dead from then on: no events, no automatic snapshots,
+// nothing sent to other devices until the fifteen-minute reconcile or a
+// restart. Four hundred new folders at once did it about two runs in five,
+// and a goroutine dump showed exactly those two, each waiting on the other.
+//
+// Here the loop keeps taking events while this waits, so the wait ends.
+func (e *Engine) registerFolders(ctx context.Context, gw *gameWatch) {
+	added := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case dir := <-gw.folders:
+			if err := addRecursive(ctx, gw.fsw, dir); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				// Not fatal, and not ignorable either: this folder is now
+				// invisible to the watcher. Re-register on the next pass rather
+				// than discovering it never again.
+				gw.rewatch.Store(true)
+				e.log("warn", fmt.Sprintf(
+					"could not watch folder %q for %q (%v) — will retry", dir, gw.gameID, err))
+			} else {
+				added = true
+			}
+			// Once the queue is empty, not per folder: a burst of new folders
+			// costs one more read of the tree, not hundreds. And not after a
+			// failure alone — the retry waits for the next real change, as it
+			// always has, rather than rescanning every two seconds against a
+			// folder that cannot be watched.
+			if added && len(gw.folders) == 0 {
+				added = false
+				select {
+				case gw.rescan <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
+}
+
+// queueFolder hands a directory to registerFolders without waiting. When the
+// queue is full it asks for the whole tree to be registered on the next pass
+// instead: waiting here is the very thing registerFolders exists to avoid.
+func (gw *gameWatch) queueFolder(dir string) {
+	select {
+	case gw.folders <- dir:
+	default:
+		gw.rewatch.Store(true)
+	}
+}
+
+// drainWhileRegistering takes a new watcher's events while its folders are
+// being added, and reports whether any arrived.
+//
+// Watch registers the whole tree before the event loop exists, and the same
+// wait described at registerFolders applies: the walk adds the top folder
+// first, so a folder that is busy while its watch starts — a game running as
+// OpenSave launches — has events queued long before a big tree is done, and
+// an Add made while nobody takes them never returns. Watch hung there, and the
+// daemon starts its watches one after another, so everything after that game
+// hung with it.
+//
+// What arrives here is noted, not acted on. The loop that starts next treats
+// it as a burst whose events were lost: it registers the tree again and reads
+// it, because a subfolder created mid-walk may have been missed by the walk,
+// and its Create is among what was just discarded.
+func drainWhileRegistering(fsw *fsnotify.Watcher) (finish func() (sawActivity bool)) {
+	stop := make(chan struct{})
+	result := make(chan bool, 1)
+	go func() {
+		saw := false
+		defer func() { result <- saw }()
+		for {
+			select {
+			case <-stop:
+				return
+			case _, ok := <-fsw.Events:
+				if !ok {
+					return
+				}
+				saw = true
+			case _, ok := <-fsw.Errors:
+				if !ok {
+					return
+				}
+				saw = true
+			}
+		}
+	}()
+	return func() bool {
+		close(stop)
+		return <-result
+	}
+}
+
 // addRecursive registers root and every subdirectory with the fs watcher.
+//
+// Never call it where fsw's events are not being taken — see registerFolders.
 //
 // ctx is the watch's own context, and the walk abandons itself once that
 // context is cancelled, so a shutdown does not keep queueing new work.
