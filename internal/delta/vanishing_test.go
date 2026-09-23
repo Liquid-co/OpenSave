@@ -51,15 +51,27 @@ func TestBuildManifest_SurvivesFilesVanishingDuringTheWalk(t *testing.T) {
 			"this game does nothing until the folder stops changing, so any deletion in it "+
 			"never reaches the other device", err)
 	}
-	// Whatever survived must be described correctly; the point is that the
-	// build completes, not that it catches a particular instant.
-	for rel := range m.Files {
-		if _, statErr := os.Stat(filepath.Join(dir, rel)); statErr != nil {
-			t.Errorf("manifest lists %q, which is not on disk: %v", rel, statErr)
+	// Every file nobody deleted must be listed: one file vanishing must not
+	// cost the manifest any of the others. That is the claim that matters,
+	// because a file left out reads to the peer as a deletion.
+	//
+	// A deleted file being listed is not wrong — it was read before it went,
+	// and the manifest describes the moment of the walk. This used to demand
+	// that everything listed still be on disk once the deleting was over,
+	// which fails whenever the walk reads a file ahead of the goroutine that
+	// removes it: 87 runs in 300 on a loaded machine, and never on an idle
+	// one, which is how it passed alone and failed inside the full suite.
+	for i := 1; i < files; i += 2 {
+		name := fmt.Sprintf("slot%04d.sav", i)
+		if _, listed := m.Files[name]; !listed {
+			t.Errorf("%s was never deleted and is missing from the manifest", name)
 		}
 	}
-	if len(m.Files) == 0 {
-		t.Error("the manifest came back empty; the walk did not survive far enough to prove anything")
+	for rel := range m.Files {
+		var n int
+		if _, scanErr := fmt.Sscanf(rel, "slot%04d.sav", &n); scanErr != nil || n < 0 || n >= files {
+			t.Errorf("manifest lists %q, which this test never created", rel)
+		}
 	}
 	t.Logf("manifest completed with %d of %d files while half were being deleted", len(m.Files), files)
 }
