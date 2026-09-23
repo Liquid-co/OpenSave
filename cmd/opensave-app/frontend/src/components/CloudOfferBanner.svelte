@@ -64,9 +64,13 @@
             Saved {timeAgo(offer.savedAt)} · in {where[offer.provider] ?? 'your cloud backup'}
           </div>
           {#if offer.diverged}
+            <!-- Not "since the two last matched": two devices meeting through
+                 the cloud for the first time never matched at all, and that
+                 is the commonest way to see this card. -->
             <div class="offer-warn">
-              This device has played on since the two last matched. Bringing theirs replaces this
-              device's progress — it is kept as a snapshot you can go back to.
+              This device has progress of its own that isn't in {offer.deviceName}'s save.
+              Bringing theirs replaces it — this device's save is kept as a snapshot you can go
+              back to.
             </div>
           {/if}
         </div>

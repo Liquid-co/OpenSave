@@ -43,8 +43,9 @@ type CloudOffer struct {
 	DeviceName string `json:"deviceName"`
 	SavedAt    string `json:"savedAt"`
 	Provider   string `json:"provider"`
-	// Diverged is true when this device's save has moved on since the two
-	// last matched, so taking the other one replaces progress made here.
+	// Diverged is true when this device's save holds progress the other one
+	// does not carry — the two moved apart, or never shared a save at all —
+	// so taking the other one replaces progress made here.
 	Diverged bool `json:"diverged"`
 }
 
