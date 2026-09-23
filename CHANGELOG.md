@@ -27,6 +27,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Cover art that failed to load once now comes back.** A cover was asked
+  for exactly once: if that request did not arrive — the daemon still
+  starting, a dropped connection, a first fetch that had to reach the
+  network — the game showed its initials for the rest of the session, with
+  the picture sitting in the daemon's cache the whole time. Because every
+  tile asks in the same moment, they all failed together, which made it look
+  like artwork in the sidebar was something nobody had built. It is asked for
+  again now, a few times, backing off. A game that genuinely has no cover is
+  still asked only once.
+
 - **Uninstalling leaves less behind.** It now removes the start-with-Windows
   entry, which otherwise had Windows trying to launch a program that was no
   longer there at every boot. It offers to remove the command-line tool as
