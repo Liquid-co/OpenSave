@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/hvBv92DZvn)
 [![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
-![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Steam%20Deck-lightgrey)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Steam%20Deck%20%7C%20macOS-lightgrey)
 
 *A complete Go rewrite of the original Node.js/Electron app: one small native binary, no runtime to install, and wire-compatible with existing peers.*
 
@@ -34,19 +34,20 @@ OpenSave gives **every** game the Steam Cloud experience:
 
 - **You own it.** Saves sync directly between *your* devices. No account to create, nothing stored on someone else's server.
 - **It's automatic.** Auto-detects hundreds of games, watches for changes, and syncs the moment a save is written.
-- **It's safe.** Every change is snapshotted and reversible. Conflicts are detected and resolved without silently clobbering a playthrough.
+- **It's safe.** Every change is snapshotted and reversible — a full version history you can roll back, not just the latest copy. Conflicts are detected and resolved without silently clobbering a playthrough.
+- **Your devices don't have to be on at the same time.** Connect your own Google Drive, Dropbox, OneDrive, WebDAV server or NAS folder, and a save made on one device reaches the next one you open, even with the first switched off. Still no account with us.
 
 ## Features
 
-- **Auto-detection** — scans for saves from Steam, emulators (RetroArch, Dolphin, Ryujinx, Yuzu, Citra, PCSX2, RPCS3, PPSSPP, Cemu, Xenia), Steam-emulator repacks (Goldberg/GSE, CODEX, RUNE, Tenoke, EMPRESS, Online-Fix, CPY, SKIDROW, 3DM, …), Epic, GOG, Unity `LocalLow`, and Unreal Engine conventions — plus the community-maintained [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest) covering save paths for tens of thousands of games, whatever store (or no store) they came from.
+- **Auto-detection** — scans for saves from Steam, emulators (RetroArch, Dolphin, Ryujinx, Yuzu, Citra, PCSX2, RPCS3, PPSSPP, Cemu, Xenia), Steam-emulator repacks (Goldberg/GSE, CODEX, RUNE, Tenoke, EMPRESS, Online-Fix, CPY, SKIDROW, 3DM, …), Epic, GOG, Unity `LocalLow`, and Unreal Engine conventions — plus the community-maintained [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest) covering save paths for tens of thousands of games, whatever store (or no store) they came from. Heroic, Lutris and Bottles prefixes are found on any drive, SD card included, and a newly installed game is noticed in the background — pointed out, never tracked without asking.
 - **Track anything** — any folder or single save file, watched live with block-level change detection (SHA-256, 64 KB–2 MB adaptive blocks). Only the blocks that changed are ever transferred.
 - **One tile per game, not one per folder** — a scan finds the same game in several places as a matter of course, and every result shows its file count, size and last-written date so you can tell the save you play from the one an old install left behind. Folders holding no files are hidden. Where a game's save is genuinely split across sibling folders, they are offered together as one game.
 - **A save split across folders is one game** — some titles keep progress in one place and settings or mods in another. Add each folder as a **save location** and all of them sync, snapshot and restore together.
 - **Files that shouldn't sync** — device-specific settings living beside the save can be excluded per game, written like a `.gitignore`, or picked from a list of what is actually in the folder. Excluded files are still captured in every snapshot, so a rule can never be the thing that loses one.
 - **P2P sync** — automatic over LAN (zero-config discovery) or across the internet through a relay **room code** — no port forwarding. A paired-device model means every connection is explicitly approved.
-- **Snapshot history** — every change creates a versioned snapshot. Roll back a whole save or a single file; branches keep parallel playthroughs (and conflict resolutions) safe.
+- **Snapshot history** — every change creates a versioned snapshot, compressed where that helps. Roll back a whole save or a single file; branches keep parallel playthroughs (and conflict resolutions) safe.
 - **Smart conflict handling** — diverged saves are detected by **sync lineage**, not wall-clock timestamps. Keep yours, keep theirs, or keep both on a new branch.
-- **Cloud backup** — optional mirroring to Google Drive, Dropbox, OneDrive, WebDAV, a webhook, or a local/NAS folder. Any OAuth provider can use your own app credentials instead of the built-in ones — required for OneDrive, and the fix for Google Drive's weekly re-login.
+- **Cloud backup and hand-off** — optional mirroring to Google Drive, Dropbox, OneDrive, WebDAV, a webhook, or a local/NAS folder. Each device also reads the others' backups: a newer save that carries on from yours is brought over, and one that would replace progress made here is asked about first. Any OAuth provider can use your own app credentials instead of the built-in ones — required for OneDrive, and the fix for Google Drive's weekly re-login.
 - **Cross-device game matching** — the same title tracked under different names on two machines (a Steam install here, a differently-named folder there) can be matched by Steam App ID or linked by hand. App-ID matching is opt-in, so two separate copies of a game are never merged without asking.
 - **A full command line** — `opensave` does everything the app does, for a Steam Deck in Game Mode or a headless server. See [Command line](#command-line).
 - **In-app updates** — one-click update from GitHub releases, pull a newer build straight from a paired device, or `opensave update` from the terminal.
@@ -84,6 +85,7 @@ OpenSave gives **every** game the Steam Cloud experience:
 | **Windows** | `OpenSave.Setup.exe` (installer) or portable `OpenSave.exe` | Double-click |
 | **Linux** | `opensave-linux-amd64.tar.gz` | extract, then `./opensave` |
 | **Steam Deck / SteamOS** | `OpenSave.flatpak` | see [Steam Deck install](#steam-deck-install) |
+| **macOS** (2.4.0 betas onward) | `OpenSave-macos.dmg`, or `opensave-macos-arm64.tar.gz` / `-amd64` for the CLI | open the `.dmg` and drag OpenSave to Applications — it isn't signed yet, so macOS asks you to allow it under **Privacy & Security** |
 
 Grab the latest from the [**Releases**](https://github.com/Liquid-co/OpenSave/releases) page.
 
