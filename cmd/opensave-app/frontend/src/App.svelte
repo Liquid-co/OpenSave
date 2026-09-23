@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames } from './lib/stores.js';
 
   import logoUrl from './assets/logo.png';
   import TitleBar from './components/TitleBar.svelte';
@@ -177,6 +177,16 @@
     {:else if ready}
       <Sidebar />
       <main>
+        <!-- At the top of the page rather than floating over it: floating, they
+             sat on the page's own header buttons for as long as they were
+             shown. These wait for an answer; they should not take anything away
+             while they do. -->
+        {#if $cloudOffers.length > 0 || $newGames.length > 0}
+          <div class="notices">
+            <CloudOfferBanner />
+            <NewGamesBanner />
+          </div>
+        {/if}
         <svelte:component this={views[$view.name] ?? Home} params={$view.params} />
       </main>
     {:else}
@@ -192,30 +202,15 @@
   <LocationConflictModal />
   <ConfirmDialog />
   {#if ready}<PairingBanner />{/if}
-  {#if ready}
-    <!-- One stack, so two cards at once sit one under the other. -->
-    <div class="notices">
-      <CloudOfferBanner />
-      <NewGamesBanner />
-    </div>
-  {/if}
 </div>
 
 <style>
   .notices {
-    position: fixed;
-    top: calc(var(--titlebar-h) + 10px);
-    right: 18px;
-    z-index: 110;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: min(460px, calc(100vw - 36px));
-    /* The stack spans a corner of the screen; only its cards take clicks. */
-    pointer-events: none;
-  }
-  .notices > :global(*) {
-    pointer-events: auto;
+    max-width: 760px;
+    margin-bottom: 18px;
   }
   .shell {
     display: flex;
