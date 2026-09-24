@@ -6,6 +6,14 @@
 /dist/
 /build/
 
+# What `go build ./cmd/...` leaves at the top of the tree on macOS and Linux,
+# where binaries have no extension for the rule above to catch. A 24 MB macOS
+# build of the app was committed this way once.
+/opensave
+/opensave-app
+/opensave-cli
+/opensave-relay
+
 # Local test builds. Hundreds of megabytes of binaries produced by hand for
 # testing a specific commit; useful to keep on disk, never to commit.
 /localbuild/
