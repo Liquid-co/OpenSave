@@ -28,6 +28,7 @@
   $: entries = [
     ...PAGES.map((p) => ({ label: `Go to ${p.label}`, kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
     { label: 'Sync all games', kind: 'Action', idle: true, run: syncAll },
+    { label: 'Snapshot every game now', kind: 'Action', idle: true, keywords: ['backup', 'save', 'all'], run: snapshotAll },
     { label: 'Auto-scan for saves', kind: 'Action', idle: true, keywords: ['find', 'detect'], run: () => navigate('home', { scan: Date.now() }) },
     { label: 'Track a folder', kind: 'Action', idle: true, keywords: ['add', 'game'], run: () => navigate('home', { add: true }) },
     {
@@ -57,6 +58,18 @@
 
   $: results = rank(entries, query);
   $: if (query !== undefined) active = 0;
+
+  async function snapshotAll() {
+    try {
+      const res = await api.post('/api/snapshots/all', {});
+      toast(
+        res.failed?.length ? `Snapshot of ${res.taken} game(s); ${res.failed.length} could not be taken` : `Took a snapshot of ${res.taken} game(s)`,
+        res.failed?.length ? 'error' : 'success'
+      );
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
 
   async function syncAll() {
     for (const g of $visibleGames) api.post(`/api/games/${g.id}/sync`).catch(() => {});

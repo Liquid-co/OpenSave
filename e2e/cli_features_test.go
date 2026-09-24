@@ -396,6 +396,35 @@ func TestCLI_SnapshotPinAndNote(t *testing.T) {
 	}
 }
 
+// snapshot --all takes one of every game, with the comment given, and says
+// so. (A game that fails is reported without stopping the rest; that is
+// tested on the daemon, where a path no folder can exist at can be set up.)
+func TestCLI_SnapshotAll(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+	one := c.saveDir("all-one", map[string]string{"a.sav": "1"})
+	two := c.saveDir("all-two", map[string]string{"b.sav": "2"})
+	c.mustRun("add", "All One", one)
+	c.mustRun("add", "All Two", two)
+	before := len(c.snapshotIDs("all-one")) + len(c.snapshotIDs("all-two"))
+
+	out := c.mustRun("snapshot", "--all", "before", "the", "reinstall")
+	if !strings.Contains(out, "2 game") {
+		t.Errorf("snapshot --all said:\n%s", out)
+	}
+	if after := len(c.snapshotIDs("all-one")) + len(c.snapshotIDs("all-two")); after != before+2 {
+		t.Errorf("snapshots went from %d to %d, want one more of each game", before, after)
+	}
+	var snaps []struct {
+		Comment string `json:"comment"`
+	}
+	c.mustJSON(&snaps, "snapshots", "all-one", "--json")
+	if len(snaps) == 0 || snaps[0].Comment != "before the reinstall" {
+		t.Errorf("newest snapshot of All One = %+v, want the comment given", snaps)
+	}
+
+}
+
 // pause and resume reach the running daemon, and status says it is paused.
 func TestCLI_PauseAndResume(t *testing.T) {
 	c := newCLI(t)

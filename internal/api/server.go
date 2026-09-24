@@ -159,6 +159,10 @@ func (s *Server) wireSyncProgress() {
 	}
 }
 
+// Transfers reports what is moving between this device and others, for the
+// tray, which runs in the same process.
+func (s *Server) Transfers() transfers.Snapshot { return s.transfers.Now() }
+
 func transferEvent(ev syncengine.ProgressEvent) transfers.Event {
 	return transfers.Event{
 		Peer: ev.PeerName, Direction: ev.Direction,

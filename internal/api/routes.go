@@ -63,6 +63,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/backup/restore", s.handleBackupRestore)
 
 	r.Post("/api/snapshots/prune", s.handlePruneSnapshots)
+	r.Post("/api/snapshots/all", s.handleSnapshotAll)
 
 	r.Get("/api/transfers", s.handleTransfers)
 	r.Get("/api/sync/pause", s.handleSyncPauseStatus)
@@ -700,6 +701,18 @@ func (s *Server) handleEditSnapshot(w http.ResponseWriter, r *http.Request) {
 // has its own option; a pause of days set by a typo is saves not syncing for
 // days without anyone meaning it.
 const maxPause = 24 * time.Hour
+
+// handleSnapshotAll takes a snapshot of every tracked game.
+func (s *Server) handleSnapshotAll(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Comment string `json:"comment"`
+	}
+	_ = readJSON(r, &body) // an empty body is fine: the default comment
+	if strings.TrimSpace(body.Comment) == "" {
+		body.Comment = "Snapshot of every game"
+	}
+	writeJSON(w, http.StatusOK, s.Daemon.SnapshotAll(body.Comment))
+}
 
 // handleTransfers lists what is moving between this device and others now,
 // and what moved recently.

@@ -757,8 +757,11 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 
 func cmdSnapshot(d *daemon.Daemon, args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: opensave snapshot <gameId> [comment]")
+		fmt.Fprintln(os.Stderr, "usage: opensave snapshot <gameId> [comment]\n       opensave snapshot --all [comment]")
 		return 1
+	}
+	if args[0] == "--all" {
+		return cmdSnapshotAll(d, args[1:])
 	}
 	// The comment is every word after the game, so it needs no quotes. A
 	// leading -m or --message is taken the way git takes it rather than kept
@@ -807,6 +810,34 @@ func cmdRollback(d *daemon.Daemon, args []string) int {
 	}
 	success("Restored %s", accent(snap.ID))
 	note("taken " + snap.Timestamp)
+	return 0
+}
+
+// cmdSnapshotAll snapshots every tracked game — the tray's "Snapshot every
+// game now". Exits non-zero when any game could not be snapshotted, so a
+// script taken before something risky knows not to go on.
+func cmdSnapshotAll(d *daemon.Daemon, args []string) int {
+	asJSON, args := jsonFlag(args)
+	words := args
+	if len(words) > 0 && (words[0] == "-m" || words[0] == "--message") {
+		words = words[1:]
+	}
+	comment := strings.Join(words, " ")
+	if comment == "" {
+		comment = "Snapshot of every game"
+	}
+	res := d.SnapshotAll(comment)
+	if asJSON {
+		emitJSON(res)
+	} else {
+		success("Took a snapshot of %d game(s)", res.Taken)
+		for _, f := range res.Failed {
+			fmt.Fprintf(os.Stderr, "  could not snapshot %s: %s\n", f.Name, f.Error)
+		}
+	}
+	if len(res.Failed) > 0 {
+		return 1
+	}
 	return 0
 }
 

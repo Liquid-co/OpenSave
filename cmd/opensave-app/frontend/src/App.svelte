@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate } from './lib/stores.js';
 
   import logoUrl from './assets/logo.png';
   import TitleBar from './components/TitleBar.svelte';
@@ -74,6 +74,9 @@
   }
 
   onMount(async () => {
+    // The tray's "Open Activity" and the like: the desktop shell asks for a
+    // page by name. Absent in a browser.
+    globalThis.runtime?.EventsOn?.('navigate', (page) => navigate(page));
     await boot();
     // First launch after an update (including peer-to-peer, which carries
     // no release notes): announce it and offer the embedded changelog.

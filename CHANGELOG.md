@@ -36,6 +36,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **A more useful tray menu.** Its first line says where things stand — a
+  game waiting on a decision, a pause and how long it has left, what is
+  syncing, or how many games are watched — and Recent activity shows the
+  last few things that went through or went wrong. New: Snapshot every game
+  now, before a reinstall or anything risky (also `opensave snapshot --all`
+  and in Ctrl+K), and Pause syncing / Resume syncing.
+
 - **Transfers.** The status bar's Transfers button shows what is moving
   between your devices right now — which game, which device, which way,
   how far along and how fast — and the last transfers with whether each went
