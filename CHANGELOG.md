@@ -262,6 +262,11 @@ All notable changes to OpenSave are documented here. This project adheres to
   start it — while it was running, busy doing what was asked. It now says
   the daemon did not answer in time.
 
+- A game could go on showing as syncing on the other device after the sync
+  had finished. The progress reports sent between devices on the same
+  network each went on their own, so a quick sync's "started" could arrive
+  after its "finished". They now arrive in the order they were sent.
+
 - `opensave snapshot <game> -m "before the boss"` titled the snapshot
   "-m before the boss". `-m` and `--message` are now taken the way git
   takes them; the comment can still be given without either.

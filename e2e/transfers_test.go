@@ -55,9 +55,17 @@ func TestTransfers_BothDevicesRecordASync(t *testing.T) {
 	}) {
 		t.Errorf("A has no finished upload to B: %+v", atA)
 	}
-	// Nothing left looking as if it were still running.
-	for _, list := range []transferList{atA, atB} {
-		if len(list.Active) != 0 {
+	// Nothing left looking as if it were still running. Waited for rather
+	// than read once: a follow-up sync can be under way at the moment of
+	// looking, and that is not a leftover. A leftover does not go away — a
+	// "started" that reached the other device after its "finished" once
+	// left one there until it timed out five minutes later.
+	for _, d := range []*testutil.TestDaemon{a, b} {
+		var list transferList
+		if !testutil.WaitFor(15*time.Second, func() bool {
+			d.API(http.MethodGet, "/api/transfers", nil, &list)
+			return len(list.Active) == 0
+		}) {
 			t.Errorf("a finished sync left transfers running: %+v", list.Active)
 		}
 	}

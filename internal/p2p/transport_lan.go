@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/opensave/opensave/internal/p2p/syncengine"
@@ -23,7 +24,14 @@ import (
 // spoofing, or simply by being handed that address after the real peer's DHCP
 // lease expired. The relay path was given proof-of-key; this is the same
 // treatment for the path most syncs actually use.
-type lanTransport struct{ engine *Engine }
+type lanTransport struct {
+	engine *Engine
+
+	// Sync-event reports to each peer, in the order they were made. See
+	// ReportSyncEvent.
+	eventsMu sync.Mutex
+	events   map[string]chan func()
+}
 
 var lanClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -99,14 +107,72 @@ func (t *lanTransport) TriggerPeerPull(peer syncengine.Peer, gameID string) {
 	}()
 }
 
+// eventQueueSize bounds the reports waiting to go to one peer. Past it a
+// report is dropped, as a fire-and-forget report could always be.
+const eventQueueSize = 64
+
+// eventQueueIdle is how long a peer's sender waits for another report before
+// it stops, so a peer that has gone away does not keep a goroutine forever.
+const eventQueueIdle = time.Minute
+
+// ReportSyncEvent tells the peer how a sync is going, without waiting for it.
+//
+// In order, through one sender per peer. Each report used to go out on its
+// own goroutine, so for a quick sync the "started" could reach the peer after
+// the "finished": the peer then showed a sync running that was already over —
+// in its transfers list, and on the game's card — until something timed it
+// out.
 func (t *lanTransport) ReportSyncEvent(peer syncengine.Peer, gameID, eventType string, data map[string]any) {
-	go func() {
+	post := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = t.postJSON(ctx, peer, peerURL(peer, "/sync-event/"+gameID), map[string]any{
 			"eventType": eventType, "data": data,
 		}, nil)
-	}()
+	}
+	t.eventsMu.Lock()
+	defer t.eventsMu.Unlock()
+	if t.events == nil {
+		t.events = map[string]chan func(){}
+	}
+	q := t.events[peer.ID]
+	if q == nil {
+		q = make(chan func(), eventQueueSize)
+		t.events[peer.ID] = q
+		go t.sendEvents(peer.ID, q)
+	}
+	select {
+	case q <- post:
+	default: // full: dropped, as it always could be
+	}
+}
+
+// sendEvents posts one peer's reports in order, and stops once none has come
+// for a while. It removes itself under the same lock ReportSyncEvent holds,
+// and only when nothing is waiting, so no report is left in a queue nobody
+// is draining.
+func (t *lanTransport) sendEvents(peerID string, q chan func()) {
+	idle := time.NewTimer(eventQueueIdle)
+	defer idle.Stop()
+	for {
+		select {
+		case post := <-q:
+			post()
+			// Reset alone is right: since Go 1.23 a timer's channel holds
+			// nothing stale after Stop or Reset, and draining it here, the
+			// old idiom, would block forever.
+			idle.Reset(eventQueueIdle)
+		case <-idle.C:
+			t.eventsMu.Lock()
+			if len(q) == 0 {
+				delete(t.events, peerID)
+				t.eventsMu.Unlock()
+				return
+			}
+			t.eventsMu.Unlock()
+			idle.Reset(eventQueueIdle)
+		}
+	}
 }
 
 func (t *lanTransport) getJSON(ctx context.Context, peer syncengine.Peer, url string, out any) error {
