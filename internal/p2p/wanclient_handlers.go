@@ -29,6 +29,12 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 	// Presence tracking for any message carrying a sender.
 	if msg.From != "" && msg.From != localID {
 		w.trackPresence(msg)
+		// A device this one unpaired, and has not heard back from since,
+		// is in the room: tell it again. Any frame will do — every device
+		// sends a heartbeat every few seconds, and nothing else it sends is
+		// certain to come soon. Once it answers the debt is settled, so this
+		// costs one exchange, not one per heartbeat.
+		w.engine.remindUnpaired(msg.From, "")
 	}
 
 	switch msg.Type {
@@ -43,6 +49,10 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 		_, pairedErr := w.engine.Store.GetPeer(msg.From)
 		if pairedErr != nil && contains(msg.PairedPeers, localID) && !w.engine.Pairing.HasIncoming(msg.From) {
 			w.engine.Log("warn", fmt.Sprintf("WAN peer %s thinks we're paired but we unpaired — notifying", msg.From))
+			// Bare, for a device on a build older than signed goodbyes. A
+			// current one refuses this from a device that has authenticated;
+			// it is sent a signed goodbye instead, if one is still owed (see
+			// the presence handling above).
 			w.send(RelayMessage{Type: "unpair-notify", To: msg.From, From: localID})
 		}
 		if pairedErr != nil {
@@ -226,7 +236,7 @@ func (w *WanClient) trackPresence(msg RelayMessage) {
 		if msg.Port > 0 {
 			peer.Port = msg.Port
 		}
-		_ = w.engine.Store.UpsertPeer(peer)
+		_ = w.engine.Store.UpdatePeer(peer)
 		if wasOffline {
 			w.engine.Log("info", fmt.Sprintf("peer %q came online via WAN; auto-syncing", peer.Name))
 			w.engine.GoSync(func(ctx context.Context) { w.engine.SyncAllGames(ctx) })

@@ -298,6 +298,12 @@ func (e *Engine) signLANRequest(req *http.Request, peerID string, body []byte) {
 	if err != nil {
 		return // no key for this pairing: sent as it always was
 	}
+	e.signLANRequestWith(req, peerID, body, key)
+}
+
+// signLANRequestWith is signLANRequest with the key supplied, for the goodbye
+// to a device whose record — which the key is otherwise read from — is gone.
+func (e *Engine) signLANRequestWith(req *http.Request, peerID string, body, key []byte) {
 	nonce, err := e2ee.NewNonce()
 	if err != nil {
 		return
@@ -358,6 +364,10 @@ func (e *Engine) verifyLANRequest(r *http.Request) (peerID string, body []byte, 
 	peer, err := e.Store.GetPeer(claimed)
 	if err != nil {
 		e.Log("warn", "LAN request claims to be from "+claimed+", which is not a paired device")
+		// Often a device this one unpaired that never heard, still trying
+		// to sync. The claim is unproven, and that is fine: all it can cause
+		// is a goodbye only the real device can act on.
+		e.remindUnpaired(claimed, clientIP(r))
 		return "", body, false
 	}
 	key, keyErr := e.requestAuthKeyFor(peer)

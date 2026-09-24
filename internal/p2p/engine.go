@@ -80,6 +80,10 @@ type Engine struct {
 	nonceOnce  sync.Once
 	nonceCache *nonceCache
 
+	// Goodbyes still owed to devices this one unpaired; see farewell.go.
+	farewellMu sync.Mutex
+	farewells  map[string]*farewell
+
 	// Live per-peer app build info (version + build time) learned from
 	// pings/hellos, powering the "update from this device" flow.
 	buildMu    sync.Mutex
@@ -157,7 +161,7 @@ func (e *Engine) StartDiscovery() error {
 				peer.DeviceType = d.DeviceType
 				peer.Status = "online"
 				peer.LastSeenMs = d.LastSeen
-				_ = e.Store.UpsertPeer(peer)
+				_ = e.Store.UpdatePeer(peer)
 				if wasOffline {
 					e.Log("info", fmt.Sprintf("paired peer %q appeared on LAN; auto-syncing", peer.Name))
 					e.GoSync(func(ctx context.Context) { e.SyncAllGames(ctx) })
@@ -182,7 +186,7 @@ func (e *Engine) StartDiscovery() error {
 				} else {
 					peer.Status = "offline"
 				}
-				_ = e.Store.UpsertPeer(peer)
+				_ = e.Store.UpdatePeer(peer)
 			}
 			e.notifyPeerUpdate()
 		},
@@ -393,7 +397,7 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 		if newStatus != "" && p.Status != newStatus {
 			p.Status = newStatus
 			p.LastSeenMs = time.Now().UnixMilli()
-			_ = e.Store.UpsertPeer(p)
+			_ = e.Store.UpdatePeer(p)
 			changed = true
 		}
 	}
@@ -703,37 +707,36 @@ func (e *Engine) RejectPairing(peerID string) {
 	e.notifyPeerUpdate()
 }
 
-// Unpair removes a paired peer and proactively tells them, so the other
-// device stops treating us as paired immediately instead of ghost-syncing
-// until its next hello gets rejected.
+// Unpair removes a paired peer and tells it, so the other device stops
+// treating this one as paired instead of trying to sync with it and being
+// turned away.
+//
+// For a peer with a pinned key, what is needed to sign the goodbye is kept
+// first and the goodbye is repeated until the other device answers — see
+// farewell.go for why sending it once was not enough.
 func (e *Engine) Unpair(peerID string) error {
 	peer, peerErr := e.Store.GetPeer(peerID)
 
-	// Build the goodbye BEFORE the record goes: the key it is signed with
-	// lives in that record. Signed on both transports, so the peer can tell
-	// this device from anyone else in its relay room or on its network
-	// saying the same thing — see notifyPeersGameOp for why that matters.
-	// Built after the delete it went out unsigned, and a peer that had seen
-	// this device authenticate before refused it, so the unpair never
-	// registered on the other side.
-	var wanGoodbye RelayMessage
-	var wanReady bool
-	var lanGoodbye *http.Request
-	if peerErr == nil {
-		if settings, err := e.Store.GetSettings(); err == nil {
-			payload := map[string]string{"peerId": settings.NodeID}
-			if peer.Address == "relay" {
-				wanGoodbye, wanReady = e.Wan.PrepareNotify(peerID, "/unpair", "POST", payload)
-			} else {
-				body, _ := json.Marshal(payload)
-				url := fmt.Sprintf("http://%s:%d/api/p2p/unpair", peer.Address, peer.Port)
-				if req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body)); err == nil {
-					req.Header.Set("Content-Type", "application/json")
-					e.signLANRequest(req, peerID, body)
-					lanGoodbye = req
-				}
-			}
+	// Written before the peer's record goes, so a crash between the two
+	// cannot lose the key the goodbye needs.
+	owed := false
+	var record store.UnpairedPeer
+	if peerErr == nil && strings.TrimSpace(peer.PublicKey) != "" {
+		record = unpairedRecord(peer, time.Now().UnixMilli())
+		if err := e.Store.RememberUnpaired(record); err != nil {
+			e.Log("warn", fmt.Sprintf("could not keep what is needed to repeat the goodbye to %q: %v", peer.Name, err))
+		} else {
+			owed = true
 		}
+	}
+
+	// Otherwise one goodbye, built BEFORE the record goes: if the peer does
+	// have a key, it lives in that record, and a goodbye built after the
+	// delete goes out unsigned — which a peer that has seen this device
+	// authenticate refuses.
+	var once func()
+	if peerErr == nil && !owed {
+		once = e.oneGoodbye(peer)
 	}
 
 	if err := e.Store.UnpairPeer(peerID); err != nil {
@@ -741,20 +744,49 @@ func (e *Engine) Unpair(peerID string) error {
 	}
 	e.notifyPeerUpdate()
 
-	// Best-effort delivery — the peer may be offline, which is fine: the
-	// reactive unpair-notify (on their next hello) still covers them.
 	switch {
-	case wanReady:
-		go e.Wan.SendRelayMessage(wanGoodbye)
-	case lanGoodbye != nil:
-		go func() {
-			client := &http.Client{Timeout: 5 * time.Second}
-			if resp, err := client.Do(lanGoodbye); err == nil {
-				resp.Body.Close()
-			}
-		}()
+	case owed:
+		// Only now, with the peer gone, is the goodbye owed in memory — and
+		// owed afresh, so this first one is not held back by the retry limit.
+		e.oweGoodbye(record)
+		e.remindUnpaired(peerID, "")
+	case once != nil:
+		go once()
 	}
 	return nil
+}
+
+// oneGoodbye builds a single goodbye to peer, to send after its record is
+// deleted, with no second attempt: the path for a peer paired before keys
+// existed, which accepts an unsigned goodbye, and the fallback if the record
+// needed for repeating one could not be written.
+func (e *Engine) oneGoodbye(peer store.Peer) func() {
+	settings, err := e.Store.GetSettings()
+	if err != nil {
+		return nil
+	}
+	payload := map[string]string{"peerId": settings.NodeID}
+	if peer.Address == "relay" {
+		msg, ok := e.Wan.PrepareNotify(peer.ID, "/unpair", "POST", payload)
+		if !ok {
+			return nil
+		}
+		return func() { e.Wan.SendRelayMessage(msg) }
+	}
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("http://%s:%d/api/p2p/unpair", peer.Address, peer.Port)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+	e.signLANRequest(req, peer.ID, body)
+	return func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		if resp, err := client.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	}
 }
 
 // ClearPendingResync drops a game from the failsafe retry queue — called

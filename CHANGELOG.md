@@ -93,6 +93,17 @@ All notable changes to OpenSave are documented here. This project adheres to
   marked so the two never share a copy, and a retry skips the cached one,
   which clears any left from before.
 
+- **Unpairing a device reaches it, even when it was off at the time.**
+  Unpairing tells the other device once. If it was asleep, or the relay
+  connection was reconnecting, it never heard — and it went on listing this
+  device as paired indefinitely, trying to sync and being turned away,
+  because the fallback it would have heard is refused between devices that
+  have authenticated. The goodbye is now repeated, signed as before, the
+  next time that device turns up, until it answers. Separately, an unpair
+  that did arrive could be undone a moment later: the other device, busy
+  recording that this one was online, wrote the pairing straight back. It
+  no longer does.
+
 - Saving Settings could undo a cloud backup change made since the page
   was opened — switching cloud backup back on, for one — because it sent
   its own copy of the cloud settings back with everything else. It no

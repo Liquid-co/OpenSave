@@ -133,7 +133,7 @@ func (e *Engine) requirePairedPeer(next http.Handler) http.Handler {
 			wasOffline := matched.Status != "online"
 			matched.Status = "online"
 			matched.LastSeenMs = now
-			_ = e.Store.UpsertPeer(*matched)
+			_ = e.Store.UpdatePeer(*matched)
 			if wasOffline {
 				e.Log("info", fmt.Sprintf("peer %q connected; triggering auto-sync for all games", matched.Name))
 				e.GoSync(func(ctx context.Context) { e.SyncAllGames(ctx) })
@@ -166,6 +166,11 @@ func (e *Engine) handlePing(w http.ResponseWriter, r *http.Request) {
 	if from != "" {
 		_, err := e.Store.GetPeer(from)
 		paired = err == nil
+		if !paired {
+			// A device checks on the devices it believes it is paired with.
+			// One this device unpaired, still checking, missed its goodbye.
+			e.remindUnpaired(from, clientIP(r))
+		}
 	}
 	jsonOK(w, map[string]any{
 		"status":     "ok",

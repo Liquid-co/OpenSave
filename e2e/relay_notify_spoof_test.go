@@ -135,6 +135,15 @@ func TestRelayUnpair_FromTheRealDeviceStillPropagates(t *testing.T) {
 		_, err := b.Daemon.Store.GetPeer(a.NodeID())
 		return err != nil
 	}) {
+		// Both sides' activity, because "did not land" has had more than one
+		// cause: a goodbye lost on the way, and one that landed and was
+		// undone by B recording A's presence a moment later.
+		for _, e := range a.Daemon.Log.History() {
+			t.Logf("A %s %s %s", e.Timestamp, e.Level, e.Message)
+		}
+		for _, e := range b.Daemon.Log.History() {
+			t.Logf("B %s %s %s", e.Timestamp, e.Level, e.Message)
+		}
 		t.Fatal("A unpaired B, but B still lists A as paired — the signed unpair did not land")
 	}
 }

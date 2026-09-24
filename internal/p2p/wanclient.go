@@ -232,6 +232,12 @@ func (w *WanClient) Disconnect() {
 		w.cancelConn()
 		w.cancelConn = nil
 	}
+	// Dropped here, not left to connectionLost: that ignores a generation it
+	// no longer owns, which after the increment above is this one, so the
+	// closing socket stayed in place. Sends went on reaching it in the moment
+	// before it closed, and a request waited out its full timeout instead of
+	// failing at once as offline.
+	w.conn = nil
 	w.state = "disconnected"
 	w.lastError = ""
 	w.discovered = map[string]WanPeer{}
@@ -253,7 +259,7 @@ func (w *WanClient) markWanPeersOffline() {
 	for _, p := range peers {
 		if p.Address == "relay" && p.Status != "offline" {
 			p.Status = "offline"
-			_ = w.engine.Store.UpsertPeer(p)
+			_ = w.engine.Store.UpdatePeer(p)
 		}
 	}
 }
@@ -517,7 +523,11 @@ func (w *WanClient) SendRelayMessage(msg RelayMessage) { w.send(msg) }
 // disappear: every push over the relay arrived only when the receiver's own
 // periodic reconcile happened to come round, up to a minute later. Anything
 // shaped like a request has to be built here.
-func (w *WanClient) buildRequest(peerID, msgID, route, method string, rawBody json.RawMessage) RelayMessage {
+//
+// authKey signs with a key the caller already has; nil derives it from the
+// paired peer's record, which is every caller but one — the goodbye to a
+// device already unpaired, whose record is gone (see farewell.go).
+func (w *WanClient) buildRequest(peerID, msgID, route, method string, rawBody json.RawMessage, authKey []byte) RelayMessage {
 	msg := RelayMessage{
 		Type: "request", To: peerID, From: w.localPeerID(),
 		MsgID: msgID, Route: route, Method: method,
@@ -537,7 +547,11 @@ func (w *WanClient) buildRequest(peerID, msgID, route, method string, rawBody js
 	// A peer paired before key exchange existed has nothing to derive from and
 	// the request goes out as it always did — the receiving side knows that
 	// and does not demand a MAC that could never have been sent.
-	if key, keyErr := w.engine.requestAuthKey(peerID); keyErr == nil {
+	key, keyErr := authKey, error(nil)
+	if key == nil {
+		key, keyErr = w.engine.requestAuthKey(peerID)
+	}
+	if keyErr == nil {
 		if nonce, nonceErr := e2ee.NewNonce(); nonceErr == nil {
 			msg.Nonce = nonce
 			msg.AuthMs = time.Now().UnixMilli()
@@ -577,15 +591,37 @@ func (w *WanClient) PrepareNotify(peerID, route, method string, body any) (Relay
 		}
 		rawBody = raw
 	}
-	return w.buildRequest(peerID, "", route, method, rawBody), true
+	return w.buildRequest(peerID, "", route, method, rawBody, nil), true
 }
 
 // Request performs an HTTP-shaped RPC against a peer through the relay.
 func (w *WanClient) Request(ctx context.Context, peerID, route, method string, body any) (json.RawMessage, error) {
+	status, data, err := w.exchange(ctx, peerID, route, method, body, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 200 && status < 300 {
+		return data, nil
+	}
+	var errBody struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(data, &errBody)
+	if errBody.Error == "" {
+		errBody.Error = fmt.Sprintf("WAN request returned status %d", status)
+	}
+	return nil, fmt.Errorf("%s", errBody.Error)
+}
+
+// exchange sends one request and waits for its reply. err is for a reply
+// that never came — the relay offline, a timeout — and a reply of any status
+// is returned as one, so a caller can tell "refused" from "not delivered".
+// authKey is as for buildRequest.
+func (w *WanClient) exchange(ctx context.Context, peerID, route, method string, body any, authKey []byte) (int, json.RawMessage, error) {
 	w.mu.Lock()
 	if w.conn == nil {
 		w.mu.Unlock()
-		return nil, fmt.Errorf("WAN relay connection is currently offline")
+		return 0, nil, fmt.Errorf("WAN relay connection is currently offline")
 	}
 	msgID := fmt.Sprintf("msg_%d_%06d", time.Now().UnixMilli(), rand.Intn(1_000_000))
 	respCh := make(chan RelayMessage, 1)
@@ -602,12 +638,12 @@ func (w *WanClient) Request(ctx context.Context, peerID, route, method string, b
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return nil, err
+			return 0, nil, err
 		}
 		rawBody = raw
 	}
 
-	w.send(w.buildRequest(peerID, msgID, route, method, rawBody))
+	w.send(w.buildRequest(peerID, msgID, route, method, rawBody, authKey))
 
 	// wanRequestTimeout is a floor, not a ceiling: a caller moving several
 	// megabytes of save data sets a deadline sized to the payload, and a flat
@@ -622,21 +658,11 @@ func (w *WanClient) Request(ctx context.Context, peerID, route, method string, b
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, nil, ctx.Err()
 	case <-time.After(timeout):
-		return nil, fmt.Errorf("WAN request timeout on route %s", route)
+		return 0, nil, fmt.Errorf("WAN request timeout on route %s", route)
 	case resp := <-respCh:
-		if resp.Status >= 200 && resp.Status < 300 {
-			return resp.Data, nil
-		}
-		var errBody struct {
-			Error string `json:"error"`
-		}
-		_ = json.Unmarshal(resp.Data, &errBody)
-		if errBody.Error == "" {
-			errBody.Error = fmt.Sprintf("WAN request returned status %d", resp.Status)
-		}
-		return nil, fmt.Errorf("%s", errBody.Error)
+		return resp.Status, resp.Data, nil
 	}
 }
 
@@ -719,7 +745,7 @@ func (w *WanClient) expireStalePeers() {
 		for _, p := range peers {
 			if p.Address == "relay" && p.Status == "online" && p.LastSeenMs < cutoff {
 				p.Status = "offline"
-				_ = w.engine.Store.UpsertPeer(p)
+				_ = w.engine.Store.UpdatePeer(p)
 				changed = true
 			}
 		}

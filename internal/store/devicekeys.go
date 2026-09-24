@@ -59,6 +59,11 @@ func (s *Store) SetPeerPublicKey(peerID, publicKey string) error {
 	if _, err := s.db.Exec(`UPDATE peers SET public_key = ? WHERE id = ?`, publicKey, peerID); err != nil {
 		return fmt.Errorf("pin public key for %s: %w", peerID, err)
 	}
+	// Paired again: any goodbye still owed from an earlier unpair is moot,
+	// and sending it now would undo the pairing just made.
+	if err := s.ForgetUnpaired(peerID); err != nil {
+		return err
+	}
 	return nil
 }
 

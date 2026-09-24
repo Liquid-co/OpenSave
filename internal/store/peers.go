@@ -85,6 +85,30 @@ func (s *Store) UpsertPeer(p Peer) error {
 	return nil
 }
 
+// UpdatePeer writes a peer's connection details and status, but only while
+// it is still paired: an unpaired peer is left unpaired.
+//
+// For presence — a heartbeat, a ping, a request arriving — which reads a peer,
+// changes its status and writes it back. Written back with UpsertPeer, a
+// peer unpaired in between was inserted again: a device told "you are no
+// longer paired" while its heartbeat was being handled went straight back to
+// paired, with no key, and the unpair was silently undone. UpsertPeer is for
+// the code that pairs.
+func (s *Store) UpdatePeer(p Peer) error {
+	if _, err := s.db.NamedExec(`
+		UPDATE peers SET
+			name = :name,
+			device_type = :device_type,
+			address = :address,
+			port = :port,
+			status = :status,
+			last_seen_ms = :last_seen_ms
+		WHERE id = :id`, p); err != nil {
+		return fmt.Errorf("update peer %s: %w", p.ID, err)
+	}
+	return nil
+}
+
 // GetPeer returns a single paired peer by ID.
 func (s *Store) GetPeer(id string) (Peer, error) {
 	var p Peer
