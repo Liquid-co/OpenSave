@@ -65,7 +65,13 @@
     cancelRetry();
     loadedFor = url;
     try {
-      const res = await fetch(url);
+      // A retry skips the browser's cache. The copy in it can be the reason
+      // the first try failed: one cached from an <img> of the same URL carries
+      // no CORS headers, and a fetch handed it fails exactly as a dropped
+      // connection does — every time, for as long as it is cached (a week).
+      // The daemon now marks covers as varying by origin, so no new copy like
+      // that is made; this heals the ones made before it did.
+      const res = await fetch(url, isRetry ? { cache: 'reload' } : undefined);
       if (!res.ok) {
         // 404 is ordinary: this game has no cover anywhere. The tile falls
         // back to whatever the parent draws underneath. Not retried — the

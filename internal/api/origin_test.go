@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,4 +127,47 @@ func TestAPI_NoOriginIsNotABrowserAndPasses(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("a request with no Origin (CLI, Deck plugin) was refused: HTTP %d", resp.StatusCode)
 	}
+}
+
+// A cover is sent with a week-long public cache lifetime, and the browser keeps
+// one copy per URL. The app shows a cover two ways: an <img>, which sends no
+// Origin and so gets no CORS headers back, and a fetch (the sidebar, the scan
+// tiles — they need the explicit-cover header), which does. Without "Vary:
+// Origin" on the first, the browser hands that header-less copy to the next
+// fetch of the same URL, the fetch fails its CORS check, and so does every
+// retry, for a week. The sidebar showed initials instead of art this way while
+// the daemon served every cover perfectly well.
+func TestAPI_ACachedResponseIsNotSharedAcrossOrigins(t *testing.T) {
+	h := corsLocalhost(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeCover(w, []byte("jpeg"))
+	}))
+	for _, origin := range []string{"", "http://wails.localhost"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/cover?appId=1", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("origin %q: HTTP %d", origin, rec.Code)
+		}
+		if !strings.Contains(rec.Header().Get("Cache-Control"), "max-age") {
+			t.Fatalf("origin %q: the cover is no longer cacheable, so this test proves nothing", origin)
+		}
+		if !varyIncludes(rec.Header(), "Origin") {
+			t.Errorf("origin %q: a cacheable response without Vary: Origin (got %q) — the browser will reuse it for a request from another origin",
+				origin, rec.Header().Values("Vary"))
+		}
+	}
+}
+
+func varyIncludes(h http.Header, name string) bool {
+	for _, v := range h.Values("Vary") {
+		for _, part := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), name) {
+				return true
+			}
+		}
+	}
+	return false
 }

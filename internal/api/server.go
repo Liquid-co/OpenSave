@@ -292,6 +292,13 @@ var allowedBrowserOrigins = map[string]bool{
 // on a bare POST. Refusing at the door is the only version that holds.
 func corsLocalhost(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// On every response, including the ones to a request with no Origin.
+		// The headers below depend on the Origin, so a cached copy made without
+		// one must not be handed to a request that has one. Covers are cached
+		// for a week, and the app loads each one both as an <img> (no Origin)
+		// and with fetch (Origin): the <img>'s copy, reused for the fetch,
+		// fails the fetch's CORS check, and every retry after it.
+		w.Header().Add("Vary", "Origin")
 		origin := r.Header.Get("Origin")
 		if origin != "" {
 			if !allowedBrowserOrigins[origin] {
@@ -301,7 +308,6 @@ func corsLocalhost(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

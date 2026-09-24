@@ -49,6 +49,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Covers in the sidebar and the scan show again, for good.** Both could
+  show a game's initials instead of its art for days at a time, while the
+  art was sitting on disk and the library beside them showed it. The app
+  loads each cover two ways — as a plain image, and by fetching it so it can
+  tell an explicit cover to blur — and the browser kept one copy of each
+  for a week. The plain image's copy lacks what a fetch needs, so every
+  fetch of that cover after it failed, retries included. Covers are now
+  marked so the two never share a copy, and a retry skips the cached one,
+  which clears any left from before.
+
 - **Heroic games on an SD card or another drive are found.** Scanning
   looked for Wine prefixes only under your home folder, and Heroic asks where
   to install — so on a Steam Deck with games on the SD card, or a desktop
