@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
@@ -126,12 +127,13 @@ func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
 	// Read the start of the file first, to decide how to store it; the bytes
 	// read are written from memory and the rest streamed after them, so the
 	// file is still read once.
-	head := make([]byte, compressProbeBytes)
-	n, err := io.ReadFull(f, head)
+	buf := probeBuffers.Get().(*[]byte)
+	defer probeBuffers.Put(buf)
+	n, err := io.ReadFull(f, *buf)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return "", err
 	}
-	head = head[:n]
+	head := (*buf)[:n]
 
 	method := zip.Store
 	if compresses(head) {
@@ -179,10 +181,9 @@ func compresses(sample []byte) bool {
 		return false
 	}
 	var out countingWriter
-	fw, err := flate.NewWriter(&out, flate.BestSpeed)
-	if err != nil {
-		return false
-	}
+	fw := flateWriters.Get().(*flate.Writer)
+	defer flateWriters.Put(fw)
+	fw.Reset(&out)
 	if _, err := fw.Write(sample); err != nil {
 		return false
 	}
@@ -190,6 +191,33 @@ func compresses(sample []byte) bool {
 		return false
 	}
 	return float64(out.n) <= float64(len(sample))*(1-compressMinSaving)
+}
+
+// Compressors and probe buffers are reused. Setting up a deflate compressor
+// allocates its tables — far more than a small save file holds — and each
+// file needs two, one to test and one to write. Made fresh per file, a save
+// folder of five thousand small files took six times as long to snapshot.
+var (
+	flateWriters = sync.Pool{New: func() any {
+		w, _ := flate.NewWriter(io.Discard, flate.BestSpeed)
+		return w
+	}}
+	probeBuffers = sync.Pool{New: func() any {
+		b := make([]byte, compressProbeBytes)
+		return &b
+	}}
+)
+
+// pooledFlate hands its compressor back when the archive entry is closed.
+type pooledFlate struct{ w *flate.Writer }
+
+func (p *pooledFlate) Write(b []byte) (int, error) { return p.w.Write(b) }
+
+func (p *pooledFlate) Close() error {
+	err := p.w.Close()
+	flateWriters.Put(p.w)
+	p.w = nil
+	return err
 }
 
 type countingWriter struct{ n int }
@@ -206,7 +234,9 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 func newSnapshotWriter(out io.Writer) *zip.Writer {
 	w := zip.NewWriter(out)
 	w.RegisterCompressor(zip.Deflate, func(dst io.Writer) (io.WriteCloser, error) {
-		return flate.NewWriter(dst, flate.BestSpeed)
+		fw := flateWriters.Get().(*flate.Writer)
+		fw.Reset(dst)
+		return &pooledFlate{w: fw}, nil
 	})
 	return w
 }
