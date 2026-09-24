@@ -169,6 +169,9 @@ type gameWatch struct {
 	// log is the engine's logger, held here so stop() can report a watch
 	// that refused to exit. Nil in tests that build a gameWatch directly.
 	log func(level, msg string)
+	// closeFS stands in for fsw.Close when set: a test's way of having a
+	// close that never returns.
+	closeFS func() error
 
 	// rewatch records that some folder under this game is known NOT to be
 	// watched, so the next pass re-registers everything.
@@ -372,16 +375,16 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	// tree recursively (fsnotify is non-recursive by itself).
 	if isFile {
 		if err := fsw.Add(filepath.Dir(savePath)); err != nil {
-			fsw.Close()
+			closeWatcher(fsw, fsw.Close, watchStopTimeout)
 			return fmt.Errorf("watch parent dir: %w", err)
 		}
 	} else {
 		if err := os.MkdirAll(savePath, 0o777); err != nil {
-			fsw.Close()
+			closeWatcher(fsw, fsw.Close, watchStopTimeout)
 			return fmt.Errorf("create save dir: %w", err)
 		}
 		if err := addRecursive(context.Background(), fsw, savePath); err != nil {
-			fsw.Close()
+			closeWatcher(fsw, fsw.Close, watchStopTimeout)
 			return fmt.Errorf("watch save dir tree: %w", err)
 		}
 	}
@@ -409,7 +412,7 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
-		fsw.Close()
+		closeWatcher(fsw, fsw.Close, watchStopTimeout)
 		return ErrStopped
 	}
 	if existing, ok := e.games[gameID]; ok {
@@ -523,7 +526,12 @@ func (gw *gameWatch) stop() {
 	// the loop keeps grinding through its event backlog and takes far longer
 	// to notice it should stop.
 	gw.cancel()
-	gw.fsw.Close()
+	deadline := time.Now().Add(watchStopTimeout)
+	closeFS := gw.fsw.Close
+	if gw.closeFS != nil {
+		closeFS = gw.closeFS
+	}
+	closed := closeWatcher(gw.fsw, closeFS, watchStopTimeout)
 
 	// Bounded regardless. The ordering above removes the known way to wedge
 	// this, but it cannot make the window vanish: cancel() can still land
@@ -535,14 +543,83 @@ func (gw *gameWatch) stop() {
 	// Giving up leaks a goroutine and a watcher handle. Against a process that
 	// never exits that is the right trade: the leak lasts only as long as the
 	// process, and stopping is nearly always the last thing it does.
+	exited := true
 	select {
 	case <-gw.done:
-	case <-time.After(watchStopTimeout):
-		if gw.log != nil {
-			gw.log("warn", fmt.Sprintf(
-				"the watcher for %s did not stop within %s and was abandoned — "+
-					"its goroutine is left running; this is a bug, but shutting down "+
-					"matters more than waiting for it", gw.gameID, watchStopTimeout))
+	case <-time.After(time.Until(deadline)):
+		exited = false
+	}
+	if (!closed || !exited) && gw.log != nil {
+		gw.log("warn", fmt.Sprintf(
+			"the watcher for %s did not stop within %s and was abandoned — "+
+				"its goroutine is left running; this is a bug, but shutting down "+
+				"matters more than waiting for it", gw.gameID, watchStopTimeout))
+	}
+}
+
+// closeWatcher closes fsw with closeFS — its Close, bar tests — waiting at
+// most timeout, and reports whether the close finished.
+//
+// fsnotify's Close can wait forever on Windows (v1.10.1). It asks the
+// backend's reader goroutine to stop by leaving a request on a channel, and a
+// reader that is waiting to hand over an error takes that request as its cue
+// to give up the error — and consumes it. The request is gone; the reader goes
+// back to waiting for file activity, and Close waits for an answer that never
+// comes. The error it is holding is typically an overflow, which is what a
+// burst of writes produces, and nothing reads errors once the run loop has
+// been cancelled. Captured from a 45-minute test timeout: stop() inside Close,
+// the reader in GetQueuedCompletionStatus. It reproduces every time: overflow
+// a folder, leave the error unread, close.
+//
+// So anything the reader is waiting to hand over is taken first, which means
+// it is not waiting when the request arrives, and taking continues while it
+// closes. What that leaves is an error raised in the instant between the two,
+// and the bound is for that.
+//
+// The taking beforehand is not what the test shows. Taking while closing
+// alone passed it too: it starts at once, while the close waits for its
+// goroutine to be scheduled, so it usually gets there first. Usually is the
+// word — the hang was only ever seen under a fully loaded suite, where the
+// order goroutines run in is least predictable — and taking first removes the
+// dependence on that order for the error already waiting.
+func closeWatcher(fsw *fsnotify.Watcher, closeFS func() error, timeout time.Duration) bool {
+	events, errs := fsw.Events, fsw.Errors
+	for pending := true; pending; {
+		select {
+		case _, ok := <-events:
+			if !ok {
+				events = nil
+			}
+		case _, ok := <-errs:
+			if !ok {
+				errs = nil
+			}
+		default:
+			pending = false
+		}
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		_ = closeFS()
+	}()
+	give := time.NewTimer(timeout)
+	defer give.Stop()
+	for {
+		select {
+		case <-closed:
+			return true
+		case _, ok := <-events:
+			if !ok {
+				events = nil
+			}
+		case _, ok := <-errs:
+			if !ok {
+				errs = nil
+			}
+		case <-give.C:
+			return false
 		}
 	}
 }

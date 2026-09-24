@@ -267,6 +267,14 @@ All notable changes to OpenSave are documented here. This project adheres to
   network each went on their own, so a quick sync's "started" could arrive
   after its "finished". They now arrive in the order they were sent.
 
+- **Quitting could hang on Windows after a game wrote a lot at once.** A
+  burst of writes can overflow the folder watcher's buffer, and if the watch
+  was stopped then — quitting, untracking — the file-watching library lost
+  its own request to close and waited for it forever, so the app never
+  exited. The watcher now takes what the library is holding before closing
+  it, and gives up after five seconds regardless. Found as a test that hung
+  for 45 minutes, and reproduced on demand.
+
 - `opensave snapshot <game> -m "before the boss"` titled the snapshot
   "-m before the boss". `-m` and `--message` are now taken the way git
   takes them; the comment can still be given without either.
