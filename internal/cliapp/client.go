@@ -3,8 +3,10 @@ package cliapp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +22,13 @@ import (
 // directly against the database, so they still function with no daemon up.
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+// slowClient is for the calls that wait on a cloud provider and a download —
+// checking for newer saves, taking one. Those can outlast thirty seconds on a
+// slow connection or a big save, and the daemon carries on regardless; the
+// short limit only made the terminal report a failure for work that went on
+// to succeed.
+var slowClient = &http.Client{Timeout: 15 * time.Minute}
 
 // daemonBaseURL finds the running daemon via the address it publishes on
 // start. Falls back to the configured port, which covers a daemon started by
@@ -40,6 +49,15 @@ func daemonBaseURL() (string, error) {
 // daemonRequest calls the running daemon. The error text is deliberately
 // actionable: "connection refused" on its own sends people hunting.
 func daemonRequest(method, path string, body any) ([]byte, error) {
+	return daemonRequestWith(httpClient, method, path, body)
+}
+
+// daemonRequestSlow is daemonRequest for calls that wait on the cloud.
+func daemonRequestSlow(method, path string, body any) ([]byte, error) {
+	return daemonRequestWith(slowClient, method, path, body)
+}
+
+func daemonRequestWith(client *http.Client, method, path string, body any) ([]byte, error) {
 	base, err := daemonBaseURL()
 	if err != nil {
 		return nil, err
@@ -60,8 +78,15 @@ func daemonRequest(method, path string, body any) ([]byte, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
+		// A daemon that answered nothing in time is running, not missing;
+		// telling someone to start it sends them the wrong way.
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil, fmt.Errorf("the OpenSave daemon at %s did not answer within %s — it may still be working; check again in a moment",
+				base, client.Timeout)
+		}
 		return nil, fmt.Errorf(
 			"the OpenSave daemon isn't reachable at %s — start it with `opensave daemon start` (or `systemctl --user start opensave-daemon`)",
 			base)

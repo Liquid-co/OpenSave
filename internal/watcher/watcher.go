@@ -332,6 +332,10 @@ func (e *Engine) queueCatchUp(job catchUpJob) {
 	}
 }
 
+// ErrStopped is returned by a watch started on an engine that has already
+// been stopped — the process is shutting down, and not watching is correct.
+var ErrStopped = errors.New("watcher engine is stopped")
+
 // Watch starts (or restarts) watching a game's save location.
 //
 // The expensive part — the recursive walk that registers every subfolder —
@@ -405,7 +409,7 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	if e.closed {
 		e.mu.Unlock()
 		fsw.Close()
-		return fmt.Errorf("watcher engine is stopped")
+		return ErrStopped
 	}
 	if existing, ok := e.games[gameID]; ok {
 		delete(e.games, gameID)

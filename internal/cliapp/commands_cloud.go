@@ -530,7 +530,7 @@ type cloudOffer struct {
 // For a machine with no window to show the app's banner in — a server, or a
 // Deck in Game Mode — this is how the question gets asked at all.
 func cloudCheck(asJSON bool) int {
-	raw, err := daemonRequest("POST", "/api/cloud/check", nil)
+	raw, err := daemonRequestSlow("POST", "/api/cloud/check", nil)
 	if err != nil {
 		return fail(asJSON, err)
 	}
@@ -594,7 +594,7 @@ func cloudAnswer(asJSON bool, args []string, take bool) int {
 	if !take {
 		path = "/api/cloud/offers/dismiss"
 	}
-	raw, err = daemonRequest("POST", path, map[string]string{"gameId": offer.GameID, "snapshotId": offer.SnapshotID})
+	raw, err = daemonRequestSlow("POST", path, map[string]string{"gameId": offer.GameID, "snapshotId": offer.SnapshotID})
 	if err != nil {
 		return fail(asJSON, err)
 	}

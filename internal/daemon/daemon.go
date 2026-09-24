@@ -6,6 +6,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -702,7 +703,11 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 			d.Log.Log("info", fmt.Sprintf("%q was untracked during its initial snapshot; skipping watch", game.Name))
 			return
 		}
-		if err := d.watchGame(game.ID, game.SavePath); err != nil {
+		// A stopped engine is a process on its way out — `opensave add`, whose
+		// own short-lived daemon is gone by the time this runs, and which tells
+		// the running one to take the game on. Nothing failed, and saying
+		// "could not watch" in the shared log sent people looking for a fault.
+		if err := d.watchGame(game.ID, game.SavePath); err != nil && !errors.Is(err, watcher.ErrStopped) {
 			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
 		}
 		d.Log.Log("success", fmt.Sprintf("now tracking %q at %q", game.Name, game.SavePath))
