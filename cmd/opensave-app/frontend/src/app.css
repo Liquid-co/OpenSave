@@ -266,6 +266,16 @@ input[type='radio']:disabled {
   color: var(--text-faint);
 }
 
+/* A text field with its Browse button beside it. Four views defined this
+   identically, and one that forgot had its button wrap under the field. */
+.path-row {
+  display: flex;
+  gap: 8px;
+}
+.path-row input {
+  flex: 1;
+}
+
 .empty {
   text-align: center;
   color: var(--text-faint);

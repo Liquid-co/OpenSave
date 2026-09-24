@@ -157,3 +157,21 @@ export function plannedGames(selectedRows) {
     return { primary, extras: members.filter((m) => m !== primary) };
   });
 }
+
+// The same game can turn up at several locations, but only some entries
+// carry a Steam App ID (and therefore cover art). Share each App ID across
+// every same-named entry so duplicates all show the same artwork instead
+// of one having a cover and the other a blank tile. Changes the rows in place.
+export function fillMissingAppIds(results) {
+  if (!results) return;
+  const byName = new Map();
+  for (const r of results) {
+    const key = (r.name ?? '').trim().toLowerCase();
+    if (r.appId && key && !byName.has(key)) byName.set(key, r.appId);
+  }
+  for (const r of results) {
+    if (r.appId) continue;
+    const key = (r.name ?? '').trim().toLowerCase();
+    if (byName.has(key)) r.appId = byName.get(key);
+  }
+}

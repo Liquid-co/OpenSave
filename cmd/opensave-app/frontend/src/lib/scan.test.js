@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildGroups,
   contentsLabel,
+  fillMissingAppIds,
   fmtAge,
   fmtBytes,
   isEmptyResult,
@@ -216,5 +217,34 @@ describe('plannedGames', () => {
     const plan = plannedGames([row({ id: 'a', role: 'alternative', groupId: 'app:1' })]);
     expect(plan[0].primary.id).toBe('a');
     expect(plan[0].extras).toEqual([]);
+  });
+});
+
+describe('fillMissingAppIds', () => {
+  it('gives an entry without an App ID the one a same-named entry has', () => {
+    const rows = [
+      row({ id: 'a', name: 'Hades', appId: '1145360' }),
+      row({ id: 'b', name: ' hades ', appId: '' }),
+      row({ id: 'c', name: 'Celeste', appId: '' })
+    ];
+    fillMissingAppIds(rows);
+    expect(rows.map((r) => r.appId)).toEqual(['1145360', '1145360', '']);
+  });
+
+  it('keeps an App ID an entry already has, and takes the first one seen', () => {
+    const rows = [
+      row({ id: 'a', name: 'Game', appId: '1' }),
+      row({ id: 'b', name: 'Game', appId: '2' }),
+      row({ id: 'c', name: 'Game' })
+    ];
+    fillMissingAppIds(rows);
+    expect(rows.map((r) => r.appId)).toEqual(['1', '2', '1']);
+  });
+
+  it('does not match on an empty name', () => {
+    const rows = [row({ id: 'a', name: '', appId: '9' }), row({ id: 'b', name: '', appId: '' })];
+    fillMissingAppIds(rows);
+    expect(rows[1].appId).toBe('');
+    expect(() => fillMissingAppIds(null)).not.toThrow();
   });
 });

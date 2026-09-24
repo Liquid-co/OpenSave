@@ -85,6 +85,13 @@ export function gameCover(game) {
   return coverURL(game?.appId, false, game?.name ?? '');
 }
 
+/** Whether a URL points at this app's own daemon — which is what decides
+ *  whether the page can fetch it (and read its headers) or can only show it
+ *  in an <img>: an image host elsewhere rarely allows a cross-origin fetch. */
+export function isDaemonURL(url) {
+  return !!baseURL && typeof url === 'string' && url.startsWith(baseURL + '/');
+}
+
 /** Open the live-update WebSocket; onMessage receives {type, data}. */
 export function connectWS(onMessage, onState) {
   let ws = null;
