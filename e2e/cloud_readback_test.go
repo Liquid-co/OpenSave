@@ -93,3 +93,21 @@ func waitForHeads(t *testing.T, dir string, n int) {
 		t.Fatalf("the cloud folder never held heads from %d devices: %s", n, strings.Join(cloudFiles(t, dir), ", "))
 	}
 }
+
+// Removing a game's cloud copies removes this device's announcement for it
+// too. Left behind, it would describe for good a game this device no longer
+// follows.
+func TestCloudReadback_RemovingAGamesCloudCopiesRemovesItsHead(t *testing.T) {
+	a := testutil.NewTestDaemon(t, "ReadbackUntrack")
+	dir := useLocalCloud(t, a)
+	a.WriteSave("slot1.sav", "progress")
+	game := a.TrackGame("Untrack Game")
+	waitForHeads(t, dir, 1)
+
+	a.API(http.MethodPost, "/api/cloud/delete-game/"+game, map[string]any{}, nil)
+	for _, name := range cloudFiles(t, dir) {
+		if g, _, _, ok := cloud.ParseHeadFileName(name); ok && g == game {
+			t.Errorf("%s is still in the cloud after the game's copies were removed", name)
+		}
+	}
+}
