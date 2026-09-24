@@ -13,6 +13,9 @@
   import ImportDialog from './cloud/ImportDialog.svelte';
 
   let config = null;
+  // Kept in the general settings rather than the cloud config, but it is a
+  // cloud behaviour and is set here with the rest.
+  let autoPull = false;
   // Shared by everything on the page that talks to the provider, so one
   // change is in flight at a time.
   const busy = writable(false);
@@ -35,6 +38,7 @@
       connected = connectedProviderOf(next);
       if (keepProvider) next.provider = keepProvider;
       config = next;
+      autoPull = !!s.cloudAutoPull;
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -43,7 +47,7 @@
   async function save() {
     busy.set(true);
     try {
-      settings.set(await api.post('/api/settings', { cloudSync: config }));
+      settings.set(await api.post('/api/settings', { cloudSync: config, cloudAutoPull: autoPull }));
       toast('Cloud settings saved', 'success');
     } catch (e) {
       toast(e.message, 'error');
@@ -81,10 +85,43 @@
       {/key}
     {/if}
 
+    {#if config.provider === 'google_drive'}
+      <div class="field folder-id">
+        <label for="cb-driveid">Drive folder ID (optional)</label>
+        <input id="cb-driveid" bind:value={config.folderId} placeholder="Leave blank to use the OpenSave folder it creates" />
+        <span class="hint">
+          Only to keep snapshots in a particular existing Drive folder — the ID is the long code in
+          the folder's address.
+        </span>
+      </div>
+    {/if}
+
+    <!-- Moved here from Settings → Sync, which the note on this card used to
+         send people to: what the cloud does on its own belongs beside where
+         it goes, and one Save covers both. -->
+    <div class="auto">
+      <h4>Automatically</h4>
+      <label class="check">
+        <input type="checkbox" bind:checked={config.enabled} />
+        Back up every new snapshot to the cloud
+      </label>
+      <p class="hint">
+        Uploads begin once a provider is set up above. Snapshots are kept in an
+        <strong>OpenSave</strong> folder there.
+      </p>
+      <label class="check">
+        <input type="checkbox" bind:checked={autoPull} />
+        Bring newer saves from my other devices
+      </label>
+      <p class="hint">
+        When another device's backup carries on from the save this one has, and this one hasn't
+        changed since, it's put in place without asking — the way syncing between your devices
+        works. Anything else is asked about first, and this device's save is kept as a snapshot
+        either way.
+      </p>
+    </div>
+
     <div class="actions">
-      <span class="quiet" style="margin-right: auto;">
-        Automatic mirroring and the Drive folder ID live in <strong>Settings → Sync</strong>.
-      </span>
       <button class="btn primary" disabled={$busy} on:click={save}>Save settings</button>
     </div>
   </div>
@@ -142,6 +179,25 @@
     align-items: center;
     gap: 12px;
     margin-top: 8px;
+  }
+  .folder-id {
+    margin-top: 16px;
+  }
+  .auto {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .auto h4 {
+    font-size: 0.92rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .auto .hint {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    margin: 2px 0 12px 27px;
+    line-height: 1.5;
   }
   .section {
     margin: 22px 0 10px;

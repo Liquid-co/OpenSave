@@ -67,6 +67,11 @@ All notable changes to OpenSave are documented here. This project adheres to
   is one switch away, and Copy puts what is shown on the clipboard for a
   bug report.
 
+- **Cloud settings are all on the Cloud Backup page.** Backing up every
+  snapshot, bringing newer saves from your other devices and the Drive
+  folder ID were under Settings → Sync, and the Cloud Backup page said so
+  in a note. They are now on that page, under the provider, saved with it.
+
 - **Snapshots take less room.** Every file went into a snapshot
   uncompressed, on the theory that saves are already compressed or small.
   Plenty are neither — JSON, XML, an engine's own uncompressed format — and
@@ -87,6 +92,11 @@ All notable changes to OpenSave are documented here. This project adheres to
   fetch of that cover after it failed, retries included. Covers are now
   marked so the two never share a copy, and a retry skips the cached one,
   which clears any left from before.
+
+- Saving Settings could undo a cloud backup change made since the page
+  was opened — switching cloud backup back on, for one — because it sent
+  its own copy of the cloud settings back with everything else. It no
+  longer sends them.
 
 - Windows paths in Activity and in error messages are shown as they are,
   rather than with every backslash doubled (`D:\\Games\\Saves`).

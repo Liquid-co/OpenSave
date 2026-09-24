@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { settings, toast, askConfirm, gameList } from '../lib/stores.js';
+  import { settings, toast, askConfirm, gameList, navigate } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
   import qrcode from 'qrcode-generator';
   import { DISCORD_URL, DONATE_URL } from '../lib/links.js';
@@ -40,11 +40,19 @@
     }
   });
 
+  // What this page saves. The cloud settings are set on the Cloud Backup page
+  // and left out here: this form is a copy taken when the page opened, and
+  // sending its copy of them back would undo a change made there since.
+  const outgoing = (d) => {
+    const { cloudSync, cloudAutoPull, ...rest } = d;
+    return rest;
+  };
+
   async function cleanUpSnapshots() {
     pruning = true;
     try {
       // Save the limit first so the cleanup uses it, then prune everything.
-      await api.post('/api/settings', draft);
+      await api.post('/api/settings', outgoing(draft));
       const res = await api.post('/api/snapshots/prune', { applyDefaultToAll: true });
       const mb = (res.freedBytes / 1048576).toFixed(1);
       toast(
@@ -62,10 +70,6 @@
 
   $: if ($settings && !draft) {
     draft = structuredClone($settings);
-    // older daemons may omit cloudSync from the settings payload
-    draft.cloudSync ??= {
-      enabled: true, provider: 'local', url: '', username: '', password: '', headers: '{}', folderId: ''
-    };
     // Older daemons predate the separate manual-snapshot budget; 0 is the
     // "keep forever" default, so an omitted value behaves as it should.
     draft.defaultMaxManualSnapshots ??= 0;
@@ -76,7 +80,7 @@
   async function save() {
     busy = true;
     try {
-      const updated = await api.post('/api/settings', draft);
+      const updated = await api.post('/api/settings', outgoing(draft));
       settings.set(updated);
       draft = structuredClone(updated);
       toast('Settings saved', 'success');
@@ -348,47 +352,15 @@
       {/if}
     </div>
 
-    <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">☁️ Cloud backup</h3>
-      <label class="check">
-        <input type="checkbox" bind:checked={draft.cloudSync.enabled} />
-        Mirror every new snapshot to the cloud automatically
-      </label>
-      <p class="hint" style="margin-top: 6px;">
-        On by default — uploads only happen once a provider is connected on the
-        <strong>Cloud Backup</strong> page. Snapshots are stored in an <strong>OpenSave</strong> folder.
-      </p>
-      <label class="check" style="margin-top: 18px;">
-        <input type="checkbox" bind:checked={draft.cloudAutoPull} />
-        Bring newer saves from my other devices automatically
-      </label>
-      <p class="hint" style="margin-top: 6px;">
-        When another device's backup carries on from the save this one has, and this one hasn't
-        changed since, it's put in place without asking — the way syncing between your devices works.
-        Anything else is asked about first, and this device's save is kept as a snapshot either way.
-      </p>
-      <div class="field" style="margin-top: 14px;">
-        <label for="s-driveid">Google Drive folder ID (optional)</label>
-        <input id="s-driveid" bind:value={draft.cloudSync.folderId} placeholder="Leave blank to use the auto-created OpenSave folder" />
-        <span class="hint">
-          Only set this to store snapshots in a specific existing Drive folder (the ID is the long code in
-          the folder's URL) instead of the auto-managed one.
-        </span>
+    <div class="card moved" style="margin-top: 14px;">
+      <div>
+        <h3 class="section-title">☁️ Cloud backup</h3>
+        <p class="hint">
+          Where backups go, whether every snapshot is sent there, and whether newer saves are
+          brought from your other devices are all set on the Cloud Backup page.
+        </p>
       </div>
-      <!-- The client-ID inputs that used to sit here have moved to Cloud
-           Backup, beside the provider they belong to. Two screens writing one
-           setting is a way to be told two different things; and the version
-           there can also take the client SECRET, warns that changing an id
-           signs you out, and gives OneDrive the portal link it needs — none of
-           which fitted a row of three bare boxes. -->
-      <div class="field" style="margin-bottom: 0;">
-        <label for="s-oauth-moved">Your own OAuth app</label>
-        <span class="hint" id="s-oauth-moved">
-          Client IDs and secrets are set per provider under <strong>Cloud Backup → Use your own
-          OAuth app</strong>. Optional for Google Drive and Dropbox, which ship with credentials;
-          required for OneDrive, which has none.
-        </span>
-      </div>
+      <button class="btn" on:click={() => navigate('cloud')}>Open Cloud Backup</button>
     </div>
   {:else if tab === 'storage'}
     <div class="card">
@@ -601,11 +573,6 @@
   .head {
     margin-bottom: 18px;
   }
-  .oauth-ids {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
   .quiet {
     color: var(--text-faint);
   }
@@ -810,6 +777,19 @@
     margin: 18px 0 0;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+  }
+  /* A pointer to where the cloud settings moved, rather than a gap where
+     they were. */
+  .moved {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .moved .hint {
+    font-size: 0.82rem;
+    color: var(--text-faint);
+    line-height: 1.5;
   }
   .section-title {
     font-size: 0.95rem;
