@@ -1,0 +1,133 @@
+// One line per game saying where its save stands, for the library and the
+// summary above it. The order is the order a person needs to hear things in:
+// something waiting on them first, then something happening now, then how
+// recently the save was last made safe.
+//
+// "Synced" means synced with a paired device; with nothing paired, the only
+// safety net is a snapshot, so that is what the line reports instead. Never
+// "up to date": this device cannot know what another device has done since.
+import { timeAgo, latestOf } from './timeago.js';
+
+/**
+ * @param {object} game A game from the games payload.
+ * @param {object} ctx
+ * @param {object} ctx.peers Paired devices, keyed by id.
+ * @param {object} [ctx.activity] This game's syncActivity entry.
+ * @param {boolean} [ctx.conflicted] A conflict for this game is waiting.
+ * @param {number} [ctx.now]
+ * @returns {{state: string, label: string, tone: 'warn'|'busy'|'ok'|'muted'}}
+ */
+export function gameStatus(game, { peers = {}, activity, conflicted = false, now = Date.now() } = {}) {
+  if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
+  if (activity?.state === 'running') {
+    return { state: 'syncing', label: `Syncing ${activity.percentage ?? 0}%`, tone: 'busy' };
+  }
+  if (activity?.state === 'error') return { state: 'error', label: 'Last sync failed', tone: 'warn' };
+  if (game.autoSync === false) return { state: 'paused', label: 'Auto-sync off', tone: 'muted' };
+
+  if (Object.keys(peers).length > 0) {
+    const paired = Object.fromEntries(Object.entries(game.lastSyncedWith ?? {}).filter(([id]) => id in peers));
+    const at = latestOf(paired);
+    return at
+      ? { state: 'synced', label: `Synced ${timeAgo(at, now)}`, tone: 'ok' }
+      : { state: 'unsynced', label: 'Not synced yet', tone: 'muted' };
+  }
+
+  const snap = latestSnapshotAt(game);
+  return snap
+    ? { state: 'local', label: `Snapshot ${timeAgo(snap, now)}`, tone: 'ok' }
+    : { state: 'empty', label: 'No snapshots yet', tone: 'muted' };
+}
+
+const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+/**
+ * The one sentence above the library: the most pressing thing about all of
+ * it. A decision waiting beats a sync running, which beats a failure that
+ * retries on its own, which beats the quiet cases.
+ * @param {{game: object, status: {state: string}}[]} rows
+ */
+export function librarySummary(rows) {
+  const by = (state) => rows.filter((r) => r.status.state === state);
+  const conflict = by('conflict');
+  const syncing = by('syncing');
+  const failed = by('error');
+  // From the snapshots, not the state: a game with devices paired reports
+  // its sync, and may have no snapshot at all behind it. "Backed up" below
+  // has to be true of every game it counts.
+  const empty = rows.filter((r) => latestSnapshotAt(r.game) === null);
+  const paused = by('paused');
+
+  if (conflict.length > 0) {
+    return {
+      tone: 'warn',
+      headline:
+        conflict.length === 1
+          ? `${conflict[0].game.name} needs a decision`
+          : `${n(conflict.length, 'game needs', 'games need')} a decision`
+    };
+  }
+  if (syncing.length > 0) {
+    return {
+      tone: 'busy',
+      headline: syncing.length === 1 ? `Syncing ${syncing[0].game.name}…` : `Syncing ${syncing.length} games…`
+    };
+  }
+  if (failed.length > 0) {
+    return {
+      tone: 'warn',
+      headline:
+        failed.length === 1
+          ? `The last sync of ${failed[0].game.name} failed — it will try again`
+          : `${failed.length} syncs failed — they will try again`
+    };
+  }
+  if (empty.length > 0) {
+    return {
+      tone: 'muted',
+      headline: `${n(empty.length, 'game has', 'games have')} no snapshot yet`
+    };
+  }
+  if (paused.length > 0) {
+    return {
+      tone: 'muted',
+      headline: `Auto-sync is off for ${n(paused.length, 'game', 'games')}`
+    };
+  }
+  return {
+    tone: 'ok',
+    headline: rows.length === 1 ? 'Your game is backed up' : `All ${rows.length} games are backed up`
+  };
+}
+
+/** The newest snapshot's time on any branch, or null. */
+export function latestSnapshotAt(game) {
+  let best = null;
+  for (const b of Object.values(game?.branches ?? {})) {
+    for (const s of b.snapshots ?? []) {
+      if (s.timestamp && (best === null || s.timestamp > best)) best = s.timestamp;
+    }
+  }
+  return best;
+}
+
+/** Game ids with a conflict waiting, whole-game or in one of its folders. */
+export function conflictedIds(conflicts, locationConflicts) {
+  const ids = new Set(Object.keys(conflicts ?? {}));
+  for (const c of locationConflicts ?? []) if (c?.gameId) ids.add(c.gameId);
+  return ids;
+}
+
+export const SORTS = {
+  name: { label: 'Name', compare: (a, b) => a.name.localeCompare(b.name) },
+  // Most recently changed first: the newest snapshot is the last time the
+  // save changed that OpenSave saw. Games with none go last, by name.
+  recent: {
+    label: 'Recently changed',
+    compare: (a, b) => {
+      const x = latestSnapshotAt(a) ?? '';
+      const y = latestSnapshotAt(b) ?? '';
+      return x === y ? a.name.localeCompare(b.name) : x < y ? 1 : -1;
+    }
+  }
+};

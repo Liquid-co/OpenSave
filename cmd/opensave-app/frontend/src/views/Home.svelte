@@ -1,9 +1,12 @@
 <script>
-  import { gameList, peers, syncActivity, toast } from '../lib/stores.js';
+  import { onDestroy } from 'svelte';
+  import { gameList, peers, syncActivity, conflicts, locationConflicts, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
+  import { gameStatus, conflictedIds } from '../lib/gamestatus.js';
   import OfferedGames from './home/OfferedGames.svelte';
   import AddGameCard from './home/AddGameCard.svelte';
   import ScanDialog from './home/ScanDialog.svelte';
+  import HomeSummary from './home/HomeSummary.svelte';
   import LibraryGrid from './home/LibraryGrid.svelte';
 
   export let params = {};
@@ -30,7 +33,22 @@
     toast('Sync triggered for all games');
   }
 
-  $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online');
+  // Where each game's save stands — the summary and the cards read the same
+  // answer, so the two can never disagree. "4 min ago" must not freeze at
+  // the moment the page was opened.
+  let now = Date.now();
+  const tick = setInterval(() => (now = Date.now()), 30_000);
+  onDestroy(() => clearInterval(tick));
+  $: conflicted = conflictedIds($conflicts, $locationConflicts);
+  $: rows = $gameList.map((game) => ({
+    game,
+    status: gameStatus(game, {
+      peers: $peers,
+      activity: $syncActivity[game.id],
+      conflicted: conflicted.has(game.id),
+      now
+    })
+  }));
 </script>
 
 <div class="head">
@@ -52,21 +70,6 @@
 
 <ScanDialog bind:this={scanner} bind:scanning />
 
-<div class="stats">
-  <div class="card stat">
-    <div class="stat-num">{$gameList.length}</div>
-    <div class="stat-label">games tracked</div>
-  </div>
-  <div class="card stat">
-    <div class="stat-num">{onlinePeers.length}</div>
-    <div class="stat-label">peers online</div>
-  </div>
-  <div class="card stat">
-    <div class="stat-num">{Object.values($syncActivity).filter((s) => s.state === 'running').length}</div>
-    <div class="stat-label">active syncs</div>
-  </div>
-</div>
-
 {#if $gameList.length === 0}
   <div class="welcome">
     <div class="welcome-icon">🎮</div>
@@ -81,7 +84,8 @@
     <p class="welcome-hint">Then open <strong>Devices</strong> to pair another PC or Steam Deck, or <strong>Cloud Backup</strong> to mirror snapshots online.</p>
   </div>
 {:else}
-  <LibraryGrid />
+  <HomeSummary {rows} />
+  <LibraryGrid {rows} />
 {/if}
 
 <style>
@@ -96,25 +100,6 @@
   .head-actions {
     display: flex;
     gap: 8px;
-  }
-
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 26px;
-  }
-  .stat {
-    text-align: center;
-    padding: 18px;
-  }
-  .stat-num {
-    font-size: 1.8rem;
-    font-weight: 700;
-  }
-  .stat-label {
-    color: var(--text-faint);
-    font-size: 0.82rem;
   }
 
   .welcome {

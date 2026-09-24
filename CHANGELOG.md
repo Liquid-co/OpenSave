@@ -38,6 +38,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Changed
 
+- **Home says where your saves stand.** The three counters at the top —
+  games tracked, devices online, syncs running — read 0 most of the time
+  and never said the thing you open the app to check. They are now one
+  line: every game backed up, or which game needs a decision, or what is
+  syncing, with the devices, the cloud backup and the latest snapshot
+  beside it. Each game's card says the same for that game — synced when,
+  syncing, needs a decision, or auto-sync off — in a colour that says
+  whether to look. The library can be sorted by recently changed, and
+  explicit cover art is blurred there as it already was in the sidebar.
+
 - **Snapshots take less room.** Every file went into a snapshot
   uncompressed, on the theory that saves are already compressed or small.
   Plenty are neither — JSON, XML, an engine's own uncompressed format — and
