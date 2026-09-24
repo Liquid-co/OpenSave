@@ -67,6 +67,14 @@ describe('linkGames', () => {
   it('leaves a folder in a path alone, even one named after the game', () => {
     expect(linked('watching "D:\\Games\\Hades\\save" and /home/me/celeste/x')).toEqual([]);
   });
+  it('takes a quoted name as a whole, so a longer game the library no longer has is not linked by part', () => {
+    expect(linked('now tracking "Hades Remastered" at D:\\Games')).toEqual([]);
+    expect(linked('restored "Hades" and "Celeste"')).toEqual([
+      ['Hades', 'hades'],
+      ['Celeste', 'celeste']
+    ]);
+  });
+
   it('ignores one-letter names, which would match everywhere', () => {
     expect(linked('X marks the spot')).toEqual([]);
   });

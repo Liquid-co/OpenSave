@@ -49,8 +49,9 @@ const isPathChar = (c) => c === '\\' || c === '/';
  * [{text}, {text, gameId}, …]. The daemon names a game by its name in some
  * messages and by its ID in others ("auto-snapshot created for balatro"); an
  * ID is shown as the game's name. A match counts only as a whole word outside
- * a path — "Hades" is not found in "Hades II" or in "D:\Games\Hades\" — and
- * the longest wins where two overlap.
+ * a path, and as the whole of a quoted name — "Hades" is not found in
+ * "Hades II", in D:\Games\Hades\, or in a logged "Hades Remastered" — and the
+ * longest wins where two overlap.
  */
 export function linkGames(message, games) {
   const text = message ?? '';
@@ -72,6 +73,11 @@ export function linkGames(message, games) {
       const before = text[at - 1];
       const after = text[end];
       if (isWordChar(before) || isWordChar(after) || isPathChar(before) || isPathChar(after)) continue;
+      // The daemon quotes the names it logs, so a quoted name is the whole
+      // quote: "Hollow Knight" is not a mention inside "Hollow Knight
+      // Silksong", a game that may not be tracked any more to be matched
+      // itself.
+      if ((before === '"') !== (after === '"')) continue;
       if (taken.some(([s, e]) => at < e && end > s)) continue;
       taken.push([at, end, n.id, n.show]);
     }
