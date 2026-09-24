@@ -3,6 +3,9 @@
   import { wsConnected, syncActivity, wanRoom, peers, showAbout } from '../lib/stores.js';
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
+  import { paletteOpen } from '../lib/shortcuts.js';
+
+  const modKey = /Mac/i.test(globalThis.navigator?.platform ?? '') ? '⌘' : 'Ctrl';
 
   // Replaced by AppInfo() as soon as it answers; see FALLBACK_INFO.
   let version = 'dev';
@@ -37,6 +40,9 @@
       <span class="wan">relay: {$wanRoom.roomCode}</span>
     {/if}
     <span>{onlinePeers} peer{onlinePeers === 1 ? '' : 's'} online</span>
+    <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title="Jump to a game, a page or an action">
+      <kbd>{modKey} K</kbd>
+    </button>
     <button class="ver" on:click={() => showAbout.set(true)} title="About OpenSave">OpenSave v{version}</button>
   </div>
 </footer>
@@ -66,6 +72,24 @@
   }
   .wan {
     color: var(--success);
+  }
+  .kbd-hint {
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+  }
+  .kbd-hint kbd {
+    font: inherit;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    color: var(--text-faint);
+  }
+  .kbd-hint:hover kbd {
+    color: var(--text);
+    border-color: var(--text-faint);
   }
   .ver {
     opacity: 0.7;

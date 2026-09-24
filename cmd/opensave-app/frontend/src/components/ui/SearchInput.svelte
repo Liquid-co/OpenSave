@@ -3,7 +3,8 @@
   export let placeholder = 'Filter…';
 </script>
 
-<input class="search" {placeholder} bind:value />
+<!-- data-find: what Ctrl+F focuses (see components/Shortcuts.svelte). -->
+<input class="search" data-find {placeholder} aria-label={placeholder} bind:value />
 
 <style>
   .search {

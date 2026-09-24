@@ -8,6 +8,7 @@
   // click that starts and ends on the backdrop (see backdrop.js for why both).
   // `closable` turns all three off at once, for a dialog that must not be
   // dismissed while it is writing something.
+  import { onMount } from 'svelte';
   import X from 'lucide-svelte/icons/x';
   import { backdropClose } from '../../lib/backdrop.js';
 
@@ -24,6 +25,15 @@
   const close = () => {
     if (closable) onClose();
   };
+
+  // Focus comes into the dialog when it opens — unless something in it has
+  // already taken it — so Escape closes it straight away and a screen reader
+  // is told where it is. Opened from the keyboard, focus was left behind on
+  // the page, and Escape went nowhere.
+  let panel;
+  onMount(() => {
+    if (!panel.contains(document.activeElement)) panel.focus();
+  });
 </script>
 
 <div
@@ -32,7 +42,7 @@
   on:keydown={(e) => e.key === 'Escape' && close()}
   role="presentation"
 >
-  <div class="panel" style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
+  <div class="panel" bind:this={panel} tabindex="-1" role="dialog" aria-modal="true" aria-label={title} style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
     <div class="head">
       <div>
         <h2 class="with-icon">
@@ -61,6 +71,7 @@
     padding: 32px;
   }
   .panel {
+    outline: none;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);

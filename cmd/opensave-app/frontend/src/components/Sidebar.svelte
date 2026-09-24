@@ -86,7 +86,7 @@
 
   <label class="filter">
     <Search size={14} />
-    <input placeholder="Filter library" aria-label="Filter library" bind:value={filter} />
+    <input placeholder="Filter library" aria-label="Filter library" data-find-fallback bind:value={filter} />
   </label>
 
   <div class="library">

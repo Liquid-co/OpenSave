@@ -40,6 +40,14 @@ All notable changes to OpenSave are documented here. This project adheres to
   take a snapshot, launch it, open its save folder, put back its latest
   snapshot, or stop tracking it. The menu key on the keyboard opens it too.
 
+- **Keyboard shortcuts.** Ctrl+K opens a quick switcher: type part of a
+  game's name, a page or an action — "snap hades" takes a snapshot of Hades
+  — and press Enter. Ctrl+F searches whatever is in front (a dialog, the
+  page, or else the library in the sidebar); Ctrl+1 to Ctrl+6 go to the
+  pages in the sidebar; Shift+F10 opens the menu for the focused game; and
+  ? lists them all. Dialogs now take the keyboard when they open, so Escape
+  closes one straight away.
+
 - **Undo instead of "Are you sure?"** Stopping tracking a game (one or a
   selection), declining a game another device offered, excluding a scan
   result and removing a save location no longer ask first. They happen as

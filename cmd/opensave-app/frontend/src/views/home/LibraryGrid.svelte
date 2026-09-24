@@ -64,7 +64,7 @@
 
 <div class="toolbar">
   <h3>Library</h3>
-  <input class="search" type="search" placeholder="Find a game…" bind:value={query} aria-label="Find a game" />
+  <input class="search" type="search" data-find placeholder="Find a game…" bind:value={query} aria-label="Find a game" />
   <div class="spacer"></div>
   {#if selectMode}
     <span class="select-count">{libSelected.size} selected</span>

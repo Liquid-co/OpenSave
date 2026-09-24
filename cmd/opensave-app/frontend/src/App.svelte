@@ -15,6 +15,7 @@
   import NewGamesBanner from './components/NewGamesBanner.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
+  import Shortcuts from './components/Shortcuts.svelte';
 
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
@@ -208,6 +209,7 @@
   <LocationConflictModal />
   <ConfirmDialog />
   <ContextMenu />
+  <Shortcuts />
   {#if ready}<PairingBanner />{/if}
 </div>
 
