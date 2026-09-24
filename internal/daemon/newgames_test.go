@@ -242,3 +242,20 @@ func isolateProfile(t *testing.T) {
 		t.Setenv(v, t.TempDir())
 	}
 }
+
+// Stock is taken of everything the first scan finds, empty or not. A folder
+// already there at that moment is not news later — whether it was empty, or
+// the scan ran out of time before measuring it, which on a big library it
+// does. Letting those through had the live app announce twenty-odd old games
+// as new.
+func TestNewGames_AFolderThereAtStockTakingIsNotNewsLater(t *testing.T) {
+	m := newScanMachine(t)
+	m.install("OldFavourite", true)
+	m.install("InstalledLongAgo", false) // there, but no save in it yet
+	m.announced()
+
+	m.play("InstalledLongAgo")
+	if got := m.announced(); got["InstalledLongAgo"] {
+		t.Errorf("a game that was already there when stock was taken was announced as new: %v", got)
+	}
+}

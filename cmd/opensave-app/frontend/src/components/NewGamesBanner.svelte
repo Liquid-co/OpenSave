@@ -48,7 +48,7 @@
         {#if names.length === 1}
           <strong>{names[0]}</strong> has saves OpenSave isn't keeping yet
         {:else}
-          <strong>{names.length} newly installed games</strong> have saves OpenSave isn't keeping yet
+          <strong>{names.length} games</strong> have saves OpenSave isn't keeping yet
         {/if}
       </div>
       <div class="new-sub">

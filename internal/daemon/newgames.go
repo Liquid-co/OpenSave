@@ -96,11 +96,18 @@ func (d *Daemon) DetectNewGames() {
 	var remember []store.KnownSave
 	var fresh []NewGame
 	for _, group := range presets.Groups(found) {
-		// A folder with nothing in it is not news: a launcher makes one for
-		// every game you own. It becomes news when the game first writes to
-		// it — so it is not remembered either, and the next scan looks again.
-		// The same goes for a folder the scan could not measure this time.
-		if !groupHasFiles(group) {
+		// Taking stock, everything found is remembered, files or not. A
+		// folder the scan could not measure this time — measuring shares one
+		// time budget across a whole library — or one empty today is still
+		// already here, and letting it through would have a later scan
+		// announce an old game as new. The live app did exactly that, with
+		// twenty-odd games at once.
+		//
+		// After that, a folder with nothing in it is not news: a launcher
+		// makes one for every game you own. It becomes news when the game
+		// first writes to it, so it is not remembered and the next scan looks
+		// again. The same goes for one the scan could not measure.
+		if hadStock && !groupHasFiles(group) {
 			continue
 		}
 		known, isTracked := false, false
@@ -149,7 +156,7 @@ func (d *Daemon) DetectNewGames() {
 	for _, g := range fresh {
 		names = append(names, g.Name)
 	}
-	d.Log.Log("info", fmt.Sprintf("found %d newly installed game(s) with saves: %s — track them from a scan on the Games page, or `opensave scan`",
+	d.Log.Log("info", fmt.Sprintf("found %d game(s) with saves OpenSave isn't keeping yet: %s — track them from a scan on the Games page, or `opensave scan`",
 		len(names), strings.Join(names, ", ")))
 	if d.OnNewGames != nil {
 		d.OnNewGames(d.NewGames())

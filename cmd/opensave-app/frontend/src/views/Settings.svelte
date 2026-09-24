@@ -269,7 +269,7 @@
       </label>
       <label class="check" style="margin-top: 18px;">
         <input type="checkbox" bind:checked={draft.detectNewGames} />
-        Tell me when a newly installed game has saves to track
+        Tell me when a game turns up with saves OpenSave isn't keeping
       </label>
       <span class="hint" style="margin-top: 6px;">
         OpenSave looks every hour, in the background, and only mentions games it hasn't seen before.

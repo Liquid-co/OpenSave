@@ -69,6 +69,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   back to. It restores it over the live save, keeping the one it replaces;
   it now says so.
 
+- **A slow answer from the daemon is no longer reported as no daemon.** A
+  terminal command that timed out said the daemon wasn't reachable and to
+  start it — while it was running, busy doing what was asked. It now says
+  the daemon did not answer in time.
+
+- `opensave add` no longer logs "could not watch" for every game it adds
+  while the app is running. The command's own short-lived daemon was never
+  going to watch the game — the running one does, and did.
+
 ## [2.4.0-beta.3] — 2026-09-23
 
 A fix for a way a paired device could lose a save file: untracking a game
