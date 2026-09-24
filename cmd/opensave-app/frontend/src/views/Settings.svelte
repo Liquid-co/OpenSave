@@ -4,6 +4,7 @@
   import { api, native } from '../lib/api.js';
   import qrcode from 'qrcode-generator';
   import { DISCORD_URL, DONATE_URL } from '../lib/links.js';
+  import LibraryViewOptions from './home/LibraryViewOptions.svelte';
 
   // QR of the same URL, generated locally so paying from a phone (where
   // Apple/Google Pay is a single tap) needs no typing. Built once — the URL
@@ -228,6 +229,15 @@
         <input id="s-node" value={draft.nodeId ?? ''} readonly class="mono" />
         <span class="hint">This device's unique network identifier (read-only).</span>
       </div>
+    </div>
+
+    <!-- Applies as it is changed, like the View menu on the library, which
+         changes the same thing. Not part of this page's Save: see
+         lib/libraryview.js for why. -->
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title">🎮 Library</h3>
+      <p class="hint library-hint">How your games are laid out on Home. Changes apply straight away.</p>
+      <LibraryViewOptions />
     </div>
 
     <div class="card" style="margin-top: 14px;">
@@ -790,6 +800,11 @@
     font-size: 0.82rem;
     color: var(--text-faint);
     line-height: 1.5;
+  }
+  .library-hint {
+    font-size: 0.82rem;
+    color: var(--text-faint);
+    margin: -4px 0 14px;
   }
   .section-title {
     font-size: 0.95rem;

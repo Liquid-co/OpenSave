@@ -1,31 +1,35 @@
 <script>
-  // The tracked games, as cover cards, each saying where its save stands.
+  // The tracked games, each saying where its save stands — as wide banners or
+  // tall box art, as many to a row as chosen, filtered by name and by status.
   // "Select" turns the grid into a multi-select, to act on several games at
   // once (e.g. clear a batch of wrongly-tracked entries) without going in and
   // out of each one.
   import { navigate, toast, askConfirm } from '../../lib/stores.js';
-  import { api, gameCover, isDaemonURL } from '../../lib/api.js';
-  import { SORTS, latestSnapshotAt } from '../../lib/gamestatus.js';
-  import CoverImage from '../../components/CoverImage.svelte';
+  import { api } from '../../lib/api.js';
+  import { SORTS } from '../../lib/gamestatus.js';
+  import { libraryView, gridColumns, filterRows, offeredFilters } from '../../lib/libraryview.js';
+  import { backdropClose } from '../../lib/backdrop.js';
+  import FilterTabs from '../../components/ui/FilterTabs.svelte';
+  import LibraryTile from './LibraryTile.svelte';
+  import LibraryViewOptions from './LibraryViewOptions.svelte';
 
   /** [{game, status}] for every tracked game. */
   export let rows = [];
 
-  // The chosen order is remembered on this device only; nothing depends on it.
-  const SORT_KEY = 'opensave.librarySort';
-  let sort = 'name';
-  try {
-    const saved = localStorage.getItem(SORT_KEY);
-    if (saved && SORTS[saved]) sort = saved;
-  } catch {}
-  $: try {
-    localStorage.setItem(SORT_KEY, sort);
-  } catch {}
+  let query = '';
+  let status = 'all';
 
-  $: sorted = [...rows].sort((a, b) => SORTS[sort].compare(a.game, b.game));
+  $: filters = offeredFilters(rows);
+  // A filter chosen while it made sense stays chosen only while it still does.
+  $: if (status !== 'all' && !filters.some((f) => f.id === status)) status = 'all';
+  $: shown = filterRows(rows, { query, status }).sort((a, b) => SORTS[$libraryView.sort].compare(a.game, b.game));
+  $: filtering = query.trim() !== '' || status !== 'all';
+  const clearFilters = () => {
+    query = '';
+    status = 'all';
+  };
 
-  // Explicit covers are blurred until the pointer is on their card.
-  let revealed = null;
+  let viewOpen = false;
 
   let selectMode = false;
   let libSelected = new Set();
@@ -39,9 +43,11 @@
     else libSelected.add(id);
     libSelected = libSelected;
   }
-  $: allSelected = rows.length > 0 && libSelected.size === rows.length;
+  // "All" is what is on screen: selecting games a filter is hiding, to then
+  // untrack them, would act on things nobody was looking at.
+  $: allSelected = shown.length > 0 && shown.every((r) => libSelected.has(r.game.id));
   function toggleSelectAll() {
-    libSelected = allSelected ? new Set() : new Set(rows.map((r) => r.game.id));
+    libSelected = allSelected ? new Set() : new Set(shown.map((r) => r.game.id));
   }
   async function untrackSelected() {
     const n = libSelected.size;
@@ -61,90 +67,103 @@
       libSelected = new Set();
     }
   }
-
-  const snapshotCount = (game) =>
-    Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0);
 </script>
 
-<div class="section-row">
+<svelte:window on:keydown={(e) => e.key === 'Escape' && (viewOpen = false)} />
+
+<div class="toolbar">
   <h3>Library</h3>
+  <input class="search" type="search" placeholder="Find a game…" bind:value={query} aria-label="Find a game" />
+  <div class="spacer"></div>
   {#if selectMode}
-    <div class="bar">
-      <span class="select-count">{libSelected.size} selected</span>
-      <button class="btn small" on:click={toggleSelectAll}>
-        {allSelected ? 'Unselect all' : `Select all (${rows.length})`}
-      </button>
-      <button class="btn small danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
-        Untrack selected
-      </button>
-      <button class="btn small" on:click={toggleSelectMode}>Cancel</button>
-    </div>
+    <span class="select-count">{libSelected.size} selected</span>
+    <button class="btn small" on:click={toggleSelectAll}>
+      {allSelected ? 'Unselect all' : `Select all (${shown.length})`}
+    </button>
+    <button class="btn small danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
+      Untrack selected
+    </button>
+    <button class="btn small" on:click={toggleSelectMode}>Cancel</button>
   {:else}
-    <div class="bar">
-      <label class="sort">
-        <span>Sort</span>
-        <select bind:value={sort}>
-          {#each Object.entries(SORTS) as [id, s]}
-            <option value={id}>{s.label}</option>
-          {/each}
-        </select>
-      </label>
-      <button class="btn small" on:click={toggleSelectMode}>☑ Select</button>
+    <label class="sort">
+      <span>Sort</span>
+      <select bind:value={$libraryView.sort}>
+        {#each Object.entries(SORTS) as [id, s]}
+          <option value={id}>{s.label}</option>
+        {/each}
+      </select>
+    </label>
+    <div class="view-anchor">
+      <button class="btn small" class:active={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
+        ▦ View
+      </button>
+      {#if viewOpen}
+        <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
+        <div class="view-panel card" role="dialog" aria-label="Library view">
+          <LibraryViewOptions />
+          <p class="view-hint">Also in Settings → General.</p>
+        </div>
+      {/if}
     </div>
+    <button class="btn small" on:click={toggleSelectMode}>☑ Select</button>
   {/if}
 </div>
-<div class="grid">
-  {#each sorted as { game, status } (game.id)}
-    {@const cover = gameCover(game)}
-    <button
-      class="card game-card"
-      class:selected={selectMode && libSelected.has(game.id)}
-      title={game.savePath}
-      on:click={() => (selectMode ? toggleSelect(game.id) : navigate('game', { gameId: game.id }))}
-      on:mouseenter={() => (revealed = game.id)}
-      on:mouseleave={() => (revealed = null)}
-    >
-      {#if selectMode}
-        <div class="tick" class:on={libSelected.has(game.id)}>{libSelected.has(game.id) ? '✓' : ''}</div>
-      {/if}
-      <div class="cover">
-        {#if cover && isDaemonURL(cover)}
-          <CoverImage src={cover} revealed={revealed === game.id} />
-        {:else if cover}
-          <img src={cover} alt="" loading="lazy" on:error={(e) => (e.currentTarget.style.display = 'none')} />
-        {/if}
-        <div class="cover-fallback"><span>{game.name}</span></div>
-      </div>
-      <div class="body">
-        <div class="name">{game.name}</div>
-        <div class="status tone-{status.tone}">
-          <span class="dot"></span>{status.label}
-        </div>
-        <div class="meta">
-          {snapshotCount(game)} {snapshotCount(game) === 1 ? 'snapshot' : 'snapshots'}
-          {#if game.activeBranch && game.activeBranch !== 'main'}
-            · on <strong>{game.activeBranch}</strong>
-          {/if}
-        </div>
-      </div>
-    </button>
-  {/each}
-</div>
+
+{#if filters.length > 1}
+  <div class="chips">
+    <FilterTabs options={filters.map((f) => [f.id, f.label])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
+  </div>
+{/if}
+
+{#if shown.length === 0}
+  <div class="none">
+    <p>No games match{query.trim() ? ` "${query.trim()}"` : ''}.</p>
+    <button class="btn small" on:click={clearFilters}>Clear filters</button>
+  </div>
+{:else}
+  <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}">
+    {#each shown as { game, status: s } (game.id)}
+      <LibraryTile
+        {game}
+        status={s}
+        cover={$libraryView.cover}
+        selecting={selectMode}
+        selected={libSelected.has(game.id)}
+        on:open={() => (selectMode ? toggleSelect(game.id) : navigate('game', { gameId: game.id }))}
+      />
+    {/each}
+  </div>
+  {#if filtering}
+    <p class="showing">Showing {shown.length} of {rows.length}. <button class="linklike" on:click={clearFilters}>Show all</button></p>
+  {/if}
+{/if}
 
 <style>
-  .section-row {
+  .toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
     margin-bottom: 12px;
     flex-wrap: wrap;
   }
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+  .toolbar h3 {
+    margin-right: 6px;
+  }
+  .search {
+    width: 220px;
+    padding: 6px 11px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.86rem;
+    outline: none;
+  }
+  .search:focus {
+    border-color: var(--accent);
+  }
+  .spacer {
+    flex: 1;
   }
   .select-count {
     color: var(--text-dim);
@@ -165,125 +184,59 @@
     color: var(--text);
     font-size: 0.85rem;
   }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 12px;
-  }
-  .game-card {
+  .view-anchor {
     position: relative;
-    text-align: left;
-    cursor: pointer;
-    color: var(--text);
-    transition: border-color 0.12s, transform 0.12s;
-    padding: 0;
-    overflow: hidden;
   }
-  .game-card:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-1px);
-  }
-  .game-card.selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
-  }
-  .tick {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    z-index: 3;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.55);
-    border: 2px solid #fff;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  }
-  .tick.on {
-    background: var(--accent);
+  .btn.active {
     border-color: var(--accent);
   }
-  .cover {
-    position: relative;
-    aspect-ratio: 460 / 175;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    overflow: hidden;
-  }
-  .cover :global(img) {
-    position: absolute;
+  .view-backdrop {
+    position: fixed;
     inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    z-index: 1;
+    z-index: 30;
   }
-  .cover-fallback {
+  .view-panel {
     position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(138, 99, 244, 0.16), rgba(138, 99, 244, 0.04));
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 31;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    padding: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   }
-  .cover-fallback span {
-    font-weight: 700;
-    font-size: 1.05rem;
-    color: var(--text-dim);
-    text-align: center;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-  .body {
-    padding: 12px 16px 14px;
-  }
-  .name {
-    font-weight: 600;
-    margin-bottom: 5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  /* Where the save stands, in the colour that says whether to look. */
-  .status {
-    --tone: var(--success);
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 0.8rem;
-    color: var(--text);
-    margin-bottom: 4px;
-  }
-  .status.tone-warn {
-    --tone: var(--warn);
-    color: var(--warn);
-  }
-  .status.tone-busy {
-    --tone: var(--accent);
-    color: var(--accent);
-  }
-  .status.tone-muted {
-    --tone: var(--text-faint);
-    color: var(--text-dim);
-  }
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--tone);
-    flex-shrink: 0;
-  }
-  .meta {
+  .view-hint {
+    margin-top: 12px;
     font-size: 0.75rem;
     color: var(--text-faint);
+  }
+  .chips {
+    margin: -2px 0 14px;
+  }
+  .grid {
+    display: grid;
+    gap: 12px;
+  }
+  .none {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .showing {
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: var(--text-faint);
+  }
+  .linklike {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    cursor: pointer;
   }
 </style>

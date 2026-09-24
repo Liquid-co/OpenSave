@@ -27,6 +27,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   save: a device keeps a copy of its save before replacing it, and that copy
   is dated after the save that replaced it. Older versions ignore the notes.
 
+- **Choose how your library looks, and filter it.** Games can be shown as
+  wide banners or as tall box art, as many to a row as fit or a number you
+  set, small, medium or large — from Settings → General or the View button
+  on the library, applied as you choose. A game with no tall art shows its
+  banner whole rather than a cropped strip of it. The library can be
+  searched by name and narrowed to games that need attention, are syncing,
+  have auto-sync off or have no snapshot yet; only the filters that would
+  narrow it are shown.
+
 - **New games are noticed without you scanning.** The save scan used to run
   only when you pressed the button, so a game installed since sat untracked
   — no snapshots, nothing synced — until you thought to scan again. OpenSave

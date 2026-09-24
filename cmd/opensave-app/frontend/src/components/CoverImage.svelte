@@ -123,6 +123,7 @@
     {alt}
     class:explicit={explicit && !revealed}
     loading="lazy"
+    on:load
   />
 {/if}
 
