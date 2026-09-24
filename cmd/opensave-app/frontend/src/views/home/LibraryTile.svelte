@@ -10,6 +10,7 @@
   import CoverImage from '../../components/CoverImage.svelte';
   import { coverURL, gameCover, isDaemonURL } from '../../lib/api.js';
   import { COVER_STYLES } from '../../lib/libraryview.js';
+  import { openGameMenu } from '../../lib/contextmenu.js';
 
   export let game;
   export let status;
@@ -51,6 +52,7 @@
   class:selected={selecting && selected}
   title={game.savePath}
   on:click={() => dispatch('open')}
+  on:contextmenu={(e) => openGameMenu(e, game)}
   on:mouseenter={() => (revealed = true)}
   on:mouseleave={() => (revealed = false)}
 >

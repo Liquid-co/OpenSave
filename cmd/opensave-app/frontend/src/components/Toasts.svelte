@@ -1,10 +1,22 @@
 <script>
-  import { toasts } from '../lib/stores.js';
+  import { toasts, dismissToast } from '../lib/stores.js';
+  import X from 'lucide-svelte/icons/x';
+
+  function act(t) {
+    dismissToast(t.id);
+    t.action.run();
+  }
 </script>
 
-<div class="toasts">
+<div class="toasts" role="status" aria-live="polite">
   {#each $toasts as t (t.id)}
-    <div class="toast {t.kind}">{t.message}</div>
+    <div class="toast {t.kind}" class:has-action={t.action}>
+      <span class="message">{t.message}</span>
+      {#if t.action}
+        <button class="btn small" on:click={() => act(t)}>{t.action.label}</button>
+        <button class="btn small ghost icon" aria-label="Dismiss" title="Dismiss" on:click={() => dismissToast(t.id)}><X size={14} /></button>
+      {/if}
+    </div>
   {/each}
 </div>
 
@@ -19,14 +31,24 @@
     z-index: 100;
   }
   .toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 11px 16px;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     font-size: 0.88rem;
-    max-width: 380px;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    max-width: 420px;
+    box-shadow: var(--shadow);
     animation: slide-in 0.18s ease-out;
+  }
+  .toast.has-action {
+    padding: 7px 8px 7px 16px;
+  }
+  .message {
+    flex: 1;
+    min-width: 0;
   }
   .toast.success {
     border-color: rgba(var(--success-rgb), 0.4);

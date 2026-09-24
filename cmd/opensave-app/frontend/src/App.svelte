@@ -14,6 +14,7 @@
   import CloudOfferBanner from './components/CloudOfferBanner.svelte';
   import NewGamesBanner from './components/NewGamesBanner.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
+  import ContextMenu from './components/ContextMenu.svelte';
 
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
@@ -206,6 +207,7 @@
   <ConflictModal />
   <LocationConflictModal />
   <ConfirmDialog />
+  <ContextMenu />
   {#if ready}<PairingBanner />{/if}
 </div>
 

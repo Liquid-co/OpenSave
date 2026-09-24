@@ -6,7 +6,8 @@
   // reaches this list. Shown at the top of the page on purpose: an offer
   // nobody notices is worse than a folder guessed slightly wrong, because a
   // wrong guess is at least visible and can be moved afterwards.
-  import { gameList, toast, askConfirm } from '../../lib/stores.js';
+  import { gameList, toast } from '../../lib/stores.js';
+  import { withUndo, hiddenKeys } from '../../lib/undo.js';
   import { api, native } from '../../lib/api.js';
 
   let offeredGames = [];
@@ -34,34 +35,29 @@
     }
   }
 
-  async function decline(offer) {
-    if (
-      !(await askConfirm(
-        `Stop being asked about "${offer.name}"?
-
-It will not sync to this device. You can still track it yourself later, which undoes this.`,
-        { title: 'Decline this game?', confirmText: 'Decline' }
-      ))
-    )
-      return;
-    try {
-      await api.post(`/api/offered-games/${offer.gameId}/decline`);
-      await load();
-    } catch (e) {
-      toast(e.message, 'error');
-    }
+  function decline(offer) {
+    withUndo({
+      message: `You won't be asked about ${offer.name} again. Tracking it yourself later still works.`,
+      keys: [`offer:${offer.gameId}`],
+      stillThere: () => offeredGames.some((o) => o.gameId === offer.gameId),
+      run: async () => {
+        await api.post(`/api/offered-games/${offer.gameId}/decline`);
+        await load();
+      }
+    });
   }
+  $: shownOffers = offeredGames.filter((o) => !$hiddenKeys.has(`offer:${o.gameId}`));
 </script>
 
-{#if offeredGames.length > 0}
+{#if shownOffers.length > 0}
   <div class="card offers">
     <h3>Waiting for a folder</h3>
     <p class="intro">
-      {offeredGames.length === 1 ? 'Another device syncs this game' : 'Other devices sync these games'},
+      {shownOffers.length === 1 ? 'Another device syncs this game' : 'Other devices sync these games'},
       but this one doesn't know where to keep
-      {offeredGames.length === 1 ? 'it' : 'them'} yet. Nothing syncs until you choose.
+      {shownOffers.length === 1 ? 'it' : 'them'} yet. Nothing syncs until you choose.
     </p>
-    {#each offeredGames as offer (offer.gameId + offer.peerId)}
+    {#each shownOffers as offer (offer.gameId + offer.peerId)}
       <div class="row">
         <div class="info">
           <strong>{offer.name}</strong>

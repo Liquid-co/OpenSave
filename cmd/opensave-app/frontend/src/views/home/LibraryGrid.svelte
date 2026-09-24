@@ -4,14 +4,14 @@
   // "Select" turns the grid into a multi-select, to act on several games at
   // once (e.g. clear a batch of wrongly-tracked entries) without going in and
   // out of each one.
-  import { navigate, toast, askConfirm } from '../../lib/stores.js';
-  import { api } from '../../lib/api.js';
+  import { navigate } from '../../lib/stores.js';
   import { SORTS } from '../../lib/gamestatus.js';
   import { libraryView, gridColumns, filterRows, offeredFilters } from '../../lib/libraryview.js';
   import { backdropClose } from '../../lib/backdrop.js';
   import FilterTabs from '../../components/ui/FilterTabs.svelte';
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
+  import { untrackGames } from '../../lib/gameactions.js';
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
 
@@ -51,23 +51,12 @@
   function toggleSelectAll() {
     libSelected = allSelected ? new Set() : new Set(shown.map((r) => r.game.id));
   }
-  async function untrackSelected() {
-    const n = libSelected.size;
-    if (n === 0) return;
-    const ok = await askConfirm(
-      `Untrack ${n} selected game${n === 1 ? '' : 's'}? They'll be removed from your library. Your save snapshots on disk are kept — nothing is deleted.`,
-      { title: 'Untrack selected?', confirmText: `Untrack ${n}`, danger: true }
-    );
-    if (!ok) return;
-    try {
-      const res = await api.post('/api/games/untrack-bulk', { ids: [...libSelected] });
-      toast(`Untracked ${res.untracked} game${res.untracked === 1 ? '' : 's'} — snapshots kept`, 'success');
-    } catch (e) {
-      toast(e.message, 'error');
-    } finally {
-      selectMode = false;
-      libSelected = new Set();
-    }
+  function untrackSelected() {
+    const picked = rows.filter((r) => libSelected.has(r.game.id)).map((r) => r.game);
+    if (picked.length === 0) return;
+    selectMode = false;
+    libSelected = new Set();
+    untrackGames(picked);
   }
 </script>
 

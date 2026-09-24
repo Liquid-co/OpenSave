@@ -21,6 +21,8 @@
   import { view, navigate, settings, stateLoaded, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
   import CoverImage from './CoverImage.svelte';
+  import { visibleGames } from '../lib/gameactions.js';
+  import { openGameMenu } from '../lib/contextmenu.js';
   import House from 'lucide-svelte/icons/house';
   import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
   import Cloud from 'lucide-svelte/icons/cloud';
@@ -42,7 +44,7 @@
   ];
 
   $: deviceName = $settings?.deviceName ?? '…';
-  $: filteredGames = $gameList.filter((g) => g.name.toLowerCase().includes(filter.toLowerCase()));
+  $: filteredGames = $visibleGames.filter((g) => g.name.toLowerCase().includes(filter.toLowerCase()));
   $: activeSyncs = Object.values($syncActivity).filter((s) => s.state === 'running').length;
 
   function badgeFor(id) {
@@ -93,6 +95,7 @@
         class="game"
         class:active={$view.name === 'game' && $view.params.gameId === game.id}
         on:click={() => navigate('game', { gameId: game.id })}
+        on:contextmenu={(e) => openGameMenu(e, game)}
         on:mouseenter={() => reveal(game)}
         on:mouseleave={() => unreveal(game)}
         on:focus={() => reveal(game)}

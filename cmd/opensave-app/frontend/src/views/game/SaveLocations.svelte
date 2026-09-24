@@ -6,8 +6,8 @@
   // show as needing a folder, because until one is chosen the location is
   // silently skipped by every sync and every restore — and silence is exactly
   // what makes that dangerous.
-  import { askConfirm } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
+  import { withUndo, hiddenKeys } from '../../lib/undo.js';
 
   export let game;
   export let runner;
@@ -38,19 +38,21 @@
     });
   }
 
-  async function remove(name) {
-    if (
-      !(await askConfirm(
-        `Stop covering the “${name}” folder for ${game.name}? Its files are left exactly where they are — this only stops OpenSave syncing and snapshotting them.`,
-        { title: 'Remove save location?', confirmText: 'Remove', danger: true }
-      ))
-    )
-      return;
-    await run(`Removed “${name}”`, async () => {
-      await api.del(`/api/games/${game.id}/roots/${encodeURIComponent(name)}`);
-      await load();
+  // Its files are left where they are either way; this only stops OpenSave
+  // syncing and snapshotting them, and can be undone for a few seconds.
+  const keyOf = (name) => `root:${game.id}:${name}`;
+  function remove(name) {
+    withUndo({
+      message: `The “${name}” folder is no longer covered. Its files are left where they are.`,
+      keys: [keyOf(name)],
+      stillThere: () => locations.some((l) => l.name === name),
+      run: async () => {
+        await api.del(`/api/games/${game.id}/roots/${encodeURIComponent(name)}`);
+        await load();
+      }
     });
   }
+  $: shownLocations = locations.filter((l) => !$hiddenKeys.has(keyOf(l.name)));
 </script>
 
 <div class="section">
@@ -64,7 +66,7 @@
     <span class="name">main save</span>
     <span class="path" title={game.savePath}>{game.savePath}</span>
   </div>
-  {#each locations as loc (loc.name)}
+  {#each shownLocations as loc (loc.name)}
     <div class="row" class:unmapped={!loc.mapped}>
       <span class="name">{loc.name}</span>
       {#if loc.mapped}

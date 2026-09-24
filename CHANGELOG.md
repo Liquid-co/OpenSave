@@ -36,6 +36,20 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **Right-click a game.** In the library or the sidebar: open it, sync it,
+  take a snapshot, launch it, open its save folder, put back its latest
+  snapshot, or stop tracking it. The menu key on the keyboard opens it too.
+
+- **Undo instead of "Are you sure?"** Stopping tracking a game (one or a
+  selection), declining a game another device offered, excluding a scan
+  result and removing a save location no longer ask first. They happen as
+  far as the screen shows, with an Undo button for a few seconds, and are
+  carried out when those seconds are up. Deleting a snapshot or a branch,
+  unpairing a device and restoring still ask, since those cannot wait or be
+  taken back. After stopping tracking a game with cloud backup on, deleting
+  its cloud snapshots is offered in the same way rather than asked in a
+  dialog that arrived seconds later.
+
 - **A light theme, an accent colour and a size.** Settings → General →
   Appearance: dark, light or matching the system; one of six accent
   colours; and the whole app drawn at 90% to 125%. Kept per device and

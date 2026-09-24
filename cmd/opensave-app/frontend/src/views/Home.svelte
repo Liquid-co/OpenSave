@@ -9,6 +9,7 @@
   import HomeSummary from './home/HomeSummary.svelte';
   import LibraryGrid from './home/LibraryGrid.svelte';
   import Skeleton from '../components/ui/Skeleton.svelte';
+  import { visibleGames } from '../lib/gameactions.js';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
@@ -45,7 +46,7 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
   $: conflicted = conflictedIds($conflicts, $locationConflicts);
-  $: rows = $gameList.map((game) => ({
+  $: rows = $visibleGames.map((game) => ({
     game,
     status: gameStatus(game, {
       peers: $peers,
@@ -77,7 +78,7 @@
 
 {#if !$stateLoaded}
   <Skeleton kind="tiles" count={6} />
-{:else if $gameList.length === 0}
+{:else if $visibleGames.length === 0}
   <div class="welcome">
     <div class="welcome-icon"><Gamepad2 size={34} strokeWidth={1.6} /></div>
     <h3>Welcome to OpenSave</h3>

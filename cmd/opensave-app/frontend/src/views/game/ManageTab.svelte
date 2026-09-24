@@ -1,8 +1,9 @@
 <script>
   // Linking this game with the same game tracked under another name, and
   // stopping tracking it.
-  import { games, navigate, toast, askConfirm } from '../../lib/stores.js';
+  import { games, askConfirm } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
+  import { untrackGame } from '../../lib/gameactions.js';
   import Link from 'lucide-svelte/icons/link';
 
   export let game;
@@ -89,31 +90,8 @@
     await loadAliases();
   }
 
-  async function untrack() {
-    if (!(await askConfirm(`Stop tracking "${game.name}"? Snapshot files stay on disk.`, { title: 'Stop tracking?', confirmText: 'Stop tracking', danger: true }))) return;
-    const gameId = game.id;
-    const gameName = game.name;
-    await run('Stopped tracking', () => api.del(`/api/games/${gameId}`));
-    navigate('home');
-
-    // Cloud copies would otherwise linger forever — offer to clean them up.
-    try {
-      const settings = await api.get('/api/settings');
-      if (settings.cloudSync?.enabled) {
-        if (
-          await askConfirm(
-            `Also delete "${gameName}"'s snapshots from the cloud? Local snapshot files stay on disk either way.`,
-            { title: 'Clean up cloud copies?', confirmText: 'Delete from cloud', cancelText: 'Keep them', danger: true }
-          )
-        ) {
-          const res = await api.post(`/api/cloud/delete-game/${gameId}`);
-          toast(res.deleted > 0 ? `Removed ${res.deleted} cloud snapshot(s)` : 'No cloud snapshots to remove', 'success');
-        }
-      }
-    } catch (e) {
-      toast(`Cloud cleanup failed: ${e.message}`, 'error');
-    }
-  }
+  // Undone from the toast rather than confirmed first; see lib/undo.js.
+  const untrack = () => untrackGame(game);
 </script>
 
 <div class="card">

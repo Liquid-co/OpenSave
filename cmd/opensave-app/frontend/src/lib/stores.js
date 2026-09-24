@@ -92,12 +92,18 @@ export function answerConfirm(result) {
 }
 
 let toastId = 0;
-export function toast(message, kind = 'info') {
+/** Shows a message for a few seconds. `action` ({label, run}) adds a button
+ *  to it — Undo, most often — and `ttl` says how long it stays. */
+export function toast(message, kind = 'info', { action = null, ttl = 0 } = {}) {
   const id = ++toastId;
-  toasts.update((t) => [...t, { id, message, kind }]);
+  toasts.update((t) => [...t, { id, message, kind, action }]);
   // Errors stay long enough to actually read the reason.
-  const ttl = kind === 'error' ? 9000 : 4200;
-  setTimeout(() => toasts.update((t) => t.filter((x) => x.id !== id)), ttl);
+  const life = ttl || (kind === 'error' ? 9000 : 4200);
+  setTimeout(() => dismissToast(id), life);
+  return id;
+}
+export function dismissToast(id) {
+  toasts.update((t) => t.filter((x) => x.id !== id));
 }
 
 // Turn a raw sync error into a plain-language reason.

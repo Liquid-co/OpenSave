@@ -4,9 +4,10 @@
   //
   // Opened with start(). `scanning` is bindable so the page can disable the
   // buttons that open it while a scan runs.
-  import { gameList, toast, askConfirm, settings } from '../../lib/stores.js';
+  import { gameList, toast, settings } from '../../lib/stores.js';
   import { api, coverURL } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
+  import { withUndo, hiddenKeys } from '../../lib/undo.js';
   import Chevron from '../../components/ui/Chevron.svelte';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
@@ -81,37 +82,35 @@
   // were just looking at. The decision is made here, looking at the result,
   // so it should be actionable here.
   let excluding = null;
-  async function excludeResult(item) {
-    if (excluding) return;
-    const ok = await askConfirm(
-      `Stop offering "${item.name}" in future scans? Nothing on disk is touched — this only tells the scanner to skip ${item.savePath}. You can undo it under Settings → Excluded folders.`,
-      { title: 'Exclude from scans?', confirmText: 'Exclude' }
-    );
-    if (!ok) return;
-    excluding = item.id;
-    try {
-      // Read-modify-write against current settings rather than a stored copy:
-      // the scan overlay can be open for a while, and clobbering a change
-      // made elsewhere in the meantime would be a silent settings loss.
-      const current = await api.get('/api/settings');
-      const paths = current.excludePaths ?? [];
-      if (!paths.includes(item.savePath)) {
-        // The store has to take the result, not just the server. The Settings
-        // view builds its form by cloning these settings and saves the whole
-        // object back, so leaving a stale copy here means the next save from
-        // that form writes the old exclusion list over this one — and the file
-        // this was meant to keep out of sync quietly starts syncing again.
-        settings.set(await api.post('/api/settings', { excludePaths: [...paths, item.savePath] }));
+  function excludeResult(item) {
+    selected.delete(item.id);
+    selected = selected;
+    withUndo({
+      message: `"${item.name}" won't be offered in scans again.`,
+      keys: [`scan:${item.savePath}`],
+      stillThere: () => (scanResults ?? []).some((r) => r.id === item.id),
+      run: async () => {
+        excluding = item.id;
+        try {
+          // Read-modify-write against current settings rather than a stored copy:
+          // the scan overlay can be open for a while, and clobbering a change
+          // made elsewhere in the meantime would be a silent settings loss.
+          const current = await api.get('/api/settings');
+          const paths = current.excludePaths ?? [];
+          if (!paths.includes(item.savePath)) {
+            // The store has to take the result, not just the server. The Settings
+            // view builds its form by cloning these settings and saves the whole
+            // object back, so leaving a stale copy here means the next save from
+            // that form writes the old exclusion list over this one — and the file
+            // this was meant to keep out of sync quietly starts syncing again.
+            settings.set(await api.post('/api/settings', { excludePaths: [...paths, item.savePath] }));
+          }
+          scanResults = (scanResults ?? []).filter((r) => r.id !== item.id);
+        } finally {
+          excluding = null;
+        }
       }
-      scanResults = (scanResults ?? []).filter((r) => r.id !== item.id);
-      selected.delete(item.id);
-      selected = selected;
-      toast(`"${item.name}" won't be offered again`, 'success');
-    } catch (e) {
-      toast(e.message, 'error');
-    } finally {
-      excluding = null;
-    }
+    });
   }
 
   $: trackedPaths = new Set($gameList.map((g) => normPath(g.savePath)));
@@ -126,8 +125,10 @@
   // toggle says how many are hidden and one click brings them back. Empty
   // folders are out of the pool entirely unless asked for, so the tab counts
   // match what the grid shows rather than counting rows nobody can see.
-  $: scanPool = showEmpty ? (scanResults ?? []) : (scanResults ?? []).filter((r) => !isEmptyResult(r));
-  $: emptyCount = (scanResults ?? []).filter(isEmptyResult).length;
+  // Less anything excluded in the last few seconds, which Undo can still bring back.
+  $: visibleResults = (scanResults ?? []).filter((r) => !$hiddenKeys.has(`scan:${r.savePath}`));
+  $: scanPool = showEmpty ? visibleResults : visibleResults.filter((r) => !isEmptyResult(r));
+  $: emptyCount = visibleResults.filter(isEmptyResult).length;
 
   $: filteredResults = scanPool.filter((r) => {
     if (!showTracked && trackedPaths.has(normPath(r.savePath))) return false;
