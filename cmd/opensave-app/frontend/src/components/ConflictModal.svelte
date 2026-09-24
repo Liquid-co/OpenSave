@@ -40,7 +40,7 @@
   function onConflicts(list) {
     const fresh = list.filter(([gid]) => !seen.has(gid));
     if (fresh.length > 0) {
-      demandAttention();
+      demandAttention('conflicts');
       const name = $games[fresh[0][0]]?.name ?? 'a game';
       toast(`Save conflict for “${name}” — choose which version to keep`, 'error');
     }

@@ -8,6 +8,8 @@
   import Skeleton from '../components/ui/Skeleton.svelte';
   import MoreInfo from '../components/ui/MoreInfo.svelte';
   import AppearanceOptions from './settings/AppearanceOptions.svelte';
+  import NotificationOptions from './settings/NotificationOptions.svelte';
+  import Bell from 'lucide-svelte/icons/bell';
   import Palette from 'lucide-svelte/icons/palette';
   import Monitor from 'lucide-svelte/icons/monitor';
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
@@ -263,6 +265,11 @@
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><Palette size={17} />Appearance</h3>
       <AppearanceOptions />
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title with-icon"><Bell size={17} />Notifications</h3>
+      <NotificationOptions />
     </div>
 
     <!-- Applies as it is changed, like the View menu on the library, which
@@ -625,9 +632,6 @@
 <style>
   .head {
     margin-bottom: 18px;
-  }
-  .quiet {
-    color: var(--text-faint);
   }
   /* .check and the checkbox itself are styled globally in app.css. */
   .path-row {

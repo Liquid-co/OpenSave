@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
@@ -455,6 +456,11 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 			if branch == game.ActiveBranch || !strings.HasPrefix(branch, "conflict-") {
 				continue
 			}
+			// A pinned snapshot keeps its whole branch: deleting the branch
+			// would take the pinned one with it.
+			if pinned, pErr := m.Store.BranchHasPinned(game.ID, branch); pErr != nil || pinned {
+				continue
+			}
 			r, f := m.DeleteBranch(game.ID, branch)
 			removed += r
 			freed += f
@@ -474,7 +480,8 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 // backups" setting, which was stored and shown for a long time and enforced
 // by nothing.
 //
-// Two things are never deleted by age. Snapshots a person took themselves:
+// Three things are never deleted by age. Pinned snapshots, which is what
+// pinning is for. Snapshots a person took themselves:
 // those are budgeted separately everywhere else and a date is no reason to
 // discard a deliberate save point. And the newest snapshot on every branch,
 // whatever its kind and age: a branch with no snapshot at all has nothing to
@@ -504,7 +511,7 @@ func (m *Manager) PruneOlderThan(days int) (removed int, freed int64, touched []
 				continue
 			}
 			for _, snap := range snaps[1:] { // [0] is the newest: always kept
-				if !snap.IsSystemAuto || snap.Timestamp >= cutoff {
+				if !snap.IsSystemAuto || snap.Pinned || snap.Timestamp >= cutoff {
 					continue
 				}
 				if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
@@ -524,6 +531,46 @@ func (m *Manager) PruneOlderThan(days int) (removed int, freed int64, touched []
 	}
 	return removed, freed, touched
 }
+
+// SnapshotEdit is a change to a snapshot's pin or note; nil leaves it as it is.
+type SnapshotEdit struct {
+	Pinned *bool
+	Note   *string
+}
+
+// MaxNoteLength bounds a note, in characters.
+const MaxNoteLength = 500
+
+// EditSnapshot pins, unpins or re-notes one of a game's snapshots and returns
+// it as it now is. The note is trimmed; an empty one removes it.
+func (m *Manager) EditSnapshot(gameID, snapshotID string, edit SnapshotEdit) (store.Snapshot, error) {
+	snap, err := m.Store.GetSnapshot(snapshotID)
+	if err != nil {
+		return store.Snapshot{}, err
+	}
+	if snap.GameID != gameID {
+		return store.Snapshot{}, fmt.Errorf("snapshot %q does not belong to game %q: %w", snapshotID, gameID, store.ErrNotFound)
+	}
+	if edit.Note != nil {
+		note := strings.TrimSpace(*edit.Note)
+		if n := utf8.RuneCountInString(note); n > MaxNoteLength {
+			return store.Snapshot{}, fmt.Errorf("%w: a note can be at most %d characters (this one is %d)", ErrInvalidEdit, MaxNoteLength, n)
+		}
+		if err := m.Store.SetSnapshotNote(snapshotID, note); err != nil {
+			return store.Snapshot{}, err
+		}
+	}
+	if edit.Pinned != nil {
+		if err := m.Store.SetSnapshotPinned(snapshotID, *edit.Pinned); err != nil {
+			return store.Snapshot{}, err
+		}
+	}
+	return m.Store.GetSnapshot(snapshotID)
+}
+
+// ErrInvalidEdit is a snapshot edit refused for what it asked for, not for
+// anything wrong on this side.
+var ErrInvalidEdit = errors.New("invalid snapshot edit")
 
 // DeleteSnapshot removes one snapshot (metadata row + its zip file) for a
 // game. Returns the bytes freed.

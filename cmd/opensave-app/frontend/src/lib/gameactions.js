@@ -9,6 +9,7 @@ import { api, native } from './api.js';
 import { askConfirm, gameList, games, navigate, toast, view } from './stores.js';
 import { hiddenKeys, withUndo } from './undo.js';
 import { whenLabel } from './snapshots.js';
+import { askRestore } from './restore.js';
 
 /** The library as shown: without games on their way out (see undo.js). */
 export const visibleGames = derived([gameList, hiddenKeys], ([$games, $hidden]) => $games.filter((g) => !$hidden.has(g.id)));
@@ -74,11 +75,7 @@ export async function runGameAction(id, game) {
 async function restoreLatest(game) {
   const snap = latestSnapshot(game);
   if (!snap) return;
-  const ok = await askConfirm(
-    `Put ${game.name}'s save back to the snapshot from ${whenLabel(snap.timestamp)}? Your current save is kept as a snapshot first, so this can be undone.`,
-    { title: 'Restore latest snapshot?', confirmText: 'Restore' }
-  );
-  if (!ok) return;
+  if (!(await askRestore(game, snap))) return;
   return attempt(() => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), `${game.name} restored`);
 }
 

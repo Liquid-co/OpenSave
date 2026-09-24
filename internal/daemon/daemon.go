@@ -20,6 +20,7 @@ import (
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/p2p"
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
@@ -74,6 +75,11 @@ type Daemon struct {
 	// uploads counts cloud mirrors still running, so Stop can wait for them
 	// rather than letting process exit truncate one.
 	uploads sync.WaitGroup
+
+	// held are the cloud copies of snapshots taken while syncing was paused,
+	// sent when it resumes. See pause.go.
+	heldMu sync.Mutex
+	held   []heldUpload
 
 	// initialSnapshots counts the first-snapshot goroutines TrackGame starts.
 	// They run in the background so the API can answer immediately, which is
@@ -161,9 +167,14 @@ func New(opts Options) (*Daemon, error) {
 		// background. Counting from inside the goroutine raced Stop's wait on
 		// the same counter — a WaitGroup's Add has to be visible before
 		// anything waits on it, and the detector fails the run when it is not.
+		if d.P2P.Pause.Paused() {
+			d.holdUpload(zipPath, remoteFileName)
+			return
+		}
 		d.uploads.Add(1)
 		go d.runCloudUpload(zipPath, remoteFileName, log)
 	}
+	d.P2P.Pause.OnResume(d.catchUpAfterPause)
 	// Which snapshot is each game's save, for reading the mirror back.
 	snaps.OnCreated = d.noteSnapshotForCloud
 	snaps.OnRestored = d.noteRestoreForCloud
@@ -195,7 +206,7 @@ func New(opts Options) (*Daemon, error) {
 			d.P2P.GoSync(func(ctx context.Context) {
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 				defer cancel()
-				if _, err := d.P2P.SyncGame(ctx, gameID); err != nil {
+				if _, err := d.P2P.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) {
 					d.Log.Log("info", fmt.Sprintf("post-snapshot sync for %s: %v", gameID, err))
 				}
 			})

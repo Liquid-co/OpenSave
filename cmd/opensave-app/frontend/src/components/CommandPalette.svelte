@@ -5,7 +5,8 @@
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import Search from 'lucide-svelte/icons/search';
   import CornerDownLeft from 'lucide-svelte/icons/corner-down-left';
-  import { navigate, toast } from '../lib/stores.js';
+  import { navigate, toast, syncPause } from '../lib/stores.js';
+  import { PAUSE_CHOICES, pauseSync, resumeSync } from '../lib/syncpause.js';
   import { api } from '../lib/api.js';
   import { visibleGames, runGameAction } from '../lib/gameactions.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
@@ -37,6 +38,14 @@
       run: () => appearance.update((a) => ({ ...a, theme: isDark() ? 'light' : 'dark' }))
     },
     { label: 'Keyboard shortcuts', kind: 'Help', idle: true, keywords: ['keys', 'help'], run: () => dispatch('help') },
+    ...($syncPause.paused
+      ? [{ label: 'Resume syncing', kind: 'Action', idle: true, keywords: ['unpause', 'start'], run: resumeSync }]
+      : PAUSE_CHOICES.map((c) => ({
+          label: `Pause syncing ${c.label}`,
+          kind: 'Action',
+          keywords: ['stop', 'hold', 'offline'],
+          run: () => pauseSync(c.minutes)
+        }))),
     ...$visibleGames.flatMap((g) => [
       { label: g.name, kind: 'Game', idle: true, weight: 1, run: () => runGameAction('open', g) },
       { label: `Sync ${g.name}`, kind: 'Action', weight: -1, run: () => runGameAction('sync', g) },

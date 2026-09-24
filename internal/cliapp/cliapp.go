@@ -18,7 +18,9 @@ import (
 	"github.com/opensave/opensave/internal/api"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/presets"
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/syncpause"
 	"github.com/opensave/opensave/internal/sysintegration/upnp"
 )
 
@@ -68,6 +70,18 @@ func Run(args []string) int {
 		return cmdPrune(rest)
 	case "snapshot-delete":
 		return cmdSnapshotDelete(rest)
+	case "snapshot-pin":
+		return cmdSnapshotPin(rest, true)
+	case "snapshot-unpin":
+		return cmdSnapshotPin(rest, false)
+	case "snapshot-note":
+		return cmdSnapshotNote(rest)
+	case "pause":
+		return cmdPause(rest)
+	case "resume":
+		return cmdResume(rest)
+	case "transfers":
+		return cmdTransfers(rest)
 	case "branch-delete":
 		return cmdBranchDelete(rest)
 	case "launch":
@@ -591,6 +605,8 @@ type statusReport struct {
 	Device string             `json:"device"`
 	Games  []statusReportGame `json:"games"`
 	Peers  []statusReportPeer `json:"peers"`
+	// SyncPause is the running daemon's pause, when there is a daemon.
+	SyncPause syncpause.Status `json:"syncPause"`
 }
 
 type statusReportGame struct {
@@ -640,7 +656,7 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 	}
 
 	if asJSON {
-		report := statusReport{Games: []statusReportGame{}, Peers: []statusReportPeer{}}
+		report := statusReport{Games: []statusReportGame{}, Peers: []statusReportPeer{}, SyncPause: runningDaemonPause()}
 		if settings, err := d.Store.GetSettings(); err == nil {
 			report.Device = settings.DeviceName
 		}
@@ -672,6 +688,10 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 			}
 		}
 		return emitJSON(report)
+	}
+
+	if st := runningDaemonPause(); st.Paused {
+		fmt.Printf("%s syncing is paused %s — %s\n\n", accent("Paused:"), describePause(st), faint("opensave resume"))
 	}
 
 	if len(games) == 0 {
@@ -740,10 +760,15 @@ func cmdSnapshot(d *daemon.Daemon, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: opensave snapshot <gameId> [comment]")
 		return 1
 	}
-	comment := ""
-	if len(args) > 1 {
-		comment = strings.Join(args[1:], " ")
+	// The comment is every word after the game, so it needs no quotes. A
+	// leading -m or --message is taken the way git takes it rather than kept
+	// as part of the comment, which is what `snapshot hades -m "before the
+	// boss"` produced before: a snapshot titled "-m before the boss".
+	words := args[1:]
+	if len(words) > 0 && (words[0] == "-m" || words[0] == "--message") {
+		words = words[1:]
 	}
+	comment := strings.Join(words, " ")
 
 	snap, err := d.Snapshots.Create(args[0], comment, false)
 	if err != nil {
@@ -756,9 +781,24 @@ func cmdSnapshot(d *daemon.Daemon, args []string) int {
 }
 
 func cmdRollback(d *daemon.Daemon, args []string) int {
+	asJSON, args := jsonFlag(args)
+	dryRun := false
+	rest := args[:0:0]
+	for _, a := range args {
+		if a == "--dry-run" || a == "--preview" {
+			dryRun = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	args = rest
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: opensave rollback <gameId> <snapshotId>")
+		fmt.Fprintln(os.Stderr, "usage: opensave rollback <gameId> <snapshotId> [--dry-run] [--json]\n\n"+
+			"  --dry-run lists what restoring would change, file by file, and changes nothing.")
 		return 1
+	}
+	if dryRun {
+		return printRestorePreview(d, args[0], args[1], asJSON)
 	}
 	snap, err := d.Snapshots.Restore(args[0], args[1])
 	if err != nil {
@@ -767,6 +807,50 @@ func cmdRollback(d *daemon.Daemon, args []string) int {
 	}
 	success("Restored %s", accent(snap.ID))
 	note("taken " + snap.Timestamp)
+	return 0
+}
+
+// printRestorePreview shows what `rollback` would do without doing it.
+func printRestorePreview(d *daemon.Daemon, gameID, snapshotID string, asJSON bool) int {
+	preview, err := d.Snapshots.PreviewRestore(gameID, snapshotID)
+	if err != nil {
+		return fail(asJSON, err)
+	}
+	if asJSON {
+		return emitJSON(preview)
+	}
+	if preview.Identical() {
+		success("Your save already matches %s", accent(snapshotID))
+		note("restoring it would change nothing")
+	} else {
+		fmt.Printf("Restoring %s would:\n\n", accent(snapshotID))
+		verbs := map[string]string{
+			snapshot.ChangeModified: "change ",
+			snapshot.ChangeRestored: "restore",
+			snapshot.ChangeRemoved:  "remove ",
+		}
+		for _, c := range preview.Changes {
+			path := c.Path
+			if c.Location != "" {
+				path = c.Location + ": " + c.Path
+			}
+			var sizes string
+			switch c.Change {
+			case snapshot.ChangeModified:
+				sizes = humanBytes(c.CurrentSize) + " -> " + humanBytes(c.SnapshotSize)
+			case snapshot.ChangeRestored:
+				sizes = humanBytes(c.SnapshotSize)
+			default:
+				sizes = humanBytes(c.CurrentSize)
+			}
+			fmt.Printf("  %s  %-40s %s\n", verbs[c.Change], path, faint(sizes))
+		}
+		fmt.Println()
+		note(fmt.Sprintf("%d file(s) unchanged. Your current save is snapshotted first, so a restore can be undone.", preview.Unchanged))
+	}
+	for _, name := range preview.Unplaced {
+		note(fmt.Sprintf("the %q location has no folder on this device; a restore leaves its files out", name))
+	}
 	return 0
 }
 

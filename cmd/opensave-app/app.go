@@ -377,6 +377,10 @@ func (a *App) ShowWindow() {
 }
 
 // Window controls for the custom title bar.
+// UserBusy reports whether a full-screen game or presentation has the screen,
+// for the frontend to hold back a chime and a window raise. See quiet_*.go.
+func (a *App) UserBusy() bool { return userIsBusy() }
+
 func (a *App) WindowMinimise() { runtime.WindowMinimise(a.ctx) }
 func (a *App) WindowToggleMaximise() {
 	runtime.WindowToggleMaximise(a.ctx)

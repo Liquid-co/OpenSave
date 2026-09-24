@@ -406,6 +406,10 @@ func (d *Daemon) currentContentHash(game store.Game) (string, error) {
 // CheckCloud reads the other devices' heads and acts on the ones ahead of
 // this device: takes what continues from its save, asks about the rest.
 func (d *Daemon) CheckCloud() {
+	// Paused means nothing comes from the cloud either; resuming checks.
+	if d.P2P.Pause.Paused() {
+		return
+	}
 	d.cloudRd.check.Lock()
 	defer d.cloudRd.check.Unlock()
 

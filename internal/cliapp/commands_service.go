@@ -330,7 +330,14 @@ func cmdSnapshots(d *daemon.Daemon, args []string) int {
 		if comment == "" {
 			comment = "(no comment)"
 		}
-		fmt.Printf("  %-22s %s  %s\n", s.ID, s.Timestamp, comment)
+		pin := ""
+		if s.Pinned {
+			pin = "  " + accent("pinned")
+		}
+		fmt.Printf("  %-22s %s  %s%s\n", s.ID, s.Timestamp, comment, pin)
+		if s.Note != "" {
+			fmt.Printf("  %-22s %s\n", "", faint("note: "+s.Note))
+		}
 	}
 	return 0
 }

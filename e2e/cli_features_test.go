@@ -21,11 +21,11 @@ func TestCLI_ExitCodes(t *testing.T) {
 	}
 
 	c.mustFail("definitely-not-a-command")
-	c.mustFail("add")                       // required args missing
-	c.mustFail("snapshot")                  // required args missing
-	c.mustFail("rollback", "some-game")     // snapshot id missing
-	c.mustFail("files", "some-game")        // snapshot id missing
-	c.mustFail("game", "some-game", "set")  // key and value missing
+	c.mustFail("add")                      // required args missing
+	c.mustFail("snapshot")                 // required args missing
+	c.mustFail("rollback", "some-game")    // snapshot id missing
+	c.mustFail("files", "some-game")       // snapshot id missing
+	c.mustFail("game", "some-game", "set") // key and value missing
 }
 
 // An unknown command must say so, not just dump usage: "unknown command" is
@@ -304,6 +304,188 @@ func TestCLI_BranchesKeepSavesApart(t *testing.T) {
 	// Deleting a branch must not be possible while it is the active one, or
 	// the game is left pointing at history that no longer exists.
 	c.mustFail("branch-delete", "branchy", "main", "--yes")
+}
+
+// A pinned snapshot outlasts the limit that would have taken it, carries its
+// note in both the listing and --json, and is an ordinary snapshot again once
+// unpinned — all through the CLI, against a running daemon, the way the app
+// does it.
+func TestCLI_SnapshotPinAndNote(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+
+	dir := c.saveDir("pinning", map[string]string{"slot1.sav": "v0"})
+	c.mustRun("add", "Pinning", dir)
+	c.mustRun("game", "pinning", "set", "max-manual-snapshots", "1")
+
+	c.saveDir("pinning", map[string]string{"slot1.sav": "keeper"})
+	c.mustRun("snapshot", "pinning", "-m", "the keeper")
+	keeper := c.snapshotIDs("pinning")[0] // newest first
+	c.mustRun("snapshot-pin", "pinning", keeper)
+	c.mustRun("snapshot-note", "pinning", keeper, "good", "run,", "before", "the", "boss")
+
+	// Three more manual snapshots under a manual limit of 1: three chances to
+	// evict the keeper.
+	for _, v := range []string{"v1", "v2", "v3"} {
+		c.saveDir("pinning", map[string]string{"slot1.sav": v})
+		c.mustRun("snapshot", "pinning", "-m", v)
+	}
+
+	type snap struct {
+		ID           string `json:"id"`
+		Comment      string `json:"comment"`
+		Note         string `json:"note"`
+		Pinned       bool   `json:"pinned"`
+		IsSystemAuto bool   `json:"isSystemAuto"`
+	}
+	var snaps []snap
+	c.mustJSON(&snaps, "snapshots", "pinning", "--json")
+	var kept *snap
+	var manual []string
+	for i := range snaps {
+		if snaps[i].ID == keeper {
+			kept = &snaps[i]
+		}
+		if !snaps[i].IsSystemAuto {
+			manual = append(manual, snaps[i].Comment)
+		}
+	}
+	if kept == nil {
+		t.Fatalf("the pinned snapshot was pruned: %+v", snaps)
+	}
+	if !kept.Pinned || kept.Note != "good run, before the boss" || kept.Comment != "the keeper" {
+		t.Errorf("pinned snapshot = %+v, want pinned, the note joined from its words, and its comment untouched", *kept)
+	}
+	// The limit still applies to everything else: the keeper plus the newest one.
+	if strings.Join(manual, ",") != "v3,the keeper" {
+		t.Errorf("manual snapshots = %v, want [v3 the keeper]", manual)
+	}
+
+	out := c.mustRun("snapshots", "pinning")
+	if !strings.Contains(out, "pinned") || !strings.Contains(out, "note: good run, before the boss") {
+		t.Errorf("the listing does not show the pin and the note:\n%s", out)
+	}
+
+	// Unpinned, it is one manual snapshot too many and the next prune takes it.
+	var edited snap
+	c.mustJSON(&edited, "snapshot-unpin", "pinning", keeper, "--json")
+	if edited.Pinned || edited.Note != "good run, before the boss" {
+		t.Errorf("snapshot-unpin --json = %+v, want unpinned with its note kept", edited)
+	}
+	c.mustRun("prune")
+	for _, id := range c.snapshotIDs("pinning") {
+		if id == keeper {
+			t.Error("the unpinned snapshot survived a prune it is over the limit for")
+		}
+	}
+
+	// Refusals: no such snapshot, no snapshot named, a note past the limit.
+	c.mustFail("snapshot-pin", "pinning", "snap_nope")
+	c.mustFail("snapshot-pin", "pinning")
+	latest := c.snapshotIDs("pinning")[0]
+	c.mustFail("snapshot-note", "pinning", latest, strings.Repeat("x", 501))
+	// And an empty note removes one.
+	c.mustRun("snapshot-note", "pinning", latest, "temporary")
+	c.mustRun("snapshot-note", "pinning", latest)
+	var cleared []snap
+	c.mustJSON(&cleared, "snapshots", "pinning", "--json")
+	for _, s := range cleared {
+		if s.ID == latest && s.Note != "" {
+			t.Errorf("snapshot-note with no text left the note %q", s.Note)
+		}
+	}
+}
+
+// pause and resume reach the running daemon, and status says it is paused.
+func TestCLI_PauseAndResume(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+
+	out := c.mustRun("pause", "45m")
+	if !strings.Contains(out, "paused") || !strings.Contains(out, "45") {
+		t.Errorf("pause 45m said:\n%s", out)
+	}
+	if out := c.mustRun("status"); !strings.Contains(out, "syncing is paused") {
+		t.Errorf("status does not say syncing is paused:\n%s", out)
+	}
+	var report struct {
+		SyncPause struct {
+			Paused           bool  `json:"paused"`
+			RemainingSeconds int64 `json:"remainingSeconds"`
+		} `json:"syncPause"`
+	}
+	c.mustJSON(&report, "status", "--json")
+	if !report.SyncPause.Paused || report.SyncPause.RemainingSeconds < 44*60 {
+		t.Errorf("status --json syncPause = %+v", report.SyncPause)
+	}
+
+	// No duration: until resumed.
+	var st struct {
+		UntilRestart bool `json:"untilRestart"`
+	}
+	c.mustJSON(&st, "pause", "--json")
+	if !st.UntilRestart {
+		t.Errorf("pause with no duration = %+v, want until restart", st)
+	}
+
+	if out := c.mustRun("resume"); !strings.Contains(out, "resumed") {
+		t.Errorf("resume said:\n%s", out)
+	}
+	if out := c.mustRun("status"); strings.Contains(out, "syncing is paused") {
+		t.Errorf("status still says paused after resume:\n%s", out)
+	}
+	if out := c.mustRun("resume"); !strings.Contains(out, "not paused") {
+		t.Errorf("a second resume should say there was nothing to resume:\n%s", out)
+	}
+
+	for _, bad := range []string{"soon", "0", "30s", "25h"} {
+		c.mustFail("pause", bad)
+	}
+	c.mustFail("pause", "1h", "extra")
+}
+
+// rollback --dry-run says what a restore would change and changes nothing;
+// the restore after it then does what it said.
+func TestCLI_RollbackDryRun(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+
+	dir := c.saveDir("previewing", map[string]string{"slot1.sav": "v1", "slot2.sav": "same"})
+	c.mustRun("add", "Previewing", dir)
+	c.mustRun("snapshot", "previewing", "-m", "good")
+	snap := c.snapshotIDs("previewing")[0]
+	c.saveDir("previewing", map[string]string{"slot1.sav": "v2, longer", "slot3.sav": "new"})
+
+	out := c.mustRun("rollback", "previewing", snap, "--dry-run")
+	for _, want := range []string{"change", "slot1.sav", "remove", "slot3.sav", "1 file(s) unchanged"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--dry-run output lacks %q:\n%s", want, out)
+		}
+	}
+	if got := c.readSave(dir, "slot1.sav"); got != "v2, longer" {
+		t.Fatalf("--dry-run restored the save: slot1.sav = %q", got)
+	}
+
+	var preview struct {
+		Changes []struct {
+			Path   string `json:"path"`
+			Change string `json:"change"`
+		} `json:"changes"`
+		Unchanged int `json:"unchanged"`
+	}
+	c.mustJSON(&preview, "rollback", "previewing", snap, "--dry-run", "--json")
+	if len(preview.Changes) != 2 || preview.Unchanged != 1 {
+		t.Errorf("--dry-run --json = %+v, want 2 changes and 1 unchanged", preview)
+	}
+
+	c.mustRun("rollback", "previewing", snap)
+	if got := c.readSave(dir, "slot1.sav"); got != "v1" {
+		t.Errorf("after the real rollback slot1.sav = %q, want v1", got)
+	}
+	if out := c.mustRun("rollback", "previewing", snap, "--dry-run"); !strings.Contains(out, "already matches") {
+		t.Errorf("a dry run of the state just restored should say it matches:\n%s", out)
+	}
+	c.mustFail("rollback", "previewing", "snap_nope", "--dry-run")
 }
 
 func TestCLI_SnapshotDeleteAndPrune(t *testing.T) {

@@ -1,5 +1,6 @@
 // Attention helpers shared by the pairing banner and conflict modal.
 import { native } from './api.js';
+import { mayInterrupt } from './notifyprefs.js';
 
 /** A short, pleasant two-note chime synthesised on the fly (no asset). */
 export function playChime() {
@@ -27,8 +28,10 @@ export function playChime() {
   } catch {}
 }
 
-/** Chime + surface the window — for events that need the user's eyes. */
-export function demandAttention() {
+/** Chime + surface the window — for events that need the user's eyes, when
+ *  that event may interrupt now (see notifyprefs.js). `event` names it. */
+export async function demandAttention(event) {
+  if (!(await mayInterrupt(event, native.userBusy))) return;
   playChime();
   native.showWindow();
 }

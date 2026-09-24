@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -406,6 +407,11 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		}
 	}
 
+	// Paused: no save data moves, this way or the other (see pause.go).
+	if isTransferRoute(route) && w.engine.Pause.Paused() {
+		return 503, pausedAnswer()
+	}
+
 	switch {
 	case route == "/ping":
 		settings, _ := w.engine.Store.GetSettings()
@@ -549,7 +555,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		w.engine.GoSync(func(ctx context.Context) {
 			syncCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
-			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil {
+			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) {
 				w.engine.Log("warn", fmt.Sprintf("WAN-triggered sync %s: %v", gameID, err))
 			}
 		})

@@ -89,8 +89,4 @@
   .banner-slot {
     margin-bottom: 26px;
   }
-  .muted {
-    color: var(--text-faint);
-    font-size: 0.88rem;
-  }
 </style>

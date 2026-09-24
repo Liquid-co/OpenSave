@@ -160,6 +160,9 @@ export const native = {
   toggleMaximise: () => app()?.WindowToggleMaximise(),
   close: () => app()?.WindowClose(),
   showWindow: () => app()?.ShowWindow(),
+  // Whether a full-screen game or presentation is running (Windows asks the
+  // OS; elsewhere, and in a browser, never).
+  userBusy: () => app()?.UserBusy?.() ?? Promise.resolve(false),
   // The native window's colour behind the page (Wails runtime; absent in a browser).
   setWindowBackground: (r, g, b) => globalThis.runtime?.WindowSetBackgroundColour?.(r, g, b, 255),
   isWails: () => !!app()

@@ -16,6 +16,8 @@
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import Shortcuts from './components/Shortcuts.svelte';
+  import RestoreDialog from './components/RestoreDialog.svelte';
+  import DropOverlay from './components/DropOverlay.svelte';
 
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
@@ -210,6 +212,8 @@
   <ConfirmDialog />
   <ContextMenu />
   <Shortcuts />
+  <RestoreDialog />
+  <DropOverlay />
   {#if ready}<PairingBanner />{/if}
 </div>
 

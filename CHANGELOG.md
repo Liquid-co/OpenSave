@@ -36,6 +36,50 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **Transfers.** The status bar's Transfers button shows what is moving
+  between your devices right now — which game, which device, which way,
+  how far along and how fast — and the last transfers with whether each went
+  through. The same with `opensave transfers`.
+
+- **Choose what interrupts you.** Settings → General → Notifications: the
+  chime and the window coming to the front for pairing requests and
+  conflicts, and the messages for saves brought from the cloud and newly
+  found games, each on or off. On Windows, OpenSave also stays quiet while a
+  full-screen game or presentation has the screen; whatever it was waits on
+  screen for when you come back.
+
+- **Getting started.** A new installation shows three steps on Home — find
+  your saves, add your other devices, back up to the cloud — each ticked
+  off when it is actually done, wherever you did it. Steps can be skipped
+  and the guide put away. Existing installations don't see it.
+
+- **Drop a folder to track it.** Drag a save folder onto the window and the
+  Track card opens with it filled in and its name guessed from the folder.
+
+- **Pause syncing.** For 15 minutes, an hour, three hours or until you
+  resume — from the status bar, Ctrl+K, or `opensave pause 1h` and
+  `opensave resume`. While paused, no save moves between this device and
+  any other, in either direction, and nothing goes to or comes from the
+  cloud backup; snapshots are still taken. Your other devices see this one
+  as paused rather than failing, and when the pause ends everything catches
+  up on its own, cloud copies included. A pause ends when OpenSave
+  restarts, so one can't be forgotten for days.
+
+- **See what a restore will do before it does it.** Restoring a snapshot
+  now shows, file by file, what changes, what comes back and what goes,
+  with sizes — or that your save already matches it. The same from the
+  terminal: `opensave rollback <game> <snapshot> --dry-run`.
+
+- **Pin a snapshot, and write a note on it.** A pinned snapshot is kept
+  through everything automatic — the per-game limits, the age rule, the
+  clean-up of old conflict branches — and doesn't use up a place under the
+  limits either. It can still be deleted by hand, which says it is pinned
+  first. A note is your own words about a snapshot ("good run, before the
+  boss"), shown under it; it doesn't replace the reason OpenSave gives for
+  taking it. On the game's Snapshots tab, and in the terminal:
+  `opensave snapshot-pin`, `snapshot-unpin` and `snapshot-note`, with
+  `opensave snapshots` showing both.
+
 - **Right-click a game.** In the library or the sidebar: open it, sync it,
   take a snapshot, launch it, open its save folder, put back its latest
   snapshot, or stop tracking it. The menu key on the keyboard opens it too.
@@ -196,6 +240,10 @@ All notable changes to OpenSave are documented here. This project adheres to
   terminal command that timed out said the daemon wasn't reachable and to
   start it — while it was running, busy doing what was asked. It now says
   the daemon did not answer in time.
+
+- `opensave snapshot <game> -m "before the boss"` titled the snapshot
+  "-m before the boss". `-m` and `--message` are now taken the way git
+  takes them; the comment can still be given without either.
 
 - `opensave backup export` and `import` wait for the daemon to finish. They
   gave up after 30 seconds like any quick command, so a large library was

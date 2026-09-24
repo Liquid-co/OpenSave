@@ -1,13 +1,17 @@
 <script>
   // Every snapshot of this game, newest first and grouped by day: take one,
   // restore one, look inside one and put back a single file.
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick as rendered } from 'svelte';
   import { askConfirm, toast } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
+  import { askRestore } from '../../lib/restore.js';
   import { timeAgo } from '../../lib/timeago.js';
   import Camera from 'lucide-svelte/icons/camera';
+  import Pin from 'lucide-svelte/icons/pin';
+  import PinOff from 'lucide-svelte/icons/pin-off';
+  import Pencil from 'lucide-svelte/icons/pencil';
 
   export let game;
   export let runner;
@@ -39,13 +43,46 @@
       comment = '';
     });
 
+  // Asked with what it would change; see lib/restore.js.
   const rollback = async (snap) => {
-    if (!(await askConfirm(`Restore ${named(snap)} over your current save? Your current save is kept as a snapshot first, so this can be undone.`, { title: 'Restore snapshot?', confirmText: 'Restore' }))) return;
+    if (!(await askRestore(game, snap))) return;
     return run('Snapshot restored', () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
   };
 
+  // Pinned: no limit, age rule or clean-up removes it. Not a lock — deleting
+  // it by hand still works, and says so first.
+  const togglePin = (snap) =>
+    run(snap.pinned ? 'Unpinned — the limits apply to it again' : 'Pinned — kept through every limit and clean-up', () =>
+      api.patch(`/api/games/${game.id}/snapshot/${snap.id}`, { pinned: !snap.pinned })
+    );
+
+  // The note is edited in place; Enter or leaving the field saves it,
+  // Escape puts it back.
+  let noting = null; // snapshot id being noted
+  let noteDraft = '';
+  async function startNote(snap) {
+    noting = snap.id;
+    noteDraft = snap.note ?? '';
+    await rendered();
+    document.getElementById(`note-${snap.id}`)?.focus();
+  }
+  async function saveNote(snap) {
+    if (noting !== snap.id) return;
+    noting = null;
+    if (noteDraft.trim() === (snap.note ?? '')) return;
+    await run('', () => api.patch(`/api/games/${game.id}/snapshot/${snap.id}`, { note: noteDraft }));
+  }
+  function noteKeydown(e, snap) {
+    if (e.key === 'Enter') saveNote(snap);
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      noting = null;
+    }
+  }
+
   async function deleteSnapshot(snap) {
-    if (!(await askConfirm(`Delete ${named(snap)}? This can't be undone; your current save isn't affected.`, { title: 'Delete snapshot?', confirmText: 'Delete', danger: true }))) return;
+    const pinnedLine = snap.pinned ? ' It is pinned, so nothing else would ever have removed it.' : '';
+    if (!(await askConfirm(`Delete ${named(snap)}?${pinnedLine} This can't be undone; your current save isn't affected.`, { title: 'Delete snapshot?', confirmText: 'Delete', danger: true }))) return;
     run('Snapshot deleted', () => api.del(`/api/games/${game.id}/snapshot/${snap.id}`));
   }
 
@@ -105,13 +142,41 @@
               <span class="title-text">{k.title}</span>
               {#if snap.id === latestId}<span class="tag latest">Latest</span>{/if}
             </div>
+            {#if noting === snap.id}
+              <input
+                id="note-{snap.id}"
+                class="note-input"
+                placeholder="A note about this snapshot"
+                maxlength="500"
+                bind:value={noteDraft}
+                on:keydown={(e) => noteKeydown(e, snap)}
+                on:blur={() => saveNote(snap)}
+              />
+            {:else if snap.note}
+              <button class="note" title="Edit the note" on:click={() => startNote(snap)}>{snap.note}</button>
+            {/if}
             <div class="meta">
+              {#if snap.pinned}<span class="tag pinned"><Pin size={10} strokeWidth={2.6} />Pinned</span>{/if}
               <span class="tag kind">{k.label}</span>
               {#if branchCount > 1}<span class="tag">{snap.branch}</span>{/if}
               <span>{fmtSize(snap.sizeBytes)}</span>
             </div>
           </div>
           <div class="actions">
+            <button
+              class="btn small ghost icon"
+              class:on={snap.pinned}
+              disabled={$busy}
+              title={snap.pinned ? 'Unpin: let the snapshot limits apply to it again' : 'Pin: keep it through every limit and clean-up'}
+              aria-label={snap.pinned ? 'Unpin' : 'Pin'}
+              aria-pressed={snap.pinned}
+              on:click={() => togglePin(snap)}
+            >
+              <svelte:component this={snap.pinned ? PinOff : Pin} size={14} />
+            </button>
+            <button class="btn small ghost icon" title={snap.note ? 'Edit the note' : 'Add a note'} aria-label="Note" on:click={() => startNote(snap)}>
+              <Pencil size={13} />
+            </button>
             <button class="btn small" on:click={() => browseSnapshot(snap)}>Files</button>
             <button class="btn small" disabled={$busy} on:click={() => rollback(snap)}>Restore</button>
             <button class="btn small ghost-danger" disabled={$busy} title="Delete this snapshot" on:click={() => deleteSnapshot(snap)}>Delete</button>
@@ -238,6 +303,49 @@
   .tag.latest {
     border-color: rgba(var(--success-rgb), 0.45);
     color: var(--success);
+  }
+  .tag.pinned {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .btn.icon.on {
+    color: var(--accent);
+  }
+  .note {
+    display: block;
+    max-width: 100%;
+    margin: 1px 0 3px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.82rem;
+    font-style: italic;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+  }
+  .note:hover {
+    color: var(--text);
+  }
+  .note-input {
+    width: 100%;
+    margin: 3px 0 4px;
+    padding: 4px 8px;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 7px;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.84rem;
+    outline: none;
   }
   .actions {
     display: flex;

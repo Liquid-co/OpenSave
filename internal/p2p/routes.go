@@ -37,12 +37,17 @@ func (e *Engine) RegisterRoutes(r chi.Router) {
 		r.Post("/api/p2p/untrack", e.handlePeerUntrack)
 		r.Post("/api/p2p/retrack", e.handlePeerRetrack)
 		r.Get("/api/p2p/games", e.handlePeerGameList)
-		r.Get("/api/p2p/manifest/{gameId}", e.handleManifest)
-		r.Post("/api/p2p/blocks/{gameId}", e.handleBlocks)
-		r.Post("/api/p2p/delete-file/{gameId}", e.handleDeleteFile)
 		r.Post("/api/p2p/sync-event/{gameId}", e.handleSyncEvent)
-		r.Get("/api/sync/trigger/{gameId}", e.handleSyncTrigger)
 		r.Get("/api/p2p/app-binary", e.handleAppBinary)
+
+		// What moves save data, or starts a sync: refused while paused.
+		r.Group(func(r chi.Router) {
+			r.Use(e.refuseWhilePaused)
+			r.Get("/api/p2p/manifest/{gameId}", e.handleManifest)
+			r.Post("/api/p2p/blocks/{gameId}", e.handleBlocks)
+			r.Post("/api/p2p/delete-file/{gameId}", e.handleDeleteFile)
+			r.Get("/api/sync/trigger/{gameId}", e.handleSyncTrigger)
+		})
 	})
 }
 

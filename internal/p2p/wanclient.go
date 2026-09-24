@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/opensave/opensave/internal/e2ee"
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/version"
 )
@@ -602,6 +603,9 @@ func (w *WanClient) Request(ctx context.Context, peerID, route, method string, b
 	}
 	if status >= 200 && status < 300 {
 		return data, nil
+	}
+	if isPausedRefusal(status, data) {
+		return nil, syncengine.ErrPeerPaused
 	}
 	var errBody struct {
 		Error string `json:"error"`

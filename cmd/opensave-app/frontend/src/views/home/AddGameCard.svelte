@@ -4,12 +4,25 @@
   import { createEventDispatcher } from 'svelte';
   import { navigate, toast } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
+  import { folderName } from '../../lib/filedrop.js';
 
   const dispatch = createEventDispatcher();
+
+  /** A folder to start from — one dropped onto the window. */
+  export let initialPath = '';
 
   let name = '';
   let path = '';
   let adding = false;
+
+  // A dropped folder arrives with its path filled in and its name guessed from
+  // the folder's own name, which is often the game's; both can be changed.
+  let seededFrom = '';
+  $: if (initialPath && initialPath !== seededFrom) {
+    seededFrom = initialPath;
+    path = initialPath;
+    name = folderName(initialPath);
+  }
 
   async function pickFolder() {
     const dir = await native.selectDirectory('Select the save folder to track');

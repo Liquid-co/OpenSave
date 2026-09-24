@@ -5,7 +5,8 @@
   // of them said the thing a person opens the app to check: are my saves
   // safe, and is anything waiting on me.
   import { onDestroy } from 'svelte';
-  import { peers, settings, navigate } from '../../lib/stores.js';
+  import { peers, settings, navigate, syncPause } from '../../lib/stores.js';
+  import { pauseLength, resumeSync } from '../../lib/syncpause.js';
   import { providerById } from '../../lib/cloudproviders.js';
   import { librarySummary, latestSnapshotAt } from '../../lib/gamestatus.js';
   import { timeAgo } from '../../lib/timeago.js';
@@ -18,6 +19,8 @@
   onDestroy(() => clearInterval(tick));
 
   $: summary = librarySummary(rows);
+  // The pause's countdown starts from the moment it changes.
+  $: if ($syncPause) now = Date.now();
 
   $: paired = Object.values($peers);
   $: online = paired.filter((p) => p.status === 'online').length;
@@ -41,6 +44,13 @@
     <span class="dot"></span>
     {summary.headline}
   </div>
+  {#if $syncPause.paused}
+    <div class="paused-line">
+      Syncing is paused {pauseLength($syncPause, now)} — snapshots are still taken, and everything catches up
+      when it resumes.
+      <button class="btn small" on:click={resumeSync}>Resume now</button>
+    </div>
+  {/if}
   <div class="facts">
     <span>{rows.length} {rows.length === 1 ? 'game' : 'games'}</span>
     <span class="sep">·</span>
@@ -55,6 +65,15 @@
 </div>
 
 <style>
+  .paused-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 2px 0 8px 17px;
+    font-size: 0.86rem;
+    color: var(--warn);
+  }
   .summary {
     --tone: var(--success);
     background: var(--bg-raised);

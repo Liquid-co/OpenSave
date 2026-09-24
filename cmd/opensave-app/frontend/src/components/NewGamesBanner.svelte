@@ -7,6 +7,7 @@
   // its own: Review opens the scan, where the person chooses.
   import { fly } from 'svelte/transition';
   import { newGames, navigate, toast } from '../lib/stores.js';
+  import { notifyPrefs } from '../lib/notifyprefs.js';
   import { api } from '../lib/api.js';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
@@ -41,7 +42,7 @@
   };
 </script>
 
-{#if $newGames.length > 0}
+{#if $newGames.length > 0 && $notifyPrefs.newGames}
   <div class="new-card" transition:fly={{ y: -20, duration: 200 }}>
     <div class="new-icon"><Gamepad2 size={19} /></div>
     <div class="new-body">

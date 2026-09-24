@@ -1,5 +1,6 @@
 // Central app state, fed by the daemon's init dump + live WS updates.
 import { writable, derived, get } from 'svelte/store';
+import { notifyPrefs } from './notifyprefs.js';
 
 export const view = writable({ name: 'home', params: {} });
 export const settings = writable(null);
@@ -8,6 +9,14 @@ export const games = writable({});
  *  game list means "not here yet", not "no games" — without this, Home showed
  *  its first-run welcome for a moment on every launch. */
 export const stateLoaded = writable(false);
+/** Whether this device has paused syncing: {paused, untilRestart, endsAt}
+ *  where endsAt is a local timestamp for a timed pause. See lib/syncpause.js. */
+export const syncPause = writable({ paused: false });
+const pauseFromWire = (st) => ({
+  paused: !!st?.paused,
+  untilRestart: !!st?.untilRestart,
+  endsAt: st?.paused && !st.untilRestart ? Date.now() + (st.remainingSeconds ?? 0) * 1000 : null
+});
 export const peers = writable({});
 export const discoveredPeers = writable([]);
 export const pairingRequests = writable([]);
@@ -131,7 +140,11 @@ export function applyMessage(msg) {
       logEntries.set(data.logHistory ?? []);
       cloudOffers.set(data.cloudOffers ?? []);
       newGames.set(data.newGames ?? []);
+      syncPause.set(pauseFromWire(data.syncPause));
       stateLoaded.set(true);
+      break;
+    case 'sync-pause':
+      syncPause.set(pauseFromWire(data));
       break;
     case 'new-games':
       newGames.set(data ?? []);
@@ -143,7 +156,7 @@ export function applyMessage(msg) {
       // Taken without asking, because it carried on from the save this
       // device had and this device had not changed since. Said out loud all
       // the same: a save that changes by itself should say who changed it.
-      toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
+      if (get(notifyPrefs).cloudPulled) toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
       break;
     case 'games-update':
       games.set(data ?? {});

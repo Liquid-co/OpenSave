@@ -14,6 +14,7 @@ import (
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/syncpause"
 )
 
 // Conflict is a diverged-save state awaiting user resolution.
@@ -50,6 +51,15 @@ type DiffFile struct {
 // failure.
 var ErrSyncQueued = errors.New("a sync is already running for this game — your change is queued and will sync right after")
 
+// ErrPaused means this device has paused syncing (see package syncpause):
+// nothing is fetched until it resumes, and it catches up then.
+var ErrPaused = syncpause.ErrPaused
+
+// ErrPeerPaused means the other device has paused syncing and turned the
+// request away. Not a failure: that device catches up when it resumes, and
+// this one tries again then or on its next sync.
+var ErrPeerPaused = errors.New("the other device has paused syncing")
+
 // perPeerSyncTimeout caps one game/peer sync pass. Generous (large saves
 // on slow links) but finite — a hung transport must never wedge the
 // engine. Var so tests can shrink it.
@@ -78,6 +88,10 @@ type Engine struct {
 	// up. Optional — without it the follow-up falls back to the list the
 	// sync it queued behind was started with.
 	OnlinePeers func() []Peer
+
+	// Paused reports whether this device has paused syncing. Optional; nil
+	// means never paused.
+	Paused func() bool
 
 	mu              sync.Mutex
 	activeSyncs     map[string]bool
@@ -173,6 +187,12 @@ func (e *Engine) SyncBusy(gameID string) bool {
 }
 
 func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer) (map[string]Result, error) {
+	// Every sync this device starts comes through here — a watched change, a
+	// peer coming online, the periodic reconcile, a sync asked for by hand or
+	// by a peer — so this is the one place a pause has to stop them.
+	if e.Paused != nil && e.Paused() {
+		return nil, ErrPaused
+	}
 	e.mu.Lock()
 	if e.activeSyncs[gameID] {
 		e.pendingSyncs[gameID] = true
@@ -228,6 +248,11 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		peerCtx, cancel := context.WithTimeout(ctx, perPeerSyncTimeout)
 		res, err := e.SyncWithPeer(peerCtx, gameID, peer)
 		cancel()
+		if errors.Is(err, ErrPeerPaused) {
+			e.Log("info", fmt.Sprintf("%s has paused syncing; %s will sync with it when it resumes", peer.Name, gameID))
+			results[peer.ID] = Result{Status: "peer_paused", PeerID: peer.ID, PeerName: peer.Name}
+			continue
+		}
 		if err != nil {
 			e.Log("error", fmt.Sprintf("sync %s with %s failed: %v", gameID, peer.Name, err))
 			results[peer.ID] = Result{Status: "error", PeerID: peer.ID, PeerName: peer.Name}
@@ -1232,7 +1257,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 		e.Transport.ReportSyncEvent(peer, gameID, "sync-progress", map[string]any{
 			"peerName": deviceName, "bytesTransferred": bytesPulled, "totalBytes": totalBytes,
-			"speedBytesPerSec": speed, "percentage": pct,
+			"speedBytesPerSec": speed, "percentage": pct, "direction": "upload",
 		})
 	}
 

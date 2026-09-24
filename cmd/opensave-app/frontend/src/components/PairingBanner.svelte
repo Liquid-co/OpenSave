@@ -14,7 +14,7 @@
   function onRequests(list) {
     const fresh = list.filter((r) => !seen.has(r.peerId));
     if (fresh.length > 0) {
-      demandAttention();
+      demandAttention('pairing');
       const who = fresh[0].deviceName ?? 'A device';
       toast(`${who} wants to pair`, 'info');
     }

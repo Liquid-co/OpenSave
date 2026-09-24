@@ -34,7 +34,7 @@
   function announce(list) {
     const fresh = list.filter((c) => !seen.has(keyOf(c)));
     if (fresh.length > 0) {
-      demandAttention();
+      demandAttention('conflicts');
       const name = $games[fresh[0].gameId]?.name ?? 'a game';
       toast(`The “${fresh[0].root}” folder of “${name}” differs on both devices`, 'error');
     }

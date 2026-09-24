@@ -158,6 +158,9 @@ func doJSON(req *http.Request, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if isPausedRefusal(resp.StatusCode, raw) {
+			return syncengine.ErrPeerPaused
+		}
 		return fmt.Errorf("peer returned %d: %s", resp.StatusCode, string(raw))
 	}
 	if out == nil {

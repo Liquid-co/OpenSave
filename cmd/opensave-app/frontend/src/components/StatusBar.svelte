@@ -1,6 +1,14 @@
 <script>
-  import { onMount } from 'svelte';
-  import { wsConnected, syncActivity, wanRoom, peers, showAbout } from '../lib/stores.js';
+  import { onMount, onDestroy } from 'svelte';
+  import { wsConnected, syncActivity, wanRoom, peers, showAbout, syncPause } from '../lib/stores.js';
+  import { PAUSE_CHOICES, pauseSync, resumeSync, pauseShort, pauseLength } from '../lib/syncpause.js';
+  import { openMenu } from '../lib/contextmenu.js';
+  import Pause from 'lucide-svelte/icons/pause';
+  import Play from 'lucide-svelte/icons/play';
+  import ArrowDownUp from 'lucide-svelte/icons/arrow-down-up';
+  import TransfersPanel from './TransfersPanel.svelte';
+
+  let transfersOpen = false;
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
   import { paletteOpen } from '../lib/shortcuts.js';
@@ -16,6 +24,19 @@
     } catch {}
   });
 
+  // The pause counts down while it is on screen.
+  let now = Date.now();
+  const clock = setInterval(() => (now = Date.now()), 15_000);
+  onDestroy(() => clearInterval(clock));
+  // And starts from the moment it changes, not from the last tick.
+  $: if ($syncPause) now = Date.now();
+
+  const pauseMenu = (e) =>
+    openMenu(
+      e,
+      PAUSE_CHOICES.map((c) => ({ label: `Pause syncing ${c.label}`, icon: Pause, run: () => pauseSync(c.minutes) }))
+    );
+
   $: running = Object.entries($syncActivity).filter(([, s]) => s.state === 'running');
   $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online').length;
   $: statusText = running.length
@@ -27,12 +48,26 @@
   <AboutModal onClose={() => showAbout.set(false)} />
 {/if}
 
+<svelte:window on:keydown={(e) => e.key === 'Escape' && (transfersOpen = false)} />
+
+{#if transfersOpen}
+  <TransfersPanel on:close={() => (transfersOpen = false)} />
+{/if}
+
 <footer>
   <div class="left">
-    <span class="dot" class:green={$wsConnected} class:gray={!$wsConnected}></span>
-    <span>{statusText}</span>
-    {#if running.length && running[0][1].percentage != null}
-      <span class="pct">{running[0][1].percentage}%</span>
+    <span class="dot" class:green={$wsConnected && !$syncPause.paused} class:amber={$syncPause.paused} class:gray={!$wsConnected}></span>
+    {#if $syncPause.paused}
+      <span class="paused" title="Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken.">
+        Syncing paused · {pauseShort($syncPause, now)}
+      </span>
+      <button class="bar-btn" on:click={resumeSync} title="Resume syncing and catch up"><Play size={11} />Resume</button>
+    {:else}
+      <span>{statusText}</span>
+      {#if running.length && running[0][1].percentage != null}
+        <span class="pct">{running[0][1].percentage}%</span>
+      {/if}
+      <button class="bar-btn icon" on:click={pauseMenu} title="Pause syncing" aria-label="Pause syncing"><Pause size={11} /></button>
     {/if}
   </div>
   <div class="right">
@@ -40,6 +75,15 @@
       <span class="wan">relay: {$wanRoom.roomCode}</span>
     {/if}
     <span>{onlinePeers} peer{onlinePeers === 1 ? '' : 's'} online</span>
+    <button
+      class="bar-btn"
+      class:on={transfersOpen}
+      on:click={() => (transfersOpen = !transfersOpen)}
+      title="What is moving between your devices"
+      aria-expanded={transfersOpen}
+    >
+      <ArrowDownUp size={11} />Transfers{#if running.length}<span class="count">{running.length}</span>{/if}
+    </button>
     <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title="Jump to a game, a page or an action">
       <kbd>{modKey} K</kbd>
     </button>
@@ -69,6 +113,46 @@
   .pct {
     color: var(--accent);
     font-weight: 600;
+  }
+  .dot.amber {
+    background: var(--warn);
+  }
+  .paused {
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .bar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+  .bar-btn.icon {
+    padding: 0 4px;
+    border-color: transparent;
+    color: var(--text-faint);
+  }
+  .bar-btn:hover,
+  .bar-btn.on {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+  .count {
+    margin-left: 2px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
   }
   .wan {
     color: var(--success);

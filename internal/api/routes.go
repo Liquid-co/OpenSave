@@ -2,13 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/sysintegration"
 )
@@ -48,6 +51,8 @@ func (s *Server) routes(r chi.Router) {
 	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/files", s.handleSnapshotFiles)
 	r.Post("/api/games/{gameId}/snapshot/{snapshotId}/restore-file", s.handleRestoreFile)
 	r.Delete("/api/games/{gameId}/snapshot/{snapshotId}", s.handleDeleteSnapshot)
+	r.Patch("/api/games/{gameId}/snapshot/{snapshotId}", s.handleEditSnapshot)
+	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/preview", s.handlePreviewRestore)
 
 	r.Post("/api/games/{gameId}/branch", s.handleCreateBranch)
 	r.Post("/api/games/{gameId}/branch/switch", s.handleSwitchBranch)
@@ -58,6 +63,11 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/backup/restore", s.handleBackupRestore)
 
 	r.Post("/api/snapshots/prune", s.handlePruneSnapshots)
+
+	r.Get("/api/transfers", s.handleTransfers)
+	r.Get("/api/sync/pause", s.handleSyncPauseStatus)
+	r.Post("/api/sync/pause", s.handleSyncPause)
+	r.Post("/api/sync/resume", s.handleSyncResume)
 
 	r.Get("/api/presets/scan", s.handlePresetScan)
 	r.Post("/api/presets/new/dismiss", s.handleNewGamesDismiss)
@@ -647,6 +657,103 @@ func (s *Server) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	s.Daemon.Log.Log("info", fmt.Sprintf("deleted snapshot %s (%.1f MB)", snapshotID, float64(freed)/(1<<20)))
 	s.BroadcastGamesUpdate()
 	writeJSON(w, http.StatusOK, map[string]any{"freedBytes": freed})
+}
+
+// handleEditSnapshot pins, unpins or re-notes a snapshot. Fields left out of
+// the body are left as they are: {"pinned": true} does not clear the note.
+func (s *Server) handleEditSnapshot(w http.ResponseWriter, r *http.Request) {
+	gameID := chi.URLParam(r, "gameId")
+	snapshotID := chi.URLParam(r, "snapshotId")
+	var body struct {
+		Pinned *bool   `json:"pinned"`
+		Note   *string `json:"note"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Pinned == nil && body.Note == nil {
+		writeError(w, http.StatusBadRequest, `nothing to change: send "pinned", "note" or both`)
+		return
+	}
+	snap, err := s.Daemon.Snapshots.EditSnapshot(gameID, snapshotID, snapshot.SnapshotEdit{Pinned: body.Pinned, Note: body.Note})
+	if err != nil {
+		status := notFoundToStatus(err)
+		if errors.Is(err, snapshot.ErrInvalidEdit) {
+			status = http.StatusBadRequest
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+	if body.Pinned != nil {
+		verb := "unpinned"
+		if *body.Pinned {
+			verb = "pinned"
+		}
+		s.Daemon.Log.Log("info", fmt.Sprintf("%s snapshot %s", verb, snapshotID))
+	}
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, snap)
+}
+
+// maxPause bounds a timed pause. Longer than this is "until I resume", which
+// has its own option; a pause of days set by a typo is saves not syncing for
+// days without anyone meaning it.
+const maxPause = 24 * time.Hour
+
+// handleTransfers lists what is moving between this device and others now,
+// and what moved recently.
+func (s *Server) handleTransfers(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.transfers.Now())
+}
+
+func (s *Server) handleSyncPauseStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.Daemon.SyncPauseStatus())
+}
+
+// handleSyncPause pauses syncing: {"minutes": n} for a while, or
+// {"untilRestart": true} until resumed or the app restarts.
+func (s *Server) handleSyncPause(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Minutes      int  `json:"minutes"`
+		UntilRestart bool `json:"untilRestart"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	dur := time.Duration(body.Minutes) * time.Minute
+	switch {
+	case body.UntilRestart && body.Minutes != 0:
+		writeError(w, http.StatusBadRequest, `give "minutes" or "untilRestart", not both`)
+		return
+	case body.UntilRestart:
+		dur = 0
+	case body.Minutes <= 0:
+		writeError(w, http.StatusBadRequest, `say how long: "minutes" (1 to 1440) or "untilRestart": true`)
+		return
+	case dur > maxPause:
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("a pause can last at most %d minutes; to pause with no end, use untilRestart", int(maxPause.Minutes())))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Daemon.PauseSync(dur))
+}
+
+func (s *Server) handleSyncResume(w http.ResponseWriter, r *http.Request) {
+	resumed := s.Daemon.ResumeSync()
+	st := s.Daemon.SyncPauseStatus()
+	writeJSON(w, http.StatusOK, map[string]any{"resumed": resumed, "paused": st.Paused})
+}
+
+// handlePreviewRestore says what restoring a snapshot would change, file by
+// file, without changing anything.
+func (s *Server) handlePreviewRestore(w http.ResponseWriter, r *http.Request) {
+	preview, err := s.Daemon.Snapshots.PreviewRestore(chi.URLParam(r, "gameId"), chi.URLParam(r, "snapshotId"))
+	if err != nil {
+		writeError(w, notFoundToStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
 }
 
 // handleDeleteBranch removes a branch and all its snapshots. The active

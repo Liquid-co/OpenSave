@@ -10,6 +10,9 @@
   import LibraryGrid from './home/LibraryGrid.svelte';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import { visibleGames } from '../lib/gameactions.js';
+  import SetupGuide from './home/SetupGuide.svelte';
+  import { setupState, setupSteps, decideSetupFor } from '../lib/setup.js';
+  import { settings } from '../lib/stores.js';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
@@ -46,6 +49,15 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
   $: conflicted = conflictedIds($conflicts, $locationConflicts);
+  // The setup guide, until everything in it is done or skipped, or it is put
+  // away. Games are counted as tracked, not as shown, so a game on its way out
+  // does not bring the guide back for a moment.
+  $: if ($stateLoaded && !$setupState.seen) setupState.set(decideSetupFor($setupState, $gameList.length));
+  $: showGuide =
+    $setupState.seen &&
+    !$setupState.dismissed &&
+    !setupSteps({ games: $gameList.length, peers: Object.keys($peers).length, cloud: $settings?.cloudSync?.enabled, skipped: $setupState.skipped }).finished;
+
   $: rows = $visibleGames.map((game) => ({
     game,
     status: gameStatus(game, {
@@ -71,13 +83,15 @@
 <OfferedGames />
 
 {#if showAdd}
-  <AddGameCard on:close={() => (showAdd = false)} />
+  <AddGameCard initialPath={params.path ?? ''} on:close={() => (showAdd = false)} />
 {/if}
 
 <ScanDialog bind:this={scanner} bind:scanning />
 
 {#if !$stateLoaded}
   <Skeleton kind="tiles" count={6} />
+{:else if showGuide && $visibleGames.length === 0}
+  <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={() => (showAdd = true)} />
 {:else if $visibleGames.length === 0}
   <div class="welcome">
     <div class="welcome-icon"><Gamepad2 size={34} strokeWidth={1.6} /></div>
@@ -92,6 +106,9 @@
     <p class="welcome-hint">Then open <strong>Devices</strong> to pair another PC or Steam Deck, or <strong>Cloud Backup</strong> to mirror snapshots online.</p>
   </div>
 {:else}
+  {#if showGuide}
+    <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={() => (showAdd = true)} />
+  {/if}
   <HomeSummary {rows} />
   <LibraryGrid {rows} />
 {/if}

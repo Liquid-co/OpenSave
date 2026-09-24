@@ -22,6 +22,8 @@ import (
 	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/syncpause"
+	"github.com/opensave/opensave/internal/transfers"
 	"github.com/opensave/opensave/internal/version"
 )
 
@@ -32,6 +34,9 @@ type Server struct {
 
 	httpServer *http.Server
 	listener   net.Listener
+	// transfers remembers what moved between this device and others; fed
+	// by the same progress reports the dashboard gets. See wireSyncProgress.
+	transfers *transfers.Log
 	// SteamCacheDirs overrides where Steam's already-downloaded library art is
 	// looked for when non-nil. Tests only.
 	SteamCacheDirs []string
@@ -39,7 +44,7 @@ type Server struct {
 
 // New assembles the router and hub around a daemon.
 func New(d *daemon.Daemon) *Server {
-	s := &Server{Daemon: d, Hub: NewHub()}
+	s := &Server{Daemon: d, Hub: NewHub(), transfers: transfers.New()}
 	s.Hub.InitPayload = s.initPayload
 
 	// Live-forward activity log entries to connected dashboards.
@@ -58,6 +63,9 @@ func New(d *daemon.Daemon) *Server {
 
 	// Newly installed games the background scan found.
 	d.OnNewGames = func(games []daemon.NewGame) { s.Hub.Broadcast("new-games", games) }
+
+	// Syncing paused or resumed — from here, the CLI, the tray, or a timer.
+	d.P2P.Pause.OnChange(func(st syncpause.Status) { s.Hub.Broadcast("sync-pause", st) })
 	return s
 }
 
@@ -122,16 +130,23 @@ func (s *Server) peersPayload() map[string]any {
 func (s *Server) wireSyncProgress() {
 	sync := s.Daemon.P2P.Sync
 	sync.Progress.OnSyncStart = func(gameID string, ev syncengine.ProgressEvent) {
+		s.transfers.Started(gameID, transferEvent(ev))
 		s.Hub.Broadcast("sync-start", map[string]any{"gameId": gameID, "data": ev})
 	}
 	sync.Progress.OnSyncProgress = func(gameID string, ev syncengine.ProgressEvent) {
+		s.transfers.Progressed(gameID, transferEvent(ev))
 		s.Hub.Broadcast("sync-progress", map[string]any{"gameId": gameID, "data": ev})
 	}
 	sync.Progress.OnSyncComplete = func(gameID string, ev syncengine.ProgressEvent) {
+		s.transfers.Finished(gameID, transferEvent(ev))
 		s.Hub.Broadcast("sync-complete", map[string]any{"gameId": gameID, "data": ev})
 		s.BroadcastGamesUpdate()
 	}
 	sync.Progress.OnSyncError = func(gameID string, ev syncengine.ProgressEvent) {
+		if ev.Error == "" {
+			ev.Error = "the sync failed"
+		}
+		s.transfers.Finished(gameID, transferEvent(ev))
 		s.Hub.Broadcast("sync-error", map[string]any{"gameId": gameID, "data": ev})
 	}
 	sync.Progress.OnConflict = func(gameID string) {
@@ -141,6 +156,15 @@ func (s *Server) wireSyncProgress() {
 	// last-synced time moved with no sync running here to announce it.
 	sync.Progress.OnSyncConfirmed = func(gameID string) {
 		s.BroadcastGamesUpdate()
+	}
+}
+
+func transferEvent(ev syncengine.ProgressEvent) transfers.Event {
+	return transfers.Event{
+		Peer: ev.PeerName, Direction: ev.Direction,
+		BytesTransferred: ev.BytesTransferred, TotalBytes: ev.TotalBytes,
+		SpeedBytesPerSec: ev.SpeedBytesPerSec, Percentage: ev.Percentage,
+		Error: ev.Error,
 	}
 }
 
@@ -344,6 +368,7 @@ func (s *Server) initPayload() any {
 	payload["logHistory"] = s.Daemon.Log.History()
 	payload["cloudOffers"] = s.Daemon.CloudOffers()
 	payload["newGames"] = s.Daemon.NewGames()
+	payload["syncPause"] = s.Daemon.SyncPauseStatus()
 	return payload
 }
 

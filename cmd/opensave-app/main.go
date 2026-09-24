@@ -48,6 +48,10 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 12, G: 12, B: 13, A: 1},
 		Frameless:        true,
+		// A save folder dropped onto the window opens the Track card with it
+		// filled in (frontend/src/lib/filedrop.js). Wails hands over the real
+		// path, which a page in a browser never gets.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		// Launched by the autostart entry: sit in the tray, do not bring the
 		// window up over whatever the person is doing. startup() shows it
 		// anyway if no tray ever appears, so this cannot strand the app.

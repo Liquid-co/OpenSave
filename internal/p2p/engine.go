@@ -19,6 +19,7 @@ import (
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/syncpause"
 )
 
 // resyncRetryInterval is how often the failsafe re-attempts games whose
@@ -44,6 +45,8 @@ type Engine struct {
 	Wan       *WanClient
 	RelayHost *RelayHost
 	Log       func(level, msg string)
+	// Pause is whether this device has paused syncing (see pause.go).
+	Pause *syncpause.State
 
 	// OnPeerUpdate fires whenever peer/pairing state changes (dashboard
 	// broadcast hook). May be nil.
@@ -269,6 +272,8 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 	// instead of inheriting the peer list from whichever sync it queued
 	// behind.
 	e.Sync.OnlinePeers = e.OnlinePeers
+	e.Pause = syncpause.New()
+	e.Sync.Paused = e.Pause.Paused
 	return e
 }
 
@@ -408,6 +413,9 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 
 // SyncGame pings peers and then syncs one game with everyone online.
 func (e *Engine) SyncGame(ctx context.Context, gameID string) (map[string]syncengine.Result, error) {
+	if e.Pause.Paused() {
+		return nil, syncengine.ErrPaused
+	}
 	gameID = e.localGameID(gameID)
 	e.PingPairedPeers(ctx)
 	online := e.OnlinePeers()
@@ -514,6 +522,12 @@ func (e *Engine) StartResyncLoop() {
 				return
 			case <-ticker.C:
 				ticks++
+				// Paused: nothing to retry or reconcile, and saying so on
+				// every tick for every game would bury the log. Resuming
+				// runs a full catch-up of its own (see daemon.go).
+				if e.Pause.Paused() {
+					continue
+				}
 				e.retryPendingResyncs(ctx)
 				if ticks%reconcileEveryNTicks == 0 {
 					e.reconcileAllGames(ctx)
@@ -570,6 +584,9 @@ func (e *Engine) retryPendingResyncs(ctx context.Context) {
 
 // SyncAllGames syncs every tracked game (used when a peer comes online).
 func (e *Engine) SyncAllGames(ctx context.Context) {
+	if e.Pause.Paused() {
+		return // resuming catches up; see syncpause
+	}
 	games, err := e.Store.ListGames()
 	if err != nil {
 		return
