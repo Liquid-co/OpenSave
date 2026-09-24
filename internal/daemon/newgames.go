@@ -40,10 +40,9 @@ var (
 	newGameScanInterval = time.Hour
 )
 
-// newGameState is the daemon's state for the background scan.
+// newGameState serialises the background scan's writes to what is waiting.
 type newGameState struct {
-	mu      sync.Mutex
-	pending []NewGame
+	mu sync.Mutex
 }
 
 // ScanForSaves runs the save scan: every location the scanner knows, less
@@ -87,10 +86,12 @@ func (d *Daemon) DetectNewGames() {
 	if err != nil {
 		return
 	}
-	hadStock, err := d.Store.HasKnownSaves()
+	hadStock, err := d.Store.StockTaken()
 	if err != nil {
 		return
 	}
+	d.newGames.mu.Lock()
+	defer d.newGames.mu.Unlock()
 
 	var remember []store.KnownSave
 	var fresh []NewGame
@@ -112,15 +113,18 @@ func (d *Daemon) DetectNewGames() {
 					isTracked = true
 				}
 			}
-			// Every folder of the game, so a later scan that picks another of
-			// them as the one to track does not announce it a second time.
-			remember = append(remember, store.KnownSave{Path: r.SavePath, Name: r.Name})
 		}
-		if known || isTracked || !hadStock {
-			continue
+		news := !known && !isTracked && hadStock
+		// Every folder of the game, so a later scan that picks another of them
+		// as the one to track does not announce it a second time. The one to
+		// track is marked as waiting, if this is news.
+		for i, r := range group {
+			remember = append(remember, store.KnownSave{Path: r.SavePath, Name: r.Name, AppID: r.AppID,
+				Pending: news && i == 0})
 		}
-		primary := group[0]
-		fresh = append(fresh, NewGame{Name: primary.Name, SavePath: primary.SavePath, AppID: primary.AppID})
+		if news {
+			fresh = append(fresh, NewGame{Name: group[0].Name, SavePath: group[0].SavePath, AppID: group[0].AppID})
+		}
 	}
 	if err := d.Store.RememberSaves(remember); err != nil {
 		d.Log.Log("warn", fmt.Sprintf("could not note the saves the scan found: %v", err))
@@ -128,13 +132,27 @@ func (d *Daemon) DetectNewGames() {
 	}
 	if !hadStock {
 		// Announcing everything untracked the first time would bury the one
-		// real newcomer under every game somebody chose not to track.
+		// real newcomer under every game somebody chose not to track. Marked
+		// even when nothing was found: an empty machine's first game is news.
+		if err := d.Store.MarkStockTaken(); err != nil {
+			d.Log.Log("warn", fmt.Sprintf("could not note that the first scan ran: %v", err))
+			return
+		}
 		d.Log.Log("info", fmt.Sprintf(
 			"background scan: noted %d save folder(s) already on this machine; games installed from now on will be pointed out", len(remember)))
 		return
 	}
-	if len(fresh) > 0 {
-		d.addNewGames(fresh)
+	if len(fresh) == 0 {
+		return
+	}
+	names := make([]string, 0, len(fresh))
+	for _, g := range fresh {
+		names = append(names, g.Name)
+	}
+	d.Log.Log("info", fmt.Sprintf("found %d newly installed game(s) with saves: %s — track them from a scan on the Games page, or `opensave scan`",
+		len(names), strings.Join(names, ", ")))
+	if d.OnNewGames != nil {
+		d.OnNewGames(d.NewGames())
 	}
 }
 
@@ -167,53 +185,25 @@ func (d *Daemon) trackedSavePaths() ([]string, error) {
 	return out, nil
 }
 
-// addNewGames adds games to the ones waiting to be looked at, and tells
-// listeners — and the log, which is all a headless install has.
-func (d *Daemon) addNewGames(games []NewGame) {
-	d.newGames.mu.Lock()
-	have := map[string]bool{}
-	for _, g := range d.newGames.pending {
-		have[g.SavePath] = true
-	}
-	var names []string
-	for _, g := range games {
-		if !have[g.SavePath] {
-			d.newGames.pending = append(d.newGames.pending, g)
-			names = append(names, g.Name)
-		}
-	}
-	d.newGames.mu.Unlock()
-	if len(names) == 0 {
-		return
-	}
-	d.Log.Log("info", fmt.Sprintf("found %d newly installed game(s) with saves: %s — track them from a scan on the Games page, or `opensave scan`",
-		len(names), strings.Join(names, ", ")))
-	if d.OnNewGames != nil {
-		d.OnNewGames(d.NewGames())
-	}
-}
-
 // NewGames returns the found games still waiting to be looked at. One tracked
 // since it was found is no longer waiting.
 func (d *Daemon) NewGames() []NewGame {
-	d.newGames.mu.Lock()
-	pending := append([]NewGame{}, d.newGames.pending...)
-	d.newGames.mu.Unlock()
-	tracked, err := d.trackedSavePaths()
+	pending, err := d.Store.PendingSaves()
 	if err != nil {
-		return pending
+		return []NewGame{}
 	}
+	tracked, _ := d.trackedSavePaths()
 	out := []NewGame{}
-	for _, g := range pending {
+	for _, k := range pending {
 		isTracked := false
 		for _, t := range tracked {
-			if store.PathsOverlap(g.SavePath, t) {
+			if store.PathsOverlap(k.Path, t) {
 				isTracked = true
 				break
 			}
 		}
 		if !isTracked {
-			out = append(out, g)
+			out = append(out, NewGame{Name: k.Name, SavePath: k.Path, AppID: k.AppID})
 		}
 	}
 	return out
@@ -223,8 +213,11 @@ func (d *Daemon) NewGames() []NewGame {
 // are not announced again.
 func (d *Daemon) DismissNewGames() {
 	d.newGames.mu.Lock()
-	d.newGames.pending = nil
+	err := d.Store.ClearPendingSaves()
 	d.newGames.mu.Unlock()
+	if err != nil {
+		d.Log.Log("warn", fmt.Sprintf("could not clear the new games: %v", err))
+	}
 	if d.OnNewGames != nil {
 		d.OnNewGames([]NewGame{})
 	}

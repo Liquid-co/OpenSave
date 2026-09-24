@@ -20,6 +20,7 @@ type scanMachine struct {
 
 func newScanMachine(t *testing.T) *scanMachine {
 	t.Helper()
+	isolateProfile(t)
 	d := newTestDaemon(t)
 	home := t.TempDir()
 	d.Scanner = &presets.Scanner{
@@ -77,7 +78,7 @@ func TestNewGames_FirstScanOnlyTakesStock(t *testing.T) {
 	if got := m.announced(); len(got) != 0 {
 		t.Errorf("the first scan announced %v", got)
 	}
-	if has, _ := m.d.Store.HasKnownSaves(); !has {
+	if has, _ := m.d.Store.StockTaken(); !has {
 		t.Error("the first scan did not note what it found, so the next would announce it")
 	}
 }
@@ -176,7 +177,68 @@ func TestNewGames_SettingOffScansNothing(t *testing.T) {
 	}
 	m.install("OldFavourite", true)
 	m.announced()
-	if has, _ := m.d.Store.HasKnownSaves(); has {
+	if has, _ := m.d.Store.StockTaken(); has {
 		t.Error("the scan ran with the setting off")
+	}
+}
+
+// On a machine with no saves yet the first scan finds nothing to remember.
+// The first game installed there is still news.
+func TestNewGames_AnEmptyMachinesFirstGameIsAnnounced(t *testing.T) {
+	m := newScanMachine(t)
+	if got := m.announced(); len(got) != 0 {
+		t.Fatalf("an empty machine announced %v", got)
+	}
+	m.install("FirstEver", true)
+	if got := m.announced(); !got["FirstEver"] {
+		t.Errorf("the first game on an empty machine was taken for the stock-taking: announced %v", got)
+	}
+}
+
+// Found while nobody was looking, then the app restarted: the game is still
+// waiting. It was remembered as known the moment it was found, so losing the
+// waiting list meant it was never mentioned at all.
+func TestNewGames_WaitingGamesSurviveARestart(t *testing.T) {
+	home := t.TempDir()
+	scanHome := t.TempDir()
+	isolateProfile(t)
+	open := func() *scanMachine {
+		d, err := New(Options{HomeOverride: home, DisableDiscovery: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.Scanner = &presets.Scanner{
+			CacheFile: filepath.Join(t.TempDir(), "cache.json"), GOOS: "linux", HomeDir: scanHome,
+			SteamRoots: []string{}, SteamUserdataPaths: []string{}, EpicManifestDirs: []string{},
+			InstallParentDirs: []string{}, LocalLowDir: filepath.Join(t.TempDir(), "x"), MountRoots: []string{},
+		}
+		return &scanMachine{t: t, d: d, home: scanHome}
+	}
+	first := open()
+	first.install("OldFavourite", true)
+	first.announced()
+	first.install("WhileAway", true)
+	if got := first.announced(); !got["WhileAway"] {
+		t.Fatalf("setup: WhileAway was not announced: %v", got)
+	}
+	first.d.Stop()
+
+	second := open()
+	defer second.d.Stop()
+	waiting := second.d.NewGames()
+	if len(waiting) != 1 || filepath.Base(waiting[0].SavePath) != "WhileAway" {
+		t.Errorf("after a restart the waiting list is %+v, want WhileAway", waiting)
+	}
+}
+
+// isolateProfile points the user-profile variables at empty folders. Parts of
+// the scanner resolve Windows conventions — Saved Games, Documents\My Games,
+// %APPDATA% — from the environment rather than from the scanner's home, so
+// without this these tests read the real profile of whoever runs them and an
+// "empty machine" had forty-odd games on it.
+func isolateProfile(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{"USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA"} {
+		t.Setenv(v, t.TempDir())
 	}
 }
