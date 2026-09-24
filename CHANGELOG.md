@@ -48,6 +48,16 @@ All notable changes to OpenSave are documented here. This project adheres to
   whether to look. The library can be sorted by recently changed, and
   explicit cover art is blurred there as it already was in the sidebar.
 
+- **Snapshots are listed by when and why.** Each was titled with its ID —
+  `snap_1790235804433` — and every row looked the same, including the
+  copies OpenSave keeps just before a sync or a restore replaces your save,
+  which are the ones you want after something went wrong. The list is now
+  grouped by day and led by the time; each row says why the snapshot exists
+  (the save changed, you took it, or a safety copy before a sync or restore)
+  with safety copies and your own marked out, and the newest is labelled.
+  Restore is no longer the loudest button on every row, and Delete stays
+  quiet until you point at it.
+
 - **Snapshots take less room.** Every file went into a snapshot
   uncompressed, on the theory that saves are already compressed or small.
   Plenty are neither — JSON, XML, an engine's own uncompressed format — and
