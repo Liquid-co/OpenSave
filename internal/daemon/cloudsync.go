@@ -324,6 +324,10 @@ const (
 	saveUnchanged saveState = iota
 	saveChanged
 	saveInUse
+	// saveUnknown: nothing recorded to compare with. A game tracked and never
+	// changed since has no baseline — the first snapshot does not record one
+	// (see the watcher's catch-up for why it must not).
+	saveUnknown
 )
 
 // saveStateOf says whether the game's save is as its last automatic snapshot
@@ -333,13 +337,52 @@ func (d *Daemon) saveStateOf(game store.Game) saveState {
 		return saveInUse
 	}
 	if game.LastManifestHash == "" {
-		return saveChanged // nothing to compare with: assume the cautious answer
+		return saveUnknown
 	}
 	hash, err := d.currentContentHash(game)
 	if err != nil || hash != game.LastManifestHash {
 		return saveChanged
 	}
 	return saveUnchanged
+}
+
+// neverHeldFiles reports whether this device has never had a file of this
+// game's save: none on disk now, and none in any snapshot it has taken. The
+// snapshots are opened and counted rather than trusted to a record, because
+// versions before the file records existed wrote none — a snapshot with no
+// record may still have held a save, and a save someone deleted is not a save
+// that never was.
+func (d *Daemon) neverHeldFiles(game store.Game) bool {
+	extra, err := d.Store.GameRootPaths(game.ID)
+	if err != nil {
+		return false
+	}
+	m, _, err := delta.BuildMultiManifest(game.SavePath, extra)
+	if err != nil || len(m.Files) > 0 {
+		return false
+	}
+	for _, root := range m.Extra {
+		if len(root.Files) > 0 {
+			return false
+		}
+	}
+	branches, err := d.Store.ListBranches(game.ID)
+	if err != nil {
+		return false
+	}
+	for _, b := range branches {
+		snaps, err := d.Store.ListSnapshots(game.ID, b)
+		if err != nil {
+			return false
+		}
+		for _, sn := range snaps {
+			n, err := snapshot.ArchiveFileCount(sn.ZipPath)
+			if err != nil || n > 0 {
+				return false // unreadable counts as "may have held one"
+			}
+		}
+	}
+	return true
 }
 
 // currentContentHash reads the save from disk and hashes it the way the
@@ -386,7 +429,7 @@ func (d *Daemon) CheckCloud() {
 	}
 	ownKey := cloud.DeviceKey(settings.NodeID)
 
-	snapFiles := map[string]string{}                  // snapshot id -> file
+	snapFiles := map[string]string{}                  // game id/branch/snapshot id -> file
 	newest := map[string]map[string]cloud.CloudFile{} // game id -> device -> head
 	newestAt := map[string]int64{}                    // game id/device -> ms
 	ownHeads := map[string][]cloud.CloudFile{}        // game id -> this device's heads
@@ -406,8 +449,8 @@ func (d *Daemon) CheckCloud() {
 			}
 			continue
 		}
-		if _, _, snapID, ok := snapshot.ParseExportEntryName(f.Name); ok {
-			snapFiles[snapID] = f.Name
+		if gameID, branch, snapID, ok := snapshot.ParseExportEntryName(f.Name); ok {
+			snapFiles[gameID+"/"+branch+"/"+snapID] = f.Name
 		}
 	}
 
@@ -422,16 +465,28 @@ func (d *Daemon) CheckCloud() {
 		if err != nil {
 			continue
 		}
-		// Announce this device's save if the cloud does not know it yet: a
-		// device upgraded from a version without heads, or an announcement
-		// that failed.
-		if rec.Snapshot != "" && rec.Published != rec.Snapshot && snapFiles[rec.Snapshot] != "" {
-			_ = d.publishHead(game.ID)
-		}
-
 		ids, err := d.Store.LinkedGameIDs(game.ID)
 		if err != nil || len(ids) == 0 {
 			ids = []string{game.ID}
+		}
+		// Found by game, branch and snapshot, never by snapshot alone. Ids are
+		// milliseconds, so two devices snapshotting two different games in the
+		// same one share an id — and looking it up by id alone could hand this
+		// game the other one's archive to restore.
+		fileFor := func(snapID string) string {
+			for _, id := range ids {
+				if f := snapFiles[id+"/"+game.ActiveBranch+"/"+snapID]; f != "" {
+					return f
+				}
+			}
+			return ""
+		}
+
+		// Announce this device's save if the cloud does not know it yet: a
+		// device upgraded from a version without heads, or an announcement
+		// that failed.
+		if rec.Snapshot != "" && rec.Published != rec.Snapshot && fileFor(rec.Snapshot) != "" {
+			_ = d.publishHead(game.ID)
 		}
 		var heads []cloud.Head
 		for _, id := range ids {
@@ -441,36 +496,49 @@ func (d *Daemon) CheckCloud() {
 				}
 			}
 		}
+		// This game's, for the same reason: another game's snapshot with the
+		// same id says nothing about whether this one has it.
 		have := func(snapID string) bool {
-			_, err := d.Store.GetSnapshot(snapID)
-			return err == nil
+			snap, err := d.Store.GetSnapshot(snapID)
+			return err == nil && snap.GameID == game.ID
 		}
-		fileFor := func(snapID string) string { return snapFiles[snapID] }
 		cand, ok := chooseCloudCandidate(rec, game.ActiveBranch, heads, have, fileFor)
 		if !ok {
 			continue
 		}
 
-		diverged := !cand.follows
-		if cand.follows && settings.CloudAutoPull && game.AutoSync {
-			switch d.saveStateOf(game) {
-			case saveInUse:
-				continue // the game is running; not now, and not a question either
-			case saveUnchanged:
-				err := d.pullFromCloud(game, cand.file, cand.head.DeviceName)
-				if err == nil {
-					if d.OnCloudPulled != nil {
-						d.OnCloudPulled(CloudPulled{GameID: game.ID, GameName: game.Name,
-							DeviceName: cand.head.DeviceName, SnapshotID: cand.head.Snapshot})
-					}
-					continue
-				}
-				d.Log.Log("warn", fmt.Sprintf("cloud: could not bring %s's save for %q here: %v",
-					cand.head.DeviceName, game.Name, err))
-			case saveChanged:
-				diverged = true
-			}
+		// A save that has never held a file on this device — the folder was
+		// empty when it was tracked and has been since — has nothing to lose,
+		// whatever the other device's line of saves. That is a new device
+		// being set up, the case the cloud is best at, and it is filled
+		// without asking. One that held files and is empty now is a deletion
+		// somebody made, and that is still asked about.
+		state := d.saveStateOf(game)
+		if state == saveInUse {
+			continue // the game is running; not now, and not a question either
 		}
+		follows := cand.follows
+		if !follows && d.neverHeldFiles(game) {
+			follows, state = true, saveUnchanged
+		}
+		if follows && state == saveUnchanged && settings.CloudAutoPull && game.AutoSync {
+			err := d.pullFromCloud(game, cand.file, cand.head.DeviceName)
+			if err == nil {
+				if d.OnCloudPulled != nil {
+					d.OnCloudPulled(CloudPulled{GameID: game.ID, GameName: game.Name,
+						DeviceName: cand.head.DeviceName, SnapshotID: cand.head.Snapshot})
+				}
+				continue
+			}
+			d.Log.Log("warn", fmt.Sprintf("cloud: could not bring %s's save for %q here: %v",
+				cand.head.DeviceName, game.Name, err))
+		}
+		// Asked. Marked as replacing progress only when it would: the other
+		// save does not carry on from this one, or this one has changed since.
+		// Not when this device's state is merely unknown — a game tracked and
+		// never changed has no recorded baseline, and telling that person
+		// their device "has progress of its own" would be untrue.
+		diverged := !follows || state == saveChanged
 		offers = append(offers, CloudOffer{
 			GameID:     game.ID,
 			GameName:   game.Name,

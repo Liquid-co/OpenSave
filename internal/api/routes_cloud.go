@@ -405,8 +405,21 @@ func (s *Server) handleCloudDeleteGame(w http.ResponseWriter, r *http.Request) {
 	// would be silent data loss on a machine the user was not even looking at.
 	// Leaving them costs some orphaned files, which is recoverable; the other
 	// way round is not.
+	// This device's announcements of which snapshot is its save go too: they
+	// would otherwise sit in the provider for good, describing a game this
+	// device no longer follows. Other devices' are theirs, and stay.
+	ownKey := ""
+	if settings, err := s.Daemon.Store.GetSettings(); err == nil {
+		ownKey = cloud.DeviceKey(settings.NodeID)
+	}
 	deleted, failed := 0, 0
 	for _, f := range files {
+		if g, dev, _, ok := cloud.ParseHeadFileName(f.Name); ok {
+			if g == gameID && ownKey != "" && dev == ownKey {
+				_ = s.Daemon.Cloud.Delete(f)
+			}
+			continue
+		}
 		g, _, _, ok := snapshot.ParseExportEntryName(f.Name)
 		if !ok || g != gameID {
 			continue

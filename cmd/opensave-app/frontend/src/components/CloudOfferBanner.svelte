@@ -68,8 +68,8 @@
                  the cloud for the first time never matched at all, and that
                  is the commonest way to see this card. -->
             <div class="offer-warn">
-              This device has progress of its own that isn't in {offer.deviceName}'s save.
-              Bringing theirs replaces it — this device's save is kept as a snapshot you can go
+              This device's save has changes of its own that aren't in {offer.deviceName}'s.
+              Bringing theirs replaces them — this device's save is kept as a snapshot you can go
               back to.
             </div>
           {/if}

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -385,4 +386,139 @@ func countSnapshotsNewerThan(t *testing.T, dir, snapID string) int {
 		}
 	}
 	return n
+}
+
+// Snapshot ids are milliseconds. Another game's archive can carry the same id
+// as the save being taken, and the restore must use this game's archive, not
+// whichever of the two a lookup by id alone happened to keep.
+func TestCloudNeverRestoresAnotherGamesArchiveWithTheSameID(t *testing.T) {
+	dir := t.TempDir()
+	desktop := newCloudDevice(t, "Desktop", dir)
+	deck := newCloudDevice(t, "Steam Deck", dir)
+
+	deck.play("start")
+	a1 := desktop.play("act 1")
+
+	// A different game's snapshot, same id, named to sort after this game's
+	// so a map keyed by id alone ends up holding it.
+	writeZip(t, filepath.Join(dir, "zelda__main__"+a1.ID+".zip"), "user1.dat", "ANOTHER GAME'S SAVE")
+
+	offers := deck.check()
+	if len(offers) != 1 || !strings.HasPrefix(offers[0].FileName, cloudGame+"__") {
+		t.Fatalf("offers = %+v, want the Desktop's own archive", offers)
+	}
+	if err := deck.d.AcceptCloudOffer(cloudGame, a1.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := deck.saveIs(); got != "act 1" {
+		t.Errorf("the Deck restored %q — another game's archive with the same id", got)
+	}
+}
+
+// A new device: the game is tracked on an empty folder. There is nothing to
+// lose, so the save is brought in without asking.
+func TestCloudFillsAnEmptyNewDeviceWithoutAsking(t *testing.T) {
+	dir := t.TempDir()
+	desktop := newCloudDevice(t, "Desktop", dir)
+	deck := newCloudDevice(t, "Steam Deck", dir)
+	if _, err := deck.d.Snapshots.Create(cloudGame, "", true); err != nil { // tracked on an empty folder
+		t.Fatal(err)
+	}
+
+	desktop.play("act 1")
+	if offers := deck.check(); len(offers) != 0 {
+		t.Errorf("an empty new device was asked instead of filled: %+v", offers)
+	}
+	if got := deck.saveIs(); got != "act 1" {
+		t.Errorf("the new device's save is %q, want the Desktop's", got)
+	}
+}
+
+// A save somebody deleted is empty too, but it is not a save that never was:
+// bringing one back over a deletion is asked about.
+func TestCloudAsksBeforeFillingASaveSomebodyDeleted(t *testing.T) {
+	dir := t.TempDir()
+	desktop := newCloudDevice(t, "Desktop", dir)
+	deck := newCloudDevice(t, "Steam Deck", dir)
+
+	deck.play("deck's run")
+	if err := os.Remove(filepath.Join(deck.save, "user1.dat")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deck.d.Snapshots.Create(cloudGame, "", true); err != nil {
+		t.Fatal(err)
+	}
+	deck.d.uploads.Wait()
+	time.Sleep(5 * time.Millisecond)
+
+	desktop.play("act 1")
+	offers := deck.check()
+	if len(offers) != 1 || !offers[0].Diverged {
+		t.Errorf("offers = %+v, want the Desktop's save, asked about", offers)
+	}
+	if _, err := os.Stat(filepath.Join(deck.save, "user1.dat")); err == nil {
+		t.Error("a deleted save was filled back in without asking")
+	}
+}
+
+// This device's save is in the other's line, but nothing recorded says
+// whether it has changed since — a game tracked and never changed. Asked,
+// and not told it has progress of its own, which would be untrue.
+func TestCloudAsksWithoutClaimingProgressWhenItCannotTell(t *testing.T) {
+	dir := t.TempDir()
+	desktop := newCloudDevice(t, "Desktop", dir)
+	deck := newCloudDevice(t, "Steam Deck", dir)
+
+	desktop.write("desktop start")
+	if _, err := desktop.d.Snapshots.Create(cloudGame, "", true); err != nil {
+		t.Fatal(err)
+	}
+	desktop.d.uploads.Wait()
+	time.Sleep(5 * time.Millisecond)
+
+	deck.write("deck start")
+	d0, err := deck.d.Snapshots.Create(cloudGame, "", true) // no baseline recorded
+	if err != nil {
+		t.Fatal(err)
+	}
+	deck.d.uploads.Wait()
+	time.Sleep(5 * time.Millisecond)
+
+	desktop.check()
+	if err := desktop.d.AcceptCloudOffer(cloudGame, d0.ID); err != nil {
+		t.Fatalf("setup: the Desktop could not take the Deck's save: %v", err)
+	}
+	desktop.d.uploads.Wait()
+	desktop.play("act 1")
+
+	offers := deck.check()
+	if len(offers) != 1 {
+		t.Fatalf("offers = %+v, want the Desktop's act 1", offers)
+	}
+	if offers[0].Diverged {
+		t.Error("the card says this device has changes of its own; nothing recorded says so")
+	}
+	if got := deck.saveIs(); got != "deck start" {
+		t.Errorf("the save was replaced without a baseline to prove nothing would be lost: %q", got)
+	}
+}
+
+func writeZip(t *testing.T, path, name, body string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte(body))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -1017,3 +1017,7 @@ func (m *Manager) recordDeletionsSince(gameID, branch, snapshotID string, captur
 		}
 	}
 }
+
+// ArchiveFileCount is the number of files (not folders) a snapshot archive
+// holds.
+func ArchiveFileCount(zipPath string) (int, error) { return zipFileCount(zipPath) }
