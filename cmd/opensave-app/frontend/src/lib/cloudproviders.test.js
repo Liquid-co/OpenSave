@@ -61,4 +61,9 @@ describe('cloudTiles', () => {
   it('lists every tracked game when nothing is in the cloud yet', () => {
     expect(cloudTiles(null, local).map((t) => t.id)).toEqual(['a', 'b']);
   });
+  it('asks for art from the tracked game, or from the name alone for a game only in the cloud', () => {
+    const cover = (g) => `art:${g.id ?? '-'}:${g.name}`;
+    const tiles = cloudTiles([{ gameId: 'b', gameName: 'Beta' }, { gameId: 'z', gameName: 'Zed' }], local, cover);
+    expect(tiles.map((t) => t.coverUrl)).toEqual(['art:b:Beta', 'art:-:Zed', 'art:a:Alpha']);
+  });
 });

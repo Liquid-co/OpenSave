@@ -29,10 +29,10 @@
     animation: slide-in 0.18s ease-out;
   }
   .toast.success {
-    border-color: rgba(74, 222, 128, 0.4);
+    border-color: rgba(var(--success-rgb), 0.4);
   }
   .toast.error {
-    border-color: rgba(217, 87, 87, 0.5);
+    border-color: rgba(var(--danger-rgb), 0.5);
   }
   @keyframes slide-in {
     from {

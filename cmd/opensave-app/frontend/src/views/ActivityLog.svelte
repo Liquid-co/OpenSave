@@ -1,5 +1,9 @@
 <script>
   import { onDestroy } from 'svelte';
+  import Check from 'lucide-svelte/icons/check';
+  import Dot from 'lucide-svelte/icons/dot';
+  import Exclamation from 'lucide-svelte/icons/triangle-alert';
+  import X from 'lucide-svelte/icons/x';
   import { logEntries, gameList, navigate, toast } from '../lib/stores.js';
   import { asText, feedByDay, filterEntries, linkGames } from '../lib/activity.js';
   import SearchInput from '../components/ui/SearchInput.svelte';
@@ -25,7 +29,7 @@
   const tick = setInterval(() => (now = new Date()), 60_000);
   onDestroy(() => clearInterval(tick));
 
-  const icons = { success: '✓', info: '•', warn: '!', error: '✕' };
+  const icons = { success: Check, info: Dot, warn: Exclamation, error: X };
   const fmtClock = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const fmtStamp = (t) => new Date(t).toLocaleTimeString();
 
@@ -91,7 +95,7 @@
       <div class="card entries">
         {#each group.entries as entry}
           <div class="entry lvl-{entry.level}">
-            <span class="icon" aria-label={entry.level}>{icons[entry.level] ?? '•'}</span>
+            <span class="icon" aria-label={entry.level}><svelte:component this={icons[entry.level] ?? Dot} size={entry.level === 'info' ? 18 : 11} strokeWidth={entry.level === 'info' ? 3 : 3.2} /></span>
             <span class="msg">
               {#each linkGames(entry.message, $gameList) as part}
                 {#if part.gameId}
@@ -178,15 +182,15 @@
   }
   .entry.lvl-success {
     --tone: var(--success);
-    --tone-bg: rgba(74, 222, 128, 0.13);
+    --tone-bg: rgba(var(--success-rgb), 0.13);
   }
   .entry.lvl-warn {
     --tone: var(--warn);
-    --tone-bg: rgba(251, 191, 36, 0.13);
+    --tone-bg: rgba(var(--warn-rgb), 0.13);
   }
   .entry.lvl-error {
     --tone: var(--danger);
-    --tone-bg: rgba(217, 87, 87, 0.16);
+    --tone-bg: rgba(var(--danger-rgb), 0.16);
   }
   .icon {
     width: 18px;

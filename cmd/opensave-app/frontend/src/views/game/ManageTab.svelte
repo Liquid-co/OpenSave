@@ -3,6 +3,7 @@
   // stopping tracking it.
   import { games, navigate, toast, askConfirm } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
+  import Link from 'lucide-svelte/icons/link';
 
   export let game;
   export let runner;
@@ -127,7 +128,7 @@
       {#each aliases as a}
         <div class="alias-row">
           <span class="alias-id" title={a.savePath || a.id}>
-            🔗 {a.name || a.id}{a.savePath ? ` — ${a.savePath}` : ''}
+            <Link size={13} class="inline-icon" />{a.name || a.id}{a.savePath ? ` — ${a.savePath}` : ''}
           </span>
           <button class="btn small" disabled={$busy} on:click={() => unlink(a.id)}>Unlink</button>
         </div>
@@ -220,7 +221,7 @@
     flex: 1;
     min-width: 0;
     padding: 8px 10px;
-    background: var(--bg);
+    background-color: var(--bg);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     color: var(--text);

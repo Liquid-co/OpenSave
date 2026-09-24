@@ -7,18 +7,23 @@
   // Clicking it, or Enter or Space on it, fires `activate`. A dimmed tile (a
   // save already tracked, shown for reference) stays put.
   import { createEventDispatcher } from 'svelte';
+  import Check from 'lucide-svelte/icons/check';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import CoverImage from '../CoverImage.svelte';
   import { isDaemonURL } from '../../lib/api.js';
 
   export let name = '';
   /** Tooltip for the whole tile; the name when not given. */
   export let title = '';
-  /** Cover URL. Blank shows the fallback: the emoji over the name. */
+  /** Cover URL. Blank shows the fallback: the icon over the name. */
   export let src = '';
-  export let emoji = '🎮';
+  /** A lucide icon component for the fallback. */
+  export let icon = Gamepad2;
   export let selected = false;
-  /** Small label at the top right: "Emulator", "Tracked", "☁ 3". */
+  /** Small label at the top right: "Emulator", "3 in cloud". */
   export let badge = '';
+  /** A lucide icon component drawn before the badge. */
+  export let badgeIcon = null;
   export let badgeAccent = false;
   /** Pill at the bottom left, for a state worth seeing at a glance. */
   export let stamp = '';
@@ -75,15 +80,15 @@
       <img {src} alt={name} loading="lazy" on:error={(e) => (e.currentTarget.style.display = 'none')} />
     {/if}
     <div class="fallback">
-      <span class="emoji">{emoji}</span>
+      <span class="fallback-icon"><svelte:component this={icon} size={34} strokeWidth={1.5} /></span>
       <span class="fallback-name">{name}</span>
     </div>
 
     {#if selected}
-      <div class="tick">✓</div>
+      <div class="tick"><Check size={15} strokeWidth={3} /></div>
     {/if}
     {#if badge}
-      <span class="corner" class:accent={badgeAccent}>{badge}</span>
+      <span class="corner" class:accent={badgeAccent}>{#if badgeIcon}<svelte:component this={badgeIcon} size={11} strokeWidth={2.5} />{/if}{badge}</span>
     {/if}
     {#if stamp}
       <span class="stamp">{stamp}</span>
@@ -142,10 +147,12 @@
     gap: 10px;
     padding: 14px;
     text-align: center;
-    background: linear-gradient(160deg, rgba(138, 99, 244, 0.22), rgba(138, 99, 244, 0.04));
+    background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.22), rgba(var(--accent-rgb), 0.04));
   }
-  .emoji {
-    font-size: 2.2rem;
+  .fallback-icon {
+    display: flex;
+    color: var(--accent);
+    opacity: 0.85;
   }
   .fallback-name {
     font-weight: 700;
@@ -179,16 +186,19 @@
     top: 8px;
     right: 8px;
     z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 2px 8px;
     border-radius: 999px;
     font-size: 0.68rem;
     font-weight: 600;
     background: rgba(0, 0, 0, 0.6);
-    color: var(--text-dim);
+    color: #d4d4da;
     backdrop-filter: blur(2px);
   }
   .corner.accent {
-    color: var(--accent);
+    color: #c4b0ff;
   }
   .stamp {
     position: absolute;

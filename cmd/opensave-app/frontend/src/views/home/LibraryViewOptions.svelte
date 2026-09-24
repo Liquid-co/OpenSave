@@ -122,7 +122,7 @@
   }
   .mini span {
     border-radius: 3px;
-    background: linear-gradient(160deg, rgba(138, 99, 244, 0.55), rgba(138, 99, 244, 0.18));
+    background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.55), rgba(var(--accent-rgb), 0.18));
   }
   .mini.wide span {
     aspect-ratio: 460 / 215;
@@ -137,7 +137,7 @@
   }
   select {
     padding: 7px 10px;
-    background: var(--bg);
+    background-color: var(--bg);
     border: 1px solid var(--border-strong);
     border-radius: 8px;
     color: var(--text);

@@ -4,13 +4,16 @@
   // screen puts underneath. Each of those built its own copy, and the copies
   // had started to drift.
   //
-  // It closes from the ✕, from Escape while focus is inside it, and from a
+  // It closes from the close button, from Escape while focus is inside it, and from a
   // click that starts and ends on the backdrop (see backdrop.js for why both).
   // `closable` turns all three off at once, for a dialog that must not be
   // dismissed while it is writing something.
+  import X from 'lucide-svelte/icons/x';
   import { backdropClose } from '../../lib/backdrop.js';
 
   export let title = '';
+  /** A lucide icon component drawn before the title. */
+  export let icon = null;
   export let onClose = () => {};
   export let closable = true;
   /** Widest the panel gets, in pixels; it narrows with the window. */
@@ -32,12 +35,14 @@
   <div class="panel" style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
     <div class="head">
       <div>
-        <h2>{title}</h2>
+        <h2 class="with-icon">
+          {#if icon}<svelte:component this={icon} size={20} />{/if}{title}
+        </h2>
         {#if $$slots.sub}<p class="sub"><slot name="sub" /></p>{/if}
       </div>
       <div class="head-actions">
         <slot name="actions" />
-        <button class="btn icon" disabled={!closable} on:click={close} title="Close">✕</button>
+        <button class="btn ghost icon" disabled={!closable} on:click={close} title="Close" aria-label="Close"><X size={18} /></button>
       </div>
     </div>
     <slot />
@@ -48,7 +53,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.62);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -61,7 +66,7 @@
     border-radius: var(--radius-lg);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow);
   }
   .head {
     display: flex;

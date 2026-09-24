@@ -1,30 +1,79 @@
-/* OpenSave theme — Hydra-launcher-inspired: near-black surfaces, soft
-   grays, rounded cards, pill controls. */
+/* OpenSave theme — near-black surfaces, soft greys, rounded cards.
+
+   Colours are tokens. Components use the tokens, never a literal, so the
+   light theme and the accent colour (Settings → Appearance) reach everything:
+   a colour written into one component is the one place a theme stops
+   applying. The accent is also given as an RGB triple, for translucent
+   tints, since rgba() cannot take a hex variable apart. */
 
 :root {
-  --bg: #0c0c0d;
-  --bg-sidebar: #111112;
-  --bg-raised: #17171a;
-  --bg-hover: #1f1f23;
-  --bg-active: #26262b;
-  --border: #232328;
-  --border-strong: #303038;
-  --text: #e8e8ea;
-  --text-dim: #9a9aa3;
-  --text-faint: #5e5e66;
   --accent: #8a63f4;
   --accent-hover: #9b7af7;
-  --accent-soft: rgba(138, 99, 244, 0.14);
-  --success: #4ade80;
-  --warn: #fbbf24;
-  --danger: #d95757;
-  --danger-hover: #e46b6b;
+  --accent-rgb: 138, 99, 244;
+  --accent-soft: rgba(var(--accent-rgb), 0.14);
+
   --radius: 10px;
   --radius-lg: 14px;
   --sidebar-w: 252px;
   --titlebar-h: 36px;
   --statusbar-h: 28px;
   font-size: 14px;
+}
+
+/* Dark is the default and the design's home. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0c0c0d;
+  --bg-sidebar: #111113;
+  --bg-raised: #17171a;
+  --bg-hover: #1f1f23;
+  --bg-active: #27272c;
+  --border: #25252b;
+  --border-strong: #33333b;
+  --text: #ececef;
+  --text-dim: #a4a4ad;
+  /* 4.6:1 against a card. It was #5e5e66, 2.8:1, which is where every hint
+     and date in the app lived — present, and hard to read. */
+  --text-faint: #85858f;
+  --success: #4ade80;
+  --success-rgb: 74, 222, 128;
+  --warn: #fbbf24;
+  --warn-rgb: 251, 191, 36;
+  --danger: #e05d5d;
+  --danger-rgb: 224, 93, 93;
+  --danger-text: #f3a5a5;
+  --btn-bg: rgba(255, 255, 255, 0.06);
+  --btn-bg-hover: rgba(255, 255, 255, 0.1);
+  --btn-border: rgba(255, 255, 255, 0.07);
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --overlay: rgba(0, 0, 0, 0.62);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f4f7;
+  --bg-sidebar: #ececf1;
+  --bg-raised: #ffffff;
+  --bg-hover: #f0f0f4;
+  --bg-active: #e6e6ed;
+  --border: #e2e2e9;
+  --border-strong: #cfcfda;
+  --text: #17171c;
+  --text-dim: #4f4f5a;
+  --text-faint: #6c6c78;
+  --success: #15803d;
+  --success-rgb: 21, 128, 61;
+  --warn: #b45309;
+  --warn-rgb: 180, 83, 9;
+  --danger: #dc2626;
+  --danger-rgb: 220, 38, 38;
+  --danger-text: #b91c1c;
+  --btn-bg: rgba(20, 20, 40, 0.05);
+  --btn-bg-hover: rgba(20, 20, 40, 0.09);
+  --btn-border: rgba(20, 20, 40, 0.08);
+  --shadow: 0 16px 40px rgba(20, 20, 40, 0.16);
+  --overlay: rgba(20, 20, 30, 0.38);
 }
 
 * {
@@ -41,7 +90,7 @@ body,
 }
 
 body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Cantarell', 'Ubuntu', sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -53,18 +102,22 @@ textarea {
   user-select: text;
 }
 
-/* Checkboxes and radios are drawn rather than left native. The OS control is
-   a hard-edged square in the system's own accent colour, which reads as a
-   foreign object dropped onto a card full of pill buttons and rounded
-   surfaces. These are circles in our purple, so a control that is on looks
-   like it belongs to the same app as everything around it.
+/* One focus ring for everything that takes the keyboard. Components that
+   draw their own focus (a border colour on an input) opt out with
+   outline: none. */
+:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 2px;
+}
 
-   Checkbox and radio are deliberately identical — same circle, same purple
-   fill, same white dot. "On" should look like one thing everywhere, not two
-   things depending on which element a view happened to use.
-
-   Defined globally: a checkbox styled per-view is a checkbox that looks
-   different in the one view somebody forgets. */
+/* ── Checkboxes, radios and switches ────────────────────────────────
+   Drawn rather than left native: the OS control is a square in the system's
+   own colour, a foreign object among rounded surfaces. A checkbox is a
+   rounded square with a tick, a radio a circle with a dot — two different
+   controls should look like two different controls, which the earlier
+   circle-for-both did not. An on/off setting (a checkbox in a .check row)
+   is a switch. Defined globally: a control styled per view is a control
+   that looks different in the one view somebody forgets. */
 input[type='checkbox'],
 input[type='radio'] {
   appearance: none;
@@ -74,7 +127,6 @@ input[type='radio'] {
   height: 17px;
   margin: 0;
   border: 1.5px solid var(--border-strong);
-  border-radius: 50%;
   background: var(--bg);
   cursor: pointer;
   display: inline-grid;
@@ -84,10 +136,18 @@ input[type='radio'] {
     border-color 0.13s ease,
     box-shadow 0.13s ease;
 }
-
-/* The dot. Scaled from nothing so turning something on has a little weight
-   to it rather than snapping. */
-input[type='checkbox']::after,
+input[type='checkbox'] {
+  border-radius: 5px;
+}
+input[type='radio'] {
+  border-radius: 50%;
+}
+input[type='checkbox']:checked {
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+  border-color: var(--accent);
+}
 input[type='radio']::after {
   content: '';
   width: 7px;
@@ -97,29 +157,22 @@ input[type='radio']::after {
   transform: scale(0);
   transition: transform 0.13s ease;
 }
-
-input[type='checkbox']:hover:not(:disabled),
-input[type='radio']:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-input[type='checkbox']:checked,
 input[type='radio']:checked {
   background: var(--accent);
   border-color: var(--accent);
 }
-
-input[type='checkbox']:checked::after,
 input[type='radio']:checked::after {
   transform: scale(1);
 }
-
+input[type='checkbox']:hover:not(:disabled),
+input[type='radio']:hover:not(:disabled) {
+  border-color: var(--accent);
+}
 input[type='checkbox']:focus-visible,
 input[type='radio']:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.3);
 }
-
 input[type='checkbox']:disabled,
 input[type='radio']:disabled {
   opacity: 0.45;
@@ -127,105 +180,188 @@ input[type='radio']:disabled {
 }
 
 /* A checkbox and its label read as one control, so the whole row is the hit
-   target and the two line up on a shared centre. */
+   target and the two line up on a shared centre. In a .check row the
+   checkbox is an on/off setting, and is drawn as a switch. */
 .check {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   font-size: 0.92rem;
   color: var(--text);
   cursor: pointer;
   padding: 4px 0;
 }
+.check input[type='checkbox'] {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--bg-active);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  place-content: center start;
+  padding: 3px;
+}
+.check input[type='checkbox']::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+}
+.check input[type='checkbox']:checked {
+  background: var(--accent);
+  box-shadow: none;
+}
+.check input[type='checkbox']:checked::after {
+  transform: translateX(14px);
+  background: #fff;
+}
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c2c33;
-  border-radius: 4px;
+  background: var(--bg-active);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a42;
+  background: var(--border-strong);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* ── Shared primitives ─────────────────────────────────────────────── */
-
+/* ── Buttons ─────────────────────────────────────────────────────────
+   Filled, not outlined: a quiet fill for the ordinary button, the accent for
+   the one that is the point of the screen. Two heights, 34 and 28. */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 8px 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--btn-border);
+  border-radius: 9px;
+  background: var(--btn-bg);
   color: var(--text);
-  font-size: 0.93rem;
+  font: inherit;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
   white-space: nowrap;
 }
 .btn:hover {
-  background: var(--bg-hover);
+  background: var(--btn-bg-hover);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px);
 }
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
 }
+.btn svg {
+  flex-shrink: 0;
+}
 .btn.primary {
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: transparent;
   color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .btn.primary:hover {
   background: var(--accent-hover);
 }
 .btn.danger {
-  background: rgba(217, 87, 87, 0.16);
-  border-color: rgba(217, 87, 87, 0.4);
-  color: #f1a3a3;
+  background: rgba(var(--danger-rgb), 0.14);
+  border-color: rgba(var(--danger-rgb), 0.3);
+  color: var(--danger-text);
 }
 .btn.danger:hover {
-  background: rgba(217, 87, 87, 0.28);
+  background: rgba(var(--danger-rgb), 0.24);
 }
-.btn.small {
-  padding: 5px 11px;
-  font-size: 0.85rem;
-  border-radius: 8px;
-}
-.btn.icon {
-  padding: 8px 10px;
-}
-
-.pill-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.pill-tabs button {
-  padding: 8px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+/* For actions that are available rather than suggested. */
+.btn.ghost {
   background: transparent;
+  border-color: transparent;
   color: var(--text-dim);
-  font-size: 0.93rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.12s;
 }
-.pill-tabs button:hover {
-  background: var(--bg-hover);
+.btn.ghost:hover {
+  background: var(--btn-bg);
   color: var(--text);
 }
+.btn.small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.84rem;
+  border-radius: 7px;
+  gap: 6px;
+}
+.btn.icon {
+  width: 34px;
+  padding: 0;
+}
+.btn.small.icon {
+  width: 28px;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────
+   Underlined, not a white pill: the selected tab says where you are without
+   being the brightest thing on the screen. */
+.pill-tabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.pill-tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px 11px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+.pill-tabs button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
 .pill-tabs button.active {
-  background: #ffffff;
-  border-color: #ffffff;
-  color: #111;
+  color: var(--text);
+}
+.pill-tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .card {
@@ -234,7 +370,11 @@ input[type='radio']:disabled {
   border-radius: var(--radius-lg);
   padding: 20px;
 }
+:root[data-theme='light'] .card {
+  box-shadow: 0 1px 2px rgba(20, 20, 40, 0.05);
+}
 
+/* ── Fields ─────────────────────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
@@ -249,21 +389,47 @@ input[type='radio']:disabled {
 .field input,
 .field select,
 .field textarea {
-  padding: 9px 12px;
-  background: var(--bg);
+  padding: 8px 12px;
+  background-color: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  border-radius: 9px;
   color: var(--text);
+  font: inherit;
   font-size: 0.93rem;
   outline: none;
+  transition: border-color 0.12s;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--accent);
 }
-.field .hint {
-  font-size: 0.78rem;
+/* Explanatory text under a control. Global, not only inside .field: a hint
+   under a switch sits outside any .field, and there it was drawn as body
+   text — full size and full brightness, louder than the setting it explains. */
+.hint {
+  font-size: 0.8rem;
   color: var(--text-faint);
+  line-height: 1.5;
+}
+/* Under a switch, lined up with the switch's label rather than the switch. */
+.check + .hint {
+  margin-left: 45px;
+  margin-top: 0 !important;
+}
+
+/* Every select gets the same chevron and room for it. Its list is drawn by
+   the system, in the theme's colours — see color-scheme above. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%239a9aa3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 14px;
+  padding-right: 30px !important;
+  cursor: pointer;
 }
 
 /* A text field with its Browse button beside it. Four views defined this
@@ -297,15 +463,15 @@ input[type='radio']:disabled {
   font-weight: 600;
 }
 .badge.online {
-  background: rgba(74, 222, 128, 0.13);
+  background: rgba(var(--success-rgb), 0.13);
   color: var(--success);
 }
 .badge.offline {
-  background: rgba(158, 158, 168, 0.12);
-  color: var(--text-faint);
+  background: var(--btn-bg);
+  color: var(--text-dim);
 }
 .badge.warn {
-  background: rgba(251, 191, 36, 0.13);
+  background: rgba(var(--warn-rgb), 0.14);
   color: var(--warn);
 }
 
@@ -323,6 +489,51 @@ input[type='radio']:disabled {
 }
 
 h2.page-title {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* A heading with an icon in front: settings sections, dialog titles. */
+.with-icon {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.with-icon > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* An icon inside a line of text, sitting on the text's baseline. */
+.inline-icon {
+  display: inline-block;
+  vertical-align: -3px;
+  margin-right: 3px;
+  color: var(--accent);
+}
+
+.inline-icon.warn-icon {
+  color: var(--warn);
+}
+
+/* Placeholder shapes while something loads, in place of the word Loading. */
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-active) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.3s ease-in-out infinite;
+}
+@keyframes skeleton {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }

@@ -13,6 +13,7 @@
   import { toast, settings } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
   import { needsOwnApp } from '../../lib/cloudproviders.js';
+  import Chevron from '../../components/ui/Chevron.svelte';
 
   export let config;
   export let connected = null;
@@ -76,7 +77,7 @@
     </p>
   {:else}
     <button class="linkish" on:click={() => (showOwnApp = !showOwnApp)}>
-      {showOwnApp ? '▾' : '▸'} Use your own OAuth app{ownAppID ? ' (in use)' : ''}
+      <Chevron open={showOwnApp} size={12} /> Use your own OAuth app{ownAppID ? ' (in use)' : ''}
     </button>
   {/if}
 

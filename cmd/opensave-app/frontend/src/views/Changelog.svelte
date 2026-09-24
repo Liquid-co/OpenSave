@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import Skeleton from '../components/ui/Skeleton.svelte';
   import { native } from '../lib/api.js';
   import ReleaseNotes from '../components/ReleaseNotes.svelte';
   import DiscordBanner from '../components/DiscordBanner.svelte';
@@ -37,7 +38,7 @@
   <div class="banner-slot"><DiscordBanner /></div>
 
   {#if loading}
-    <p class="muted">Loading…</p>
+    <Skeleton kind="lines" count={8} />
   {:else}
     <ReleaseNotes {releases} />
   {/if}

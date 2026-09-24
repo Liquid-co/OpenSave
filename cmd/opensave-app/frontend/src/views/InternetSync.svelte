@@ -3,6 +3,12 @@
   import { api } from '../lib/api.js';
   import { generateRoomCode } from '../lib/roomcode.js';
   import { roomProtection } from '../lib/protection.js';
+  import DeviceIcon from '../components/DeviceIcon.svelte';
+  import Lock from 'lucide-svelte/icons/lock';
+  import LockOpen from 'lucide-svelte/icons/lock-open';
+  import Dices from 'lucide-svelte/icons/dices';
+  import CircleCheck from 'lucide-svelte/icons/circle-check';
+  import CircleX from 'lucide-svelte/icons/circle-x';
 
   let codeDraft = '';
   let relayDraft = '';
@@ -174,23 +180,23 @@
              forward-looking fact, and conditional on both devices being on a
              version that exchanges keys over a relay — earlier ones did not. -->
         <span class="encryption-line">
-          🔒 Devices you pair here sync encrypted end to end, so nobody else holding this
+          <Lock size={14} class="inline-icon" />Devices you pair here sync encrypted end to end, so nobody else holding this
           code — including the relay — can read your saves. Both devices need this version;
           each one shows its own state here and under Devices once it's paired.
         </span>
       {:else}
         <span class="encryption-line">
           {#if unprotectedPeers.length === 0}
-            🔒 Saves to
+            <Lock size={14} class="inline-icon" />Saves to
             {relayPeers.length === 1 ? 'your other device' : `all ${relayPeers.length} of your devices`}
             here are encrypted — nobody else in this room can read them.
           {:else if encryptedPeers.length === 0}
-            🔓 Saves sent through this room are <strong>not encrypted</strong>, so anyone
+            <LockOpen size={14} class="inline-icon warn-icon" />Saves sent through this room are <strong>not encrypted</strong>, so anyone
             holding this room code can read them. Pair
             {unprotectedPeers.length === 1 ? `“${unprotectedPeers[0].name}”` : 'those devices'}
             again to fix it.
           {:else}
-            🔓 {encryptedPeers.length} of {relayPeers.length} paired devices here are
+            <LockOpen size={14} class="inline-icon warn-icon" />{encryptedPeers.length} of {relayPeers.length} paired devices here are
             encrypted. Pair the {unprotectedPeers.length === 1 ? 'other one' : 'others'} again to
             protect {unprotectedPeers.length === 1 ? 'it' : 'them'} too.
           {/if}
@@ -224,7 +230,7 @@
       <label for="room-code">Room code — share this with your other device</label>
       <div class="code-row">
         <input id="room-code" placeholder="e.g. k7m2-9xqp-4wnt" bind:value={codeDraft} />
-        <button class="btn" on:click={randomCode}>🎲</button>
+        <button class="btn icon" on:click={randomCode} title="Make up a random code" aria-label="Random code"><Dices size={17} /></button>
         {#if $wanRoom?.enabled}
           <button class="btn" on:click={copyCode}>Copy</button>
         {/if}
@@ -258,11 +264,11 @@
     </button>
   </div>
   {#if health}
-    <div class="health" class:ok={health.reachable}>
+    <div class="health with-icon" class:ok={health.reachable}>
       {#if health.reachable}
-        ✓ Relay reachable — {health.health?.clients ?? 0} client(s) in {health.health?.rooms ?? 0} room(s)
+        <CircleCheck size={16} /> Relay reachable — {health.health?.clients ?? 0} client(s) in {health.health?.rooms ?? 0} room(s)
       {:else}
-        ✕ Relay unreachable: {health.error}
+        <CircleX size={16} /> Relay unreachable: {health.error}
       {/if}
     </div>
   {/if}
@@ -278,7 +284,7 @@
     <div class="list">
       {#each roomPeers as p (p.id)}
         <div class="card peer">
-          <div class="peer-icon">{p.deviceType === 'deck' ? '🎮' : '🖥️'}</div>
+          <DeviceIcon type={p.deviceType} />
           <div class="peer-info">
             <div class="peer-name">
               {p.deviceName}
@@ -326,16 +332,16 @@
     margin-bottom: 18px;
   }
   .status.ok {
-    border-color: rgba(74, 222, 128, 0.4);
-    background: rgba(74, 222, 128, 0.07);
+    border-color: rgba(var(--success-rgb), 0.4);
+    background: rgba(var(--success-rgb), 0.07);
   }
   .status.wait {
-    border-color: rgba(138, 99, 244, 0.45);
+    border-color: rgba(var(--accent-rgb), 0.45);
     background: var(--accent-soft);
   }
   .status.err {
-    border-color: rgba(217, 87, 87, 0.45);
-    background: rgba(217, 87, 87, 0.08);
+    border-color: rgba(var(--danger-rgb), 0.45);
+    background: rgba(var(--danger-rgb), 0.08);
   }
   .encryption-line {
     display: block;
@@ -360,7 +366,7 @@
   }
   .status-dot.green {
     background: var(--success);
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+    box-shadow: 0 0 8px rgba(var(--success-rgb), 0.6);
   }
   .status-dot.gray {
     background: var(--text-faint);
@@ -406,13 +412,16 @@
     margin-top: 12px;
     padding: 10px 14px;
     border-radius: var(--radius);
-    background: rgba(217, 87, 87, 0.12);
-    color: #f1a3a3;
+    background: rgba(var(--danger-rgb), 0.12);
+    color: var(--danger-text);
     font-size: 0.85rem;
   }
   .health.ok {
-    background: rgba(74, 222, 128, 0.1);
+    background: rgba(var(--success-rgb), 0.1);
     color: var(--success);
+  }
+  .health :global(svg) {
+    color: currentColor;
   }
   .section {
     margin: 22px 0 10px;
@@ -431,9 +440,6 @@
     align-items: center;
     gap: 14px;
     padding: 14px 16px;
-  }
-  .peer-icon {
-    font-size: 1.3rem;
   }
   .peer-info {
     flex: 1;

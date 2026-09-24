@@ -72,11 +72,14 @@
     justify-content: flex-end;
     gap: 10px;
   }
+  /* The one action the dialog exists for, so solid rather than tinted. */
   .btn.danger {
-    background: #b91c1c;
-    border-color: #b91c1c;
+    background: var(--danger);
+    border-color: transparent;
+    color: #fff;
   }
   .btn.danger:hover {
-    background: #dc2626;
+    background: var(--danger);
+    filter: brightness(1.1);
   }
 </style>

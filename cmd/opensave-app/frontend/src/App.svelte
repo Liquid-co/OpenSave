@@ -23,6 +23,11 @@
   import Changelog from './views/Changelog.svelte';
   import WhatsNewModal from './components/WhatsNewModal.svelte';
   import ActivityLog from './views/ActivityLog.svelte';
+  import Download from 'lucide-svelte/icons/download';
+  import Wrench from 'lucide-svelte/icons/wrench';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import Sparkles from 'lucide-svelte/icons/sparkles';
+  import X from 'lucide-svelte/icons/x';
 
   let ready = false;
   let bootError = '';
@@ -109,36 +114,36 @@
   <TitleBar />
   {#if $appUpdate && $appUpdate.state !== 'error'}
     <div class="update-banner installing">
-      <span>
+      <span class="with-icon">
         {#if $appUpdate.state === 'downloading'}
-          ⬇️ Updating OpenSave — downloading {$appUpdate.percentage ?? 0}%…
+          <Download size={16} /> Updating OpenSave — downloading {$appUpdate.percentage ?? 0}%…
         {:else if $appUpdate.state === 'installing'}
-          🔧 Installing update…
+          <Wrench size={16} /> Installing update…
         {:else}
-          🔄 Restarting with the new version…
+          <RefreshCw size={16} /> Restarting with the new version…
         {/if}
         <em>The app restarts itself when done — your games keep syncing.</em>
       </span>
     </div>
   {:else if update}
     <div class="update-banner">
-      <span>🎉 OpenSave {update.latest} is available — you're on {update.current}.</span>
+      <span class="with-icon"><Sparkles size={16} /> OpenSave {update.latest} is available — you're on {update.current}.</span>
       <div class="update-actions">
         {#if update.notes}
-          <button class="dismiss" on:click={() => (showNotes = !showNotes)}>
+          <button class="btn small ghost" on:click={() => (showNotes = !showNotes)}>
             {showNotes ? 'Hide notes' : "What's new"}
           </button>
         {/if}
         {#if update.assetUrl}
-          <button class="link" disabled={installStarted} on:click={installRelease}>
+          <button class="btn small primary" disabled={installStarted} on:click={installRelease}>
             {installStarted ? 'Starting…' : 'Install & restart'}
           </button>
         {:else if update.flatpak}
-          <button class="link" on:click={() => native.openExternal(update.url)}>Get .flatpak</button>
+          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>Get .flatpak</button>
         {:else}
-          <button class="link" on:click={() => native.openExternal(update.url)}>Download</button>
+          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>Download</button>
         {/if}
-        <button class="dismiss" on:click={() => (update = null)} aria-label="Dismiss">✕</button>
+        <button class="btn small ghost icon" on:click={() => (update = null)} aria-label="Dismiss" title="Dismiss"><X size={15} /></button>
       </div>
     </div>
     {#if showNotes && update.notes}
@@ -146,10 +151,10 @@
     {/if}
   {:else if updatedTo}
     <div class="update-banner">
-      <span>🎉 OpenSave was updated to v{updatedTo}.</span>
+      <span class="with-icon"><Sparkles size={16} /> OpenSave was updated to v{updatedTo}.</span>
       <div class="update-actions">
-        <button class="link" on:click={openWhatsNew}>What's new</button>
-        <button class="dismiss" on:click={() => (updatedTo = '')} aria-label="Dismiss">✕</button>
+        <button class="btn small primary" on:click={openWhatsNew}>What's new</button>
+        <button class="btn small ghost icon" on:click={() => (updatedTo = '')} aria-label="Dismiss" title="Dismiss"><X size={15} /></button>
       </div>
     </div>
   {/if}
@@ -271,32 +276,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-  .update-banner .link {
-    border: none;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 600;
-    font-size: 0.82rem;
-    padding: 4px 12px;
-    border-radius: 7px;
-    cursor: pointer;
-  }
-  .update-banner .link:hover {
-    background: var(--accent-hover);
-  }
-  .update-banner .dismiss {
-    border: none;
-    background: transparent;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-  }
-  .update-banner .dismiss:hover {
-    background: var(--bg-hover);
-    color: var(--text);
   }
   .update-banner.installing em {
     color: var(--text-dim);

@@ -2,6 +2,8 @@
   // What a new branch starts from. Fires `create` with true for a copy of the
   // current save, false for an empty one; `cancel` otherwise.
   import { createEventDispatcher } from 'svelte';
+  import GitBranch from 'lucide-svelte/icons/git-branch';
+  import ShieldCheck from 'lucide-svelte/icons/shield-check';
 
   export let name = '';
   export let activeBranch = '';
@@ -23,7 +25,7 @@
 <div class="overlay" on:click={() => dispatch('cancel')}>
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="modal card" on:click|stopPropagation>
-    <h3>🌱 New branch — {name}</h3>
+    <h3 class="with-icon"><GitBranch size={19} /> New branch — {name}</h3>
     <p class="desc">What should it start from?</p>
 
     <label class="choice" class:sel={copySave}>
@@ -55,7 +57,7 @@
       <button class="btn primary" disabled={busy} on:click={() => dispatch('create', copySave)}>Create branch</button>
     </div>
     <p class="hint-line">
-      🛡️ Either way nothing is lost. Switching between branches snapshots whatever is in your
+      <ShieldCheck size={15} class="inline-icon" /> Either way nothing is lost. Switching between branches snapshots whatever is in your
       save folder first, and refuses to change anything if that snapshot can't be taken.
     </p>
   </div>
@@ -65,7 +67,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;

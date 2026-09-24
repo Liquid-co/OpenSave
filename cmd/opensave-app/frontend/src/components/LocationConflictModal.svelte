@@ -10,6 +10,11 @@
   import { locationConflicts, games, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { demandAttention } from '../lib/notify.js';
+  import Chevron from './ui/Chevron.svelte';
+  import Laptop from 'lucide-svelte/icons/laptop';
+  import Monitor from 'lucide-svelte/icons/monitor';
+  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import FolderOpen from 'lucide-svelte/icons/folder-open';
 
   let busy = false;
   let showDiff = false;
@@ -95,7 +100,7 @@
 {#if current}
   <div class="overlay">
     <div class="modal card">
-      <h3>📂 “{current.root}” folder — {gameName}</h3>
+      <h3 class="with-icon"><FolderOpen size={20} /> “{current.root}” folder — {gameName}</h3>
       <p class="desc">
         This is one of {gameName}'s extra save folders, and it changed on both this device and
         <strong>{peerName}</strong>. The game's main save is unaffected and keeps syncing; only this
@@ -105,7 +110,7 @@
       <div class="versions">
         <div class="version" class:newer={newerSide === 'local'}>
           <div class="v-head">
-            <span class="v-title">💻 This device</span>
+            <span class="v-title with-icon"><Laptop size={16} /> This device</span>
             {#if newerSide === 'local'}<span class="v-badge">changed more recently</span>{/if}
           </div>
           <div class="v-diff">
@@ -120,7 +125,7 @@
         </div>
         <div class="version" class:newer={newerSide === 'remote'}>
           <div class="v-head">
-            <span class="v-title">🖥️ {peerName}</span>
+            <span class="v-title with-icon"><Monitor size={16} /> {peerName}</span>
             {#if newerSide === 'remote'}<span class="v-badge">changed more recently</span>{/if}
           </div>
           <div class="v-diff">
@@ -137,7 +142,7 @@
 
       {#if current.diffTotal > 0}
         <button class="diff-toggle" on:click={() => (showDiff = !showDiff)}>
-          {showDiff ? '▾' : '▸'} What's different ({current.diffTotal} file{current.diffTotal === 1 ? '' : 's'})
+          <Chevron open={showDiff} /> What's different ({current.diffTotal} file{current.diffTotal === 1 ? '' : 's'})
         </button>
         {#if showDiff}
           <div class="diff-list">
@@ -164,7 +169,7 @@
         </button>
       </div>
       <p class="hint-line">
-        🛡️ A snapshot of every one of this game's folders is taken before either choice is applied,
+        <ShieldCheck size={15} class="inline-icon" /> A snapshot of every one of this game's folders is taken before either choice is applied,
         so both are undoable from the Snapshots tab. <strong>“Keep mine”</strong> makes this
         device's copy the shared one and asks {peerName} to take it — {peerName} gets its own say if
         it has newer work. <strong>“Use {peerName}'s”</strong> brings their copy here.
@@ -219,7 +224,7 @@
     padding: 12px;
   }
   .version.newer {
-    border-color: rgba(74, 222, 128, 0.45);
+    border-color: rgba(var(--success-rgb), 0.45);
   }
   .v-head {
     display: flex;
@@ -236,7 +241,7 @@
     font-size: 0.66rem;
     font-weight: 700;
     color: var(--success);
-    background: rgba(74, 222, 128, 0.12);
+    background: rgba(var(--success-rgb), 0.12);
     padding: 2px 7px;
     border-radius: 999px;
     white-space: nowrap;

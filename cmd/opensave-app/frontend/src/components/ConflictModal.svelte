@@ -2,6 +2,11 @@
   import { conflicts, conflictResolution, games, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { demandAttention } from '../lib/notify.js';
+  import Chevron from './ui/Chevron.svelte';
+  import Laptop from 'lucide-svelte/icons/laptop';
+  import Monitor from 'lucide-svelte/icons/monitor';
+  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import GitCompareArrows from 'lucide-svelte/icons/git-compare-arrows';
 
   let busy = false;
   let showDiff = false;
@@ -135,7 +140,7 @@
 {#if current && conflict}
   <div class="overlay">
     <div class="modal card">
-      <h3>⚔️ Save conflict — {gameName}</h3>
+      <h3 class="with-icon"><GitCompareArrows size={20} /> Save conflict — {gameName}</h3>
       <p class="desc">
         Both this device and <strong>{peerName}</strong> changed this save since the last sync.
         Pick which version to play from.
@@ -144,7 +149,7 @@
       <div class="versions">
         <div class="version" class:newer={newerSide === 'local'}>
           <div class="v-head">
-            <span class="v-title">💻 This device</span>
+            <span class="v-title with-icon"><Laptop size={16} /> This device</span>
             {#if newerSide === 'local'}<span class="v-badge">played more recently</span>{/if}
           </div>
           <div class="v-diff">
@@ -162,7 +167,7 @@
         </div>
         <div class="version" class:newer={newerSide === 'remote'}>
           <div class="v-head">
-            <span class="v-title">🖥️ {peerName}</span>
+            <span class="v-title with-icon"><Monitor size={16} /> {peerName}</span>
             {#if newerSide === 'remote'}<span class="v-badge">played more recently</span>{/if}
           </div>
           <div class="v-diff">
@@ -187,7 +192,7 @@
 
       {#if conflict.diffTotal > 0}
         <button class="diff-toggle" on:click={() => (showDiff = !showDiff)}>
-          {showDiff ? '▾' : '▸'} What's different ({conflict.diffTotal} file{conflict.diffTotal === 1 ? '' : 's'})
+          <Chevron open={showDiff} /> What's different ({conflict.diffTotal} file{conflict.diffTotal === 1 ? '' : 's'})
         </button>
         {#if showDiff}
           <div class="diff-list">
@@ -217,7 +222,7 @@
         </button>
       </div>
       <p class="hint-line">
-        🛡️ Nothing is lost whichever you pick. <strong>“Keep both”</strong> (recommended) parks
+        <ShieldCheck size={15} class="inline-icon" /> Nothing is lost whichever you pick. <strong>“Keep both”</strong> (recommended) parks
         {peerName}'s version on a branch and keeps playing yours. <strong>“Keep mine”</strong> makes your
         version the shared one — {peerName} receives it (their old save is snapshotted first).
         <strong>“Keep theirs”</strong> adopts {peerName}'s version here, snapshotting yours first.
@@ -264,7 +269,7 @@
     padding: 12px;
   }
   .version.newer {
-    border-color: rgba(74, 222, 128, 0.45);
+    border-color: rgba(var(--success-rgb), 0.45);
   }
   .v-head {
     display: flex;
@@ -281,7 +286,7 @@
     font-size: 0.66rem;
     font-weight: 700;
     color: var(--success);
-    background: rgba(74, 222, 128, 0.12);
+    background: rgba(var(--success-rgb), 0.12);
     padding: 2px 7px;
     border-radius: 999px;
     white-space: nowrap;

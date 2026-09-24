@@ -6,6 +6,8 @@
   import AppIdField from './AppIdField.svelte';
   import SyncIgnoreEditor from './SyncIgnoreEditor.svelte';
   import SaveLocations from './SaveLocations.svelte';
+  import MoreInfo from '../../components/ui/MoreInfo.svelte';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
   export let game;
   export let runner;
@@ -93,7 +95,7 @@
     {#if cover}
       <img src={cover} alt="" on:error={(e) => (e.currentTarget.style.display = 'none')} />
     {:else}
-      <div class="cover-fallback">🎮</div>
+      <div class="cover-fallback"><Gamepad2 size={30} strokeWidth={1.5} /></div>
     {/if}
   </div>
   <div class="fields">
@@ -105,11 +107,14 @@
         <button class="btn" on:click={browseSavePath}>Browse</button>
       </div>
       <span class="hint">
-        The folder OpenSave treats as this game's save. Files sync by their position
-        <em>inside</em> this folder, so each device can point at a different path and still
-        end up with the same files — useful when a game keeps saves in a per-account folder
-        named after your Steam or Epic ID, which differs on every machine. Point each device
-        at its own such folder and saves land where that copy of the game looks for them.
+        The folder OpenSave treats as this game's save.
+        <MoreInfo>
+          Files sync by their position <em>inside</em> this folder, so each device can point at
+          a different path and still end up with the same files — useful when a game keeps saves
+          in a per-account folder named after your Steam or Epic ID, which differs on every
+          machine. Point each device at its own such folder and saves land where that copy of
+          the game looks for them.
+        </MoreInfo>
       </span>
       {#if savePathChange(game.savePath, cfg.savePath)}
         <span class="hint hint-warn">
@@ -184,7 +189,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2rem;
+    color: var(--text-faint);
   }
   .fields {
     flex: 1;

@@ -12,6 +12,8 @@
   import FilterTabs from '../../components/ui/FilterTabs.svelte';
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
+  import LayoutGrid from 'lucide-svelte/icons/layout-grid';
+  import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
 
   /** [{game, status}] for every tracked game. */
   export let rows = [];
@@ -95,7 +97,7 @@
     </label>
     <div class="view-anchor">
       <button class="btn small" class:active={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
-        ▦ View
+        <LayoutGrid size={14} />View
       </button>
       {#if viewOpen}
         <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
@@ -105,7 +107,7 @@
         </div>
       {/if}
     </div>
-    <button class="btn small" on:click={toggleSelectMode}>☑ Select</button>
+    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />Select</button>
   {/if}
 </div>
 
@@ -177,8 +179,9 @@
     color: var(--text-faint);
   }
   .sort select {
-    padding: 5px 8px;
-    background: var(--bg-raised);
+    height: 28px;
+    padding: 0 8px 0 10px;
+    background-color: var(--bg-raised);
     border: 1px solid var(--border-strong);
     border-radius: 8px;
     color: var(--text);
@@ -188,7 +191,8 @@
     position: relative;
   }
   .btn.active {
-    border-color: var(--accent);
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.45);
   }
   .view-backdrop {
     position: fixed;
@@ -203,7 +207,7 @@
     width: 380px;
     max-width: calc(100vw - 32px);
     padding: 16px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+    box-shadow: var(--shadow);
   }
   .view-hint {
     margin-top: 12px;

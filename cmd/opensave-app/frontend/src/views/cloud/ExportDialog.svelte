@@ -6,6 +6,7 @@
   import { toast, backupProgressEvent } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
+  import Package from 'lucide-svelte/icons/package';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import ModalLoading from '../../components/ui/ModalLoading.svelte';
   import CoverTile from '../../components/ui/CoverTile.svelte';
@@ -96,7 +97,7 @@
   }
 </script>
 
-<Modal title="📦 Export saves" onClose={close}>
+<Modal title="Export saves" icon={Package} onClose={close}>
   <svelte:fragment slot="sub">
     {#if !items}
       Looking for saves on this machine…
@@ -118,7 +119,7 @@
     <div class="list">
       {#if items.length === 0}
         <div class="empty-state">
-          <div class="empty-icon">📦</div>
+          <div class="empty-icon"><Package size={36} strokeWidth={1.5} /></div>
           <p>No saves found to export.</p>
         </div>
       {:else}
@@ -190,8 +191,8 @@
     padding: 20px;
   }
   .empty-icon {
-    font-size: 2.2rem;
-    opacity: 0.6;
+    display: flex;
+    color: var(--text-faint);
   }
   .actions {
     display: flex;

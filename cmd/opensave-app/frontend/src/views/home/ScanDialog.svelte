@@ -7,6 +7,11 @@
   import { gameList, toast, askConfirm, settings } from '../../lib/stores.js';
   import { api, coverURL } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
+  import Chevron from '../../components/ui/Chevron.svelte';
+  import ScanSearch from 'lucide-svelte/icons/scan-search';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
+  import Joystick from 'lucide-svelte/icons/joystick';
+  import Package from 'lucide-svelte/icons/package';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import ModalLoading from '../../components/ui/ModalLoading.svelte';
   import FilterTabs from '../../components/ui/FilterTabs.svelte';
@@ -284,14 +289,14 @@
   }
 
   const typeLabels = { emulator: 'Emulator', repack: 'Repack', game: 'Game' };
-  const typeIcon = (t) => (t === 'emulator' ? '🕹️' : t === 'repack' ? '📦' : '🎮');
+  const typeIcon = (t) => (t === 'emulator' ? Joystick : t === 'repack' ? Package : Gamepad2);
   const typeTabs = [['all', 'All'], ['game', 'Games'], ['emulator', 'Emulators'], ['repack', 'Repacks']];
 </script>
 
 <svelte:window on:keydown={onKeydown} />
 
 {#if open}
-  <Modal title="🔍 Auto-scan results" onClose={close} width={920} height="min(82vh, 860px)">
+  <Modal title="Auto-scan results" icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
     <svelte:fragment slot="sub">
       {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {availableGroups.length} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} empty hidden{/if}{/if}
     </svelte:fragment>
@@ -335,10 +340,10 @@
               name={item.name}
               title={item.savePath}
               src={coverURL(item.appId, true, item.name)}
-              emoji={typeIcon(item.type)}
+              icon={typeIcon(item.type)}
               selected={groupSelected(group, selected)}
               badge={typeLabels[item.type] ?? item.type}
-              stamp={tracked ? '✓ Tracked' : ''}
+              stamp={tracked ? 'Tracked' : ''}
               dimmed={tracked}
               faded={isEmptyResult(item)}
               meta={contentsLabel(item)}
@@ -364,7 +369,7 @@
                   class:open={expandedGroup === group.id}
                   on:click|stopPropagation={() => (expandedGroup = expandedGroup === group.id ? null : group.id)}
                 >
-                  {expandedGroup === group.id ? '▾' : '▸'} found in {group.members.length} folders
+                  <Chevron open={expandedGroup === group.id} size={12} /> found in {group.members.length} folders
                   {#if group.suggested.length > 1}<span class="folders-hint">· {group.suggested.length} are one save</span>{/if}
                 </button>
               {/if}

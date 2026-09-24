@@ -17,6 +17,7 @@
     "vitest": "^2.1.9"
   },
   "dependencies": {
+    "lucide-svelte": "^1.0.1",
     "qrcode-generator": "^2.0.4"
   }
 }

@@ -8,6 +8,7 @@
   import { isOAuth, isEmail, providerById } from '../../lib/cloudproviders.js';
   import ProviderIcon from './ProviderIcon.svelte';
   import Spinner from '../../components/ui/Spinner.svelte';
+  import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
 
   export let config;
   export let connected = null;
@@ -121,7 +122,7 @@
       </button>
       {#if config.provider === 'google_drive'}
         <p class="quiet" style="margin-top: 10px;">
-          ⚠️ On Google's consent screen, <strong>tick the checkbox</strong> allowing OpenSave to access
+          <TriangleAlert size={14} class="inline-icon warn-icon" />On Google's consent screen, <strong>tick the checkbox</strong> allowing OpenSave to access
           its own Drive files — without it, uploads fail with "insufficient permissions".
         </p>
       {/if}
@@ -165,8 +166,8 @@
     align-items: center;
     gap: 14px;
     padding: 16px 18px;
-    background: rgba(74, 222, 128, 0.05);
-    border: 1px solid rgba(74, 222, 128, 0.3);
+    background: rgba(var(--success-rgb), 0.05);
+    border: 1px solid rgba(var(--success-rgb), 0.3);
     border-radius: var(--radius-lg);
   }
   .acct-icon {
@@ -205,7 +206,7 @@
     height: 8px;
     border-radius: 50%;
     background: var(--success);
-    box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+    box-shadow: 0 0 6px rgba(var(--success-rgb), 0.6);
     flex-shrink: 0;
   }
   .waiting {

@@ -3,6 +3,7 @@
   import { pairingRequests, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { demandAttention } from '../lib/notify.js';
+  import Link from 'lucide-svelte/icons/link';
 
   let busy = false;
   let seen = new Set(); // request ids we've already chimed for
@@ -36,14 +37,14 @@
     }
   }
 
-  const source = (req) => (req.isWan ? '🌐 over the internet' : `🖧 ${req.address}`);
+  const source = (req) => (req.isWan ? 'over the internet' : `from ${req.address}`);
 </script>
 
 {#if $pairingRequests.length > 0}
   <div class="pair-wrap" transition:fly={{ y: -90, duration: 320 }}>
     {#each $pairingRequests as req (req.peerId)}
       <div class="pair-card" transition:fly={{ y: -20, duration: 200 }}>
-        <div class="pair-icon">🔗</div>
+        <div class="pair-icon"><Link size={19} /></div>
         <div class="pair-body">
           <div class="pair-title"><strong>{req.deviceName ?? 'A device'}</strong> wants to pair</div>
           <div class="pair-sub">{source(req)} · approve to start syncing your saves</div>
@@ -85,8 +86,14 @@
     50% { box-shadow: 0 12px 44px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--accent-soft); }
   }
   .pair-icon {
-    font-size: 1.5rem;
     flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .pair-body {
     flex: 1;

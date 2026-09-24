@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { gameList, peers, syncActivity, conflicts, locationConflicts, toast } from '../lib/stores.js';
+  import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { gameStatus, conflictedIds } from '../lib/gamestatus.js';
   import OfferedGames from './home/OfferedGames.svelte';
@@ -8,6 +8,11 @@
   import ScanDialog from './home/ScanDialog.svelte';
   import HomeSummary from './home/HomeSummary.svelte';
   import LibraryGrid from './home/LibraryGrid.svelte';
+  import Skeleton from '../components/ui/Skeleton.svelte';
+  import ScanSearch from 'lucide-svelte/icons/scan-search';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import FolderPlus from 'lucide-svelte/icons/folder-plus';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
   export let params = {};
 
@@ -55,10 +60,10 @@
   <h2 class="page-title">Home</h2>
   <div class="head-actions">
     <button class="btn" on:click={() => scanner.start()} disabled={scanning}>
-      {scanning ? 'Scanning…' : '🔍 Auto-scan'}
+      <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Auto-scan'}
     </button>
-    <button class="btn" on:click={syncAll} disabled={$gameList.length === 0}>⟳ Sync all</button>
-    <button class="btn primary" on:click={() => (showAdd = !showAdd)}>+ Track folder</button>
+    <button class="btn" on:click={syncAll} disabled={$gameList.length === 0}><RefreshCw size={15} />Sync all</button>
+    <button class="btn primary" on:click={() => (showAdd = !showAdd)}><FolderPlus size={16} />Track folder</button>
   </div>
 </div>
 
@@ -70,16 +75,18 @@
 
 <ScanDialog bind:this={scanner} bind:scanning />
 
-{#if $gameList.length === 0}
+{#if !$stateLoaded}
+  <Skeleton kind="tiles" count={6} />
+{:else if $gameList.length === 0}
   <div class="welcome">
-    <div class="welcome-icon">🎮</div>
+    <div class="welcome-icon"><Gamepad2 size={34} strokeWidth={1.6} /></div>
     <h3>Welcome to OpenSave</h3>
     <p>Keep your game saves in sync across every device — no accounts, no cloud lock-in. Start by finding your saves:</p>
     <div class="welcome-actions">
       <button class="btn primary" on:click={() => scanner.start()} disabled={scanning}>
-        {scanning ? 'Scanning…' : '🔍 Auto-scan for saves'}
+        <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Auto-scan for saves'}
       </button>
-      <button class="btn" on:click={() => (showAdd = true)}>+ Track a folder manually</button>
+      <button class="btn" on:click={() => (showAdd = true)}><FolderPlus size={16} />Track a folder manually</button>
     </div>
     <p class="welcome-hint">Then open <strong>Devices</strong> to pair another PC or Steam Deck, or <strong>Cloud Backup</strong> to mirror snapshots online.</p>
   </div>
@@ -112,8 +119,14 @@
     border-radius: var(--radius-lg);
   }
   .welcome-icon {
-    font-size: 3rem;
-    margin-bottom: 10px;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 14px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .welcome h3 {
     font-size: 1.3rem;

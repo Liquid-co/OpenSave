@@ -60,28 +60,28 @@
     border: 1px solid transparent;
   }
   .protection.sealed {
-    color: var(--ok-fg, #1a7f4b);
-    background: var(--ok-bg, rgba(26, 127, 75, 0.12));
-    border-color: var(--ok-bg, rgba(26, 127, 75, 0.25));
+    color: var(--success);
+    background: rgba(var(--success-rgb), 0.12);
+    border-color: rgba(var(--success-rgb), 0.25);
   }
   .protection.pending {
-    color: var(--warn-fg, #8a6100);
-    background: var(--warn-bg, rgba(200, 145, 0, 0.12));
-    border-color: var(--warn-bg, rgba(200, 145, 0, 0.25));
+    color: var(--warn);
+    background: rgba(var(--warn-rgb), 0.12);
+    border-color: rgba(var(--warn-rgb), 0.25);
   }
   /* Deliberately not red. Nothing is broken and no data is at risk of being
      lost — the pairing works exactly as it always did. What is missing is a
      protection that can be switched on, and alarming someone into thinking
      their saves are in danger would misrepresent that. */
   .protection.open {
-    color: var(--warn-fg, #8a6100);
-    background: var(--warn-bg, rgba(200, 145, 0, 0.12));
-    border-color: var(--warn-bg, rgba(200, 145, 0, 0.25));
+    color: var(--warn);
+    background: rgba(var(--warn-rgb), 0.12);
+    border-color: rgba(var(--warn-rgb), 0.25);
   }
   .protection.direct {
-    color: var(--muted-fg, #5a6270);
-    background: var(--muted-bg, rgba(90, 98, 112, 0.1));
-    border-color: var(--muted-bg, rgba(90, 98, 112, 0.2));
+    color: var(--text-dim);
+    background: var(--btn-bg);
+    border-color: var(--border-strong);
   }
   .protection.compact {
     font-size: 0.72rem;

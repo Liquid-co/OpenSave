@@ -18,19 +18,27 @@
       revealed = next;
     }
   };
-  import { view, navigate, settings, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
+  import { view, navigate, settings, stateLoaded, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
   import CoverImage from './CoverImage.svelte';
+  import House from 'lucide-svelte/icons/house';
+  import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
+  import Cloud from 'lucide-svelte/icons/cloud';
+  import Activity from 'lucide-svelte/icons/activity';
+  import Settings from 'lucide-svelte/icons/settings';
+  import ScrollText from 'lucide-svelte/icons/scroll-text';
+  import Plus from 'lucide-svelte/icons/plus';
+  import Search from 'lucide-svelte/icons/search';
 
   let filter = '';
 
   const nav = [
-    { id: 'home', label: 'Home', icon: 'M3 10.5 L10 4 L17 10.5 M5 9 V16 H8.5 V12 H11.5 V16 H15 V9' },
-    { id: 'devices', label: 'Devices', icon: 'M3 6 h9 v7 H3 z M5 15.5 h5 M7.5 13 v2.5 M14 9 h3 v6.5 h-3 z' },
-    { id: 'cloud', label: 'Cloud Backup', icon: 'M6 14 a3.5 3.5 0 0 1 0 -7 a4.5 4.5 0 0 1 8.6 1.2 A3 3 0 0 1 14 14 z' },
-    { id: 'activity', label: 'Activity', icon: 'M3 10 h3 l2 -5 l3 10 l2 -5 h4' },
-    { id: 'settings', label: 'Settings', icon: 'M10 7 a3 3 0 1 0 0 6 a3 3 0 1 0 0 -6 M10 2.5 v2 M10 15.5 v2 M2.5 10 h2 M15.5 10 h2 M4.6 4.6 l1.4 1.4 M14 14 l1.4 1.4 M15.4 4.6 L14 6 M6 14 l-1.4 1.4' },
-    { id: 'changelog', label: 'Changelog', icon: 'M5 3 h7 l3 3 v11 H5 z M12 3 v3 h3 M7.5 10 h5 M7.5 13 h5' }
+    { id: 'home', label: 'Home', icon: House },
+    { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
+    { id: 'cloud', label: 'Cloud Backup', icon: Cloud },
+    { id: 'activity', label: 'Activity', icon: Activity },
+    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'changelog', label: 'Changelog', icon: ScrollText }
   ];
 
   $: deviceName = $settings?.deviceName ?? '…';
@@ -60,9 +68,7 @@
   <nav>
     {#each nav as item}
       <button class:active={$view.name === item.id} on:click={() => navigate(item.id)}>
-        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d={item.icon} />
-        </svg>
+        <svelte:component this={item.icon} size={17} strokeWidth={1.8} />
         <span>{item.label}</span>
         {#if badgeFor(item.id)}
           <span class="nav-badge">{badgeFor(item.id)}</span>
@@ -73,10 +79,13 @@
 
   <div class="library-head">
     <span>MY LIBRARY</span>
-    <button class="add" title="Track a game" on:click={() => navigate('home', { add: true })}>+</button>
+    <button class="add" title="Track a game" aria-label="Track a game" on:click={() => navigate('home', { add: true })}><Plus size={15} /></button>
   </div>
 
-  <input class="filter" placeholder="Filter library" bind:value={filter} />
+  <label class="filter">
+    <Search size={14} />
+    <input placeholder="Filter library" aria-label="Filter library" bind:value={filter} />
+  </label>
 
   <div class="library">
     {#each filteredGames as game (game.id)}
@@ -111,9 +120,11 @@
         {/if}
       </button>
     {:else}
-      <div class="library-empty">
-        {$gameList.length === 0 ? 'No games tracked yet' : 'No matches'}
-      </div>
+      {#if $stateLoaded}
+        <div class="library-empty">
+          {$gameList.length === 0 ? 'No games tracked yet' : 'No matches'}
+        </div>
+      {/if}
     {/each}
   </div>
 
@@ -197,9 +208,25 @@
     background: var(--bg-hover);
     color: var(--text);
   }
+  nav button {
+    position: relative;
+  }
   nav button.active {
     background: var(--bg-active);
     color: var(--text);
+  }
+  nav button.active::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 9px;
+    bottom: 9px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+  }
+  nav button.active :global(svg) {
+    color: var(--accent);
   }
   .nav-badge {
     margin-left: auto;
@@ -222,13 +249,14 @@
     color: var(--text-faint);
   }
   .library-head .add {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
     border: none;
     background: transparent;
     color: var(--text-dim);
-    font-size: 1.1rem;
     cursor: pointer;
-    line-height: 1;
-    padding: 2px 6px;
     border-radius: 6px;
   }
   .library-head .add:hover {
@@ -237,17 +265,30 @@
   }
 
   .filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 0 14px 8px;
-    padding: 7px 11px;
+    padding: 0 11px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    color: var(--text-faint);
+    cursor: text;
+  }
+  .filter:focus-within {
+    border-color: var(--border-strong);
+  }
+  .filter input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 0;
+    border: none;
+    background: transparent;
     color: var(--text);
+    font: inherit;
     font-size: 0.85rem;
     outline: none;
-  }
-  .filter:focus {
-    border-color: var(--border-strong);
   }
 
   .library {

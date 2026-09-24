@@ -4,7 +4,7 @@
   // or upload its snapshots. Fires `close`.
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { gameList, toast, cloudUploadEvent, askConfirm } from '../../lib/stores.js';
-  import { api } from '../../lib/api.js';
+  import { api, gameCover } from '../../lib/api.js';
   import { cloudTiles } from '../../lib/cloudproviders.js';
   import { fmtSize } from '../../lib/format.js';
   import Modal from '../../components/ui/Modal.svelte';
@@ -14,6 +14,11 @@
   import SearchInput from '../../components/ui/SearchInput.svelte';
   import CoverTile from '../../components/ui/CoverTile.svelte';
   import ProgressBar from '../../components/ui/ProgressBar.svelte';
+  import Cloud from 'lucide-svelte/icons/cloud';
+  import HardDrive from 'lucide-svelte/icons/hard-drive';
+  import ArrowLeft from 'lucide-svelte/icons/arrow-left';
+  import Upload from 'lucide-svelte/icons/upload';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
 
   /** The page's busy flag (a writable store). */
   export let busy;
@@ -61,7 +66,7 @@
   }
   browse();
 
-  $: tiles = cloudTiles(cloudGames, $gameList);
+  $: tiles = cloudTiles(cloudGames, $gameList, (g) => gameCover(g, true));
   $: tabCounts = {
     all: tiles.length,
     cloud: tiles.filter((t) => t.cloud).length,
@@ -137,7 +142,7 @@
   const tabOptions = [['all', 'All'], ['cloud', 'In cloud'], ['local', 'Not uploaded']];
 </script>
 
-<Modal title="☁️ Cloud snapshots" onClose={close}>
+<Modal title="Cloud snapshots" icon={Cloud} onClose={close}>
   <svelte:fragment slot="sub">
     {#if browsing}
       Reading cloud storage…
@@ -150,7 +155,7 @@
   </svelte:fragment>
   <svelte:fragment slot="actions">
     <button class="btn small" disabled={browsing} on:click={browse}>
-      {browsing ? 'Loading…' : 'Refresh'}
+      <RefreshCw size={14} />{browsing ? 'Loading…' : 'Refresh'}
     </button>
   </svelte:fragment>
 
@@ -159,7 +164,7 @@
   {:else if cloudGames && detail}
     <!-- drill-in: one game's cloud snapshots -->
     <div class="detail-head">
-      <button class="btn small" on:click={() => (detailId = null)}>← Back</button>
+      <button class="btn small" on:click={() => (detailId = null)}><ArrowLeft size={14} />Back</button>
       <div class="detail-title">
         <strong>{detail.name}</strong>
         <span class="quiet">
@@ -172,7 +177,7 @@
       </div>
       {#if detail.tracked}
         <button class="btn small" disabled={uploading} on:click={() => uploadLocal(detail.id)}>
-          {uploading ? 'Uploading…' : '⬆ Upload local snapshots'}
+          <Upload size={14} />{uploading ? 'Uploading…' : 'Upload local snapshots'}
         </button>
       {/if}
     </div>
@@ -214,7 +219,7 @@
         {/each}
       {:else}
         <div class="empty-state">
-          <div class="empty-icon">☁️</div>
+          <div class="empty-icon"><Cloud size={36} strokeWidth={1.5} /></div>
           <p>No cloud snapshots for this game yet.</p>
           <p class="quiet">Use <strong>Upload local snapshots</strong> above to push them up.</p>
         </div>
@@ -237,8 +242,9 @@
           <CoverTile
             name={t.name}
             src={t.coverUrl}
-            emoji={t.cloud ? '☁️' : '💾'}
-            badge={t.cloud ? `☁ ${t.cloud.count}` : 'local only'}
+            icon={t.cloud ? Cloud : HardDrive}
+            badge={t.cloud ? String(t.cloud.count) : 'local only'}
+            badgeIcon={t.cloud ? Cloud : null}
             badgeAccent={!!t.cloud}
             hoverLayout="center"
             on:activate={() => (detailId = t.id)}
@@ -350,7 +356,8 @@
     padding: 20px;
   }
   .empty-icon {
-    font-size: 2.2rem;
-    opacity: 0.6;
+    display: flex;
+    justify-content: center;
+    color: var(--text-faint);
   }
 </style>

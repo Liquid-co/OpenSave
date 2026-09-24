@@ -5,6 +5,9 @@
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import Spinner from '../../components/ui/Spinner.svelte';
+  import Cloud from 'lucide-svelte/icons/cloud';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import Upload from 'lucide-svelte/icons/upload';
 
   export let game;
   export let runner;
@@ -45,12 +48,12 @@
 <div class="card">
   <div class="head">
     <div>
-      <h3>☁️ Cloud snapshots for {game.name}</h3>
+      <h3 class="with-icon"><Cloud size={18} /> Cloud snapshots for {game.name}</h3>
       <p class="sub">Snapshots backed up to your configured cloud provider.</p>
     </div>
     <div class="actions">
-      <button class="btn small" disabled={$busy} on:click={load}>↻ Refresh</button>
-      <button class="btn small primary" disabled={$busy} on:click={upload}>↑ Upload local snapshots</button>
+      <button class="btn small" disabled={$busy} on:click={load}><RefreshCw size={13} />Refresh</button>
+      <button class="btn small primary" disabled={$busy} on:click={upload}><Upload size={13} />Upload local snapshots</button>
     </div>
   </div>
 

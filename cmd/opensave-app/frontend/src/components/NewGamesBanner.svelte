@@ -8,6 +8,7 @@
   import { fly } from 'svelte/transition';
   import { newGames, navigate, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
   let busy = false;
 
@@ -42,7 +43,7 @@
 
 {#if $newGames.length > 0}
   <div class="new-card" transition:fly={{ y: -20, duration: 200 }}>
-    <div class="new-icon">🎮</div>
+    <div class="new-icon"><Gamepad2 size={19} /></div>
     <div class="new-body">
       <div class="new-title">
         {#if names.length === 1}
@@ -74,8 +75,14 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-soft);
   }
   .new-icon {
-    font-size: 1.4rem;
     flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .new-body {
     flex: 1;

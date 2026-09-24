@@ -3,6 +3,7 @@
   import ReleaseNotes from './ReleaseNotes.svelte';
   import DiscordBanner from './DiscordBanner.svelte';
   import { navigate } from '../lib/stores.js';
+  import X from 'lucide-svelte/icons/x';
 
   export let releases = [];
   export let version = '';
@@ -23,7 +24,7 @@
 
 <div class="backdrop" use:backdropClose={onClose} role="presentation">
   <div class="modal" role="dialog" aria-modal="true" aria-label="What's new in OpenSave">
-    <button class="x" on:click={onClose} title="Close" aria-label="Close">✕</button>
+    <button class="btn ghost icon x" on:click={onClose} title="Close" aria-label="Close"><X size={18} /></button>
 
     <div class="hero">
       <div class="badge">Updated</div>
@@ -37,8 +38,8 @@
     </div>
 
     <footer>
-      <button class="ghost" on:click={openFullChangelog}>Full changelog</button>
-      <button class="primary" on:click={onClose}>Got it</button>
+      <button class="btn" on:click={openFullChangelog}>Full changelog</button>
+      <button class="btn primary" on:click={onClose}>Got it</button>
     </footer>
   </div>
 </div>
@@ -47,7 +48,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.62);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -63,30 +64,19 @@
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    box-shadow: var(--shadow);
     overflow: hidden;
   }
   .x {
     position: absolute;
     top: 12px;
     right: 12px;
-    border: none;
-    background: transparent;
-    color: var(--text-faint);
-    font-size: 0.9rem;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
     z-index: 1;
-  }
-  .x:hover {
-    background: var(--bg-hover);
-    color: var(--text);
   }
   .hero {
     padding: 26px 28px 20px;
     border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, rgba(138, 99, 244, 0.12), transparent);
+    background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), transparent);
   }
   .badge {
     display: inline-block;
@@ -95,8 +85,8 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--accent);
-    background: rgba(138, 99, 244, 0.14);
-    border: 1px solid rgba(138, 99, 244, 0.3);
+    background: rgba(var(--accent-rgb), 0.14);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     border-radius: 999px;
     padding: 3px 10px;
     margin-bottom: 10px;
@@ -126,30 +116,5 @@
     padding: 14px 20px;
     border-top: 1px solid var(--border);
     background: var(--bg);
-  }
-  button.primary,
-  button.ghost {
-    border-radius: var(--radius);
-    padding: 8px 16px;
-    font-size: 0.86rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button.primary {
-    border: none;
-    background: var(--accent);
-    color: #fff;
-  }
-  button.primary:hover {
-    filter: brightness(1.08);
-  }
-  button.ghost {
-    background: transparent;
-    border: 1px solid var(--border-strong);
-    color: var(--text-dim);
-  }
-  button.ghost:hover {
-    background: var(--bg-hover);
-    color: var(--text);
   }
 </style>

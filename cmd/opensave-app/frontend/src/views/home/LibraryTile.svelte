@@ -6,6 +6,7 @@
   // someone found. Art whose shape is far from the tile's is shown whole over
   // a blurred copy of itself rather than cropped to a sliver of its middle.
   import { createEventDispatcher } from 'svelte';
+  import Check from 'lucide-svelte/icons/check';
   import CoverImage from '../../components/CoverImage.svelte';
   import { coverURL, gameCover, isDaemonURL } from '../../lib/api.js';
   import { COVER_STYLES } from '../../lib/libraryview.js';
@@ -54,7 +55,7 @@
   on:mouseleave={() => (revealed = false)}
 >
   {#if selecting}
-    <div class="tick" class:on={selected}>{selected ? '✓' : ''}</div>
+    <div class="tick" class:on={selected}>{#if selected}<Check size={14} strokeWidth={3} />{/if}</div>
   {/if}
   <div class="art" class:letterbox style="aspect-ratio: {COVER_STYLES[cover].aspect}">
     {#if backdrop}
@@ -159,7 +160,7 @@
     align-items: center;
     justify-content: center;
     padding: 12px;
-    background: linear-gradient(160deg, rgba(138, 99, 244, 0.2), rgba(138, 99, 244, 0.04));
+    background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.04));
   }
   .fallback span {
     font-weight: 700;

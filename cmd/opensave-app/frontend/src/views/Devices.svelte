@@ -4,6 +4,10 @@
   import InternetSync from './InternetSync.svelte';
   import ProtectionBadge from '../components/ProtectionBadge.svelte';
   import { protectionState } from '../lib/protection.js';
+  import DeviceIcon from '../components/DeviceIcon.svelte';
+  import Globe from 'lucide-svelte/icons/globe';
+  import Network from 'lucide-svelte/icons/network';
+  import Download from 'lucide-svelte/icons/download';
 
   export let params = {};
 
@@ -87,7 +91,7 @@
   <div class="list">
     {#each pairedList as peer (peer.id)}
       <div class="card peer">
-        <div class="peer-icon">{peer.deviceType === 'deck' ? '🎮' : '🖥️'}</div>
+        <DeviceIcon type={peer.deviceType} />
         <div class="peer-info">
           <div class="peer-name">
             {peer.name}
@@ -96,7 +100,7 @@
             </span>
           </div>
           <div class="peer-meta">
-            {peer.address === 'relay' ? '🌐 internet relay' : `🖧 ${peer.address}:${peer.port}`}
+            {peer.address === 'relay' ? 'internet relay' : `${peer.address}:${peer.port}`}
             · last synced {fmtTime(peer.lastSynced)}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
           </div>
@@ -113,7 +117,7 @@
         </div>
         {#if peer.hasNewerBuild && peer.status === 'online'}
           <button class="btn small primary" disabled={busy || !!$appUpdate} on:click={() => updateFromPeer(peer)}>
-            ⬆ Update from this device
+            <Download size={14} />Update from this device
           </button>
         {/if}
         <button class="btn small danger" disabled={busy} on:click={() => unpair(peer)}>Unpair</button>
@@ -124,9 +128,9 @@
 
 <h3 class="section">Add a device</h3>
 <div class="pill-tabs connect-tabs">
-  <button class:active={connectTab === 'lan'} on:click={() => (connectTab = 'lan')}>🖧 On this network</button>
+  <button class:active={connectTab === 'lan'} on:click={() => (connectTab = 'lan')}><Network size={15} />On this network</button>
   <button class:active={connectTab === 'wan'} on:click={() => (connectTab = 'wan')}>
-    🌐 Over the internet
+    <Globe size={15} />Over the internet
     {#if $wanRoom?.connected}<span class="tab-dot"></span>{/if}
   </button>
 </div>
@@ -142,7 +146,7 @@
     <div class="list">
       {#each lanDiscovered as d (d.id)}
         <div class="card peer">
-          <div class="peer-icon">{d.deviceType === 'deck' ? '🎮' : '🖥️'}</div>
+          <DeviceIcon type={d.deviceType} />
           <div class="peer-info">
             <div class="peer-name">{d.deviceName}</div>
             <div class="peer-meta">{d.address}:{d.port}</div>
@@ -189,7 +193,7 @@
     height: 7px;
     border-radius: 50%;
     background: var(--success);
-    box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+    box-shadow: 0 0 6px rgba(var(--success-rgb), 0.7);
   }
   .lan-intro {
     margin-bottom: 4px;
@@ -204,9 +208,6 @@
     align-items: center;
     gap: 14px;
     padding: 14px 16px;
-  }
-  .peer-icon {
-    font-size: 1.3rem;
   }
   .peer-info {
     flex: 1;
@@ -231,7 +232,7 @@
     padding: 0;
     font: inherit;
     font-size: 0.78rem;
-    color: var(--accent, #3b6fd4);
+    color: var(--accent);
     text-decoration: underline;
     cursor: pointer;
   }

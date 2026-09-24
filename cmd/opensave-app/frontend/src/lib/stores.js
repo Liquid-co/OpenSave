@@ -4,6 +4,10 @@ import { writable, derived, get } from 'svelte/store';
 export const view = writable({ name: 'home', params: {} });
 export const settings = writable(null);
 export const games = writable({});
+/** True once the daemon has sent its first full state. Until then an empty
+ *  game list means "not here yet", not "no games" — without this, Home showed
+ *  its first-run welcome for a moment on every launch. */
+export const stateLoaded = writable(false);
 export const peers = writable({});
 export const discoveredPeers = writable([]);
 export const pairingRequests = writable([]);
@@ -121,6 +125,7 @@ export function applyMessage(msg) {
       logEntries.set(data.logHistory ?? []);
       cloudOffers.set(data.cloudOffers ?? []);
       newGames.set(data.newGames ?? []);
+      stateLoaded.set(true);
       break;
     case 'new-games':
       newGames.set(data ?? []);

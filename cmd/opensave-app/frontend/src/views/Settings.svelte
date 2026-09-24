@@ -5,6 +5,31 @@
   import qrcode from 'qrcode-generator';
   import { DISCORD_URL, DONATE_URL } from '../lib/links.js';
   import LibraryViewOptions from './home/LibraryViewOptions.svelte';
+  import Skeleton from '../components/ui/Skeleton.svelte';
+  import MoreInfo from '../components/ui/MoreInfo.svelte';
+  import Monitor from 'lucide-svelte/icons/monitor';
+  import LayoutGrid from 'lucide-svelte/icons/layout-grid';
+  import Rocket from 'lucide-svelte/icons/rocket';
+  import Download from 'lucide-svelte/icons/download';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import Globe from 'lucide-svelte/icons/globe';
+  import RadioTower from 'lucide-svelte/icons/radio-tower';
+  import Cloud from 'lucide-svelte/icons/cloud';
+  import HardDrive from 'lucide-svelte/icons/hard-drive';
+  import Timer from 'lucide-svelte/icons/timer';
+  import History from 'lucide-svelte/icons/history';
+  import BrushCleaning from 'lucide-svelte/icons/brush-cleaning';
+  import ScanSearch from 'lucide-svelte/icons/scan-search';
+  import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
+  import Network from 'lucide-svelte/icons/network';
+  import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
+  import Heart from 'lucide-svelte/icons/heart';
+  import ArrowUpRight from 'lucide-svelte/icons/arrow-up-right';
+  import X from 'lucide-svelte/icons/x';
+  import Plus from 'lucide-svelte/icons/plus';
+  import Wrench from 'lucide-svelte/icons/wrench';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
+  import ArrowRight from 'lucide-svelte/icons/arrow-right';
 
   // QR of the same URL, generated locally so paying from a phone (where
   // Apple/Google Pay is a single tap) needs no typing. Built once — the URL
@@ -186,16 +211,16 @@
 </div>
 
 {#if !draft}
-  <p class="quiet">Loading…</p>
+  <Skeleton kind="cards" count={3} />
 {:else}
   <div class="pill-tabs" style="margin-bottom: 18px;">
     <button class:active={tab === 'general'} on:click={() => (tab = 'general')}>General</button>
     <button class:active={tab === 'sync'} on:click={() => (tab = 'sync')}>Sync</button>
     <button class:active={tab === 'storage'} on:click={() => (tab = 'storage')}>Storage</button>
     <button class:active={tab === 'advanced'} on:click={() => (tab = 'advanced')}>Advanced</button>
-    <button class="support-tab" class:active={tab === 'support'} on:click={() => (tab = 'support')}>💜 Support</button>
+    <button class="support-tab" class:active={tab === 'support'} on:click={() => (tab = 'support')}><Heart size={14} />Support</button>
     <!-- Not a tab: it leaves the app. Shaped like its neighbour so the pair
-         reads as one group, marked with ↗ so nobody expects a panel. -->
+         reads as one group, marked with an outward arrow so nobody expects a panel. -->
     <button class="discord-tab" on:click={() => native.openExternal(DISCORD_URL)} title="Open the OpenSave Discord in your browser">
       <span class="discord-glyph" aria-hidden="true">
         <svg viewBox="0 0 24 18" width="17" height="13" fill="currentColor">
@@ -203,13 +228,13 @@
         </svg>
       </span>
       Discord
-      <span class="ext" aria-hidden="true">↗</span>
+      <span class="ext" aria-hidden="true"><ArrowUpRight size={13} /></span>
     </button>
   </div>
 
   {#if tab === 'general'}
     <div class="card">
-      <h3 class="section-title">🖥️ Device identity</h3>
+      <h3 class="section-title with-icon"><Monitor size={17} />Device identity</h3>
       <div class="field">
         <label for="s-name">Device name — how other devices see you</label>
         <input id="s-name" bind:value={draft.deviceName} />
@@ -235,13 +260,13 @@
          changes the same thing. Not part of this page's Save: see
          lib/libraryview.js for why. -->
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🎮 Library</h3>
+      <h3 class="section-title with-icon"><LayoutGrid size={17} />Library</h3>
       <p class="hint library-hint">How your games are laid out on Home. Changes apply straight away.</p>
       <LibraryViewOptions />
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🚀 Startup</h3>
+      <h3 class="section-title with-icon"><Rocket size={17} />Startup</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.startOnBoot} />
         Start OpenSave when the computer starts
@@ -252,7 +277,7 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🧪 Updates</h3>
+      <h3 class="section-title with-icon"><Download size={17} />Updates</h3>
       <label class="check">
         <input
           type="checkbox"
@@ -276,7 +301,7 @@
 
   {:else if tab === 'sync'}
     <div class="card">
-      <h3 class="section-title">🔄 Sync behavior</h3>
+      <h3 class="section-title with-icon"><RefreshCw size={17} />Sync behavior</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.autoSyncOnTrack} />
         Sync a game immediately when it's first tracked
@@ -293,7 +318,14 @@
         <input type="checkbox" bind:checked={draft.matchByAppId} />
         Match saves across PCs by Steam App ID
       </label>
-      <span class="hint" style="margin-top: 6px;">Links the same game across devices even when it was tracked under different names or drives (e.g. a Steam copy on one PC, a standalone copy on another). Leave this off if you deliberately keep two separate copies of the same game that shouldn't merge. You can always link games by hand from a game's page.</span>
+      <span class="hint" style="margin-top: 6px;">
+        Links the same game across devices even when it was tracked under different names or drives.
+        <MoreInfo>
+          For example a Steam copy on one PC and a standalone copy on another. Leave this off if you
+          deliberately keep two separate copies of the same game that shouldn't merge. You can always
+          link games by hand from a game's page.
+        </MoreInfo>
+      </span>
         <div class="field" style="margin-top: 18px;">
           <label for="s-unknown-game">When another device syncs a game this one doesn't have</label>
           <select id="s-unknown-game" bind:value={draft.unknownGameFromPeer}>
@@ -302,10 +334,12 @@
           </select>
           <span class="hint">
             Tracking automatically works out a folder from where the game lives on the other
-            device, which is why OpenSave usually needs no setup. Choose <em>Ask me</em> if your
-            saves are somewhere that guess would get wrong — a second drive, a folder you moved,
-            or a game that keeps saves in a folder named after your account. Games waiting for a
-            folder appear on the Games page.
+            device, which is why OpenSave usually needs no setup.
+            <MoreInfo>
+              Choose <em>Ask me</em> if your saves are somewhere that guess would get wrong — a
+              second drive, a folder you moved, or a game that keeps saves in a folder named after
+              your account. Games waiting for a folder appear on the Home page.
+            </MoreInfo>
           </span>
         </div>
       <div class="field" style="margin-top: 14px;">
@@ -323,7 +357,7 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🌐 Internet relay</h3>
+      <h3 class="section-title with-icon"><Globe size={17} />Internet relay</h3>
       <div class="field">
         <label for="s-relay-url">WebSocket relay URL</label>
         <input id="s-relay-url" bind:value={draft.relayUrl} placeholder="wss://relay.opensave.org" />
@@ -353,7 +387,7 @@
         </button>
         {#if relayInfoShown && relayInfo}
           <div class="share-banner">
-            <div class="share-title">📡 Share these with your friend</div>
+            <div class="share-title with-icon"><RadioTower size={15} />Share these with your friend</div>
             <div class="share-row"><span>LAN IPs:</span> {relayInfo.lanIps?.join(', ') || '—'}</div>
             <div class="share-row"><span>Public IP:</span> {relayInfo.publicIp || 'unavailable'}</div>
             <div class="share-row"><span>Relay port:</span> {relayInfo.relayPort}</div>
@@ -364,7 +398,7 @@
 
     <div class="card moved" style="margin-top: 14px;">
       <div>
-        <h3 class="section-title">☁️ Cloud backup</h3>
+        <h3 class="section-title with-icon"><Cloud size={17} />Cloud backup</h3>
         <p class="hint">
           Where backups go, whether every snapshot is sent there, and whether newer saves are
           brought from your other devices are all set on the Cloud Backup page.
@@ -374,7 +408,7 @@
     </div>
   {:else if tab === 'storage'}
     <div class="card">
-      <h3 class="section-title">🗄️ Snapshot storage</h3>
+      <h3 class="section-title with-icon"><HardDrive size={17} />Snapshot storage</h3>
       <div class="field">
         <label for="s-backups">Snapshots folder</label>
         <div class="path-row">
@@ -394,7 +428,7 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🧹 Retention</h3>
+      <h3 class="section-title with-icon"><Timer size={17} />Retention</h3>
       <label class="check">
         <input type="checkbox" bind:checked={draft.autoDeleteBackups} />
         Auto-delete old automatic snapshots
@@ -420,7 +454,7 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">📸 Snapshot history</h3>
+      <h3 class="section-title with-icon"><History size={17} />Snapshot history</h3>
       <div class="field">
         <label for="s-max-snaps">Automatic snapshots to keep per game</label>
         <input id="s-max-snaps" type="number" min="0" style="max-width: 120px;" bind:value={draft.defaultMaxSnapshots} />
@@ -441,7 +475,7 @@
       <div class="field" style="margin-bottom: 0;">
         <div>
           <button class="btn small" disabled={pruning} on:click={cleanUpSnapshots}>
-            {pruning ? 'Cleaning up…' : '🧹 Clean up now'}
+            <BrushCleaning size={14} />{pruning ? 'Cleaning up…' : 'Clean up now'}
           </button>
         </div>
         <span class="hint">
@@ -452,17 +486,17 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🔎 Game scanner</h3>
+      <h3 class="section-title with-icon"><ScanSearch size={17} />Game scanner</h3>
       <div class="field" style="margin-bottom: 0;">
         <label for="s-scan-paths">Extra folders to auto-scan</label>
         <span class="hint">Auto-scan already checks Steam and common emulators — add custom libraries here.</span>
         {#each draft.customScanPaths ?? [] as p, i}
           <div class="rule-row">
             <span class="rule-path" title={p}>{p}</span>
-            <button class="btn small danger" on:click={() => removeScanPath(i)}>✕</button>
+            <button class="btn small ghost icon" title="Remove" aria-label="Remove" on:click={() => removeScanPath(i)}><X size={15} /></button>
           </div>
         {/each}
-        <button id="s-scan-paths" class="btn small" on:click={addScanPath}>+ Add folder</button>
+        <button id="s-scan-paths" class="btn small" on:click={addScanPath}><Plus size={14} />Add folder</button>
       </div>
 
       <div class="field" style="margin: 18px 0 0;">
@@ -471,15 +505,15 @@
         {#each draft.excludePaths ?? [] as p, i}
           <div class="rule-row">
             <span class="rule-path" title={p}>{p}</span>
-            <button class="btn small danger" on:click={() => removeExcludePath(i)}>✕</button>
+            <button class="btn small ghost icon" title="Remove" aria-label="Remove" on:click={() => removeExcludePath(i)}><X size={15} /></button>
           </div>
         {/each}
-        <button id="s-exclude-paths" class="btn small" on:click={addExcludePath}>+ Exclude folder</button>
+        <button id="s-exclude-paths" class="btn small" on:click={addExcludePath}><Plus size={14} />Exclude folder</button>
       </div>
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🧹 Reset tracking</h3>
+      <h3 class="section-title with-icon"><RotateCcw size={17} />Reset tracking</h3>
       <div class="field" style="margin-bottom: 0;">
         <span class="hint">Untrack every game at once, then re-run Auto-scan to add them back from the correct locations — useful after moving games between launchers or drives. This only clears the tracking list; your save snapshots on disk are kept.</span>
         <button
@@ -494,7 +528,7 @@
     </div>
   {:else if tab === 'advanced'}
     <div class="card">
-      <h3 class="section-title">⚙️ Network</h3>
+      <h3 class="section-title with-icon"><Network size={17} />Network</h3>
       <div class="field" style="margin-bottom: 0;">
         <label for="s-port">Daemon port</label>
         <input id="s-port" type="number" bind:value={draft.port} />
@@ -503,7 +537,7 @@
     </div>
 
     <div class="card" style="margin-top: 14px;">
-      <h3 class="section-title">🔀 Cross-platform path translation</h3>
+      <h3 class="section-title with-icon"><ArrowLeftRight size={17} />Cross-platform path translation</h3>
       <div class="field" style="margin-bottom: 0;">
         <span class="hint">
           Rewrites a peer's save paths to local conventions, e.g. "C:\Users\me\Saves" → "/home/deck/saves".
@@ -511,18 +545,18 @@
         {#each draft.pathTranslations ?? [] as rule, i}
           <div class="rule-row">
             <input placeholder="From pattern" bind:value={rule.fromPattern} />
-            <span class="arrow">→</span>
+            <span class="arrow"><ArrowRight size={15} /></span>
             <input placeholder="To pattern" bind:value={rule.toPattern} />
-            <button class="btn small danger" on:click={() => removeRule(i)}>✕</button>
+            <button class="btn small ghost icon" title="Remove" aria-label="Remove" on:click={() => removeRule(i)}><X size={15} /></button>
           </div>
         {/each}
-        <button id="s-rules" class="btn small" on:click={addRule}>+ Add rule</button>
+        <button id="s-rules" class="btn small" on:click={addRule}><Plus size={14} />Add rule</button>
       </div>
     </div>
   {:else if tab === 'support'}
     <div class="card support-card">
       <div class="support-hero">
-        <div class="support-badge">💜</div>
+        <div class="support-badge"><Heart size={22} /></div>
         <div class="support-hero-text">
           <h3 class="support-title">Support OpenSave</h3>
           <p class="support-lede">
@@ -539,14 +573,14 @@
             save folders between machines, you're welcome to chip in.
           </p>
           <ul class="support-points">
-            <li><span class="pt-icon">🌐</span> Keeps the public relay online</li>
-            <li><span class="pt-icon">🎮</span> More games and emulators detected</li>
-            <li><span class="pt-icon">🛠️</span> Time for fixes and new features</li>
+            <li><span class="pt-icon"><Globe size={15} /></span> Keeps the public relay online</li>
+            <li><span class="pt-icon"><Gamepad2 size={15} /></span> More games and emulators detected</li>
+            <li><span class="pt-icon"><Wrench size={15} /></span> Time for fixes and new features</li>
           </ul>
 
           <div class="support-actions">
             <button class="btn primary support-cta" on:click={openDonatePage}>
-              {donateOpened ? 'Open again ↗' : 'Open donation page ↗'}
+              {donateOpened ? 'Open again' : 'Open donation page'}<ArrowUpRight size={15} />
             </button>
             {#if donateOpened}
               <span class="support-opened">Opened in your browser — thank you.</span>
@@ -628,23 +662,25 @@
   }
   /* Discord's own blurple, so it is recognisable at a glance, but kept at
      the same weight as the tabs beside it rather than shouting over them. */
-  .discord-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    color: #b9bbfa;
-    border-color: rgba(88, 101, 242, 0.4);
+  .pill-tabs .discord-tab {
+    color: #9ba1f7;
   }
-  .discord-tab:hover {
+  .pill-tabs .discord-tab:hover {
+    color: #fff;
+    background: rgba(88, 101, 242, 0.35);
+  }
+  :global(:root[data-theme='light']) .pill-tabs .discord-tab {
+    color: #4752c4;
+  }
+  :global(:root[data-theme='light']) .pill-tabs .discord-tab:hover {
     color: #fff;
     background: #5865f2;
-    border-color: #5865f2;
   }
   .discord-glyph {
     display: inline-flex;
   }
   .ext {
-    font-size: 0.72rem;
+    display: inline-flex;
     opacity: 0.7;
   }
   /* This is the one tab that isn't a settings form, so it carries a little
@@ -667,10 +703,10 @@
     height: 46px;
     display: grid;
     place-items: center;
-    font-size: 1.45rem;
+    color: var(--accent);
     border-radius: 50%;
     background: var(--accent-soft);
-    border: 1px solid rgba(138, 99, 244, 0.35);
+    border: 1px solid rgba(var(--accent-rgb), 0.35);
   }
   .support-hero-text {
     min-width: 0;
@@ -715,7 +751,7 @@
     height: 28px;
     display: grid;
     place-items: center;
-    font-size: 0.85rem;
+    color: var(--text-dim);
     border-radius: 8px;
     background: var(--bg-hover);
     border: 1px solid var(--border);
@@ -825,8 +861,8 @@
   }
   .share-banner {
     margin-top: 12px;
-    background: rgba(138, 99, 244, 0.06);
-    border: 1px solid rgba(138, 99, 244, 0.28);
+    background: rgba(var(--accent-rgb), 0.06);
+    border: 1px solid rgba(var(--accent-rgb), 0.28);
     border-radius: var(--radius);
     padding: 12px 14px;
     font-size: 0.82rem;

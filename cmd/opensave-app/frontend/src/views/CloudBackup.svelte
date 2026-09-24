@@ -11,6 +11,8 @@
   import CloudBrowser from './cloud/CloudBrowser.svelte';
   import ExportDialog from './cloud/ExportDialog.svelte';
   import ImportDialog from './cloud/ImportDialog.svelte';
+  import Skeleton from '../components/ui/Skeleton.svelte';
+  import Cloud from 'lucide-svelte/icons/cloud';
 
   let config = null;
   // Kept in the general settings rather than the cloud config, but it is a
@@ -71,7 +73,7 @@
 </div>
 
 {#if !config}
-  <p class="quiet">Loading…</p>
+  <Skeleton kind="cards" count={2} />
 {:else}
   <div class="card">
     <ProviderPicker bind:config {connected} />
@@ -134,7 +136,7 @@
         Every game with snapshots in the cloud, as cover-art tiles — upload, restore, or delete per game.
       </p>
     </div>
-    <button class="btn primary" on:click={() => (browserOpen = true)}>☁️ Browse cloud</button>
+    <button class="btn primary" on:click={() => (browserOpen = true)}><Cloud size={16} />Browse cloud</button>
   </div>
 
   <h3 class="section">Backup file (.sscb)</h3>

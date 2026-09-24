@@ -6,6 +6,7 @@
   import { toast, backupProgressEvent } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
+  import PackageOpen from 'lucide-svelte/icons/package-open';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import ProgressBar from '../../components/ui/ProgressBar.svelte';
 
@@ -49,7 +50,7 @@
 
 <!-- Two choices and a footer don't need the full browser-modal height —
      sized to content so the dialog doesn't look hollow. -->
-<Modal title="📥 Import backup" onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
+<Modal title="Import backup" icon={PackageOpen} onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
   <svelte:fragment slot="sub"><code>{source}</code></svelte:fragment>
 
   <div class="modes">
@@ -123,7 +124,7 @@
     background: var(--bg-hover, rgba(128, 128, 128, 0.06));
   }
   .mode.danger-mode.selected {
-    border-color: var(--danger, #e5484d);
+    border-color: var(--danger, var(--danger));
   }
   .mode-title {
     font-weight: 600;

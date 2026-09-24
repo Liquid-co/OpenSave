@@ -7,6 +7,8 @@
   // how "I added the app ID but it doesn't do anything" gets asked.
   import { onDestroy } from 'svelte';
   import { api } from '../../lib/api.js';
+  import MoreInfo from '../../components/ui/MoreInfo.svelte';
+  import CircleCheck from 'lucide-svelte/icons/circle-check';
 
   export let value = '';
   /** Set by the form when Save refuses the value. */
@@ -56,17 +58,19 @@
   <label for="c-appid">Steam App ID</label>
   <input id="c-appid" placeholder="e.g. 1091500" bind:value />
   <span class="hint">
-    Launches via Steam, fetches cover art, and — with “Match games by Steam App ID”
-    turned on in Settings — lets this game sync with a copy tracked under a different
-    name on another device. Filled in automatically when it can be worked out; a save
-    under <code>AppData</code> often has nothing to work it out from, so you can set it
-    here. It's the number in the game's Steam store URL.
+    The number in the game's Steam store URL. Used to launch it and fetch its cover art.
+    <MoreInfo>
+      With “Match games by Steam App ID” turned on in Settings, it also lets this game sync
+      with a copy tracked under a different name on another device. Filled in automatically
+      when it can be worked out; a save under <code>AppData</code> often has nothing to work
+      it out from, so you can set it here.
+    </MoreInfo>
   </span>
   {#if error}<span class="hint hint-error">{error}</span>{/if}
   {#if check?.state === 'checking'}
     <span class="hint appid-check">Checking with Steam…</span>
   {:else if check?.state === 'found'}
-    <span class="hint appid-check ok">✓ Steam: <strong>{check.name}</strong></span>
+    <span class="hint appid-check ok"><CircleCheck size={13} class="inline-icon" />Steam: <strong>{check.name}</strong></span>
   {:else if check?.state === 'unknown'}
     <span class="hint appid-check warn">
       No Steam game has this App ID. It's the number in the store page address —
@@ -90,10 +94,10 @@
     margin-top: 4px;
   }
   .appid-check.ok {
-    color: var(--ok-fg, #1a7f4b);
+    color: var(--success);
   }
   .appid-check.warn {
-    color: var(--warn-fg, #8a6100);
+    color: var(--warn);
   }
   .hint-error {
     color: var(--danger);

@@ -5,6 +5,11 @@
   import { peers, navigate, toast, syncActivity } from '../../lib/stores.js';
   import { api, native, gameCover } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
+  import ArrowLeft from 'lucide-svelte/icons/arrow-left';
+  import Play from 'lucide-svelte/icons/play';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import FolderOpen from 'lucide-svelte/icons/folder-open';
+  import Pencil from 'lucide-svelte/icons/pencil';
 
   export let game;
   /** The page's shared runner (see lib/runner.js). */
@@ -45,7 +50,7 @@
 </script>
 
 <div class="head">
-  <button class="btn icon back" on:click={() => navigate('home')} title="Back">←</button>
+  <button class="btn icon back" on:click={() => navigate('home')} title="Back" aria-label="Back"><ArrowLeft size={18} /></button>
   {#if gameCover(game)}
     <img
       class="head-cover"
@@ -77,9 +82,9 @@
   </div>
   <div class="head-actions">
     {#if game.appId || game.exePath}
-      <button class="btn" disabled={$busy} on:click={launchGame}>▶ Launch</button>
+      <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />Launch</button>
     {/if}
-    <button class="btn primary" disabled={$busy} on:click={syncNow}>⟳ Sync now</button>
+    <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />Sync now</button>
   </div>
 </div>
 
@@ -92,9 +97,9 @@
   {:else}
     <span class="path" title={game.savePath}>{game.savePath}</span>
     <button class="btn small" on:click={openSaveFolder} title="Show this folder in your file manager">
-      📂 Open folder
+      <FolderOpen size={14} />Open folder
     </button>
-    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}>Edit</button>
+    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />Edit</button>
   {/if}
 </div>
 

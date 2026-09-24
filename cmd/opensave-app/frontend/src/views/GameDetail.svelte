@@ -7,6 +7,11 @@
   import CloudTab from './game/CloudTab.svelte';
   import ConfigTab from './game/ConfigTab.svelte';
   import ManageTab from './game/ManageTab.svelte';
+  import History from 'lucide-svelte/icons/history';
+  import GitBranch from 'lucide-svelte/icons/git-branch';
+  import Cloud from 'lucide-svelte/icons/cloud';
+  import SlidersHorizontal from 'lucide-svelte/icons/sliders-horizontal';
+  import Wrench from 'lucide-svelte/icons/wrench';
 
   export let params = {};
 
@@ -16,11 +21,11 @@
   const runner = createRunner();
 
   const tabs = [
-    { id: 'snapshots', label: 'Snapshots', component: SnapshotsTab },
-    { id: 'branches', label: 'Branches', component: BranchesTab },
-    { id: 'cloud', label: '☁️ Cloud', component: CloudTab },
-    { id: 'config', label: 'Configuration', component: ConfigTab },
-    { id: 'danger', label: 'Manage', component: ManageTab }
+    { id: 'snapshots', label: 'Snapshots', icon: History, component: SnapshotsTab },
+    { id: 'branches', label: 'Branches', icon: GitBranch, component: BranchesTab },
+    { id: 'cloud', label: 'Cloud', icon: Cloud, component: CloudTab },
+    { id: 'config', label: 'Configuration', icon: SlidersHorizontal, component: ConfigTab },
+    { id: 'danger', label: 'Manage', icon: Wrench, component: ManageTab }
   ];
   let tab = 'snapshots';
 
@@ -50,7 +55,7 @@
 
     <div class="pill-tabs tabs">
       {#each tabs as t (t.id)}
-        <button class:active={tab === t.id} on:click={() => (tab = t.id)}>{t.label}</button>
+        <button class:active={tab === t.id} on:click={() => (tab = t.id)}><svelte:component this={t.icon} size={15} />{t.label}</button>
       {/each}
     </div>
 

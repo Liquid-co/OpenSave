@@ -7,6 +7,7 @@
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
   import { timeAgo } from '../../lib/timeago.js';
+  import Camera from 'lucide-svelte/icons/camera';
 
   export let game;
   export let runner;
@@ -67,7 +68,7 @@
 
 <div class="card snap-new">
   <input placeholder="Snapshot comment (optional)" bind:value={comment} on:keydown={(e) => e.key === 'Enter' && takeSnapshot()} />
-  <button class="btn primary" disabled={$busy} on:click={takeSnapshot}>📸 Snapshot now</button>
+  <button class="btn primary" disabled={$busy} on:click={takeSnapshot}><Camera size={16} />Snapshot now</button>
 </div>
 
 {#if browsing}
@@ -227,7 +228,7 @@
     white-space: nowrap;
   }
   .kind-safety .tag.kind {
-    border-color: rgba(251, 191, 36, 0.45);
+    border-color: rgba(var(--warn-rgb), 0.45);
     color: var(--warn);
   }
   .kind-manual .tag.kind {
@@ -235,7 +236,7 @@
     color: var(--accent);
   }
   .tag.latest {
-    border-color: rgba(74, 222, 128, 0.45);
+    border-color: rgba(var(--success-rgb), 0.45);
     color: var(--success);
   }
   .actions {
@@ -250,9 +251,9 @@
     color: var(--text-faint);
   }
   .ghost-danger:hover:not(:disabled) {
-    background: rgba(217, 87, 87, 0.16);
-    border-color: rgba(217, 87, 87, 0.4);
-    color: #f1a3a3;
+    background: rgba(var(--danger-rgb), 0.16);
+    border-color: rgba(var(--danger-rgb), 0.4);
+    color: var(--danger-text);
   }
   .browse {
     margin-bottom: 18px;

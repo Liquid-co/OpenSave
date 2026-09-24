@@ -44,16 +44,22 @@ export function providerStatus(id, connected, cfg) {
 }
 
 /** Tracked games and games only in the cloud, one tile each, so the cloud
- *  browser can both show what is up there and upload what isn't yet. */
-export function cloudTiles(cloudGames, localGames) {
+ *  browser can both show what is up there and upload what isn't yet.
+ *
+ *  `cover` picks each tile's art from the tracked game, or from just a name
+ *  for a game only the cloud knows. The stored coverUrl is not art to show:
+ *  it is empty for a game with no App ID and otherwise points at Steam's CDN,
+ *  which the app's webview cannot reliably reach — so the tiles came up as
+ *  bare names while the library, asking the daemon, had every cover. */
+export function cloudTiles(cloudGames, localGames, cover = () => '') {
   const inCloud = new Set((cloudGames ?? []).map((g) => g.gameId));
   return [
     ...(cloudGames ?? []).map((g) => {
       const local = localGames.find((x) => x.id === g.gameId);
-      return { id: g.gameId, name: g.gameName, coverUrl: local?.coverUrl, tracked: !!local, cloud: g };
+      return { id: g.gameId, name: g.gameName, coverUrl: cover(local ?? { name: g.gameName }), tracked: !!local, cloud: g };
     }),
     ...localGames
       .filter((lg) => !inCloud.has(lg.id))
-      .map((lg) => ({ id: lg.id, name: lg.name, coverUrl: lg.coverUrl, tracked: true, cloud: null }))
+      .map((lg) => ({ id: lg.id, name: lg.name, coverUrl: cover(lg), tracked: true, cloud: null }))
   ];
 }

@@ -78,11 +78,12 @@ export function coverURL(appId, portrait = false, name = '') {
 }
 
 /** Best cover for a tracked game: a user's custom URL wins; otherwise the
- *  proxied art for its App ID, or for its name when it has no App ID. */
-export function gameCover(game) {
+ *  proxied art for its App ID, or for its name when it has no App ID.
+ *  `portrait` asks for box art rather than the wide banner. */
+export function gameCover(game, portrait = false) {
   const custom = game?.coverUrl;
   if (custom && !custom.includes('steamstatic.com')) return custom;
-  return coverURL(game?.appId, false, game?.name ?? '');
+  return coverURL(game?.appId, portrait, game?.name ?? '');
 }
 
 /** Whether a URL points at this app's own daemon — which is what decides

@@ -4,6 +4,7 @@
   import { askConfirm } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
   import NewBranchDialog from './NewBranchDialog.svelte';
+  import Plus from 'lucide-svelte/icons/plus';
 
   export let game;
   export let runner;
@@ -43,7 +44,7 @@
       bind:value={newBranch}
       on:keydown={(e) => e.key === 'Enter' && openDialog()}
     />
-    <button class="btn primary" disabled={!newBranch || $busy} on:click={openDialog}>+ Create branch</button>
+    <button class="btn primary" disabled={!newBranch || $busy} on:click={openDialog}><Plus size={15} />Create branch</button>
   </div>
   <span class="hint">
     A branch is a separate line of saves — a second playthrough, or a run you want to keep

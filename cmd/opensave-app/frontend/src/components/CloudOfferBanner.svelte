@@ -12,6 +12,7 @@
   import { cloudOffers, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { timeAgo } from '../lib/timeago.js';
+  import CloudDownload from 'lucide-svelte/icons/cloud-download';
 
   let busy = '';
 
@@ -55,7 +56,7 @@
   <div class="offer-wrap" transition:fly={{ y: -90, duration: 320 }}>
     {#each $cloudOffers as offer (key(offer))}
       <div class="offer-card" class:diverged={offer.diverged} transition:fly={{ y: -20, duration: 200 }}>
-        <div class="offer-icon">☁️</div>
+        <div class="offer-icon"><CloudDownload size={19} /></div>
         <div class="offer-body">
           <div class="offer-title">
             <strong>{offer.deviceName}</strong> has a newer save for <strong>{offer.gameName}</strong>
@@ -106,8 +107,14 @@
     border-color: var(--warn);
   }
   .offer-icon {
-    font-size: 1.4rem;
     flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .offer-body {
     flex: 1;

@@ -118,7 +118,7 @@
     font-size: 0.84rem;
   }
   .row.unmapped {
-    border-color: rgba(251, 191, 36, 0.4);
+    border-color: rgba(var(--warn-rgb), 0.4);
   }
   .name {
     flex: none;

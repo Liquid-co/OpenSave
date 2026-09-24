@@ -3,6 +3,7 @@
   // while you look at the others.
   import { providers, providerStatus } from '../../lib/cloudproviders.js';
   import ProviderIcon from './ProviderIcon.svelte';
+  import Check from 'lucide-svelte/icons/check';
 
   export let config;
   export let connected = null;
@@ -13,7 +14,7 @@
   {#each providers as p}
     <button class="card-btn" class:active={config.provider === p.id} on:click={() => (config.provider = p.id)}>
       {#if p.id === connected}
-        <span class="tick" title="Connected">✓</span>
+        <span class="tick" title="Connected"><Check size={13} strokeWidth={3.2} /></span>
       {/if}
       <div class="icon"><ProviderIcon provider={p} /></div>
       <div class="name">{p.label}</div>
@@ -97,9 +98,7 @@
     height: 20px;
     border-radius: 50%;
     background: var(--success);
-    color: #0c0c0d;
-    font-size: 0.72rem;
-    font-weight: 800;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;

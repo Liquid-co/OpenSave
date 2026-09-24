@@ -11,6 +11,7 @@
   import { api } from '../../lib/api.js';
   import { addExclusion, addNegation, removeDirectExclusion } from '../../lib/ignorerules.js';
   import Spinner from '../../components/ui/Spinner.svelte';
+  import Chevron from '../../components/ui/Chevron.svelte';
 
   export let game;
   /** The rule text being edited; saved with the rest of the form. */
@@ -107,7 +108,7 @@
 
   <div class="picker-head">
     <button class="btn small" on:click={togglePicker}>
-      {showFiles ? '▾' : '▸'} Pick from your save folder
+      <Chevron open={showFiles} /> Pick from your save folder
     </button>
     {#if showFiles && saveFiles}
       <span class="hint picker-count">
@@ -238,6 +239,6 @@
     color: var(--warn, var(--accent));
   }
   .err {
-    color: var(--danger, #e5484d);
+    color: var(--danger, var(--danger));
   }
 </style>

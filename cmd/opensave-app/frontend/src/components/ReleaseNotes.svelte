@@ -141,8 +141,8 @@
   }
   .kind.added {
     color: var(--accent);
-    background: rgba(138, 99, 244, 0.12);
-    border-color: rgba(138, 99, 244, 0.3);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.3);
   }
   .kind.changed {
     color: #e0c07e;

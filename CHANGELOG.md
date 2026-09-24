@@ -47,6 +47,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Changed
 
+- **A cleaner look.** The emoji used as icons are replaced by one set of line
+  icons, drawn in the app's colours rather than the system's; buttons are
+  filled rather than outlined, with the one that matters on each screen in
+  the accent colour; the selected tab is underlined instead of a bright
+  white pill; on/off settings are switches and ticks are square, so the two
+  no longer look alike. Faint text — dates, hints, labels — is brighter, and
+  the longest hints show their first sentence with the rest a click away.
+  While the app is still receiving your library it shows the shape of the
+  page rather than the word Loading.
+
 - **Home says where your saves stand.** The three counters at the top —
   games tracked, devices online, syncs running — read 0 most of the time
   and never said the thing you open the app to check. They are now one
@@ -101,6 +111,20 @@ All notable changes to OpenSave are documented here. This project adheres to
   fetch of that cover after it failed, retries included. Covers are now
   marked so the two never share a copy, and a retry skips the cached one,
   which clears any left from before.
+
+- **The cloud browser shows covers.** Its tiles used the Steam address
+  stored for each game, which the app cannot reliably load and which is
+  empty for a game with no App ID, so most tiles showed only a name while
+  the library beside them had every cover. They now get their art the way
+  the library does.
+
+- Home showed its first-run welcome for a moment on every launch, before
+  your library arrived.
+
+- The explanation under a switch in Settings was printed as large and as
+  bright as the setting itself. The encryption badges on the Devices page
+  and the Steam App ID check were drawn in colours meant for a light
+  background, and were hard to read on the dark one.
 
 - **Unpairing a device reaches it, even when it was off at the time.**
   Unpairing tells the other device once. If it was asleep, or the relay
