@@ -66,7 +66,7 @@
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
           <span class="main">
             <span class="name">{t.name}</span>
-            <span class="sub">{peerLabel(t)}{#if amountLabel(t)} · {amountLabel(t)}{/if}{#if speedLabel(t.speedBytesPerSec)} · {speedLabel(t.speedBytesPerSec)}{/if}</span>
+            <span class="sub">{peerLabel(t)}{#if amountLabel(t)}{' · '}{amountLabel(t)}{/if}{#if speedLabel(t.speedBytesPerSec)}{' · '}{speedLabel(t.speedBytesPerSec)}{/if}</span>
             <span class="bar"><span style="width: {Math.max(3, t.percentage ?? 0)}%"></span></span>
           </span>
           <span class="pct">{t.percentage ?? 0}%</span>
@@ -80,7 +80,7 @@
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
           <span class="main">
             <span class="name">{t.name}</span>
-            <span class="sub">{peerLabel(t)}{#if amountLabel(t)} · {amountLabel(t)}{/if}{#if t.error} · {t.error}{/if}</span>
+            <span class="sub">{peerLabel(t)}{#if amountLabel(t)}{' · '}{amountLabel(t)}{/if}{#if t.error}{' · '}{t.error}{/if}</span>
           </span>
           <span class="end">
             {#if t.state === 'error'}<span class="bad"><CircleX size={13} /></span>{:else}<span class="good"><CircleCheck size={13} /></span>{/if}

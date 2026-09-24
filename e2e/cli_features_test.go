@@ -425,6 +425,55 @@ func TestCLI_SnapshotAll(t *testing.T) {
 
 }
 
+// storage reports each game's share and what prune would free; prune then
+// frees it, and there is nothing left to clean up.
+func TestCLI_Storage(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+	dir := c.saveDir("roomy", map[string]string{"a.sav": strings.Repeat("save data ", 5000)})
+	c.mustRun("add", "Roomy", dir)
+	for i := 0; i < 3; i++ {
+		c.saveDir("roomy", map[string]string{"a.sav": strings.Repeat("more ", 4000+i)})
+		c.mustRun("snapshot", "roomy", "-m", "take", "one")
+	}
+	c.mustRun("game", "roomy", "set", "max-manual-snapshots", "1")
+
+	type report struct {
+		TotalBytes           int64 `json:"totalBytes"`
+		Snapshots            int   `json:"snapshots"`
+		Reclaimable          int64 `json:"reclaimable"`
+		ReclaimableSnapshots int   `json:"reclaimableSnapshots"`
+		Games                []struct {
+			GameID    string `json:"gameId"`
+			Bytes     int64  `json:"bytes"`
+			Snapshots int    `json:"snapshots"`
+		} `json:"games"`
+		Biggest []struct {
+			SnapshotID string `json:"snapshotId"`
+		} `json:"biggest"`
+	}
+	var r report
+	c.mustJSON(&r, "storage", "--json")
+	if len(r.Games) != 1 || r.Games[0].GameID != "roomy" || r.Games[0].Bytes != r.TotalBytes || r.TotalBytes <= 0 {
+		t.Fatalf("storage --json = %+v", r)
+	}
+	if r.ReclaimableSnapshots != 2 || r.Reclaimable <= 0 {
+		t.Errorf("reclaimable = %d in %d snapshot(s), want the 2 manual ones past a limit of 1", r.Reclaimable, r.ReclaimableSnapshots)
+	}
+	if out := c.mustRun("storage"); !strings.Contains(out, "Roomy") || !strings.Contains(out, "opensave prune") {
+		t.Errorf("storage said:\n%s", out)
+	}
+
+	c.mustRun("prune")
+	c.mustJSON(&r, "storage", "--json")
+	if r.Reclaimable != 0 || r.ReclaimableSnapshots != 0 {
+		t.Errorf("after prune, still reclaimable: %d in %d", r.Reclaimable, r.ReclaimableSnapshots)
+	}
+	if out := c.mustRun("storage"); !strings.Contains(out, "nothing to clean up") {
+		t.Errorf("after prune storage said:\n%s", out)
+	}
+}
+
 // pause and resume reach the running daemon, and status says it is paused.
 func TestCLI_PauseAndResume(t *testing.T) {
 	c := newCLI(t)

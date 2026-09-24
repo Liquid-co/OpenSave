@@ -154,6 +154,8 @@ func Run(args []string) int {
 		return withWatchReload(cmdRemove(d, rest))
 	case "snapshots":
 		return cmdSnapshots(d, rest)
+	case "storage":
+		return cmdStorage(d, rest)
 	case "export":
 		return cmdExport(d, rest)
 	case "exclude":

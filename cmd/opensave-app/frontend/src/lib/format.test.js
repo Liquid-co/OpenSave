@@ -8,6 +8,8 @@ describe('fmtSize', () => {
     expect(fmtSize(1048575)).toBe('1024.0 KB');
     expect(fmtSize(1048576)).toBe('1.0 MB');
     expect(fmtSize(5 * 1048576 + 104858)).toBe('5.1 MB');
+    expect(fmtSize(1073741823)).toBe('1024.0 MB');
+    expect(fmtSize(10215702528)).toBe('9.5 GB');
   });
 });
 

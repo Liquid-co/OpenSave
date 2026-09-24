@@ -36,6 +36,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **See where the space goes.** Settings → Storage → Space used: how much
+  each game's snapshots take, the biggest snapshots (deletable from there),
+  free space on the drive, and exactly what Clean up now would free — worked
+  out by the same rules the clean-up uses. `opensave storage` shows the
+  same. The button that used to be called Clean up now, under the default
+  limits, is now "Apply these limits to every game", which is what it did.
+
 - **A more useful tray menu.** Its first line says where things stand — a
   game waiting on a decision, a pause and how long it has left, what is
   syncing, or how many games are watched — and Recent activity shows the

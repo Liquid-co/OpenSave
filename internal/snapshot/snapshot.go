@@ -448,19 +448,7 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 		removed += r
 		freed += f
 
-		branches, bErr := m.Store.ListBranches(game.ID)
-		if bErr != nil {
-			continue
-		}
-		for _, branch := range branches {
-			if branch == game.ActiveBranch || !strings.HasPrefix(branch, "conflict-") {
-				continue
-			}
-			// A pinned snapshot keeps its whole branch: deleting the branch
-			// would take the pinned one with it.
-			if pinned, pErr := m.Store.BranchHasPinned(game.ID, branch); pErr != nil || pinned {
-				continue
-			}
+		for _, branch := range m.abandonedConflictBranches(game) {
 			r, f := m.DeleteBranch(game.ID, branch)
 			removed += r
 			freed += f
@@ -491,45 +479,122 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 // Returns the game ids that lost at least one snapshot, so a caller can tell
 // the dashboard which histories changed.
 func (m *Manager) PruneOlderThan(days int) (removed int, freed int64, touched []string) {
+	gameTouched := map[string]bool{}
+	for _, snap := range m.olderThan(days) {
+		if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
+			continue
+		}
+		if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
+			freed += info.Size()
+		}
+		os.Remove(snap.ZipPath)
+		removed++
+		if !gameTouched[snap.GameID] {
+			gameTouched[snap.GameID] = true
+			touched = append(touched, snap.GameID)
+		}
+	}
+	return removed, freed, touched
+}
+
+// olderThan is the age rule's choice, deleting nothing: every automatic,
+// unpinned snapshot past the age that is not the newest on its branch.
+func (m *Manager) olderThan(days int) []store.Snapshot {
 	if days <= 0 {
-		return 0, 0, nil
+		return nil
 	}
 	cutoff := m.now().Add(-time.Duration(days) * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")
 	games, err := m.Store.ListGames()
 	if err != nil {
-		return 0, 0, nil
+		return nil
 	}
+	var out []store.Snapshot
 	for _, game := range games {
 		branches, err := m.Store.ListBranches(game.ID)
 		if err != nil {
 			continue
 		}
-		gameTouched := false
 		for _, branch := range branches {
 			snaps, err := m.Store.ListSnapshots(game.ID, branch) // newest first
 			if err != nil || len(snaps) < 2 {
 				continue
 			}
 			for _, snap := range snaps[1:] { // [0] is the newest: always kept
-				if !snap.IsSystemAuto || snap.Pinned || snap.Timestamp >= cutoff {
-					continue
+				if snap.IsSystemAuto && !snap.Pinned && snap.Timestamp < cutoff {
+					out = append(out, snap)
 				}
-				if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
-					continue
-				}
-				if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
-					freed += info.Size()
-				}
-				os.Remove(snap.ZipPath)
-				removed++
-				gameTouched = true
 			}
 		}
-		if gameTouched {
-			touched = append(touched, game.ID)
+	}
+	return out
+}
+
+// abandonedConflictBranches are the branches clean-up deletes whole: left
+// over from a conflict, not the one in play, and holding nothing pinned — a
+// pinned snapshot keeps its whole branch, since deleting the branch would
+// take the pinned one with it.
+func (m *Manager) abandonedConflictBranches(game store.Game) []string {
+	branches, err := m.Store.ListBranches(game.ID)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, branch := range branches {
+		if branch == game.ActiveBranch || !strings.HasPrefix(branch, "conflict-") {
+			continue
+		}
+		if pinned, pErr := m.Store.BranchHasPinned(game.ID, branch); pErr != nil || pinned {
+			continue
+		}
+		out = append(out, branch)
+	}
+	return out
+}
+
+// PrunePlan lists, deleting nothing, every snapshot PruneAllGames would
+// delete now: past a game's limits, on an abandoned conflict branch, or past
+// the age rule when it is on. It is what "Clean up now" would free, shown
+// before anyone presses it — and it is chosen by the same functions the
+// clean-up uses, so the two cannot disagree.
+func (m *Manager) PrunePlan() ([]store.Snapshot, error) {
+	games, err := m.Store.ListGames()
+	if err != nil {
+		return nil, err
+	}
+	var out []store.Snapshot
+	seen := map[string]bool{}
+	add := func(s store.Snapshot) {
+		if !seen[s.ID] {
+			seen[s.ID] = true
+			out = append(out, s)
 		}
 	}
-	return removed, freed, touched
+	for _, game := range games {
+		if game.MaxSnapshots > 0 || game.MaxManualSnapshots > 0 {
+			branches, _ := m.Store.ListBranches(game.ID)
+			for _, branch := range branches {
+				beyond, err := m.Store.SnapshotsBeyondRetentionByKind(game.ID, branch, game.MaxSnapshots, game.MaxManualSnapshots)
+				if err != nil {
+					continue
+				}
+				for _, s := range beyond {
+					add(s)
+				}
+			}
+		}
+		for _, branch := range m.abandonedConflictBranches(game) {
+			snaps, _ := m.Store.ListSnapshots(game.ID, branch)
+			for _, s := range snaps {
+				add(s)
+			}
+		}
+	}
+	if settings, err := m.Store.GetSettings(); err == nil && settings.AutoDeleteBackups && settings.AutoDeleteDays > 0 {
+		for _, s := range m.olderThan(settings.AutoDeleteDays) {
+			add(s)
+		}
+	}
+	return out, nil
 }
 
 // SnapshotEdit is a change to a snapshot's pin or note; nil leaves it as it is.

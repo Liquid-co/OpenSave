@@ -62,6 +62,7 @@ var commandGroups = []commandGroup{
 		{"snapshot-unpin <id> <snapId>", "Let the limits apply to it again"},
 		{"snapshot-note <id> <snapId> [note]", "Write a note on a snapshot (none removes it)"},
 		{"prune [--apply-default]", "Apply retention limits now"},
+		{"storage", "Space per game, the biggest snapshots, what prune frees"},
 		{"files <gameId> <snapId> [path]", "List a snapshot's contents, or restore one file"},
 		{"export <gameId> <dir>", "Copy the current save out to a folder"},
 		{"backup export <file.sscb>", "Write a portable backup archive"},

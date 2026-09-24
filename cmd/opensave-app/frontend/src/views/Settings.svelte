@@ -9,6 +9,8 @@
   import MoreInfo from '../components/ui/MoreInfo.svelte';
   import AppearanceOptions from './settings/AppearanceOptions.svelte';
   import NotificationOptions from './settings/NotificationOptions.svelte';
+  import StorageUsage from './settings/StorageUsage.svelte';
+  import PieChart from 'lucide-svelte/icons/chart-pie';
   import Bell from 'lucide-svelte/icons/bell';
   import Palette from 'lucide-svelte/icons/palette';
   import Monitor from 'lucide-svelte/icons/monitor';
@@ -424,6 +426,11 @@
     </div>
   {:else if tab === 'storage'}
     <div class="card">
+      <h3 class="section-title with-icon"><PieChart size={17} />Space used</h3>
+      <StorageUsage />
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><HardDrive size={17} />Snapshot storage</h3>
       <div class="field">
         <label for="s-backups">Snapshots folder</label>
@@ -491,12 +498,12 @@
       <div class="field" style="margin-bottom: 0;">
         <div>
           <button class="btn small" disabled={pruning} on:click={cleanUpSnapshots}>
-            <BrushCleaning size={14} />{pruning ? 'Cleaning up…' : 'Clean up now'}
+            <BrushCleaning size={14} />{pruning ? 'Applying…' : 'Apply these limits to every game'}
           </button>
         </div>
         <span class="hint">
-          Applies the limit to every existing game and deletes snapshots beyond it across all
-          branches — frees disk space immediately.
+          Replaces each game's own limits with these, then deletes the snapshots beyond them on
+          every branch. To clean up with each game's own limits, use Space used above.
         </span>
       </div>
     </div>
