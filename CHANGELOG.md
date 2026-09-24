@@ -137,6 +137,10 @@ All notable changes to OpenSave are documented here. This project adheres to
   start it — while it was running, busy doing what was asked. It now says
   the daemon did not answer in time.
 
+- `opensave backup export` and `import` wait for the daemon to finish. They
+  gave up after 30 seconds like any quick command, so a large library was
+  reported as the daemon not answering while it carried on writing the file.
+
 - `opensave add` no longer logs "could not watch" for every game it adds
   while the app is running. The command's own short-lived daemon was never
   going to watch the game — the running one does, and did.

@@ -52,7 +52,8 @@ func daemonRequest(method, path string, body any) ([]byte, error) {
 	return daemonRequestWith(httpClient, method, path, body)
 }
 
-// daemonRequestSlow is daemonRequest for calls that wait on the cloud.
+// daemonRequestSlow is daemonRequest for calls whose work takes as long as
+// the data does: the cloud, and backup files, which hold every save at once.
 func daemonRequestSlow(method, path string, body any) ([]byte, error) {
 	return daemonRequestWith(slowClient, method, path, body)
 }

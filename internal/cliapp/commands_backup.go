@@ -58,7 +58,10 @@ func cmdBackup(args []string) int {
 		}
 		body := map[string]any{"targetPath": target, "games": games}
 
-		raw, err := daemonRequest("POST", "/api/backup/export", body)
+		// The slow client: an export reads every chosen save, and a large
+		// library took longer than a quick call is given — reported as the
+		// daemon not answering while it carried on writing the file.
+		raw, err := daemonRequestSlow("POST", "/api/backup/export", body)
 		if err != nil {
 			return fail(asJSON, err)
 		}
@@ -123,7 +126,7 @@ func cmdBackup(args []string) int {
 			}
 		}
 
-		raw, err := daemonRequest("POST", "/api/backup/restore", map[string]any{
+		raw, err := daemonRequestSlow("POST", "/api/backup/restore", map[string]any{
 			"sourcePath": source,
 			"mode":       mode,
 		})
