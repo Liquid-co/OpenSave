@@ -12,6 +12,8 @@
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
   import { untrackGames } from '../../lib/gameactions.js';
+  import { collections, collectionFilter, collectionChips, inCollection } from '../../lib/collections.js';
+  import Star from 'lucide-svelte/icons/star';
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
 
@@ -24,12 +26,20 @@
   $: filters = offeredFilters(rows);
   // A filter chosen while it made sense stays chosen only while it still does.
   $: if (status !== 'all' && !filters.some((f) => f.id === status)) status = 'all';
-  $: shown = filterRows(rows, { query, status }).sort((a, b) => SORTS[$libraryView.sort].compare(a.game, b.game));
-  $: filtering = query.trim() !== '' || status !== 'all';
+  // Collections narrow the list the same way the status chips do, and the
+  // two combine: Favourites that need attention.
+  $: chips = collectionChips($collections, rows);
+  $: if ($collectionFilter && !$collections.some((c) => c.id === $collectionFilter)) collectionFilter.set('');
+  $: shown = filterRows(inCollection(rows, $collections, $collectionFilter), { query, status }).sort((a, b) =>
+    SORTS[$libraryView.sort].compare(a.game, b.game)
+  );
+  $: filtering = query.trim() !== '' || status !== 'all' || !!$collectionFilter;
   const clearFilters = () => {
     query = '';
     status = 'all';
+    collectionFilter.set('');
   };
+  const toggleCollection = (id) => collectionFilter.set($collectionFilter === id ? '' : id);
 
   let viewOpen = false;
 
@@ -100,9 +110,21 @@
   {/if}
 </div>
 
-{#if filters.length > 1}
+{#if filters.length > 1 || chips.length}
   <div class="chips">
-    <FilterTabs options={filters.map((f) => [f.id, f.label])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
+    {#if filters.length > 1}
+      <FilterTabs options={filters.map((f) => [f.id, f.label])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
+    {/if}
+    {#if chips.length}
+      {#if filters.length > 1}<span class="chip-sep" aria-hidden="true"></span>{/if}
+      <div class="collection-chips" role="group" aria-label="Collections">
+        {#each chips as c}
+          <button class="collection-chip" class:active={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
+            {#if c.builtin}<Star size={12} />{/if}{c.label}<span class="count">{c.count}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -231,5 +253,49 @@
     font: inherit;
     color: var(--accent);
     cursor: pointer;
+  }
+  .chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border-strong);
+  }
+  .collection-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .collection-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .collection-chip:hover {
+    background: var(--bg-hover);
+  }
+  .collection-chip.active {
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    color: var(--text);
+  }
+  .collection-chip :global(svg) {
+    color: var(--warn);
+  }
+  .collection-chip .count {
+    font-size: 0.75rem;
+    color: var(--text-faint);
   }
 </style>

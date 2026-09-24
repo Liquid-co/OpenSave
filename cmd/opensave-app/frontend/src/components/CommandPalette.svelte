@@ -7,6 +7,7 @@
   import CornerDownLeft from 'lucide-svelte/icons/corner-down-left';
   import { navigate, toast, syncPause } from '../lib/stores.js';
   import { PAUSE_CHOICES, pauseSync, resumeSync } from '../lib/syncpause.js';
+  import { collections, collectionFilter } from '../lib/collections.js';
   import { api } from '../lib/api.js';
   import { visibleGames, runGameAction } from '../lib/gameactions.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
@@ -47,6 +48,18 @@
           keywords: ['stop', 'hold', 'offline'],
           run: () => pauseSync(c.minutes)
         }))),
+    ...$collections
+      .filter((c) => c.gameIds.length)
+      .map((c) => ({
+        label: `Show ${c.name}`,
+        kind: 'Collection',
+        idle: c.builtin,
+        keywords: ['collection', 'filter'],
+        run: () => {
+          collectionFilter.set(c.id);
+          navigate('home');
+        }
+      })),
     ...$visibleGames.flatMap((g) => [
       { label: g.name, kind: 'Game', idle: true, weight: 1, run: () => runGameAction('open', g) },
       { label: `Sync ${g.name}`, kind: 'Action', weight: -1, run: () => runGameAction('sync', g) },

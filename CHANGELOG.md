@@ -36,6 +36,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **Favourites and collections.** Star a game from its page or its menu,
+  or group games into collections of your own ("Playing now",
+  "Roguelikes") from Collections… in the menu. Each shows as a chip beside
+  the library's filters, and combines with them. Collections are kept on
+  each device and change nothing about how a game syncs. In the terminal:
+  `opensave collection list|create|rename|delete|add|remove`.
+
 - **See where the space goes.** Settings → Storage → Space used: how much
   each game's snapshots take, the biggest snapshots (deletable from there),
   free space on the drive, and exactly what Clean up now would free — worked

@@ -4,12 +4,16 @@
 // One place, so that "Stop tracking" from a menu is the same act as the
 // button on the game's page — same undo, same cloud question afterwards —
 // rather than a second, slightly different copy of it.
-import { derived, get } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import { api, native } from './api.js';
 import { askConfirm, gameList, games, navigate, toast, view } from './stores.js';
 import { hiddenKeys, withUndo } from './undo.js';
 import { whenLabel } from './snapshots.js';
 import { askRestore } from './restore.js';
+import { collections, toggleFavourite } from './collections.js';
+
+/** The game whose collections are being edited, or null. */
+export const collectionsDialog = writable(null);
 
 /** The library as shown: without games on their way out (see undo.js). */
 export const visibleGames = derived([gameList, hiddenKeys], ([$games, $hidden]) => $games.filter((g) => !$hidden.has(g.id)));
@@ -20,11 +24,14 @@ export function latestSnapshot(game) {
   return snaps.reduce((best, s) => (!best || s.timestamp > best.timestamp ? s : best), null);
 }
 
-/** The menu for one game, in order; `null` is a divider. Pure, so tested. */
-export function gameMenuItems(game, now = new Date()) {
+/** The menu for one game, in order; `null` is a divider. Pure, so tested.
+ *  `favourite` is whether the game is in Favourites. */
+export function gameMenuItems(game, { now = new Date(), favourite = false } = {}) {
   const latest = latestSnapshot(game);
   return [
     { id: 'open', label: 'Open' },
+    { id: 'favourite', label: favourite ? 'Remove from Favourites' : 'Add to Favourites' },
+    { id: 'collections', label: 'Collections…' },
     null,
     { id: 'sync', label: 'Sync now' },
     { id: 'snapshot', label: 'Snapshot now' },
@@ -69,6 +76,10 @@ export async function runGameAction(id, game) {
       return restoreLatest(game);
     case 'untrack':
       return untrackGame(game);
+    case 'favourite':
+      return toggleFavourite(get(collections), game);
+    case 'collections':
+      return collectionsDialog.set(game);
   }
 }
 

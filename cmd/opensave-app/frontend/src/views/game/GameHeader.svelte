@@ -10,6 +10,8 @@
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import FolderOpen from 'lucide-svelte/icons/folder-open';
   import Pencil from 'lucide-svelte/icons/pencil';
+  import Star from 'lucide-svelte/icons/star';
+  import { collections, isFavourite, toggleFavourite } from '../../lib/collections.js';
 
   export let game;
   /** The page's shared runner (see lib/runner.js). */
@@ -61,7 +63,19 @@
     />
   {/if}
   <div class="title-block">
-    <h2 class="page-title">{game.name}</h2>
+    <h2 class="page-title title-row">
+      {game.name}
+      <button
+        class="btn small ghost icon star"
+        class:on={isFavourite($collections, game.id)}
+        title={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
+        aria-label={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
+        aria-pressed={isFavourite($collections, game.id)}
+        on:click={() => toggleFavourite($collections, game)}
+      >
+        <Star size={16} />
+      </button>
+    </h2>
     <div class="sub">
       branch <strong>{game.activeBranch}</strong>
       {#if activity?.state === 'running'}
@@ -104,6 +118,20 @@
 </div>
 
 <style>
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .star {
+    color: var(--text-faint);
+  }
+  .star.on {
+    color: var(--warn);
+  }
+  .star.on :global(svg) {
+    fill: currentColor;
+  }
   .head {
     display: flex;
     align-items: center;

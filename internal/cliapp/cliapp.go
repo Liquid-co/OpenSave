@@ -82,6 +82,8 @@ func Run(args []string) int {
 		return cmdResume(rest)
 	case "transfers":
 		return cmdTransfers(rest)
+	case "collection", "collections":
+		return cmdCollection(rest)
 	case "branch-delete":
 		return cmdBranchDelete(rest)
 	case "launch":

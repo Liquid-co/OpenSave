@@ -129,6 +129,14 @@ function friendlySyncError(raw) {
   return String(raw).slice(0, 160);
 }
 
+// Collections live in lib/collections.js, which needs this module for its
+// toasts; it registers where incoming lists go rather than being imported
+// here, which would make the two import each other.
+let collectionsIn = () => {};
+export function onCollections(fn) {
+  collectionsIn = fn;
+}
+
 /** Apply one WS message to the stores. */
 export function applyMessage(msg) {
   const { type, data } = msg;
@@ -141,7 +149,11 @@ export function applyMessage(msg) {
       cloudOffers.set(data.cloudOffers ?? []);
       newGames.set(data.newGames ?? []);
       syncPause.set(pauseFromWire(data.syncPause));
+      collectionsIn(data.collections ?? []);
       stateLoaded.set(true);
+      break;
+    case 'collections-update':
+      collectionsIn(data ?? []);
       break;
     case 'sync-pause':
       syncPause.set(pauseFromWire(data));

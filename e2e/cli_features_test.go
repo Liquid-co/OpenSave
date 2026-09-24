@@ -474,6 +474,60 @@ func TestCLI_Storage(t *testing.T) {
 	}
 }
 
+// Collections from the terminal: made, filled, renamed and emptied by name,
+// Favourites always there and kept, and a game untracked leaving them all.
+func TestCLI_Collections(t *testing.T) {
+	c := newCLI(t)
+	c.startDaemon()
+	for _, name := range []string{"Col One", "Col Two"} {
+		c.mustRun("add", name, c.saveDir(strings.ReplaceAll(strings.ToLower(name), " ", "-"), map[string]string{"a.sav": name}))
+	}
+
+	c.mustRun("collection", "create", "Playing", "now")
+	c.mustRun("collection", "add", "playing now", "col-one", "col-two")
+	c.mustRun("collection", "add", "favourites", "col-two")
+	c.mustFail("collection", "create", "PLAYING NOW")
+	c.mustFail("collection", "add", "no such collection", "col-one")
+	c.mustFail("collection", "add", "favourites", "no-such-game")
+	c.mustFail("collection", "delete", "favourites")
+	c.mustFail("collection", "rename", "Favourites", "Faves")
+
+	type coll struct {
+		ID      string   `json:"id"`
+		Name    string   `json:"name"`
+		GameIDs []string `json:"gameIds"`
+	}
+	listed := func() map[string][]string {
+		var all []coll
+		c.mustJSON(&all, "collection", "list", "--json")
+		out := map[string][]string{}
+		for _, x := range all {
+			out[x.Name] = x.GameIDs
+		}
+		return out
+	}
+	got := listed()
+	if strings.Join(got["Playing now"], ",") != "col-one,col-two" || strings.Join(got["Favourites"], ",") != "col-two" {
+		t.Fatalf("collections = %v", got)
+	}
+
+	c.mustRun("collection", "rename", "Playing now", "On the go")
+	c.mustRun("collection", "remove", "on the go", "col-one")
+	c.mustRun("remove", "col-two") // untracked: out of every collection
+	got = listed()
+	if _, old := got["Playing now"]; old || len(got["On the go"]) != 0 || len(got["Favourites"]) != 0 {
+		t.Errorf("after rename, remove and untrack: %v", got)
+	}
+
+	c.mustRun("collection", "delete", "On the go")
+	if _, still := listed()["On the go"]; still {
+		t.Error("the collection is still there after delete")
+	}
+	if out := c.mustRun("status"); !strings.Contains(out, "Col One") {
+		t.Error("deleting a collection untracked its games")
+	}
+}
+
 // pause and resume reach the running daemon, and status says it is paused.
 func TestCLI_PauseAndResume(t *testing.T) {
 	c := newCLI(t)

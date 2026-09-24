@@ -8,7 +8,11 @@ import Play from 'lucide-svelte/icons/play';
 import ArrowUpRight from 'lucide-svelte/icons/arrow-up-right';
 import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
 import Trash2 from 'lucide-svelte/icons/trash-2';
+import Star from 'lucide-svelte/icons/star';
+import Tags from 'lucide-svelte/icons/tags';
+import { get } from 'svelte/store';
 import { gameMenuItems, runGameAction } from './gameactions.js';
+import { collections, isFavourite } from './collections.js';
 
 /** {x, y, items} while open; items are {label, icon, run, danger, disabled, hint} or null for a divider. */
 export const contextMenu = writable(null);
@@ -31,6 +35,8 @@ export const closeMenu = () => contextMenu.set(null);
 
 const gameIcons = {
   open: ArrowUpRight,
+  favourite: Star,
+  collections: Tags,
   sync: RefreshCw,
   snapshot: Camera,
   launch: Play,
@@ -42,6 +48,6 @@ const gameIcons = {
 export function openGameMenu(event, game) {
   openMenu(
     event,
-    gameMenuItems(game).map((item) => item && { ...item, icon: gameIcons[item.id], run: () => runGameAction(item.id, game) })
+    gameMenuItems(game, { favourite: isFavourite(get(collections), game.id) }).map((item) => item && { ...item, icon: gameIcons[item.id], run: () => runGameAction(item.id, game) })
   );
 }

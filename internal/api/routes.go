@@ -66,6 +66,12 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/snapshots/all", s.handleSnapshotAll)
 	r.Get("/api/storage", s.handleStorage)
 
+	r.Get("/api/collections", s.handleListCollections)
+	r.Post("/api/collections", s.handleCreateCollection)
+	r.Patch("/api/collections/{id}", s.handleRenameCollection)
+	r.Delete("/api/collections/{id}", s.handleDeleteCollection)
+	r.Post("/api/collections/{id}/games", s.handleSetInCollection)
+
 	r.Get("/api/transfers", s.handleTransfers)
 	r.Get("/api/sync/pause", s.handleSyncPauseStatus)
 	r.Post("/api/sync/pause", s.handleSyncPause)
@@ -702,6 +708,92 @@ func (s *Server) handleEditSnapshot(w http.ResponseWriter, r *http.Request) {
 // has its own option; a pause of days set by a typo is saves not syncing for
 // days without anyone meaning it.
 const maxPause = 24 * time.Hour
+
+// collectionStatus maps a collection error to its HTTP status.
+func collectionStatus(err error) int {
+	if errors.Is(err, store.ErrInvalidCollection) {
+		return http.StatusBadRequest
+	}
+	return notFoundToStatus(err)
+}
+
+// broadcastCollections sends every collection to the dashboards after a change.
+func (s *Server) broadcastCollections() {
+	if all, err := s.Daemon.Store.ListCollections(); err == nil {
+		s.Hub.Broadcast("collections-update", all)
+	}
+}
+
+func (s *Server) handleListCollections(w http.ResponseWriter, r *http.Request) {
+	all, err := s.Daemon.Store.ListCollections()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, all)
+}
+
+func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c, err := s.Daemon.Store.CreateCollection(body.Name)
+	if err != nil {
+		writeError(w, collectionStatus(err), err.Error())
+		return
+	}
+	s.broadcastCollections()
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (s *Server) handleRenameCollection(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.Daemon.Store.RenameCollection(chi.URLParam(r, "id"), body.Name); err != nil {
+		writeError(w, collectionStatus(err), err.Error())
+		return
+	}
+	s.broadcastCollections()
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) {
+	if err := s.Daemon.Store.DeleteCollection(chi.URLParam(r, "id")); err != nil {
+		writeError(w, collectionStatus(err), err.Error())
+		return
+	}
+	s.broadcastCollections()
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// handleSetInCollection puts a game in a collection, or takes it out with
+// {"in": false}.
+func (s *Server) handleSetInCollection(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		GameID string `json:"gameId"`
+		In     *bool  `json:"in"`
+	}
+	if err := readJSON(r, &body); err != nil || body.GameID == "" {
+		writeError(w, http.StatusBadRequest, `say which game: {"gameId": "…", "in": true|false}`)
+		return
+	}
+	in := body.In == nil || *body.In
+	if err := s.Daemon.Store.SetInCollection(chi.URLParam(r, "id"), body.GameID, in); err != nil {
+		writeError(w, collectionStatus(err), err.Error())
+		return
+	}
+	s.broadcastCollections()
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
 
 // handleStorage reports where snapshot space goes and what clean-up would free.
 func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {

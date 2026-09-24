@@ -2,6 +2,9 @@ import './app.css';
 import App from './App.svelte';
 import { appearance, applyAppearance } from './lib/appearance.js';
 import { native } from './lib/api.js';
+// Registers where collection lists from the daemon go; must be in place
+// before the first state arrives (see onCollections in lib/stores.js).
+import './lib/collections.js';
 
 // Before the first paint, so a light or rescaled window never starts out
 // dark and normal-sized; then again on every change, from Settings or from

@@ -10,6 +10,8 @@
   import CoverImage from '../../components/CoverImage.svelte';
   import { coverURL, gameCover, isDaemonURL } from '../../lib/api.js';
   import { COVER_STYLES } from '../../lib/libraryview.js';
+  import { collections, isFavourite } from '../../lib/collections.js';
+  import Star from 'lucide-svelte/icons/star';
   import { openGameMenu } from '../../lib/contextmenu.js';
 
   export let game;
@@ -71,7 +73,9 @@
     <div class="fallback"><span>{game.name}</span></div>
   </div>
   <div class="body">
-    <div class="name">{game.name}</div>
+    <div class="name">
+      {#if isFavourite($collections, game.id)}<span class="fav" title="In Favourites"><Star size={12} /></span>{/if}{game.name}
+    </div>
     <div class="status tone-{status.tone}">
       <span class="dot"></span><span class="status-text" title={status.label}>{status.label}</span>
     </div>
@@ -187,6 +191,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .fav {
+    display: inline-flex;
+    vertical-align: -1px;
+    margin-right: 5px;
+    color: var(--warn);
+  }
+  .fav :global(svg) {
+    fill: currentColor;
   }
   .tall .name {
     font-size: 0.88rem;

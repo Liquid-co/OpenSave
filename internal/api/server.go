@@ -373,6 +373,9 @@ func (s *Server) initPayload() any {
 	payload["cloudOffers"] = s.Daemon.CloudOffers()
 	payload["newGames"] = s.Daemon.NewGames()
 	payload["syncPause"] = s.Daemon.SyncPauseStatus()
+	if collections, err := s.Daemon.Store.ListCollections(); err == nil {
+		payload["collections"] = collections
+	}
 	return payload
 }
 

@@ -18,6 +18,7 @@
   import Shortcuts from './components/Shortcuts.svelte';
   import RestoreDialog from './components/RestoreDialog.svelte';
   import DropOverlay from './components/DropOverlay.svelte';
+  import CollectionsDialog from './components/CollectionsDialog.svelte';
 
   import Home from './views/Home.svelte';
   import GameDetail from './views/GameDetail.svelte';
@@ -217,6 +218,7 @@
   <Shortcuts />
   <RestoreDialog />
   <DropOverlay />
+  <CollectionsDialog />
   {#if ready}<PairingBanner />{/if}
 </div>
 

@@ -13,19 +13,20 @@ import (
 var topLevelCommands = commandNames()
 
 var subCommands = map[string][]string{
-	"pair":      {"requests", "approve", "reject"},
-	"relay":     {"status", "join", "leave"},
-	"resolve":   {"keep-both", "keep-local", "keep-remote"},
-	"daemon":    {"start", "status", "stop"},
-	"service":   {"install", "uninstall", "status"},
-	"exclude":   {"list", "add", "remove"},
-	"scanpath":  {"list", "add", "remove"},
-	"game":      {"set"},
-	"cloud":     {"connect", "setup", "disconnect", "status", "browse", "list", "push", "restore", "delete"},
-	"backup":    {"export", "import"},
-	"config":    {"list", "set"},
-	"locations": {"add", "remove"},
-	"ignore":    {"add", "remove", "clear", "test"},
+	"pair":       {"requests", "approve", "reject"},
+	"relay":      {"status", "join", "leave"},
+	"resolve":    {"keep-both", "keep-local", "keep-remote"},
+	"daemon":     {"start", "status", "stop"},
+	"service":    {"install", "uninstall", "status"},
+	"exclude":    {"list", "add", "remove"},
+	"scanpath":   {"list", "add", "remove"},
+	"game":       {"set"},
+	"cloud":      {"connect", "setup", "disconnect", "status", "browse", "list", "push", "restore", "delete"},
+	"backup":     {"export", "import"},
+	"config":     {"list", "set"},
+	"locations":  {"add", "remove"},
+	"ignore":     {"add", "remove", "clear", "test"},
+	"collection": {"list", "create", "rename", "delete", "add", "remove"},
 }
 
 func cmdCompletion(args []string) int {
