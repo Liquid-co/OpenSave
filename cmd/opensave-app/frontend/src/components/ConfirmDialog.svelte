@@ -41,7 +41,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -54,7 +54,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     padding: 22px 24px 20px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow);
   }
   h3 {
     margin: 0 0 10px;

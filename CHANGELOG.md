@@ -36,6 +36,11 @@ All notable changes to OpenSave are documented here. This project adheres to
   have auto-sync off or have no snapshot yet; only the filters that would
   narrow it are shown.
 
+- **A light theme, an accent colour and a size.** Settings → General →
+  Appearance: dark, light or matching the system; one of six accent
+  colours; and the whole app drawn at 90% to 125%. Kept per device and
+  applied as you choose.
+
 - **New games are noticed without you scanning.** The save scan used to run
   only when you pressed the button, so a game installed since sat untracked
   — no snapshots, nothing synced — until you thought to scan again. OpenSave

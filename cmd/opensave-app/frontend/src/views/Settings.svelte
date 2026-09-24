@@ -7,6 +7,8 @@
   import LibraryViewOptions from './home/LibraryViewOptions.svelte';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import MoreInfo from '../components/ui/MoreInfo.svelte';
+  import AppearanceOptions from './settings/AppearanceOptions.svelte';
+  import Palette from 'lucide-svelte/icons/palette';
   import Monitor from 'lucide-svelte/icons/monitor';
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import Rocket from 'lucide-svelte/icons/rocket';
@@ -254,6 +256,13 @@
         <input id="s-node" value={draft.nodeId ?? ''} readonly class="mono" />
         <span class="hint">This device's unique network identifier (read-only).</span>
       </div>
+    </div>
+
+    <!-- Kept on this device and applied as it is changed, like the library
+         view below; neither is part of this page's Save. -->
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title with-icon"><Palette size={17} />Appearance</h3>
+      <AppearanceOptions />
     </div>
 
     <!-- Applies as it is changed, like the View menu on the library, which

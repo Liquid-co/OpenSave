@@ -87,7 +87,7 @@
     border-radius: var(--radius-lg);
     padding: 32px 28px 26px;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow);
   }
   .x {
     position: absolute;
