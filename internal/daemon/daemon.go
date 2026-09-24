@@ -710,7 +710,7 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		if err := d.watchGame(game.ID, game.SavePath); err != nil && !errors.Is(err, watcher.ErrStopped) {
 			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
 		}
-		d.Log.Log("success", fmt.Sprintf("now tracking %q at %q", game.Name, game.SavePath))
+		d.Log.Log("success", fmt.Sprintf("now tracking %q at %s", game.Name, logging.Quote(game.SavePath)))
 		if d.OnGameChanged != nil {
 			d.OnGameChanged(game.ID)
 		}
@@ -891,8 +891,8 @@ func (d *Daemon) checkSavePathShape(abs string) error {
 	// the snapshots live in recurses.
 	if absStatErr == nil {
 		if dataInfo, err := os.Stat(d.Paths.HomeDir); err == nil && os.SameFile(absInfo, dataInfo) {
-			return fmt.Errorf("refusing to use %q — it points at OpenSave's own data folder (%s)",
-				abs, d.Paths.HomeDir)
+			return fmt.Errorf("refusing to use %s — it points at OpenSave's own data folder (%s)",
+				logging.Quote(abs), d.Paths.HomeDir)
 		}
 	}
 	return nil

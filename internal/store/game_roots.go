@@ -5,6 +5,8 @@ import (
 	slashpath "path"
 	"path/filepath"
 	"strings"
+
+	"github.com/opensave/opensave/internal/logging"
 )
 
 // GameRoot is one additional save location for a game, beyond the primary
@@ -158,7 +160,7 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 			return fmt.Errorf("add game root: %w", err)
 		}
 		if overlaps(game.SavePath, path) {
-			return fmt.Errorf("%q is the game's main save folder, or inside it — every file there is already being synced", path)
+			return fmt.Errorf("%s is the game's main save folder, or inside it — every file there is already being synced", logging.Quote(path))
 		}
 		existing, err := s.ListGameRoots(gameID)
 		if err != nil {
@@ -169,7 +171,7 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 				continue
 			}
 			if overlaps(r.Path, path) {
-				return fmt.Errorf("%q overlaps the %q location — one file cannot belong to two locations", path, r.Name)
+				return fmt.Errorf("%s overlaps the %q location — one file cannot belong to two locations", logging.Quote(path), r.Name)
 			}
 		}
 	}

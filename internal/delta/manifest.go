@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/opensave/opensave/internal/fsx"
+	"github.com/opensave/opensave/internal/logging"
 )
 
 // TmpSuffix marks the temp files PatchFile writes before atomically
@@ -207,7 +208,7 @@ func BuildManifest(root string) (Manifest, error) {
 	// at e.g. C:\Users\<name> would otherwise try to hash (and sync!) the
 	// whole user profile — and die on the first legacy junction anyway.
 	if reason := DangerousSyncRoot(root); reason != "" {
-		return Manifest{}, fmt.Errorf("refusing to scan %q: %s — edit this game's save path so it points at the actual save folder", root, reason)
+		return Manifest{}, fmt.Errorf("refusing to scan %s: %s — edit this game's save path so it points at the actual save folder", logging.Quote(root), reason)
 	}
 
 	info, err := os.Stat(root)

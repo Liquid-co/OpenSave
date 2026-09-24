@@ -15,6 +15,7 @@ import (
 
 	"github.com/opensave/opensave/internal/config"
 	"github.com/opensave/opensave/internal/daemon"
+	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/version"
 )
@@ -407,7 +408,7 @@ func cmdExport(d *daemon.Daemon, args []string) int {
 func copyTree(src, dest string) (files int, total int64, err error) {
 	info, err := os.Stat(src)
 	if err != nil {
-		return 0, 0, fmt.Errorf("save path %q: %w", src, err)
+		return 0, 0, fmt.Errorf("save path %s: %w", logging.Quote(src), err)
 	}
 	if !info.IsDir() {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o777); err != nil {

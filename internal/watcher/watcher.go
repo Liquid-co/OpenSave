@@ -30,6 +30,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
+	"github.com/opensave/opensave/internal/logging"
 )
 
 const (
@@ -439,7 +440,7 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	e.mu.Unlock()
 	go e.run(ctx, gw)
 
-	e.log("info", fmt.Sprintf("watching %q (%s mode)", savePath, map[bool]string{true: "single-file", false: "directory"}[isFile]))
+	e.log("info", fmt.Sprintf("watching %s (%s mode)", logging.Quote(savePath), map[bool]string{true: "single-file", false: "directory"}[isFile]))
 
 	// A watch reports what happens next, not what already happened. Check
 	// whether this folder changed while nobody was watching it — after a

@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
@@ -531,7 +532,7 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 	// hash the user's whole profile. Send the requester a clear reason
 	// instead of a mysterious walk error.
 	if reason := delta.DangerousSyncRoot(localPath); reason != "" {
-		return store.Game{}, fmt.Errorf("cannot auto-track %q at %q: %s — set the game's save path on this device manually", q.Name, localPath, reason)
+		return store.Game{}, fmt.Errorf("cannot auto-track %q at %s: %s — set the game's save path on this device manually", q.Name, logging.Quote(localPath), reason)
 	}
 
 	game := store.Game{
@@ -561,7 +562,7 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 	} else {
 		_ = os.MkdirAll(localPath, 0o777)
 	}
-	e.Log("info", fmt.Sprintf("auto-tracked %q at %q from peer manifest request", q.Name, localPath))
+	e.Log("info", fmt.Sprintf("auto-tracked %q at %s from peer manifest request", q.Name, logging.Quote(localPath)))
 	e.notifyGamesUpdate()
 	return game, nil
 }
