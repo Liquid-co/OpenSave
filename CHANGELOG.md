@@ -58,6 +58,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   Restore is no longer the loudest button on every row, and Delete stays
   quiet until you point at it.
 
+- **Activity reads like a feed.** It showed the daemon's log as written —
+  monospace, oldest first, every routine line — so the one warning that
+  mattered sat among dozens about uploads and watched folders. It now shows
+  the newest first, by day, leaving out the routine unless you ask for
+  everything; problems have their own filter and count, there is a search,
+  and a game named in an entry is a link to it. The log exactly as written
+  is one switch away, and Copy puts what is shown on the clipboard for a
+  bug report.
+
 - **Snapshots take less room.** Every file went into a snapshot
   uncompressed, on the theory that saves are already compressed or small.
   Plenty are neither — JSON, XML, an engine's own uncompressed format — and
@@ -78,6 +87,9 @@ All notable changes to OpenSave are documented here. This project adheres to
   fetch of that cover after it failed, retries included. Covers are now
   marked so the two never share a copy, and a retry skips the cached one,
   which clears any left from before.
+
+- Windows paths in Activity and in error messages are shown as they are,
+  rather than with every backslash doubled (`D:\\Games\\Saves`).
 
 - **Heroic games on an SD card or another drive are found.** Scanning
   looked for Wine prefixes only under your home folder, and Heroic asks where
