@@ -21,6 +21,12 @@ var assets embed.FS
 //go:embed build/appicon.png
 var appIcon []byte
 
+// instanceID names the single-instance lock: a second launch finds the first
+// by it and hands over focus. A build for testing beside a running OpenSave
+// sets its own (-ldflags "-X main.instanceID=…"), or it would find that one
+// and quit; releases never set it.
+var instanceID = "opensave-desktop-single-instance"
+
 func main() {
 	// WebKitGTK's DMA-BUF renderer instantly crashes or blanks the window
 	// on a range of GPU/driver combos (AMD handhelds like the ROG Ally,
@@ -59,7 +65,7 @@ func main() {
 		// Only one OpenSave window ever; a second launch focuses the existing
 		// one instead of opening a duplicate (blank) window.
 		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId:               "opensave-desktop-single-instance",
+			UniqueId:               instanceID,
 			OnSecondInstanceLaunch: app.onSecondInstanceLaunch,
 		},
 		OnStartup:     app.startup,
