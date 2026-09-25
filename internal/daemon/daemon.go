@@ -1043,6 +1043,22 @@ func (d *Daemon) LinkGames(canonicalID, aliasID string) error {
 			}
 		}
 
+		// Its history comes too, onto branches named after it: deleting the
+		// entry below would otherwise take every snapshot row with it and
+		// leave the archives on disk where nothing lists, restores or prunes
+		// them. So would its place in Favourites and collections.
+		branches, err := d.Store.AdoptHistory(aliasID, canonicalID, snapshot.CleanBranchName(aliasID))
+		if err != nil {
+			return fmt.Errorf("keep %q's snapshots: %w", aliasID, err)
+		}
+		if len(branches) > 0 {
+			d.Log.Log("info", fmt.Sprintf("linked %q into %q: its snapshots are kept on the branch %s",
+				merged.Name, canonicalID, strings.Join(branches, ", ")))
+		}
+		if err := d.Store.AdoptCollections(aliasID, canonicalID); err != nil {
+			d.Log.Log("warn", err.Error())
+		}
+
 		d.Watcher.Unwatch(aliasID)
 		if err := d.Store.DeleteGame(aliasID); err != nil {
 			return err
@@ -1056,8 +1072,9 @@ func (d *Daemon) LinkGames(canonicalID, aliasID string) error {
 
 // UnlinkGame removes an alias link and, if that alias was a game merged in via
 // LinkGames, brings it back as its own tracked entry. Its save files on disk
-// were never touched; prior snapshot history isn't restored (a fresh initial
-// snapshot is taken).
+// were never touched. Its snapshots stay where linking put them — on their own
+// branch of the game it was linked into — and the entry that comes back starts
+// with a fresh initial snapshot.
 //
 // Extra save locations are not handed back either, and that is deliberate
 // rather than missing. Linking copies the merged game's locations onto the

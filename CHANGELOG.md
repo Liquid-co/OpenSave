@@ -288,6 +288,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   network each went on their own, so a quick sync's "started" could arrive
   after its "finished". They now arrive in the order they were sent.
 
+- **Linking two copies of a game kept only one copy's history.** Linking
+  merges one tracked copy into another, and the merged copy's snapshots went
+  with its entry — gone from the app, while their files stayed on disk where
+  nothing listed, restored or cleaned them up. They now move to the game they
+  were linked into, on a branch named after the merged copy, and can be
+  restored from there. Its place in Favourites and collections moves too.
+
 - **Files you told OpenSave not to sync stayed yours only between paired
   devices.** A save brought from another device through the cloud —
   automatically, from an offer, or restored from the cloud browser — and a

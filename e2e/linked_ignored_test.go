@@ -158,6 +158,8 @@ func TestLinked_MergingACopyKeepsItsSnapshots(t *testing.T) {
 		t.Fatal("setup: the portable copy has no snapshots")
 	}
 
+	td.API(http.MethodPost, "/api/collections/favourites/games", map[string]any{"gameId": merged, "in": true}, nil)
+
 	td.API(http.MethodPost, "/api/games/"+canonical+"/link", map[string]string{"alias": merged}, nil)
 
 	after := snapshotComments(td, canonical)
@@ -165,6 +167,50 @@ func TestLinked_MergingACopyKeepsItsSnapshots(t *testing.T) {
 		if !after[c] {
 			t.Errorf("after linking, the merged copy's snapshot %q is not among the game's: %v", c, after)
 		}
+	}
+
+	// And it still restores: the archive was never moved, only claimed.
+	var games map[string]struct {
+		Branches map[string]struct {
+			Snapshots []struct {
+				ID      string `json:"id"`
+				Comment string `json:"comment"`
+			} `json:"snapshots"`
+		} `json:"branches"`
+	}
+	td.API(http.MethodGet, "/api/games", nil, &games)
+	var moved string
+	for _, b := range games[canonical].Branches {
+		for _, s := range b.Snapshots {
+			if s.Comment == "before the last boss" {
+				moved = s.ID
+			}
+		}
+	}
+	if moved != "" {
+		if code := td.APIStatus(http.MethodPost, "/api/games/"+canonical+"/rollback", map[string]string{"snapshotId": moved}, nil); code != http.StatusOK {
+			t.Errorf("restoring the merged copy's snapshot returned %d: %s", code, td.LastError())
+		} else if got := td.ReadSave("slot1.sav"); got != "the portable copy" {
+			t.Errorf("after restoring the merged copy's snapshot the save is %q", got)
+		}
+	}
+
+	// Its place in Favourites came with it.
+	var cols []struct {
+		ID      string   `json:"id"`
+		GameIDs []string `json:"gameIds"`
+	}
+	td.API(http.MethodGet, "/api/collections", nil, &cols)
+	inFavourites := false
+	for _, c := range cols {
+		if c.ID == "favourites" {
+			for _, id := range c.GameIDs {
+				inFavourites = inFavourites || id == canonical
+			}
+		}
+	}
+	if !inFavourites {
+		t.Errorf("the merged copy was a favourite, and after linking the game is not: %+v", cols)
 	}
 }
 

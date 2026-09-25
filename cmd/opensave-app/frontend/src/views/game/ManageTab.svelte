@@ -75,7 +75,7 @@
     // destructive step that isn't happening.
     const message = remote
       ? `Link "${remote.name}" on ${remote.peerName} to "${game.name}"? The two will be treated as the same game when these devices sync. Nothing on either device is removed.`
-      : `Link "${other?.name ?? linkTarget}" into "${game.name}"? They'll be treated as the same game when syncing across devices. "${other?.name ?? linkTarget}" is removed from your library here — its save files and snapshots on disk are kept.`;
+      : `Link "${other?.name ?? linkTarget}" into "${game.name}"? They'll be treated as the same game when syncing across devices. "${other?.name ?? linkTarget}" leaves your library here — its save files stay where they are, and its snapshots move to "${game.name}", on a branch of their own.`;
 
     const ok = await askConfirm(message, { title: 'Link games?', confirmText: 'Link' });
     if (!ok) return;
@@ -99,7 +99,8 @@
   <p class="desc">
     If this game is tracked under a different name or drive on another PC (e.g. a Steam copy vs. a
     portable copy), link the copies so their saves sync across devices. Linking merges another tracked
-    game here into this one — its save files and snapshots on disk are kept.
+    game here into this one: its save files stay where they are, and its snapshots move here, onto a
+    branch named after it.
   </p>
   {#if aliases.length > 0}
     <div class="alias-list">
