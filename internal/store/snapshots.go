@@ -22,6 +22,10 @@ type Snapshot struct {
 	// afterwards; Comment stays the reason it was taken.
 	Pinned bool   `db:"pinned" json:"pinned"`
 	Note   string `db:"note" json:"note"`
+	// When its archive was last read back whole, and what was wrong with it
+	// if it was not (migration 0032; internal/snapshot/verify.go).
+	CheckedMs int64  `db:"checked_ms" json:"checkedMs"`
+	Problem   string `db:"problem" json:"problem"`
 }
 
 // CreateSnapshot inserts a new snapshot record.

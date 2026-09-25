@@ -365,6 +365,9 @@ func (d *Daemon) Start() error {
 	// leaves it. See sessions.go.
 	d.P2P.GoSync(d.runSessions)
 
+	// Check every snapshot can still be restored, daily. See verify.go.
+	d.P2P.GoSync(d.runVerify)
+
 	// Read the cloud mirror back: shortly after start, which is "when I open
 	// the app", and every few minutes after. See cloudsync.go.
 	d.P2P.GoSync(func(ctx context.Context) {

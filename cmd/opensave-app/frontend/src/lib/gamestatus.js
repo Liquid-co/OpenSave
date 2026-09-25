@@ -63,6 +63,11 @@ export function librarySummary(rows) {
   // its sync, and may have no snapshot at all behind it. "Backed up" below
   // has to be true of every game it counts.
   const empty = rows.filter((r) => latestSnapshotAt(r.game) === null);
+  // Snapshots found damaged when read back (daemon/verify.go): a backup that
+  // cannot be restored is worth knowing about before it is needed.
+  const damaged = rows.flatMap((r) =>
+    Object.values(r.game.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem).map(() => r.game))
+  );
   const paused = by('paused');
 
   if (missing.length > 0) {
@@ -96,6 +101,15 @@ export function librarySummary(rows) {
         failed.length === 1
           ? `The last sync of ${failed[0].game.name} failed — it will try again`
           : `${failed.length} syncs failed — they will try again`
+    };
+  }
+  if (damaged.length > 0) {
+    return {
+      tone: 'warn',
+      headline:
+        damaged.length === 1
+          ? `A snapshot of ${damaged[0].name} can't be restored`
+          : `${damaged.length} snapshots can't be restored`
     };
   }
   if (empty.length > 0) {

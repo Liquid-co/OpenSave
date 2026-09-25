@@ -700,6 +700,14 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 		return store.Snapshot{}, fmt.Errorf("snapshot %q not found for game %q", snapshotID, gameID)
 	}
 
+	// Read it back whole before anything is touched. The restore empties the
+	// save folder and then extracts; an archive found damaged part-way
+	// through would leave neither the save that was there nor this one.
+	if err := VerifyArchive(snap.ZipPath); err != nil {
+		_ = m.Store.SetSnapshotCheck(snap.ID, m.now().UnixMilli(), err.Error())
+		return store.Snapshot{}, fmt.Errorf("%w — nothing was changed", err)
+	}
+
 	// The safety snapshot below triggers retention pruning, which — when the
 	// game is at its snapshot limit and this is the oldest snapshot — would
 	// delete this very snapshot's archive before we extract it. Restore from

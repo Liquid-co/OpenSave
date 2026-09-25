@@ -74,6 +74,16 @@ describe('conflictedIds', () => {
   });
 });
 
+describe('a damaged snapshot', () => {
+  it('is said, after a decision or a failure but before the quiet cases', () => {
+    const rows = [
+      { game: { name: 'Hades', branches: { main: { snapshots: [{ timestamp: minsAgo(5), problem: 'slot1.sav no longer matches its checksum' }] } } }, status: { state: 'local' } },
+      { game: { name: 'Celeste', branches: { main: { snapshots: [{ timestamp: minsAgo(5) }] } } }, status: { state: 'local' } }
+    ];
+    expect(librarySummary(rows)).toEqual({ tone: 'warn', headline: "A snapshot of Hades can't be restored" });
+  });
+});
+
 describe('a game being played', () => {
   it('says so, and the recently played order puts it first', () => {
     expect(gameStatus(game({ id: 'h', name: 'Hades', playingSince: '2026-09-25T18:00:00Z' }))).toMatchObject({

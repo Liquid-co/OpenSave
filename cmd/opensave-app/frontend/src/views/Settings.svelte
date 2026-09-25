@@ -11,6 +11,8 @@
   import AppearanceOptions from './settings/AppearanceOptions.svelte';
   import NotificationOptions from './settings/NotificationOptions.svelte';
   import StorageUsage from './settings/StorageUsage.svelte';
+  import SnapshotChecks from './settings/SnapshotChecks.svelte';
+  import ShieldCheck from 'lucide-svelte/icons/shield-check';
   import PieChart from 'lucide-svelte/icons/chart-pie';
   import Bell from 'lucide-svelte/icons/bell';
   import Palette from 'lucide-svelte/icons/palette';
@@ -522,6 +524,11 @@
     <div class="card">
       <h3 class="section-title with-icon"><PieChart size={17} />Space used</h3>
       <StorageUsage />
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title with-icon"><ShieldCheck size={17} />Can they be restored?</h3>
+      <SnapshotChecks />
     </div>
 
     <div class="card" style="margin-top: 14px;">

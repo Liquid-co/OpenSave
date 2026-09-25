@@ -158,6 +158,7 @@
             <div class="title">
               <span class="title-text">{k.title}</span>
               {#if snap.id === latestId}<span class="tag latest">Latest</span>{/if}
+              {#if snap.problem}<span class="tag damaged" title={snap.problem}>Damaged</span>{/if}
             </div>
             {#if noting === snap.id}
               <input
@@ -195,7 +196,12 @@
               <Pencil size={13} />
             </button>
             <button class="btn small" on:click={() => browseSnapshot(snap)}>Files</button>
-            <button class="btn small" disabled={$busy} on:click={() => rollback(snap)}>Restore</button>
+            <button
+              class="btn small"
+              disabled={$busy || !!snap.problem}
+              title={snap.problem ? `This snapshot can't be restored: ${snap.problem}` : undefined}
+              on:click={() => rollback(snap)}>Restore</button
+            >
             <button class="btn small ghost-danger" disabled={$busy} title="Delete this snapshot" on:click={() => deleteSnapshot(snap)}>Delete</button>
           </div>
         </div>
@@ -330,6 +336,10 @@
   .kind-session .tag.kind {
     border-color: rgba(var(--success-rgb), 0.45);
     color: var(--success);
+  }
+  .tag.damaged {
+    border-color: rgba(var(--danger-rgb), 0.5);
+    color: var(--danger-text);
   }
   .tag.latest {
     border-color: rgba(var(--success-rgb), 0.45);

@@ -7,6 +7,15 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Snapshots are checked, so a backup is known to work before it is
+  needed.** Once a day OpenSave reads every snapshot back in full and
+  compares each file with its checksum, and it does the same before any
+  restore — so a damaged archive is refused before the save folder is
+  touched, rather than found half-way through putting a save back. A
+  damaged snapshot is marked on its game's page and said on Home;
+  Settings → Storage shows when they were last checked and can check now,
+  as can `opensave verify`.
+
 - **Play sessions.** OpenSave notices when a tracked game is running — by
   its launch program, its Steam install folder, or, on Linux and the Steam
   Deck, the Steam app it was started for — and when it closes, the save as

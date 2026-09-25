@@ -162,6 +162,8 @@ func Run(args []string) int {
 		return cmdStorage(d, rest)
 	case "sessions":
 		return cmdSessions(d, rest)
+	case "verify":
+		return cmdVerify(d, rest)
 	case "export":
 		return cmdExport(d, rest)
 	case "exclude":

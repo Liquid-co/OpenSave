@@ -53,6 +53,8 @@ func (s *Server) routes(r chi.Router) {
 	r.Delete("/api/games/{gameId}/snapshot/{snapshotId}", s.handleDeleteSnapshot)
 	r.Patch("/api/games/{gameId}/snapshot/{snapshotId}", s.handleEditSnapshot)
 	r.Get("/api/games/{gameId}/sessions", s.handleGameSessions)
+	r.Get("/api/snapshots/check", s.handleSnapshotChecks)
+	r.Post("/api/snapshots/check", s.handleVerifySnapshots)
 	r.Post("/api/games/{gameId}/session", s.handleMarkSession)
 	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/preview", s.handlePreviewRestore)
 
