@@ -104,6 +104,8 @@ All notable changes to OpenSave are documented here. This project adheres to
 - **Right-click a game.** In the library or the sidebar: open it, sync it,
   take a snapshot, launch it, open its save folder, put back its latest
   snapshot, or stop tracking it. The menu key on the keyboard opens it too.
+  The game stays outlined while its menu is open, so it is plain which one
+  the menu is for, and a game you point at in the library lifts off the page.
 
 - **Keyboard shortcuts.** Ctrl+K opens a quick switcher: type part of a
   game's name, a page or an action — "snap hades" takes a snapshot of Hades
@@ -123,10 +125,12 @@ All notable changes to OpenSave are documented here. This project adheres to
   its cloud snapshots is offered in the same way rather than asked in a
   dialog that arrived seconds later.
 
-- **A light theme, an accent colour and a size.** Settings → General →
-  Appearance: dark, light or matching the system; one of six accent
-  colours; and the whole app drawn at 90% to 125%. Kept per device and
-  applied as you choose.
+- **A light theme, an accent colour, a size, and animations.** Settings →
+  General → Appearance: dark, light or matching the system; one of six
+  accent colours; the whole app drawn at 90% to 125%; and small movements as
+  pages, dialogs and the library come into view, which one switch turns off
+  (and which stay off while Windows asks apps to reduce motion — spinners
+  keep turning either way). Kept per device and applied as you choose.
 
 - **New games are noticed without you scanning.** The save scan used to run
   only when you pressed the button, so a game installed since sat untracked

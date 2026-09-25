@@ -5,7 +5,10 @@
   // untracked until they thought to — usually after losing something. The
   // daemon now scans in the background and says so here. It never tracks on
   // its own: Review opens the scan, where the person chooses.
-  import { fly } from 'svelte/transition';
+  import { fly as flyIn } from 'svelte/transition';
+  import { gated } from '../lib/motion.js';
+  // Instant with animations off; see lib/motion.js.
+  const fly = gated(flyIn);
   import { newGames, navigate, toast } from '../lib/stores.js';
   import { notifyPrefs } from '../lib/notifyprefs.js';
   import { api } from '../lib/api.js';

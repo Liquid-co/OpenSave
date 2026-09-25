@@ -22,6 +22,9 @@
   export let cover = 'wide';
   export let selecting = false;
   export let selected = false;
+  /** Its place in the first showing of the library, to come in after the
+   *  ones before it; -1 to simply be there. */
+  export let enter = -1;
 
   const dispatch = createEventDispatcher();
 
@@ -53,6 +56,8 @@
 
 <button
   class="card tile {cover}"
+  class:enter={enter >= 0}
+  style={enter >= 0 ? `--i: ${Math.min(enter, 12)}` : undefined}
   class:selected={selecting && selected}
   title={game.savePath}
   on:click={() => dispatch('open')}
@@ -64,15 +69,20 @@
     <div class="tick" class:on={selected}>{#if selected}<Check size={14} strokeWidth={3} />{/if}</div>
   {/if}
   <div class="art" class:letterbox style="aspect-ratio: {COVER_STYLES[cover].aspect}">
-    {#if backdrop}
-      <div class="backdrop" style="background-image: url('{backdrop}')"></div>
-    {/if}
-    {#if src && isDaemonURL(src)}
-      <CoverImage {src} {revealed} on:load={measure} />
-    {:else if src}
-      <img {src} alt="" loading="lazy" on:load={measure} on:error={(e) => (e.currentTarget.style.display = 'none')} />
-    {/if}
-    <div class="fallback"><span>{game.name}</span></div>
+    <!-- The art's layers, together, so they can be drawn a touch closer on
+         hover without touching the cover's own transform (CoverImage uses
+         one to hide a blur's soft edge). -->
+    <div class="zoom">
+      {#if backdrop}
+        <div class="backdrop" style="background-image: url('{backdrop}')"></div>
+      {/if}
+      {#if src && isDaemonURL(src)}
+        <CoverImage {src} {revealed} on:load={measure} />
+      {:else if src}
+        <img {src} alt="" loading="lazy" on:load={measure} on:error={(e) => (e.currentTarget.style.display = 'none')} />
+      {/if}
+      <div class="fallback"><span>{game.name}</span></div>
+    </div>
   </div>
   <div class="body">
     <div class="name">
@@ -103,18 +113,52 @@
     text-align: left;
     cursor: pointer;
     color: var(--text);
-    transition: border-color 0.12s, transform 0.12s;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.22s ease,
+      transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
     padding: 0;
     overflow: hidden;
     min-width: 0;
   }
-  .tile:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-1px);
+  /* Pointed at: it stands out — a firmer edge and a shadow beneath — and,
+     with animations on, rises and draws its art a little closer. */
+  .tile:hover,
+  .tile:focus-visible {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    box-shadow: var(--shadow-lift);
+  }
+  :global(html[data-motion='on']) .tile:hover,
+  :global(html[data-motion='on']) .tile:global([data-menu-open]) {
+    transform: translateY(-4px);
+  }
+  :global(html[data-motion='on']) .tile:hover .zoom,
+  :global(html[data-motion='on']) .tile:global([data-menu-open]) .zoom {
+    transform: scale(1.04);
+  }
+  /* Its menu is open (lib/contextmenu.js): held up and outlined, so it is
+     plain which game the menu is for once the pointer has moved onto it. */
+  .tile:global([data-menu-open]) {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      var(--shadow-lift);
   }
   .tile.selected {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
+  }
+  /* Backwards, not both: once in, the tile's own hover lift must not be
+     held down by the animation's last frame. */
+  .tile.enter {
+    animation: tile-in 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 32ms);
+  }
+  @keyframes tile-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
   }
   .tick {
     position: absolute;
@@ -144,6 +188,11 @@
     background: var(--bg);
     border-bottom: 1px solid var(--border);
     overflow: hidden;
+  }
+  .zoom {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .art :global(img) {
     position: absolute;

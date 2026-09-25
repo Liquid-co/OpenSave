@@ -322,6 +322,13 @@
     background: var(--bg-active);
     color: var(--text);
   }
+  /* Its menu is open (lib/contextmenu.js): outlined, so the menu's game is
+     plain once the pointer has moved onto the menu. */
+  .game:global([data-menu-open]) {
+    background: var(--bg-active);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
   .thumb {
     position: relative;
     width: 24px;

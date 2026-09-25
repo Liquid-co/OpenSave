@@ -8,7 +8,10 @@
   // off could only be found by opening the cloud screen and knowing to look.
   // The daemon now checks, takes what it safely can on its own, and asks
   // about the rest here.
-  import { fly } from 'svelte/transition';
+  import { fly as flyIn } from 'svelte/transition';
+  import { gated } from '../lib/motion.js';
+  // Instant with animations off; see lib/motion.js.
+  const fly = gated(flyIn);
   import { cloudOffers, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { timeAgo } from '../lib/timeago.js';

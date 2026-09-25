@@ -1,11 +1,12 @@
 <script>
-  // Theme, accent colour and size, for this device. Applied as they are
-  // chosen; see lib/appearance.js.
+  // Theme, accent colour, size and motion, for this device. Applied as they
+  // are chosen; see lib/appearance.js.
   import Check from 'lucide-svelte/icons/check';
   import Moon from 'lucide-svelte/icons/moon';
   import Sun from 'lucide-svelte/icons/sun';
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
   import { appearance, THEMES, ACCENTS, SCALES } from '../../lib/appearance.js';
+  import { systemReducesMotion } from '../../lib/motion.js';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
@@ -52,7 +53,21 @@
   </label>
 </div>
 
+<label class="check motion">
+  <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
+  Animations
+</label>
+<p class="hint">
+  Small movements as pages, dialogs and your library come into view, and as you point at a game.
+  {#if $systemReducesMotion}
+    Off for now whatever this says: Windows is asking apps to reduce motion.
+  {/if}
+</p>
+
 <style>
+  .motion {
+    margin-top: 18px;
+  }
   .options {
     display: flex;
     flex-wrap: wrap;

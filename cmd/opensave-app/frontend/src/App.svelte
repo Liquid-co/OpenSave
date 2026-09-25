@@ -200,7 +200,14 @@
             <NewGamesBanner />
           </div>
         {/if}
-        <svelte:component this={views[$view.name] ?? Home} params={$view.params} />
+        <!-- Keyed by page, so arriving somewhere new plays the short rise in
+             app.css (still, with animations off); moving between two games
+             is the same page and does not. -->
+        {#key $view.name}
+          <div class="view">
+            <svelte:component this={views[$view.name] ?? Home} params={$view.params} />
+          </div>
+        {/key}
       </main>
     {:else}
       <div class="boot-loading">
@@ -245,6 +252,9 @@
     overflow-y: auto;
     padding: 24px 28px;
     min-width: 0;
+  }
+  .view {
+    animation: arrive 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   }
   .boot-loading,
   .boot-error {

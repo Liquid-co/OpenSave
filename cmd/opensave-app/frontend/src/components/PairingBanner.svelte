@@ -1,5 +1,8 @@
 <script>
-  import { fly } from 'svelte/transition';
+  import { fly as flyIn } from 'svelte/transition';
+  import { gated } from '../lib/motion.js';
+  // Instant with animations off; see lib/motion.js.
+  const fly = gated(flyIn);
   import { pairingRequests, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { demandAttention } from '../lib/notify.js';

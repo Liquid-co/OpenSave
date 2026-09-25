@@ -53,18 +53,25 @@ const contrast = (a, b) => {
 
 describe('sanitizeAppearance', () => {
   it('keeps valid choices and replaces the rest, field by field', () => {
-    expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25 })).toEqual({ theme: 'light', accent: 'teal', scale: 1.25 });
+    expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25, motion: false })).toEqual({ theme: 'light', accent: 'teal', scale: 1.25, motion: false });
     expect(sanitizeAppearance({ theme: 'sepia', accent: 'teal', scale: 3 })).toEqual({ ...DEFAULT_APPEARANCE, accent: 'teal' });
     expect(sanitizeAppearance({ scale: '1.1' }).scale).toBe(1.1);
     expect(sanitizeAppearance(null)).toEqual(DEFAULT_APPEARANCE);
+  });
+
+  it('keeps animations on unless they were switched off', () => {
+    // Saved before the choice existed: on, as it was then.
+    expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1 }).motion).toBe(true);
+    expect(sanitizeAppearance({ motion: 'no' }).motion).toBe(true);
+    expect(sanitizeAppearance({ motion: false }).motion).toBe(false);
   });
 });
 
 describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
-    saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9 }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', scale: 0.9 });
+    saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false }, s);
+    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', scale: 0.9, motion: false });
     expect(loadAppearance(memoryStorage({ 'opensave.appearance': '{nope' }))).toEqual(DEFAULT_APPEARANCE);
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
     expect(loadAppearance(broken)).toEqual(DEFAULT_APPEARANCE);
@@ -96,6 +103,16 @@ describe('accent colours', () => {
 });
 
 describe('applyAppearance', () => {
+  it('lets things move only when animations are on and the system is not asking for less motion', () => {
+    const root = fakeRoot();
+    applyAppearance(DEFAULT_APPEARANCE, { root });
+    expect(root.dataset.motion).toBe('on');
+    applyAppearance({ ...DEFAULT_APPEARANCE, motion: false }, { root });
+    expect(root.dataset.motion).toBe('off');
+    applyAppearance(DEFAULT_APPEARANCE, { root, reduceMotion: true });
+    expect(root.dataset.motion).toBe('off');
+  });
+
   it('sets the theme, the accent and the scale on the page, and the window behind it', () => {
     const root = fakeRoot();
     let windowBg = null;

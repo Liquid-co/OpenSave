@@ -14,7 +14,8 @@ import { get } from 'svelte/store';
 import { gameMenuItems, runGameAction } from './gameactions.js';
 import { collections, isFavourite } from './collections.js';
 
-/** {x, y, items} while open; items are {label, icon, run, danger, disabled, hint} or null for a divider. */
+/** {x, y, items, anchor} while open; items are {label, icon, run, danger,
+ *  disabled, hint} or null for a divider; anchor is the element it was opened on. */
 export const contextMenu = writable(null);
 
 /** Opens the menu where the event happened — or, from the keyboard's menu
@@ -22,14 +23,27 @@ export const contextMenu = writable(null);
 export function openMenu(event, items) {
   event.preventDefault();
   event.stopPropagation();
+  const anchor = event.currentTarget?.getBoundingClientRect ? event.currentTarget : null;
   let { clientX: x, clientY: y } = event;
-  if (!x && !y && event.currentTarget?.getBoundingClientRect) {
-    const r = event.currentTarget.getBoundingClientRect();
+  if (!x && !y && anchor) {
+    const r = anchor.getBoundingClientRect();
     x = r.left + 12;
     y = r.top + 12;
   }
-  contextMenu.set({ x, y, items });
+  contextMenu.set({ x, y, items, anchor });
 }
+
+// The element a menu belongs to is marked data-menu-open while the menu is
+// up, so it stays highlighted and it is plain which game the menu is for —
+// the pointer has usually moved off it by then. Any element opening a menu
+// gets this; each styles the mark its own way.
+let marked = null;
+contextMenu.subscribe((menu) => {
+  const next = menu?.anchor ?? null;
+  if (marked && marked !== next && marked.dataset) delete marked.dataset.menuOpen;
+  if (next?.dataset) next.dataset.menuOpen = '';
+  marked = next;
+});
 
 export const closeMenu = () => contextMenu.set(null);
 

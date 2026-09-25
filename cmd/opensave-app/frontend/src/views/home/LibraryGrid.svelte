@@ -1,3 +1,10 @@
+<script context="module">
+  // The tiles come in one after another the first time the library is shown
+  // in a session; after that the page's own arrival is enough, and coming
+  // back to Home is not made to wait.
+  let shownBefore = false;
+</script>
+
 <script>
   // The tracked games, each saying where its save stands — as wide banners or
   // tall box art, as many to a row as chosen, filtered by name and by status.
@@ -19,6 +26,9 @@
 
   /** [{game, status}] for every tracked game. */
   export let rows = [];
+
+  const firstShow = !shownBefore;
+  shownBefore = true;
 
   let query = '';
   let status = 'all';
@@ -135,10 +145,11 @@
   </div>
 {:else}
   <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}">
-    {#each shown as { game, status: s } (game.id)}
+    {#each shown as { game, status: s }, i (game.id)}
       <LibraryTile
         {game}
         status={s}
+        enter={firstShow ? i : -1}
         cover={$libraryView.cover}
         selecting={selectMode}
         selected={libSelected.has(game.id)}

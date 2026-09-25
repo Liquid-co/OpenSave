@@ -47,6 +47,7 @@
   --btn-bg-hover: rgba(255, 255, 255, 0.1);
   --btn-border: rgba(255, 255, 255, 0.07);
   --shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-lift: 0 18px 34px -14px rgba(0, 0, 0, 0.9);
   --overlay: rgba(0, 0, 0, 0.62);
 }
 
@@ -73,6 +74,7 @@
   --btn-bg-hover: rgba(20, 20, 40, 0.09);
   --btn-border: rgba(20, 20, 40, 0.08);
   --shadow: 0 16px 40px rgba(20, 20, 40, 0.16);
+  --shadow-lift: 0 16px 30px -14px rgba(20, 20, 40, 0.35);
   --overlay: rgba(20, 20, 30, 0.38);
 }
 
@@ -522,5 +524,49 @@ h2.page-title {
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
+  }
+}
+
+/* Animations off — Settings → General → Appearance, or the system asking
+   apps to reduce motion (lib/appearance.js sets data-motion): nothing slides,
+   fades or grows. Spinners keep turning; they say something is being done,
+   and a still one reads as stuck. */
+:root[data-motion='off'] *:not(.spin, .spin *),
+:root[data-motion='off'] *::before,
+:root[data-motion='off'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* A page arriving: a short rise, so the change of place is felt. */
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Dialogs arriving: the dimming fades in and the dialog rises into place.
+   Two names are in use for the dimmed layer; .backdrop alone is also the
+   blurred art behind a letterboxed cover, which has no role. A dialog with an
+   entrance of its own (the Ctrl+K palette) keeps it: component styles come
+   later in the cascade. */
+.overlay,
+.backdrop[role='presentation'] {
+  animation: fade-in 0.14s ease-out backwards;
+}
+.overlay > :first-child,
+.backdrop[role='presentation'] > :first-child {
+  animation: dialog-in 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
   }
 }

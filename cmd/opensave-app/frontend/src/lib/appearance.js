@@ -1,5 +1,5 @@
-// How the app looks on this device: light or dark, the accent colour, and
-// how large everything is drawn.
+// How the app looks on this device: light or dark, the accent colour, how
+// large everything is drawn, and whether things move.
 //
 // Kept on this device, like the library view (see libraryview.js), and for
 // the same reasons: it is about this screen and the person in front of it,
@@ -21,7 +21,7 @@ export const ACCENTS = {
 
 export const SCALES = [0.9, 1, 1.1, 1.25];
 
-export const DEFAULT_APPEARANCE = Object.freeze({ theme: 'dark', accent: 'violet', scale: 1 });
+export const DEFAULT_APPEARANCE = Object.freeze({ theme: 'dark', accent: 'violet', scale: 1, motion: true });
 
 /** An appearance with every field valid, whatever was stored. */
 export function sanitizeAppearance(raw) {
@@ -30,9 +30,14 @@ export function sanitizeAppearance(raw) {
   return {
     theme: v.theme in THEMES ? v.theme : DEFAULT_APPEARANCE.theme,
     accent: v.accent in ACCENTS ? v.accent : DEFAULT_APPEARANCE.accent,
-    scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale
+    scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
+    motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion
   };
 }
+
+/** Whether things may move: chosen here, and never while the system asks
+ *  apps to reduce motion. */
+export const motionAllowed = (v, reduceMotion) => sanitizeAppearance(v).motion && !reduceMotion;
 
 const KEY = 'opensave.appearance';
 
@@ -88,12 +93,17 @@ export function accentVars(accent) {
 // for a moment while the window is resized. It matches --bg in app.css.
 export const WINDOW_BACKGROUND = { dark: [12, 12, 13], light: [244, 244, 247] };
 
-/** Puts an appearance on the page: theme attribute, accent, scale. */
-export function applyAppearance(v, { root = globalThis.document?.documentElement, prefersDark = true, setWindowBackground } = {}) {
+/** Puts an appearance on the page: theme attribute, accent, scale, and
+ *  data-motion, which app.css reads to still everything when it is 'off'. */
+export function applyAppearance(
+  v,
+  { root = globalThis.document?.documentElement, prefersDark = true, reduceMotion = false, setWindowBackground } = {}
+) {
   if (!root) return;
   const a = sanitizeAppearance(v);
   const theme = resolvedTheme(a.theme, prefersDark);
   root.dataset.theme = theme;
+  root.dataset.motion = motionAllowed(a, reduceMotion) ? 'on' : 'off';
   for (const [name, value] of Object.entries(accentVars(a.accent))) root.style.setProperty(name, value);
   // zoom rather than a larger root font size: much of the app is measured in
   // pixels — icons, tiles, paddings — and would stay put while the text grew.
