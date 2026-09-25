@@ -1,10 +1,20 @@
 <script>
-  // One sentence about the whole library and the facts behind it, where three
-  // large counters used to be. Two of those counters — devices online and
-  // syncs running — read 0 nearly all the time, which said nothing, and none
-  // of them said the thing a person opens the app to check: are my saves
-  // safe, and is anything waiting on me.
+  // One sentence about the whole library, with the facts behind it beside it,
+  // where three large counters used to be. Two of those counters — devices
+  // online and syncs running — read 0 nearly all the time, which said
+  // nothing, and none of them said the thing a person opens the app to
+  // check: are my saves safe, and is anything waiting on me.
+  //
+  // The state is carried by an icon, not a coloured stripe and a dot: the
+  // stripe and dot said "status" without saying which, and the same green dot
+  // then repeated on every card below.
   import { onDestroy } from 'svelte';
+  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import CircleDashed from 'lucide-svelte/icons/circle-dashed';
+  import CirclePause from 'lucide-svelte/icons/circle-pause';
+  import ChevronRight from 'lucide-svelte/icons/chevron-right';
   import { peers, settings, navigate, syncPause } from '../../lib/stores.js';
   import { pauseLength, resumeSync } from '../../lib/syncpause.js';
   import { providerById } from '../../lib/cloudproviders.js';
@@ -18,124 +28,214 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
 
+  const ICONS = { ok: ShieldCheck, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
+
   $: summary = librarySummary(rows);
   // The pause's countdown starts from the moment it changes.
   $: if ($syncPause) now = Date.now();
+  // A pause outranks the quiet states, not a decision waiting or a sync in
+  // flight: those still need seeing while it lasts.
+  $: paused = $syncPause.paused;
+  $: tone = paused && (summary.tone === 'ok' || summary.tone === 'muted') ? 'paused' : summary.tone;
+  $: icon = tone === 'paused' ? CirclePause : ICONS[summary.tone];
 
   $: paired = Object.values($peers);
-  $: online = paired.filter((p) => p.status === 'online').length;
+  $: online = paired.filter((p) => p.status === 'online');
   $: devices =
     paired.length === 0
-      ? 'No other devices paired'
-      : `${paired.length} ${paired.length === 1 ? 'device' : 'devices'} paired · ${online} online`;
+      ? 'None paired'
+      : paired.length === 1
+        ? `${paired[0].name} · ${online.length ? 'online' : 'offline'}`
+        : `${online.length} of ${paired.length} online`;
 
-  $: cloud = $settings?.cloudSync?.enabled
-    ? `Cloud backup: ${providerById($settings.cloudSync.provider)?.label ?? 'on'}`
-    : 'Cloud backup off';
+  $: cloudOn = !!$settings?.cloudSync?.enabled;
+  $: cloud = cloudOn ? (providerById($settings.cloudSync.provider)?.label ?? 'On') : 'Off';
 
-  $: latest = rows.reduce((best, r) => {
-    const t = latestSnapshotAt(r.game);
-    return t && (!best || t > best) ? t : best;
+  $: newest = rows.reduce((best, r) => {
+    const at = latestSnapshotAt(r.game);
+    return at && (!best || at > best.at) ? { at, name: r.game.name } : best;
   }, null);
 </script>
 
-<div class="summary tone-{summary.tone}">
-  <div class="headline">
-    <span class="dot"></span>
-    {summary.headline}
-  </div>
-  {#if $syncPause.paused}
-    <div class="paused-line">
-      Syncing is paused {pauseLength($syncPause, now)} — snapshots are still taken, and everything catches up
-      when it resumes.
-      <button class="btn small" on:click={resumeSync}>Resume now</button>
+<section class="summary tone-{tone}">
+  <div class="state">
+    <div class="state-icon" class:spin={tone === 'busy'}><svelte:component this={icon} size={20} strokeWidth={2} /></div>
+    <div class="state-text">
+      <p class="headline" role="status">{summary.headline}</p>
+      {#if paused}
+        <p class="detail">
+          Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken, and everything catches up when it
+          resumes.
+        </p>
+      {/if}
     </div>
-  {/if}
-  <div class="facts">
-    <span>{rows.length} {rows.length === 1 ? 'game' : 'games'}</span>
-    <span class="sep">·</span>
-    <button class="fact-link" on:click={() => navigate('devices')}>{devices}</button>
-    <span class="sep">·</span>
-    <button class="fact-link" on:click={() => navigate('cloud')}>{cloud}</button>
-    {#if latest}
-      <span class="sep">·</span>
-      <span title={new Date(latest).toLocaleString()}>Latest snapshot {timeAgo(latest, now)}</span>
+    {#if paused}
+      <button class="btn small" on:click={resumeSync}>Resume now</button>
     {/if}
   </div>
-</div>
+
+  <div class="facts">
+    <button class="fact link" on:click={() => navigate('devices')} title="Open Devices">
+      <span class="label">Devices</span>
+      <span class="value" class:quiet={paired.length === 0}><span class="v">{devices}</span><ChevronRight size={13} class="go" /></span>
+    </button>
+    <button class="fact link" on:click={() => navigate('cloud')} title="Open Cloud Backup">
+      <span class="label">Cloud backup</span>
+      <span class="value" class:quiet={!cloudOn}><span class="v">{cloud}</span><ChevronRight size={13} class="go" /></span>
+    </button>
+    <div class="fact" title={newest ? `${newest.name} · ${new Date(newest.at).toLocaleString()}` : ''}>
+      <span class="label">Last snapshot</span>
+      <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : 'None yet'}</span></span>
+    </div>
+  </div>
+</section>
 
 <style>
-  .paused-line {
+  .summary {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     flex-wrap: wrap;
-    gap: 10px;
-    margin: 2px 0 8px 17px;
-    font-size: 0.86rem;
-    color: var(--warn);
-  }
-  .summary {
-    --tone: var(--success);
+    gap: 14px 28px;
     background: var(--bg-raised);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--tone);
     border-radius: var(--radius-lg);
-    padding: 16px 20px;
+    padding: 16px 18px;
     margin-bottom: 26px;
   }
-  .tone-warn {
-    --tone: var(--warn);
-  }
-  .tone-busy {
-    --tone: var(--accent);
-  }
-  .tone-muted {
-    --tone: var(--text-faint);
-  }
-  .headline {
+
+  .state {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.05rem;
-    font-weight: 600;
+    gap: 14px;
+    min-width: 0;
+    flex: 1 1 320px;
   }
-  .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--tone);
+  .state-icon {
+    --tint: var(--success-rgb);
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
+    color: rgb(var(--tint));
+    background: rgba(var(--tint), 0.12);
   }
-  .tone-busy .dot {
-    animation: pulse 1.4s ease-in-out infinite;
+  .tone-warn .state-icon,
+  .tone-paused .state-icon {
+    --tint: var(--warn-rgb);
   }
-  @keyframes pulse {
-    50% {
-      opacity: 0.35;
+  .tone-busy .state-icon {
+    --tint: var(--accent-rgb);
+  }
+  .tone-muted .state-icon {
+    color: var(--text-dim);
+    background: var(--bg-active);
+  }
+  .state-icon.spin :global(svg) {
+    animation: spin 1.6s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
     }
   }
-  .facts {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 8px;
-    margin: 6px 0 0 19px;
+  @media (prefers-reduced-motion: reduce) {
+    .state-icon.spin :global(svg) {
+      animation: none;
+    }
+  }
+  .state-text {
+    min-width: 0;
+  }
+  .headline {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1.3;
+  }
+  .detail {
+    margin-top: 3px;
     font-size: 0.84rem;
     color: var(--text-dim);
   }
-  .sep {
-    color: var(--text-faint);
+  .state .btn {
+    flex-shrink: 0;
   }
-  .fact-link {
+
+  .facts {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 6px 16px;
+    border-left: 1px solid var(--border);
+    text-align: left;
+  }
+  /* The row's ends sit on the card's edges, so the facts line up with the
+     icon when they wrap below it in a narrow window. */
+  .fact:first-child {
+    border-left: none;
+    padding-left: 0;
+  }
+  .fact:last-child {
+    padding-right: 0;
+  }
+  .fact.link {
     background: none;
-    border: none;
-    padding: 0;
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+    border-radius: 0;
     font: inherit;
     color: inherit;
     cursor: pointer;
   }
-  .fact-link:hover {
+  .label {
+    font-size: 0.74rem;
+    color: var(--text-faint);
+  }
+  .value {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.9rem;
+    font-weight: 500;
     color: var(--text);
-    text-decoration: underline;
+    max-width: 220px;
+  }
+  .v {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .value.quiet {
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+  .value :global(.go) {
+    flex-shrink: 0;
+    color: var(--text-faint);
+    opacity: 0;
+    transform: translateX(-3px);
+    transition:
+      opacity 0.12s,
+      transform 0.12s;
+  }
+  .fact.link:hover .value,
+  .fact.link:focus-visible .value {
+    color: var(--text);
+  }
+  .fact.link:hover :global(.go),
+  .fact.link:focus-visible :global(.go) {
+    opacity: 1;
+    transform: none;
   }
 </style>

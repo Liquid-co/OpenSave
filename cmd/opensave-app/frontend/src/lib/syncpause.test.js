@@ -15,8 +15,10 @@ describe('pause wording', () => {
   it('says how long is left, rounding up to the minute', () => {
     expect(pauseLength(endingIn(42), now)).toBe('for 42 more minutes');
     expect(pauseLength(endingIn(41.2), now)).toBe('for 42 more minutes');
-    expect(pauseLength(endingIn(65), now)).toBe('for 1 h 05 min');
-    expect(pauseLength(endingIn(120), now)).toBe('for 2 h');
+    expect(pauseLength(endingIn(65), now)).toBe('for 1 hour 5 minutes');
+    expect(pauseLength(endingIn(120), now)).toBe('for 2 hours');
+    expect(pauseLength(endingIn(60), now)).toBe('for 1 hour');
+    expect(pauseLength(endingIn(61), now)).toBe('for 1 hour 1 minute');
     expect(pauseLength(endingIn(0.5), now)).toBe('for less than a minute');
     expect(pauseShort(endingIn(42), now)).toBe('42 min left');
     expect(pauseShort(endingIn(90), now)).toBe('1 h 30 min left');

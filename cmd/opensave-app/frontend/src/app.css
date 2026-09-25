@@ -475,19 +475,6 @@ select {
   color: var(--warn);
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.dot.green {
-  background: var(--success);
-}
-.dot.gray {
-  background: var(--text-faint);
-}
-
 h2.page-title {
   font-size: 1.4rem;
   font-weight: 700;

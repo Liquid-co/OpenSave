@@ -152,11 +152,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 - **Home says where your saves stand.** The three counters at the top —
   games tracked, devices online, syncs running — read 0 most of the time
   and never said the thing you open the app to check. They are now one
-  line: every game backed up, or which game needs a decision, or what is
+  card: every game backed up, or which game needs a decision, or what is
   syncing, with the devices, the cloud backup and the latest snapshot
   beside it. Each game's card says the same for that game — synced when,
-  syncing, needs a decision, or auto-sync off — in a colour that says
-  whether to look. The library can be sorted by recently changed, and
+  syncing, needs a decision, or auto-sync off — quietly when all is well,
+  and in colour only when it is worth a look; the green dot that sat on
+  every card is gone. The status bar says when the app has lost touch with
+  its background service instead of showing a grey dot. The library can
+  be sorted by recently changed, and
   explicit cover art is blurred there as it already was in the sidebar.
 
 - **Snapshots are listed by when and why.** Each was titled with its ID —

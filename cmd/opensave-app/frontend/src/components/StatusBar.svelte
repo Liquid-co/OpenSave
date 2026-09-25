@@ -38,6 +38,11 @@
     );
 
   $: running = Object.entries($syncActivity).filter(([, s]) => s.state === 'running');
+  // "Reconnecting" only once there has been a connection to lose: the socket
+  // starts closed, and every launch would otherwise open by saying so.
+  let connectedOnce = false;
+  $: if ($wsConnected) connectedOnce = true;
+  $: lost = connectedOnce && !$wsConnected;
   $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online').length;
   $: statusText = running.length
     ? `Syncing ${running.length} game${running.length > 1 ? 's' : ''}…`
@@ -56,8 +61,9 @@
 
 <footer>
   <div class="left">
-    <span class="dot" class:green={$wsConnected && !$syncPause.paused} class:amber={$syncPause.paused} class:gray={!$wsConnected}></span>
-    {#if $syncPause.paused}
+    {#if lost}
+      <span class="offline" title="The app has lost touch with its background service and is reconnecting">Reconnecting…</span>
+    {:else if $syncPause.paused}
       <span class="paused" title="Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken.">
         Syncing paused · {pauseShort($syncPause, now)}
       </span>
@@ -114,8 +120,8 @@
     color: var(--accent);
     font-weight: 600;
   }
-  .dot.amber {
-    background: var(--warn);
+  .offline {
+    color: var(--warn);
   }
   .paused {
     color: var(--warn);

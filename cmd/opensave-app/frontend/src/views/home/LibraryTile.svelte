@@ -12,6 +12,8 @@
   import { COVER_STYLES } from '../../lib/libraryview.js';
   import { collections, isFavourite } from '../../lib/collections.js';
   import Star from 'lucide-svelte/icons/star';
+  import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import { openGameMenu } from '../../lib/contextmenu.js';
 
   export let game;
@@ -77,7 +79,10 @@
       {#if isFavourite($collections, game.id)}<span class="fav" title="In Favourites"><Star size={12} /></span>{/if}{game.name}
     </div>
     <div class="status tone-{status.tone}">
-      <span class="dot"></span><span class="status-text" title={status.label}>{status.label}</span>
+      {#if status.tone === 'warn'}<TriangleAlert size={13} class="status-icon" />{:else if status.tone === 'busy'}<RefreshCw
+          size={12}
+          class="status-icon spin"
+        />{/if}<span class="status-text" title={status.label}>{status.label}</span>
     </div>
     {#if cover === 'wide'}
       <div class="meta">
@@ -205,14 +210,15 @@
     font-size: 0.88rem;
     margin-bottom: 3px;
   }
-  /* Where the save stands, in the colour that says whether to look. */
+  /* Where the save stands. Quiet when all is well — a green dot on every
+     card said nothing the summary above had not — and coloured, with an
+     icon, only when it is worth a look. */
   .status {
-    --tone: var(--success);
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 5px;
     font-size: 0.8rem;
-    color: var(--text);
+    color: var(--text-dim);
     min-width: 0;
   }
   .tall .status {
@@ -225,23 +231,29 @@
     text-overflow: ellipsis;
   }
   .status.tone-warn {
-    --tone: var(--warn);
     color: var(--warn);
   }
   .status.tone-busy {
-    --tone: var(--accent);
     color: var(--accent);
   }
   .status.tone-muted {
-    --tone: var(--text-faint);
-    color: var(--text-dim);
+    color: var(--text-faint);
   }
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--tone);
+  .status :global(.status-icon) {
     flex-shrink: 0;
+  }
+  .status :global(.spin) {
+    animation: tile-spin 1.6s linear infinite;
+  }
+  @keyframes tile-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status :global(.spin) {
+      animation: none;
+    }
   }
   .meta {
     margin-top: 4px;

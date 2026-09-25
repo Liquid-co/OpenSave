@@ -366,7 +366,6 @@
   }
   .status-dot.green {
     background: var(--success);
-    box-shadow: 0 0 8px rgba(var(--success-rgb), 0.6);
   }
   .status-dot.gray {
     background: var(--text-faint);

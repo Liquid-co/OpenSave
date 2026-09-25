@@ -20,7 +20,8 @@ export function pauseLength(pause, now = Date.now()) {
   if (minutes >= 60) {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return m ? `for ${h} h ${String(m).padStart(2, '0')} min` : `for ${h} h`;
+    const hours = h === 1 ? '1 hour' : `${h} hours`;
+    return m ? `for ${hours} ${m === 1 ? '1 minute' : `${m} minutes`}` : `for ${hours}`;
   }
   if (minutes <= 1) return 'for less than a minute';
   return `for ${minutes} more minutes`;
