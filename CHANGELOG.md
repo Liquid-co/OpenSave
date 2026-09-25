@@ -117,6 +117,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   up on its own, cloud copies included. A pause ends when OpenSave
   restarts, so one can't be forgotten for days.
 
+- **Compare two snapshots.** The compare button on any snapshot shows which
+  files differ between it and the one before — or any other two you pick —
+  file by file, with sizes: what a session changed, or which of two saves is
+  the one from before the boss. Instant however large the save, since it
+  reads the archives' own file lists. `opensave snapshot-diff` does the same.
+  Sizes under a kilobyte are now shown in bytes rather than "0.0 KB".
+
 - **See what a restore will do before it does it.** Restoring a snapshot
   now shows, file by file, what changes, what comes back and what goes,
   with sizes — or that your save already matches it. The same from the

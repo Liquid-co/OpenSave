@@ -1,9 +1,12 @@
 // Small formatters shared by the views.
 
-/** Bytes as KB, MB or GB, one decimal: "3.2 KB", "1.4 MB", "9.5 GB". GB so
- *  free space on a drive reads as "9.5 GB" and not "9724.7 MB". */
+/** Bytes as B, KB, MB or GB, one decimal past bytes: "185 B", "3.2 KB",
+ *  "1.4 MB", "9.5 GB". GB so free space on a drive reads as "9.5 GB" and not
+ *  "9724.7 MB"; bytes so a small save file is not "0.0 KB". */
 export const fmtSize = (n) =>
-  n >= 1073741824
+  (n ?? 0) < 1024
+    ? `${Math.max(0, Math.round(n ?? 0))} B`
+    : n >= 1073741824
     ? (n / 1073741824).toFixed(1) + ' GB'
     : n >= 1048576
       ? (n / 1048576).toFixed(1) + ' MB'

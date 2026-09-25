@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { fmtSize, fmtTime, playLength, plural } from './format.js';
 
 describe('fmtSize', () => {
-  it('shows KB below a megabyte and MB from one', () => {
-    expect(fmtSize(0)).toBe('0.0 KB');
+  it('shows bytes below a kilobyte, KB below a megabyte and MB from one', () => {
+    expect(fmtSize(0)).toBe('0 B');
+    expect(fmtSize(185)).toBe('185 B');
+    expect(fmtSize(1024)).toBe('1.0 KB');
     expect(fmtSize(1536)).toBe('1.5 KB');
     expect(fmtSize(1048575)).toBe('1024.0 KB');
     expect(fmtSize(1048576)).toBe('1.0 MB');

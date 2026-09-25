@@ -12,6 +12,8 @@
   import Pin from 'lucide-svelte/icons/pin';
   import PinOff from 'lucide-svelte/icons/pin-off';
   import Pencil from 'lucide-svelte/icons/pencil';
+  import GitCompareArrows from 'lucide-svelte/icons/git-compare-arrows';
+  import CompareDialog from './CompareDialog.svelte';
 
   export let game;
   export let runner;
@@ -35,6 +37,7 @@
 
   let comment = '';
   let browsing = null; // {snap, files}
+  let comparing = null; // the snapshot Compare was opened from
 
   // Times are relative to now, and now moves.
   let now = new Date();
@@ -140,6 +143,10 @@
   </div>
 {/if}
 
+{#if comparing}
+  <CompareDialog {game} snapshots={allSnapshots} start={comparing} onClose={() => (comparing = null)} />
+{/if}
+
 {#if allSnapshots.length === 0}
   <div class="empty"><h3>No snapshots yet</h3><p>Snapshots are created automatically when your save changes.</p></div>
 {:else}
@@ -195,6 +202,16 @@
             <button class="btn small ghost icon" title={snap.note ? 'Edit the note' : 'Add a note'} aria-label="Note" on:click={() => startNote(snap)}>
               <Pencil size={13} />
             </button>
+            {#if allSnapshots.length > 1}
+              <button
+                class="btn small ghost icon"
+                title="Compare with another snapshot"
+                aria-label="Compare"
+                on:click={() => (comparing = snap)}
+              >
+                <GitCompareArrows size={14} />
+              </button>
+            {/if}
             <button class="btn small" on:click={() => browseSnapshot(snap)}>Files</button>
             <button
               class="btn small"

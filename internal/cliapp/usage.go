@@ -56,6 +56,7 @@ var commandGroups = []commandGroup{
 		{"snapshot <gameId> [-m] [comment]", "Create a snapshot"},
 		{"snapshot --all [comment]", "Snapshot every tracked game"},
 		{"snapshots <gameId>", "List snapshots"},
+		{"snapshot-diff <gameId> <from> <to>", "What changed from one snapshot to another"},
 		{"rollback <gameId> <snapId> [--dry-run]", "Restore a snapshot (or list what it would change)"},
 		{"branch <gameId> <name>", "Create a branch"},
 		{"checkout <gameId> <name>", "Switch branch"},

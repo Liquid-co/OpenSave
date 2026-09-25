@@ -164,6 +164,8 @@ func Run(args []string) int {
 		return cmdSessions(d, rest)
 	case "verify":
 		return cmdVerify(d, rest)
+	case "snapshot-diff":
+		return cmdSnapshotDiff(d, rest)
 	case "export":
 		return cmdExport(d, rest)
 	case "exclude":
