@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { settings, toast, askConfirm, gameList, navigate } from '../lib/stores.js';
+  import { showSetupAgain } from '../lib/setup.js';
   import { api, native } from '../lib/api.js';
   import { adoptOutsideChanges, changedFields, createAutosave } from '../lib/autosave.js';
   import qrcode from 'qrcode-generator';
@@ -385,6 +386,13 @@
       <h3 class="section-title with-icon"><LayoutGrid size={17} />Library</h3>
       <p class="hint library-hint">How your games are laid out on Home. Changes apply straight away.</p>
       <LibraryViewOptions />
+      <div class="guide-row">
+        <div>
+          <strong>Setup guide</strong>
+          <p class="hint">The getting-started checklist on Home: find your saves, add your other devices, back up to the cloud.</p>
+        </div>
+        <button class="btn small" on:click={() => { showSetupAgain(); navigate('home'); }}>Show it again</button>
+      </div>
     </div>
 
     <div class="card" style="margin-top: 14px;">
@@ -993,6 +1001,21 @@
     font-size: 0.82rem;
     color: var(--text-faint);
     line-height: 1.5;
+  }
+  .guide-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .guide-row strong {
+    font-size: 0.88rem;
+  }
+  .guide-row .hint {
+    margin: 2px 0 0;
   }
   .library-hint {
     font-size: 0.82rem;

@@ -55,3 +55,13 @@ describe('decideSetupFor', () => {
     expect(decideSetupFor(decided, 3)).toBe(decided);
   });
 });
+
+describe('showing the guide again', () => {
+  it('brings it back with skipped steps offered again', async () => {
+    const { setupState, showSetupAgain } = await import('./setup.js');
+    const { get } = await import('svelte/store');
+    setupState.set({ seen: true, dismissed: true, skipped: ['cloud'] });
+    showSetupAgain();
+    expect(get(setupState)).toEqual({ seen: true, dismissed: false, skipped: [] });
+  });
+});

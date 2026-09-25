@@ -54,3 +54,10 @@ export function decideSetupFor(state, gameCount) {
 
 export const setupState = writable(loadSetup());
 setupState.subscribe((v) => saveSetup(v));
+
+/** Brings the guide back on Home — from Settings or Ctrl+K — with any
+ *  skipped step offered again. Steps already done stay ticked, since they
+ *  are worked out from what exists. */
+export function showSetupAgain() {
+  setupState.update((s) => ({ ...s, seen: true, dismissed: false, skipped: [] }));
+}

@@ -7,6 +7,11 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **The setup guide can be brought back.** It greets a new install whose
+  library starts empty; anyone who put it away, or set up before it
+  existed, can show it again from Settings → Library or Ctrl+K ("Show the
+  setup guide").
+
 - **Notifications, in one place.** A bell in the title bar keeps everything
   worth telling you, with a count on it: what is waiting on you — a save
   that needs a decision, an emptied save, a device asking to pair, a newer

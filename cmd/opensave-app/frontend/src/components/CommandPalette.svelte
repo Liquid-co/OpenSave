@@ -10,6 +10,7 @@
   import { collections, collectionFilter } from '../lib/collections.js';
   import { api } from '../lib/api.js';
   import { visibleGames, runGameAction } from '../lib/gameactions.js';
+  import { showSetupAgain } from '../lib/setup.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
   import { PAGES } from '../lib/shortcuts.js';
   import { rank, snapshotEntries } from '../lib/palette.js';
@@ -40,6 +41,15 @@
       run: () => appearance.update((a) => ({ ...a, theme: isDark() ? 'light' : 'dark' }))
     },
     { label: 'Keyboard shortcuts', kind: 'Help', idle: true, keywords: ['keys', 'help'], run: () => dispatch('help') },
+    {
+      label: 'Show the setup guide',
+      kind: 'Help',
+      keywords: ['tutorial', 'getting started', 'onboarding', 'help', 'checklist'],
+      run: () => {
+        showSetupAgain();
+        navigate('home');
+      }
+    },
     ...($syncPause.paused
       ? [{ label: 'Resume syncing', kind: 'Action', idle: true, keywords: ['unpause', 'start'], run: resumeSync }]
       : PAUSE_CHOICES.map((c) => ({
