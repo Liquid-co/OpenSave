@@ -109,6 +109,14 @@ var launcherPrograms = map[string]bool{
 	"battle.net.exe": true, "xboxpcapp.exe": true,
 }
 
+// programName is a launch program's file name, lower-cased, whichever
+// separator its path was written with: a path from Windows names Steam as
+// steam.exe on any system.
+func programName(exe string) string {
+	exe = strings.ReplaceAll(exe, `\`, "/")
+	return strings.ToLower(exe[strings.LastIndex(exe, "/")+1:])
+}
+
 func (d *Daemon) sessionTargets() ([]sessions.Target, error) {
 	games, err := d.Store.ListGames()
 	if err != nil {
@@ -118,7 +126,7 @@ func (d *Daemon) sessionTargets() ([]sessions.Target, error) {
 	targets := make([]sessions.Target, 0, len(games))
 	for _, g := range games {
 		t := sessions.Target{GameID: g.ID, AppID: g.AppID}
-		if exe := strings.TrimSpace(g.ExePath); exe != "" && !launcherPrograms[strings.ToLower(filepath.Base(exe))] {
+		if exe := strings.TrimSpace(g.ExePath); exe != "" && !launcherPrograms[programName(exe)] {
 			t.Exe = exe
 		}
 		if dir := byAppID[g.AppID]; g.AppID != "" && dir != "" {
