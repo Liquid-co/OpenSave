@@ -69,7 +69,10 @@ export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} f
 export const cloudUploadEvent = writable(null); // {gameId, done, total, current, complete} while sync-local runs
 export const backupProgressEvent = writable(null); // {op, done, total, current, complete} while an .sscb export/import runs
 export const conflictResolution = writable(null); // {gameId, resolution, branchName?, error?} when a background resolution finishes
-export const appUpdate = writable(null); // {state: downloading|installing|restarting|error, percentage, error} during self-update
+export const appUpdate = writable(null);
+// A newer version found by the update check ({latest, current, ...}), for
+// the notifications; the banner has its own copy.
+export const availableUpdate = writable(null); // {state: downloading|installing|restarting|error, percentage, error} during self-update
 export const showAbout = writable(false); // About dialog visibility (shared so any surface can open it)
 export const aboutChangelogOpen = writable(false); // open About with the changelog pre-expanded
 

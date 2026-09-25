@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings, games } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings, games, availableUpdate } from './lib/stores.js';
   import { startController, controllerOn, padUsed, pageStep } from './lib/controller.js';
   import { appearance } from './lib/appearance.js';
   import { paletteOpen } from './lib/shortcuts.js';
@@ -135,7 +135,10 @@
     const check = async () => {
       try {
         const res = await native.checkUpdate();
-        if (res?.available) update = res;
+        if (res?.available) {
+          update = res;
+          availableUpdate.set(res);
+        }
       } catch {}
     };
     await check();

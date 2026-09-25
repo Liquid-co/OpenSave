@@ -7,6 +7,15 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Notifications, in one place.** A bell in the title bar keeps everything
+  worth telling you, with a count on it: what is waiting on you — a save
+  that needs a decision, an emptied save, a device asking to pair, a newer
+  save offered from the cloud, games found, a folder gone, a snapshot that
+  cannot be restored, an update — and what happened lately, such as a save
+  arriving from another device or brought from the cloud. What happened is
+  unread until you have opened the bell; what waits on you stays until it
+  is dealt with. Each one opens where it is dealt with.
+
 - **Pause syncing from Home, and pick linked copies by their covers.** Home
   has a Pause syncing button beside Sync all — for 15 minutes, an hour,
   three hours or until you resume — which turns into Resume, with the time

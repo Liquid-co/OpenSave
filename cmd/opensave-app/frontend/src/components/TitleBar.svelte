@@ -1,5 +1,6 @@
 <script>
   import { native } from '../lib/api.js';
+  import NotificationHub from './NotificationHub.svelte';
   import logoUrl from '../assets/logo.png';
 </script>
 
@@ -8,6 +9,8 @@
     <img class="logo" src={logoUrl} alt="" draggable="false" />
     <span class="title">OpenSave</span>
   </div>
+  <div class="right">
+  <NotificationHub />
   <div class="controls" style="--wails-draggable: no-drag">
     <button on:click={() => native.minimise()} title="Minimise" aria-label="Minimise">
       <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5.5" x2="9" y2="5.5" stroke="currentColor" stroke-width="1.2"/></svg>
@@ -18,6 +21,7 @@
     <button class="close" on:click={() => native.close()} title="Close" aria-label="Close">
       <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5" stroke="currentColor" stroke-width="1.2"/></svg>
     </button>
+  </div>
   </div>
 </div>
 
@@ -47,6 +51,11 @@
     font-weight: 600;
     color: var(--text-dim);
     letter-spacing: 0.02em;
+  }
+  .right {
+    display: flex;
+    align-items: center;
+    height: 100%;
   }
   .controls {
     display: flex;

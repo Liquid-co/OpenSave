@@ -31,7 +31,7 @@ export function describe(item, now = new Date()) {
     case 'sent':
       return { icon: 'up', title: `${item.device} took ${files} from here`, detail: '', tone: 'ok' };
     case 'deleted':
-      return { icon: 'trash', title: `${item.device} deleted ${files}, so they went here too${where}`, detail: '', tone: 'muted' };
+      return { icon: 'trash', title: `Deleted ${files} as ${item.device} did${where}`, detail: '', tone: 'muted' };
     case 'restored': {
       const [, at] = (item.detail ?? '').split('|');
       return { icon: 'restore', title: at ? `Put back the snapshot of ${whenLabel(at, now)}` : 'Put back a snapshot', detail: '', tone: 'ok' };
