@@ -635,6 +635,7 @@ func (d *Daemon) pullFromCloud(game store.Game, fileName, deviceName string) err
 		_ = d.Store.SetLastManifestHash(game.ID, hash)
 	}
 	d.Log.Log("success", fmt.Sprintf("cloud: brought %s's save for %q here", deviceName, game.Name))
+	d.P2P.Sync.RecordActivity(store.ActivityEvent{GameID: game.ID, Kind: store.ActivityCloudPulled, Device: deviceName})
 	if d.OnGameChanged != nil {
 		d.OnGameChanged(game.ID)
 	}

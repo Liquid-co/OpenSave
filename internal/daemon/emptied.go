@@ -152,6 +152,8 @@ func (d *Daemon) AnswerEmptied(gameID, answer string) (EmptiedAnswer, error) {
 				return out, fmt.Errorf("could not put the files back from the snapshot of %s: %w", snap.Timestamp, err)
 			}
 			out.Restored = snap.ID
+			d.P2P.Sync.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityRestored,
+				Detail: fmt.Sprintf("%s|%s", snap.ID, snap.Timestamp)})
 		}
 		n, err := d.P2P.Sync.PutBack(gameID)
 		switch {

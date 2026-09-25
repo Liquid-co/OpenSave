@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/snapshots/all", s.handleSnapshotAll)
 	r.Get("/api/storage", s.handleStorage)
 	r.Post("/api/storage/compact", s.handleCompact)
+	r.Get("/api/activity", s.handleActivity)
 	r.Get("/api/emptied", s.handleEmptiedList)
 	r.Post("/api/games/{gameId}/emptied", s.handleEmptiedAnswer)
 
@@ -616,6 +618,8 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.BroadcastGamesUpdate()
+	s.Daemon.P2P.Sync.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityRestored,
+		Detail: fmt.Sprintf("%s|%s", snap.ID, snap.Timestamp)})
 	writeJSON(w, http.StatusOK, snap)
 }
 
@@ -806,6 +810,20 @@ func (s *Server) handleSetInCollection(w http.ResponseWriter, r *http.Request) {
 // handleStorage reports where snapshot space goes and what clean-up would free.
 func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 	report, err := s.Daemon.Storage()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+// handleActivity is the activity page's timeline and each game's standing:
+// ?before=<ms> for older items, ?game=<id> for one game's, ?limit=<n>.
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	report, err := s.Daemon.Activity(before, q.Get("game"), limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

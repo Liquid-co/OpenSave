@@ -8,6 +8,18 @@
   import { asText, feedByDay, filterEntries, linkGames } from '../lib/activity.js';
   import SearchInput from '../components/ui/SearchInput.svelte';
   import FilterTabs from '../components/ui/FilterTabs.svelte';
+  import Timeline from './activity/Timeline.svelte';
+
+  // Timeline: what happened to the saves, game by game. Log: every line the
+  // app wrote, for when something needs looking into.
+  const VIEW_KEY = 'opensave.activityView';
+  let view = 'timeline';
+  try {
+    view = localStorage.getItem(VIEW_KEY) === 'log' ? 'log' : 'timeline';
+  } catch {}
+  $: try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {}
 
   // Remembered on this device only; nothing depends on them.
   const MODE_KEY = 'opensave.activityMode';
@@ -54,7 +66,14 @@
 </script>
 
 <div class="head">
-  <h2 class="page-title">Activity</h2>
+  <div class="title-row">
+    <h2 class="page-title">Activity</h2>
+    <div class="segmented" role="tablist" aria-label="Activity view">
+      <button role="tab" aria-selected={view === 'timeline'} class:on={view === 'timeline'} on:click={() => (view = 'timeline')}>Timeline</button>
+      <button role="tab" aria-selected={view === 'log'} class:on={view === 'log'} on:click={() => (view = 'log')}>Log</button>
+    </div>
+  </div>
+  {#if view === 'log'}
   <div class="controls">
     <FilterTabs
       options={[['highlights', 'Highlights'], ['all', 'Everything'], ['problems', 'Problems']]}
@@ -70,9 +89,12 @@
       Copy
     </button>
   </div>
+  {/if}
 </div>
 
-{#if $logEntries.length === 0}
+{#if view === 'timeline'}
+  <Timeline />
+{:else if $logEntries.length === 0}
   <div class="card"><div class="empty"><h3>Nothing yet</h3><p>Syncs, snapshots and anything that needs your attention show up here.</p></div></div>
 {:else if shown.length === 0}
   <div class="card"><div class="empty"><h3>Nothing matches</h3><p>
@@ -112,6 +134,35 @@
 {/if}
 
 <style>
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .segmented {
+    display: inline-flex;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    overflow: hidden;
+  }
+  .segmented button {
+    padding: 6px 14px;
+    background: var(--bg);
+    border: none;
+    border-left: 1px solid var(--border-strong);
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.84rem;
+    cursor: pointer;
+  }
+  .segmented button:first-child {
+    border-left: none;
+  }
+  .segmented button.on {
+    background: var(--accent-soft);
+    color: var(--text);
+    font-weight: 600;
+  }
   .head {
     display: flex;
     align-items: center;

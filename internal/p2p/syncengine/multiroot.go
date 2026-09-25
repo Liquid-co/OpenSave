@@ -198,7 +198,9 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 
 	deleting := time.Now()
 	e.applyLocalDeletions(sr.root, decision)
-	if len(decision.FilesToDeleteLocally) > 0 {
+	if n := len(decision.FilesToDeleteLocally); n > 0 {
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityDeleted, Device: peer.Name,
+			Files: n, Detail: locationDetail(sr.root.Name)})
 		e.noteEmptiedByPeer(gameID, deleting)
 	}
 	e.propagateDeletions(ctx, peer, gameID, sr.root, decision)

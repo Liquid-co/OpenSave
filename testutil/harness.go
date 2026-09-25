@@ -267,6 +267,15 @@ func (td *TestDaemon) NodeID() string {
 	return settings.NodeID
 }
 
+// Name returns this daemon's device name, as other devices know it.
+func (td *TestDaemon) Name() string {
+	settings, err := td.Daemon.Store.GetSettings()
+	if err != nil {
+		td.T.Fatal(err)
+	}
+	return settings.DeviceName
+}
+
 // PairWith performs the full handshake dance: td initiates, other
 // approves, and both sides end up with a persisted online peer.
 func (td *TestDaemon) PairWith(other *TestDaemon) {

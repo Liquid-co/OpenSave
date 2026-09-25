@@ -98,13 +98,16 @@ type Engine struct {
 	// OnHoldChanged fires when a game is held back because its save was
 	// emptied, or lets go of that (see hold.go). Optional.
 	OnHoldChanged func(gameID string)
+	// OnActivity fires for every event kept in the activity history
+	// (activity.go). Optional.
+	OnActivity func(ev store.ActivityEvent)
 	// holdMu serialises deciding holds, so two syncs starting together
 	// notice an emptied folder once.
 	holdMu sync.Mutex
 	// noting is the games with a NoteEmptiedByPeer waiting to run, and when
 	// the first deletion it covers began.
 	noteMu sync.Mutex
-	noting map[string]time.Time
+	noting map[string]*peerDeletions
 
 	mu              sync.Mutex
 	activeSyncs     map[string]bool
@@ -576,7 +579,8 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	// 6. Apply deletions (locally + propagate to peer).
 	deleting := time.Now()
 	e.applyLocalDeletions(primaryRootOf(game), decision)
-	if len(decision.FilesToDeleteLocally) > 0 {
+	if n := len(decision.FilesToDeleteLocally); n > 0 {
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityDeleted, Device: peer.Name, Files: n})
 		e.noteEmptiedByPeer(gameID, deleting)
 	}
 	e.propagateDeletions(ctx, peer, gameID, primaryRootOf(game), decision)
@@ -1003,6 +1007,12 @@ func (e *Engine) refreshRootLineage(gameID string, remoteData ManifestResponse, 
 }
 
 func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.Manifest, remoteData ManifestResponse) {
+	e.mu.Lock()
+	_, already := e.activeConflicts[gameID]
+	e.mu.Unlock()
+	if !already {
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityConflict, Device: peer.Name})
+	}
 	localSnap := SnapshotInfo{ID: "current", Timestamp: time.UnixMilli(int64(localManifest.LatestMtime)).UTC().Format(time.RFC3339), Comment: "Current active saves"}
 	if latest, err := e.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		localSnap = SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
@@ -1402,6 +1412,10 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
 		"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
 	})
+	if len(pulled) > 0 {
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityReceived, Device: peer.Name,
+			Files: len(pulled), Bytes: totalBytes, Detail: locationDetail(root.Name)})
+	}
 	if e.Progress.OnSyncComplete != nil {
 		e.Progress.OnSyncComplete(gameID, ProgressEvent{PeerName: peer.Name, Direction: "download"})
 	}

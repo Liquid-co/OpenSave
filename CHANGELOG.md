@@ -7,6 +7,15 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **An activity timeline.** Activity now opens on what happened to your
+  saves, game by game: where each game was last played — here or on which
+  of your other devices — when it was last snapshotted and synced, and how
+  long it has been played here; and below that every sync ("Got 3 files
+  from Steam Deck"), snapshot, play session, restore and anything that
+  needed you, grouped by day and filterable by kind and game. "All
+  activity" on Home opens it. The full technical log is one click away as
+  before.
+
 - **An emptied save folder asks before it empties your other devices.**
   When every save file of a game goes at once — an uninstaller, a game
   resetting its saves, the wrong folder cleared — syncing that used to

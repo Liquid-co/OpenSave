@@ -156,6 +156,11 @@ func (s *Server) wireSyncProgress() {
 	sync.OnHoldChanged = func(gameID string) {
 		s.BroadcastGamesUpdate()
 	}
+	// Something kept in the activity history: the activity page and the
+	// notifications list it as it happens.
+	sync.OnActivity = func(ev store.ActivityEvent) {
+		s.Hub.Broadcast("activity", ev)
+	}
 	// A peer finished pulling from us, or confirmed we match: the game's
 	// last-synced time moved with no sync running here to announce it.
 	sync.Progress.OnSyncConfirmed = func(gameID string) {

@@ -270,6 +270,11 @@ func (e *Engine) CheckHold(gameID string, serving bool) (held bool, err error) {
 		sort.Strings(names)
 		e.Log("warn", fmt.Sprintf("every save file of %q was deleted on this device (%s) — it is not synced until you say whether that was meant, "+
 			"so your other devices keep their copies meanwhile", game.Name, describeLocations(names)))
+		files := 0
+		for _, f := range x.held {
+			files += len(f)
+		}
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityEmptied, Files: files})
 		e.holdChanged(gameID)
 		return true, nil
 	}
@@ -415,26 +420,38 @@ func (e *Engine) DeletionConfirmed(gameID string) bool {
 // other device sends its deletions one after another, and every moment added
 // to each is a moment for a sync from this side to land between two of them
 // and see the save half deleted.
-func (e *Engine) NoteEmptiedByPeer(gameID string, started time.Time) {
+//
+// It also keeps the batch in the activity history as one event: device is
+// the device that asked.
+func (e *Engine) NoteEmptiedByPeer(gameID, device string, started time.Time) {
 	e.noteMu.Lock()
 	defer e.noteMu.Unlock()
 	if e.noting == nil {
-		e.noting = map[string]time.Time{}
+		e.noting = map[string]*peerDeletions{}
 	}
-	if first, pending := e.noting[gameID]; pending {
-		if started.Before(first) {
-			e.noting[gameID] = started
+	if batch, pending := e.noting[gameID]; pending {
+		if started.Before(batch.first) {
+			batch.first = started
 		}
+		batch.files++
 		return
 	}
-	e.noting[gameID] = started
+	e.noting[gameID] = &peerDeletions{first: started, device: device, files: 1}
 	time.AfterFunc(noteDelay, func() {
 		e.noteMu.Lock()
-		first := e.noting[gameID]
+		batch := e.noting[gameID]
 		delete(e.noting, gameID)
 		e.noteMu.Unlock()
-		e.noteEmptiedByPeer(gameID, first)
+		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityDeleted, Device: batch.device, Files: batch.files})
+		e.noteEmptiedByPeer(gameID, batch.first)
 	})
+}
+
+// peerDeletions is a batch of deletions another device asked for.
+type peerDeletions struct {
+	first  time.Time
+	device string
+	files  int
 }
 
 // noteDelay is how long NoteEmptiedByPeer waits for the rest of a batch.

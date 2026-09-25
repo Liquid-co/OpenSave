@@ -5,6 +5,11 @@ import { notifyPrefs } from './notifyprefs.js';
 export const view = writable({ name: 'home', params: {} });
 export const settings = writable(null);
 export const games = writable({});
+// Counts events kept in the activity history as they arrive (the daemon's
+// "activity" message), for the timeline and the notifications to catch up on.
+export const activityTick = writable(0);
+// The newest of those events, for the notifications.
+export const lastActivity = writable(null);
 /** True once the daemon has sent its first full state. Until then an empty
  *  game list means "not here yet", not "no games" — without this, Home showed
  *  its first-run welcome for a moment on every launch. */
@@ -172,6 +177,10 @@ export function applyMessage(msg) {
       break;
     case 'games-update':
       games.set(data ?? {});
+      break;
+    case 'activity':
+      lastActivity.set(data);
+      activityTick.update((n) => n + 1);
       break;
     case 'peers-update':
       applyPeersPayload(data ?? {});

@@ -721,7 +721,11 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(full)
 		}
 		e.Log("info", fmt.Sprintf("peer-requested deletion applied: %s", body.RelPath))
-		e.Sync.NoteEmptiedByPeer(gameID, deleting)
+		asker := "another device"
+		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			asker = peer.Name
+		}
+		e.Sync.NoteEmptiedByPeer(gameID, asker, deleting)
 
 		// This side just changed without running a sync, so nothing has
 		// updated its merge-base — it still describes a state that contains
@@ -816,7 +820,11 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 			// after a manifest round trip. That round trip is what left a
 			// window in which deleting a just-synced file pulled it back
 			// instead of propagating the delete.
-			e.Sync.AddConfirmedLineage(gameID, peer.ID, stringsFromEventData(body.Data, "pulledFiles"))
+			took := stringsFromEventData(body.Data, "pulledFiles")
+			e.Sync.AddConfirmedLineage(gameID, peer.ID, took)
+			if len(took) > 0 {
+				e.Sync.RecordActivity(store.ActivityEvent{GameID: e.localGameID(gameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
+			}
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()

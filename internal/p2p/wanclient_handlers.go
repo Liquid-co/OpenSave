@@ -153,7 +153,11 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 				// this closes is wider here than on a LAN.
 				var raw map[string]any
 				_ = json.Unmarshal(msg.Data, &raw)
-				w.engine.Sync.AddConfirmedLineage(msg.GameID, sp.ID, stringsFromEventData(raw, "pulledFiles"))
+				took := stringsFromEventData(raw, "pulledFiles")
+				w.engine.Sync.AddConfirmedLineage(msg.GameID, sp.ID, took)
+				if len(took) > 0 {
+					w.engine.Sync.RecordActivity(store.ActivityEvent{GameID: w.engine.localGameID(msg.GameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
+				}
 				go func() {
 					refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 					defer cancel()
@@ -689,7 +693,11 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	_ = os.Chmod(full, 0o666)
 	deleting := time.Now()
 	if os.Remove(full) == nil {
-		w.engine.Sync.NoteEmptiedByPeer(gameID, deleting)
+		asker := "another device"
+		if peer, err := w.engine.Store.GetPeer(fromPeerID); err == nil {
+			asker = peer.Name
+		}
+		w.engine.Sync.NoteEmptiedByPeer(gameID, asker, deleting)
 	}
 
 	if peer, pErr := w.engine.Store.GetPeer(fromPeerID); pErr == nil {
