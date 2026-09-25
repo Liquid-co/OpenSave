@@ -327,6 +327,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Exports and imports follow linked copies and missing folders.** A
+  backup made before two copies of a game were linked now imports into the
+  game they became — it was skipped as untracked, or with "overwrite"
+  tracked all over again beside the linked one. And a game whose save
+  folder is missing or empty is exported from its newest snapshot, instead
+  of being skipped or written as an empty save that "overwrite" would then
+  restore over another device's.
+
 - **Deleting several files no longer stops a game syncing with a false
   conflict.** A device's deletions reach another one file at a time, and a
   sync of the other device's own could land between two of them — see its

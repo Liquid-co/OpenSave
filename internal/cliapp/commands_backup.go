@@ -82,6 +82,10 @@ func cmdBackup(args []string) int {
 		var res struct {
 			SnapshotCount int `json:"snapshotCount"`
 			Exported      int `json:"exported"`
+			FromSnapshot  []struct {
+				Name     string `json:"name"`
+				Snapshot string `json:"snapshot"`
+			} `json:"fromSnapshot"`
 		}
 		_ = json.Unmarshal(raw, &res)
 		switch {
@@ -91,6 +95,9 @@ func cmdBackup(args []string) int {
 			success("Exported %s.", bold(fmt.Sprintf("%d snapshot(s)", res.SnapshotCount)))
 		default:
 			success("Backup written, but it captured nothing.")
+		}
+		for _, g := range res.FromSnapshot {
+			note(fmt.Sprintf("%s: its save folder is empty or missing, so its newest snapshot (%s) went in", g.Name, g.Snapshot))
 		}
 		note(out)
 		if info, statErr := os.Stat(out); statErr == nil {

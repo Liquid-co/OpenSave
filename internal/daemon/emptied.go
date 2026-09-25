@@ -76,8 +76,14 @@ func (d *Daemon) emptiedSave(h store.DeletionHold) (EmptiedSave, bool) {
 	return e, true
 }
 
-// newestWithFiles is the newest snapshot of a game with any files in it, on
-// its current branch if that has one, or else on any.
+// NewestSnapshotWithFiles is the newest snapshot of a game with any files in
+// it that can be read back, on its current branch if that has one, or else
+// on any: the save as it last was, for a game whose folder is now empty or
+// gone.
+func (d *Daemon) NewestSnapshotWithFiles(gameID string) (store.Snapshot, bool) {
+	return d.newestWithFiles(gameID)
+}
+
 func (d *Daemon) newestWithFiles(gameID string) (store.Snapshot, bool) {
 	game, err := d.Store.GetGame(gameID)
 	if err != nil {

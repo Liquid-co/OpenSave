@@ -84,8 +84,13 @@
         games: chosen.map(({ id, name, appId, savePath }) => ({ id, name, appId, savePath }))
       });
       const skipped = res.skipped?.length ?? 0;
+      // A game whose save folder was empty or gone went in as its newest
+      // snapshot; say so, since that is not the save as it stands.
+      const fromSnap = res.fromSnapshot?.length ?? 0;
       toast(
-        `Exported ${res.exported} save${res.exported === 1 ? '' : 's'}${skipped ? `, ${skipped} skipped — see Activity` : ''}`,
+        `Exported ${res.exported} save${res.exported === 1 ? '' : 's'}` +
+          (fromSnap ? ` — ${fromSnap === 1 ? res.fromSnapshot[0].name : `${fromSnap} games`} from the newest snapshot, as the save folder was empty or missing` : '') +
+          (skipped ? `, ${skipped} skipped — see Activity` : ''),
         skipped ? 'info' : 'success'
       );
       close();
