@@ -585,11 +585,13 @@ h2.page-title {
 }
 
 /* Controller navigation on (lib/controller.js): where focus is, plainly —
-   there is no pointer to show it otherwise. */
-:root[data-controller='on'] :focus {
+   there is no pointer to show it otherwise. Only while the pad or the arrow
+   keys are what is moving it (data-input): after a click, a ring on the
+   button just clicked is noise, and read as something gone wrong. */
+:root[data-controller='on'][data-input='pad'] :focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-:root[data-controller='on'] .tile:focus {
+:root[data-controller='on'][data-input='pad'] .tile:focus {
   outline-offset: 3px;
 }

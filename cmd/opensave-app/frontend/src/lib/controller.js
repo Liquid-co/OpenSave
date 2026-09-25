@@ -40,10 +40,19 @@ const STICK = 0.6;
 export function startController({ isOn, actions, win = globalThis.window, doc = globalThis.document }) {
   if (!win) return () => {};
 
+  // What is moving focus: the pad or the arrow keys, or a pointer. The focus
+  // ring shows for the first only (app.css).
+  const input = (how) => {
+    if (doc.documentElement.dataset.input !== how) doc.documentElement.dataset.input = how;
+  };
+  const onPointer = () => input('pointer');
+  win.addEventListener('pointerdown', onPointer, true);
+
   function onKey(e) {
     if (!isOn() || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key];
     if (!dir || isTyping(e.target)) return;
+    input('pad');
     if (regain() || moveFocus(dir, doc)) e.preventDefault();
   }
   win.addEventListener('keydown', onKey);
@@ -101,6 +110,7 @@ export function startController({ isOn, actions, win = globalThis.window, doc = 
       if (pressed(pad, PAD[name])) down.add(name);
     }
     if (down.size && !get(padUsed)) padUsed.set(true);
+    if (down.size && isOn()) input('pad');
     for (const name of down) {
       if (!isOn()) continue;
       switch (name) {
@@ -154,6 +164,7 @@ export function startController({ isOn, actions, win = globalThis.window, doc = 
 
   return () => {
     win.removeEventListener('keydown', onKey);
+    win.removeEventListener('pointerdown', onPointer, true);
     doc.removeEventListener('focusin', onFocusIn);
     win.removeEventListener('gamepadconnected', connect);
     if (frame) win.cancelAnimationFrame(frame);
