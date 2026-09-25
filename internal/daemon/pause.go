@@ -30,9 +30,31 @@ func (d *Daemon) PauseSync(dur time.Duration) syncpause.Status {
 	if st.UntilRestart {
 		d.Log.Log("info", "syncing paused until it is resumed or OpenSave restarts — snapshots are still taken")
 	} else {
-		d.Log.Log("info", fmt.Sprintf("syncing paused for %s — snapshots are still taken", dur.Round(time.Minute)))
+		d.Log.Log("info", fmt.Sprintf("syncing paused for %s — snapshots are still taken", inWords(dur)))
 	}
 	return st
+}
+
+// inWords says how long a pause is the way a person would: "1 hour",
+// "1 hour 30 minutes", "15 minutes". It is read in the Activity feed, where
+// Duration's own format showed "1h0m0s".
+func inWords(dur time.Duration) string {
+	dur = dur.Round(time.Minute)
+	count := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return fmt.Sprintf("%d %ss", n, unit)
+	}
+	h, m := int(dur/time.Hour), int(dur%time.Hour/time.Minute)
+	switch {
+	case h > 0 && m > 0:
+		return count(h, "hour") + " " + count(m, "minute")
+	case h > 0:
+		return count(h, "hour")
+	default:
+		return count(m, "minute")
+	}
 }
 
 // ResumeSync ends a pause; the catching up runs in the background. Reports
