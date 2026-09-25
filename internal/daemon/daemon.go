@@ -86,6 +86,8 @@ type Daemon struct {
 	// held are the cloud copies of snapshots taken while syncing was paused,
 	// sent when it resumes. See pause.go.
 	heldMu sync.Mutex
+	// compactMu runs one compaction pass at a time; see compact.go.
+	compactMu sync.Mutex
 	held   []heldUpload
 
 	// initialSnapshots counts the first-snapshot goroutines TrackGame starts.
@@ -368,6 +370,10 @@ func (d *Daemon) Start() error {
 	// Check every snapshot can still be restored, daily. See verify.go.
 	d.P2P.GoSync(d.runVerify)
 
+	// Have older snapshots share the files they have in common, every few
+	// hours. See compact.go.
+	d.P2P.GoSync(d.runCompact)
+
 	// Read the cloud mirror back: shortly after start, which is "when I open
 	// the app", and every few minutes after. See cloudsync.go.
 	d.P2P.GoSync(func(ctx context.Context) {
@@ -497,7 +503,14 @@ func SteamCoverURL(appID string) string {
 func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Logger) {
 	defer d.uploads.Done()
 
-	if err := d.Cloud.Upload(zipPath, remoteFileName); err != nil {
+	// Whole, even if it has been compacted since it was queued (a pause can
+	// hold an upload back for as long as it lasts).
+	archive, done, err := snapshot.OpenArchive(zipPath)
+	if err == nil {
+		err = d.Cloud.Upload(archive, remoteFileName)
+		done()
+	}
+	if err != nil {
 		if !cloud.IsNotConfigured(err) {
 			log.Log("error", fmt.Sprintf("cloud upload of %s failed: %v", remoteFileName, err))
 		}

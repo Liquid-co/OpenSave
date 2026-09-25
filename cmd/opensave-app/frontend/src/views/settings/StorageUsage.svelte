@@ -3,6 +3,7 @@
   // space, and what clean-up would give back — before pressing it.
   import { onMount } from 'svelte';
   import BrushCleaning from 'lucide-svelte/icons/brush-cleaning';
+  import Layers from 'lucide-svelte/icons/layers';
   import Pin from 'lucide-svelte/icons/pin';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import { api } from '../../lib/api.js';
@@ -13,6 +14,7 @@
   let report = null;
   let error = '';
   let busy = false;
+  let sharing = false;
 
   async function load() {
     try {
@@ -38,6 +40,28 @@
       load();
     }
   }
+
+  // Older snapshots share their unchanged files every few hours on their own;
+  // this does it now.
+  async function shareNow() {
+    sharing = true;
+    try {
+      const res = await api.post('/api/storage/compact', {});
+      toast(
+        res.compacted > 0
+          ? `${res.compacted} snapshot${res.compacted === 1 ? '' : 's'} now share${res.compacted === 1 ? 's' : ''} unchanged files · ${fmtSize(res.freed)} freed`
+          : 'Nothing more to share',
+        'success'
+      );
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      sharing = false;
+      load();
+    }
+  }
+
+  $: saving = report && report.diskBytes > 0 ? Math.max(0, report.totalBytes - report.diskBytes) : 0;
 
   async function remove(s) {
     const pinned = s.pinned ? ' It is pinned, so nothing else would ever have removed it.' : '';
@@ -73,6 +97,20 @@
       conflict branch, or past the age rule. Pinned snapshots are never among them.
     </p>
   {/if}
+  <div class="sharing">
+    <Layers size={14} />
+    <p class="hint">
+      {#if saving > 0}
+        <strong>{fmtSize(report.diskBytes)} on disk</strong> — {fmtSize(saving)} less, because older snapshots keep the files they
+        have in common once rather than each keeping its own copy.
+      {:else}
+        Older snapshots keep the files they have in common once rather than each keeping its own copy, so a game with many save slots
+        doesn't store every slot again in every snapshot.
+      {/if}
+      The newest snapshot of each branch and pinned ones keep complete copies of their own.
+    </p>
+    <button class="btn small ghost" disabled={sharing} on:click={shareNow}>{sharing ? 'Sharing…' : 'Share now'}</button>
+  </div>
 
   {#if report.games.length}
     <ul class="games">
@@ -83,7 +121,7 @@
             <span class="bar"><span style="width: {Math.max(2, (g.bytes / largest) * 100)}%"></span></span>
             <span class="size">{fmtSize(g.bytes)}</span>
             <span class="meta">
-              {g.snapshots} snapshot{g.snapshots === 1 ? '' : 's'}{#if g.pinned}{' · '}{g.pinned} pinned{/if}{#if g.reclaimable}{' · '}{fmtSize(g.reclaimable)} to clean up{/if}
+              {g.snapshots} snapshot{g.snapshots === 1 ? '' : 's'}{#if g.pinned}{' · '}{g.pinned} pinned{/if}{#if g.diskBytes > 0 && g.diskBytes < g.bytes}{' · '}{fmtSize(g.diskBytes)} on disk{/if}{#if g.reclaimable}{' · '}{fmtSize(g.reclaimable)} to clean up{/if}
             </span>
           </button>
         </li>
@@ -116,6 +154,28 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 8px;
+  }
+  .sharing {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 4px 0 8px;
+    color: var(--text-muted);
+  }
+  .sharing :global(svg) {
+    flex: none;
+    margin-top: 2px;
+  }
+  .sharing .hint {
+    flex: 1;
+    margin: 0;
+  }
+  .sharing strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .sharing .btn {
+    flex: none;
   }
   .total {
     font-size: 1.5rem;

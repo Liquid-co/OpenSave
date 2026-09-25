@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"archive/zip"
 	"fmt"
 	"sort"
 	"strings"
@@ -88,13 +87,12 @@ func (m *Manager) Compare(gameID, fromID, toID string) (Comparison, error) {
 
 // archiveContents lists a snapshot's files by location and path.
 func archiveContents(path string) (map[[2]string]archived, error) {
-	r, err := zip.OpenReader(path)
+	entries, err := ArchiveEntries(path)
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
 	out := map[[2]string]archived{}
-	for _, f := range r.File {
+	for _, f := range entries {
 		location, isRoot := rootOfEntry(f.Name)
 		rel := f.Name
 		if isRoot {
@@ -103,7 +101,7 @@ func archiveContents(path string) (map[[2]string]archived, error) {
 		if rel == "" || strings.HasSuffix(rel, "/") {
 			continue
 		}
-		out[[2]string{location, rel}] = archived{size: f.UncompressedSize64, crc: f.CRC32}
+		out[[2]string{location, rel}] = archived{size: f.Size, crc: f.CRC32}
 	}
 	return out, nil
 }

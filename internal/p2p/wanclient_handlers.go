@@ -15,6 +15,7 @@ import (
 	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/version"
 )
@@ -703,7 +704,12 @@ func (w *WanClient) serveSnapshotDownload(route string) (int, any) {
 	if err != nil {
 		return 404, map[string]string{"error": "Snapshot ZIP file not found."}
 	}
-	raw, err := os.ReadFile(snap.ZipPath)
+	archive, done, err := snapshot.OpenArchive(snap.ZipPath)
+	if err != nil {
+		return 404, map[string]string{"error": "Snapshot ZIP file not found."}
+	}
+	raw, err := os.ReadFile(archive)
+	done()
 	if err != nil {
 		return 404, map[string]string{"error": "Snapshot ZIP file not found."}
 	}

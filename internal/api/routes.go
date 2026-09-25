@@ -70,6 +70,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/snapshots/prune", s.handlePruneSnapshots)
 	r.Post("/api/snapshots/all", s.handleSnapshotAll)
 	r.Get("/api/storage", s.handleStorage)
+	r.Post("/api/storage/compact", s.handleCompact)
 
 	r.Get("/api/collections", s.handleListCollections)
 	r.Post("/api/collections", s.handleCreateCollection)
@@ -808,6 +809,17 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+// handleCompact has older snapshots share the files they have in common now,
+// rather than at the next pass in the background.
+func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
+	res, err := s.Daemon.CompactSnapshots(r.Context(), 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 // handleSnapshotAll takes a snapshot of every tracked game.

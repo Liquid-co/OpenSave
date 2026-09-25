@@ -3,9 +3,9 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/syncpause"
 )
 
@@ -87,7 +87,7 @@ func (d *Daemon) catchUpAfterPause() {
 	sent := 0
 	for _, h := range held {
 		// A snapshot pruned while paused has nothing left to send.
-		if _, err := os.Stat(h.zipPath); err != nil {
+		if !snapshot.ArchiveExists(h.zipPath) {
 			continue
 		}
 		d.uploads.Add(1)

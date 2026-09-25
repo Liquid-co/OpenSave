@@ -71,6 +71,13 @@ type Manager struct {
 	// running past shutdown it wrote into a directory that was being deleted
 	// and recorded against a database that was already closed.
 	inFlight sync.WaitGroup
+	// sharedMu is held by a compaction and by the clean-up of shared files
+	// (shared.go): a compaction names shared files before any list does, and
+	// a clean-up running then would take them for unused. pendingRoots are
+	// clean-ups put off because a compaction was running.
+	sharedMu     sync.Mutex
+	pendingMu    sync.Mutex
+	pendingRoots map[string]bool
 }
 
 // WaitForInFlight blocks until every snapshot being written has finished, or
@@ -417,16 +424,15 @@ func (m *Manager) pruneGameAllBranches(game store.Game) (removed int, freed int6
 		if err != nil {
 			continue
 		}
+		var gone []store.Snapshot
 		for _, snap := range beyond {
 			if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
 				continue
 			}
-			if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
-				freed += info.Size()
-			}
-			os.Remove(snap.ZipPath) // best-effort, same as the JS app
+			gone = append(gone, snap)
 			removed++
 		}
+		freed += m.dropArchives(gone) // best-effort, same as the JS app
 	}
 	return removed, freed
 }
@@ -480,14 +486,13 @@ func (m *Manager) PruneAllGames() (removed int, freed int64, err error) {
 // the dashboard which histories changed.
 func (m *Manager) PruneOlderThan(days int) (removed int, freed int64, touched []string) {
 	gameTouched := map[string]bool{}
+	var gone []store.Snapshot
+	defer func() { freed += m.dropArchives(gone) }()
 	for _, snap := range m.olderThan(days) {
 		if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
 			continue
 		}
-		if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
-			freed += info.Size()
-		}
-		os.Remove(snap.ZipPath)
+		gone = append(gone, snap)
 		removed++
 		if !gameTouched[snap.GameID] {
 			gameTouched[snap.GameID] = true
@@ -647,14 +652,10 @@ func (m *Manager) DeleteSnapshot(gameID, snapshotID string) (freed int64, err er
 	if snap.GameID != gameID {
 		return 0, fmt.Errorf("snapshot %q does not belong to game %q", snapshotID, gameID)
 	}
-	if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
-		freed = info.Size()
-	}
 	if err := m.Store.DeleteSnapshot(snapshotID); err != nil {
 		return 0, err
 	}
-	os.Remove(snap.ZipPath) // best-effort
-	return freed, nil
+	return m.dropArchives([]store.Snapshot{snap}), nil // best-effort
 }
 
 // DeleteBranch removes a branch entirely — every snapshot (metadata + zip)
@@ -672,18 +673,16 @@ func (m *Manager) DeleteBranch(gameID, branch string) (removed int, freed int64)
 	if err != nil {
 		return 0, 0
 	}
+	var gone []store.Snapshot
 	for _, snap := range snaps {
 		if err := m.Store.DeleteSnapshot(snap.ID); err != nil {
 			continue
 		}
-		if info, statErr := os.Stat(snap.ZipPath); statErr == nil {
-			freed += info.Size()
-		}
-		os.Remove(snap.ZipPath)
+		gone = append(gone, snap)
 		removed++
 	}
 	_ = m.Store.DeleteBranchRow(gameID, branch)
-	return removed, freed
+	return removed, m.dropArchives(gone)
 }
 
 // Restore extracts the given snapshot over the game's save path, taking a
@@ -700,10 +699,19 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 		return store.Snapshot{}, fmt.Errorf("snapshot %q not found for game %q", snapshotID, gameID)
 	}
 
-	// Read it back whole before anything is touched. The restore empties the
-	// save folder and then extracts; an archive found damaged part-way
-	// through would leave neither the save that was there nor this one.
-	if err := VerifyArchive(snap.ZipPath); err != nil {
+	// The archive whole — rebuilt, if the snapshot shares its files with
+	// others (shared.go) — and read back before anything is touched. The
+	// restore empties the save folder and then extracts; an archive found
+	// damaged part-way through would leave neither the save that was there
+	// nor this one.
+	archive, done, err := OpenArchive(snap.ZipPath)
+	if err == nil {
+		defer done()
+		err = VerifyArchive(archive)
+	} else {
+		err = damagedArchive(snap.ZipPath, err)
+	}
+	if err != nil {
 		_ = m.Store.SetSnapshotCheck(snap.ID, m.now().UnixMilli(), err.Error())
 		return store.Snapshot{}, fmt.Errorf("%w — nothing was changed", err)
 	}
@@ -711,12 +719,15 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 	// The safety snapshot below triggers retention pruning, which — when the
 	// game is at its snapshot limit and this is the oldest snapshot — would
 	// delete this very snapshot's archive before we extract it. Restore from
-	// a temporary copy so the content survives that pruning.
-	restoreZip := snap.ZipPath
+	// a temporary copy so the content survives that pruning. A rebuilt
+	// archive is one already.
+	restoreZip := archive
 	if savePathHasContent(game.SavePath) {
-		if tmp, err := copyToTempZip(snap.ZipPath); err == nil {
-			restoreZip = tmp
-			defer os.Remove(tmp)
+		if archive == snap.ZipPath {
+			if tmp, err := copyToTempZip(archive); err == nil {
+				restoreZip = tmp
+				defer os.Remove(tmp)
+			}
 		}
 		safetyComment := fmt.Sprintf("Pre-rollback safety restore point (before restoring %s)", snapshotID)
 		if _, err := m.CreateBeforeReplacing(gameID, safetyComment); err != nil {
@@ -936,7 +947,12 @@ func (m *Manager) SwitchBranch(gameID, targetBranch string) error {
 		if rootsErr != nil {
 			switchRoots = nil
 		}
-		if _, err := UnzipRoots(latest.ZipPath, game.SavePath, switchRoots); err != nil {
+		archive, done, err := OpenArchive(latest.ZipPath)
+		if err == nil {
+			_, err = UnzipRoots(archive, game.SavePath, switchRoots)
+			done()
+		}
+		if err != nil {
 			// Same as JS: a failed restore of the incoming branch is logged
 			// but the switch itself stands (branch pointer already moved).
 			fmt.Fprintf(os.Stderr, "[snapshot] failed to restore branch snapshot: %v\n", err)
@@ -1140,4 +1156,16 @@ func (m *Manager) recordDeletionsSince(gameID, branch, snapshotID string, captur
 
 // ArchiveFileCount is the number of files (not folders) a snapshot archive
 // holds.
-func ArchiveFileCount(zipPath string) (int, error) { return zipFileCount(zipPath) }
+func ArchiveFileCount(zipPath string) (int, error) {
+	entries, err := ArchiveEntries(zipPath)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir {
+			n++
+		}
+	}
+	return n, nil
+}

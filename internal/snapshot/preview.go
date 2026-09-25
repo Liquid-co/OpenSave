@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"archive/zip"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -85,11 +84,10 @@ func (m *Manager) PreviewRestore(gameID, snapshotID string) (RestorePreview, err
 		roots = nil
 	}
 
-	r, err := zip.OpenReader(snap.ZipPath)
+	entries, err := ArchiveEntries(snap.ZipPath)
 	if err != nil {
 		return RestorePreview{}, fmt.Errorf("open snapshot %s: %w", snapshotID, err)
 	}
-	defer r.Close()
 
 	primaryIsFile := false
 	if info, statErr := os.Stat(game.SavePath); statErr == nil {
@@ -101,7 +99,7 @@ func (m *Manager) PreviewRestore(gameID, snapshotID string) (RestorePreview, err
 	// has anything for it and this device has a folder to put it in.
 	inSnapshot := map[string]map[string]archived{"": {}}
 	unplaced := map[string]bool{}
-	for _, f := range r.File {
+	for _, f := range entries {
 		location, isRoot := rootOfEntry(f.Name)
 		rel := f.Name
 		if isRoot {
@@ -119,7 +117,7 @@ func (m *Manager) PreviewRestore(gameID, snapshotID string) (RestorePreview, err
 		if rel == "" || strings.HasSuffix(rel, "/") {
 			continue // a folder, not a file
 		}
-		inSnapshot[location][rel] = archived{size: f.UncompressedSize64, crc: f.CRC32}
+		inSnapshot[location][rel] = archived{size: f.Size, crc: f.CRC32}
 	}
 
 	preview := RestorePreview{SnapshotID: snapshotID, Changes: []FileChange{}}

@@ -511,7 +511,12 @@ func (s *Server) handleCloudSyncLocal(w http.ResponseWriter, r *http.Request) {
 	uploaded := 0
 	for _, p := range pending {
 		progress(uploaded, p.snapID, false)
-		if err := s.Daemon.Cloud.Upload(p.zipPath, p.remoteName); err != nil {
+		archive, done, err := snapshot.OpenArchive(p.zipPath)
+		if err == nil {
+			err = s.Daemon.Cloud.Upload(archive, p.remoteName)
+			done()
+		}
+		if err != nil {
 			if strings.Contains(err.Error(), "not enabled") {
 				progress(uploaded, "", true)
 				writeError(w, http.StatusBadRequest, err.Error())

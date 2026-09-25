@@ -38,10 +38,15 @@
   // on screen would say why. Asked for now and every few minutes.
   const LOW_SPACE = 1024 ** 3;
   let lowSpace = null;
+  // What older snapshots sharing their unchanged files saves, as of the last
+  // look: taken off the space used, which is otherwise the snapshots' own
+  // sizes added up as they arrive.
+  let sharedSaving = 0;
   async function checkSpace() {
     try {
       const r = await api.get('/api/storage');
       lowSpace = r.freeKnown && r.freeBytes < LOW_SPACE ? r.freeBytes : null;
+      sharedSaving = r.diskBytes > 0 ? Math.max(0, r.totalBytes - r.diskBytes) : 0;
     } catch {
       lowSpace = null;
     }
@@ -118,9 +123,13 @@
       <span class="label">Last snapshot</span>
       <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : 'None yet'}</span></span>
     </div>
-    <button class="fact link" on:click={() => navigate('settings', { tab: 'storage' })} title="Open Settings → Storage">
+    <button
+      class="fact link"
+      on:click={() => navigate('settings', { tab: 'storage' })}
+      title={sharedSaving > 0 ? `On disk — ${fmtSize(sharedSaving)} less than the snapshots' own sizes, for sharing unchanged files. Open Settings → Storage` : 'Open Settings → Storage'}
+    >
       <span class="label">Space used</span>
-      <span class="value"><span class="v">{fmtSize(space)}</span><ChevronRight size={13} class="go" /></span>
+      <span class="value"><span class="v">{fmtSize(Math.max(0, space - sharedSaving))}</span><ChevronRight size={13} class="go" /></span>
     </button>
   </div>
 

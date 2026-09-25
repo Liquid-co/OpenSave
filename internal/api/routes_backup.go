@@ -33,12 +33,11 @@ func (s *Server) handleSnapshotFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	zr, err := zip.OpenReader(snap.ZipPath)
+	entries, err := snapshot.ArchiveEntries(snap.ZipPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("open snapshot zip: %v", err))
 		return
 	}
-	defer zr.Close()
 
 	type fileEntry struct {
 		Path  string `json:"path"`
@@ -46,11 +45,11 @@ func (s *Server) handleSnapshotFiles(w http.ResponseWriter, r *http.Request) {
 		IsDir bool   `json:"isDir"`
 	}
 	files := []fileEntry{}
-	for _, f := range zr.File {
+	for _, f := range entries {
 		files = append(files, fileEntry{
 			Path:  f.Name,
-			Size:  int64(f.UncompressedSize64),
-			IsDir: f.FileInfo().IsDir(),
+			Size:  int64(f.Size),
+			IsDir: f.IsDir,
 		})
 	}
 	writeJSON(w, http.StatusOK, files)
@@ -105,12 +104,20 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The archive before the safety snapshot, whose pruning could take it.
+	archive, done, err := snapshot.OpenArchive(snap.ZipPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("open snapshot zip: %v", err))
+		return
+	}
+	defer done()
+
 	safetyComment := fmt.Sprintf("Safety snapshot before restoring file %q from %s", body.RelPath, snapshotID)
 	if _, err := s.Daemon.Snapshots.CreateBeforeReplacing(gameID, safetyComment); err != nil {
 		s.Daemon.Log.Log("warn", "safety snapshot before file restore failed: "+err.Error())
 	}
 
-	if err := extractSingleFile(snap.ZipPath, body.RelPath, snapshot.ArchiveEntryRelPath(body.RelPath), target); err != nil {
+	if err := extractSingleFile(archive, body.RelPath, snapshot.ArchiveEntryRelPath(body.RelPath), target); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -430,22 +437,27 @@ func (s *Server) exportAllSnapshots(outPath string) (int, error) {
 				return count, err
 			}
 			for _, snap := range snaps {
-				src, err := os.Open(snap.ZipPath)
+				archive, done, err := snapshot.OpenArchive(snap.ZipPath)
 				if err != nil {
+					s.Daemon.Log.Log("warn", fmt.Sprintf("skipping snapshot %s: %v", snap.ZipPath, err))
+					continue
+				}
+				src, err := os.Open(archive)
+				if err != nil {
+					done()
 					s.Daemon.Log.Log("warn", fmt.Sprintf("skipping missing snapshot zip %s", snap.ZipPath))
 					continue
 				}
 				entryName := fmt.Sprintf("%s__%s__%s.zip", game.ID, branch, snap.ID)
 				entry, err := zw.CreateHeader(&zip.FileHeader{Name: entryName, Method: zip.Store})
-				if err != nil {
-					src.Close()
-					return count, err
-				}
-				if _, err := io.Copy(entry, src); err != nil {
-					src.Close()
-					return count, err
+				if err == nil {
+					_, err = io.Copy(entry, src)
 				}
 				src.Close()
+				done()
+				if err != nil {
+					return count, err
+				}
 				count++
 			}
 		}

@@ -7,6 +7,23 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Snapshots take far less room when a game keeps many save files.**
+  Every snapshot used to be a complete copy of the save, so a game with
+  twenty save slots that changed one between snapshots stored all twenty
+  again each time. Now older snapshots keep the files they have in common
+  once: in the background every few hours, each large file an older
+  snapshot holds is kept a single time per game and shared by every
+  snapshot that holds it. Nothing else changes — restoring, browsing a
+  snapshot's files, comparing, uploading to the cloud, sending to another
+  device and exporting all get the complete snapshot back, exactly as it was
+  taken, and what leaves this device is the same as before. The newest
+  snapshot of each branch and every pinned one keep complete copies of their
+  own, a snapshot is only changed over once the shared version has been read
+  back and found identical, and the daily check reads every shared file back
+  against its checksum. Settings → Storage and `opensave storage` show what
+  the snapshots take on disk and what sharing saves; "Share now" and
+  `opensave storage --compact` do it straight away.
+
 - **Snapshots are checked, so a backup is known to work before it is
   needed.** Once a day OpenSave reads every snapshot back in full and
   compares each file with its checksum, and it does the same before any
