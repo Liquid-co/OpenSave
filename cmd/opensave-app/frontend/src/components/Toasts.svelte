@@ -56,6 +56,9 @@
   .toast.error {
     border-color: rgba(var(--danger-rgb), 0.5);
   }
+  .toast.warning {
+    border-color: rgba(var(--warn-rgb), 0.55);
+  }
   @keyframes slide-in {
     from {
       transform: translateX(30px);

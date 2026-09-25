@@ -152,6 +152,10 @@ func (s *Server) wireSyncProgress() {
 	sync.Progress.OnConflict = func(gameID string) {
 		s.BroadcastPeersUpdate()
 	}
+	// A save emptied here is held back, or let go (syncengine/hold.go).
+	sync.OnHoldChanged = func(gameID string) {
+		s.BroadcastGamesUpdate()
+	}
 	// A peer finished pulling from us, or confirmed we match: the game's
 	// last-synced time moved with no sync running here to announce it.
 	sync.Progress.OnSyncConfirmed = func(gameID string) {
@@ -485,7 +489,17 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		"playingSince":    playingSince,
 		"playtimeMs":      play.PlaytimeMs,
 		"playSessions":    play.Sessions,
+		// Every save file went at once here, and the game is held back from
+		// the other devices until someone says whether that was meant.
+		"emptied": emptiedOf(s.Daemon, g.ID),
 	}
+}
+
+func emptiedOf(d *daemon.Daemon, gameID string) any {
+	if e, held := d.EmptiedSaveOf(gameID); held {
+		return e
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

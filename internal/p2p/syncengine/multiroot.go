@@ -3,6 +3,7 @@ package syncengine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/store"
@@ -187,7 +188,19 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 		Proto:        remoteData.Proto,
 	}
 
+	if emptiedUnconfirmed(remote.Files, decision, remoteData.DeletionConfirmed) {
+		e.Log("info", fmt.Sprintf("%q holds none of the %q save location of %q now, and has not confirmed deleting it — keeping this device's copies",
+			peer.Name, sr.root.Name, game.Name))
+		return nil
+	}
+
+	e.handOverEmptying(gameID, peer, local.Files, &decision)
+
+	deleting := time.Now()
 	e.applyLocalDeletions(sr.root, decision)
+	if len(decision.FilesToDeleteLocally) > 0 {
+		e.noteEmptiedByPeer(gameID, deleting)
+	}
 	e.propagateDeletions(ctx, peer, gameID, sr.root, decision)
 	e.createPulledDirsIn(sr.root, decision.DirsToPull)
 

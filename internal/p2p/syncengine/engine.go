@@ -69,6 +69,8 @@ var perPeerSyncTimeout = 30 * time.Minute
 type Result struct {
 	// peer_missing: the peer does not track this game. peer_awaiting_folder:
 	// the peer knows about it but is waiting for someone to choose a folder.
+	// peer_holding: the peer's save was emptied and it is holding the game
+	// back until told whether that was meant (hold.go).
 	Status    string `json:"status"` // in_sync | updated | updated_bidirectional | deletions_synced | triggered_peer_pull | conflict | peer_missing | peer_awaiting_folder
 	Direction string `json:"direction"`
 	PeerID    string `json:"peerId,omitempty"`
@@ -92,6 +94,17 @@ type Engine struct {
 	// Paused reports whether this device has paused syncing. Optional; nil
 	// means never paused.
 	Paused func() bool
+
+	// OnHoldChanged fires when a game is held back because its save was
+	// emptied, or lets go of that (see hold.go). Optional.
+	OnHoldChanged func(gameID string)
+	// holdMu serialises deciding holds, so two syncs starting together
+	// notice an emptied folder once.
+	holdMu sync.Mutex
+	// noting is the games with a NoteEmptiedByPeer waiting to run, and when
+	// the first deletion it covers began.
+	noteMu sync.Mutex
+	noting map[string]time.Time
 
 	mu              sync.Mutex
 	activeSyncs     map[string]bool
@@ -193,6 +206,11 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 	if e.Paused != nil && e.Paused() {
 		return nil, ErrPaused
 	}
+	// A save emptied here is not synced until someone says whether that was
+	// meant (hold.go).
+	if held, err := e.CheckHold(gameID, false); err == nil && held {
+		return nil, ErrHeld
+	}
 	e.mu.Lock()
 	if e.activeSyncs[gameID] {
 		e.pendingSyncs[gameID] = true
@@ -265,7 +283,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// its own changes instead of detecting the conflict and asking.
 		switch res.Status {
 		case "conflict", "error":
-		case "peer_missing", "peer_awaiting_folder":
+		case "peer_missing", "peer_awaiting_folder", "peer_holding":
 			// The two devices talked and finished, which is what the
 			// per-device stamp has always recorded. But nothing of THIS game
 			// moved — the peer does not track it, or is still waiting to be
@@ -321,6 +339,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		// save waits on a click at the other end.
 		if isAwaitingFolder(err) {
 			return Result{Status: "peer_awaiting_folder", PeerID: peer.ID, PeerName: peer.Name}, nil
+		}
+		// The peer's save was emptied there and it is waiting to be told
+		// whether that was meant; nothing to take from it meanwhile.
+		if isHeld(err) {
+			return Result{Status: "peer_holding", PeerID: peer.ID, PeerName: peer.Name}, nil
 		}
 		if isGameNotFound(err) {
 			return Result{Status: "peer_missing", PeerID: peer.ID, PeerName: peer.Name}, nil
@@ -507,6 +530,13 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		return Result{Status: "in_sync", Direction: "none"}, nil
 	}
 
+	if emptiedUnconfirmed(remoteData.Manifest.Files, decision, remoteData.DeletionConfirmed) {
+		e.Log("info", fmt.Sprintf("%q holds none of %q's save files now, and has not confirmed deleting them — keeping this device's copies",
+			peer.Name, game.Name))
+		return Result{Status: "peer_holding", PeerID: peer.ID, PeerName: peer.Name}, nil
+	}
+	handedOverDeletion := e.handOverEmptying(gameID, peer, localManifest.Files, &decision)
+
 	// Nothing below is about files arriving, only about local files leaving.
 	// A pull that brings files this device never held destroys nothing.
 	atRisk := filesAtRisk(localManifest, decision)
@@ -544,7 +574,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	}
 
 	// 6. Apply deletions (locally + propagate to peer).
+	deleting := time.Now()
 	e.applyLocalDeletions(primaryRootOf(game), decision)
+	if len(decision.FilesToDeleteLocally) > 0 {
+		e.noteEmptiedByPeer(gameID, deleting)
+	}
 	e.propagateDeletions(ctx, peer, gameID, primaryRootOf(game), decision)
 
 	// 7. Create pulled directories (parents first).
@@ -612,6 +646,9 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	// was handed over, and let the next sync prove the push landed by
 	// observing the peer holding exactly it.
 	switch {
+	case handedOverDeletion:
+		// The peer was asked to delete in a sync of its own; nothing has been
+		// agreed until it has, which its report or the next sync shows.
 	case !decision.HasPush() &&
 		len(decision.FilesToDeleteOnPeer) == 0 && len(decision.DirsToDeleteOnPeer) == 0:
 		_ = e.Store.SetAgreedHash(gameID, peer.ID, remoteData.Manifest.ManifestHash())

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -600,6 +601,9 @@ func (e *Engine) SyncAllGames(ctx context.Context) {
 			continue
 		}
 		results, err := e.Sync.SyncGame(ctx, g.ID, online)
+		if errors.Is(err, syncengine.ErrHeld) {
+			continue // said once, when it was held; asked about on screen
+		}
 		if err != nil {
 			e.Log("warn", fmt.Sprintf("auto-sync %s: %v", g.ID, err))
 			continue

@@ -2,7 +2,10 @@
   // The top of a game's page: its art and name, which devices have this save,
   // the Launch and Sync buttons, and the save folder with a way to open it.
   import { onDestroy } from 'svelte';
-  import { peers, navigate, toast, syncActivity } from '../../lib/stores.js';
+  import { peers, navigate, toast, syncActivity, askConfirm } from '../../lib/stores.js';
+  import { emptiedWhere } from '../../lib/emptied.js';
+  import { whenLabel } from '../../lib/snapshots.js';
+  import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
   import { api, native, gameCover } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
@@ -40,6 +43,31 @@
 
   let editPath = false;
   let pathDraft = '';
+
+  // The answer to an emptied save: put the files back here, or let the
+  // deletion go to the other devices too.
+  let answering = false;
+  async function answerEmptied(answer) {
+    if (answer === 'delete') {
+      const n = game.emptied.files;
+      const ok = await askConfirm(
+        `Delete ${game.name}'s save files on your other devices too? ${n} file${n === 1 ? '' : 's'} there will go; each device keeps a snapshot of them first.`,
+        { title: 'Delete them everywhere?', confirmText: 'Delete them there too', danger: true }
+      );
+      if (!ok) return;
+    }
+    answering = true;
+    try {
+      const res = await api.post(`/api/games/${game.id}/emptied`, { answer });
+      if (answer === 'delete') toast(`${game.name}'s save files are deleted on your other devices at the next sync`, 'success');
+      else if (res.fetching > 0) toast(`Putting ${game.name}'s files back — ${res.fetching} come from your other devices`, 'success');
+      else toast(`${game.name}'s files are back`, 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      answering = false;
+    }
+  }
   // Reveal the save location in Explorer / Finder / the Linux file manager.
   // The bridge returns a message when it can't (e.g. the folder was deleted).
   async function openSaveFolder() {
@@ -123,6 +151,38 @@
     <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />Edit</button>
   {/if}
 </div>
+
+{#if game.emptied && !game.savePathMissing}
+  <!-- Every save file went at once here. Nothing is synced until this is
+       answered: syncing it would delete them on the other devices too
+       (internal/p2p/syncengine/hold.go). -->
+  <div class="missing emptied" role="status">
+    <TriangleAlert size={16} />
+    <div>
+      {#if game.emptied.state === 'fetching'}
+        <strong>Putting the files back.</strong>
+        Some are still to come from your other devices; this game syncs as usual once they're all here.
+      {:else}
+        <strong>Every save file in {emptiedWhere(game.emptied.locations)} was deleted on this device.</strong>
+        Your other devices still have theirs, and nothing is synced until you choose.
+        {#if game.emptied.putBackFrom}
+          Put them back from the snapshot of {whenLabel(game.emptied.putBackFromTime)}, with anything newer from your other devices
+        {:else}
+          Put them back from your other devices
+        {/if}
+        — or, if you meant it, delete them there too; each device keeps a snapshot first.
+        <div class="emptied-actions">
+          <button class="btn small primary" disabled={answering} on:click={() => answerEmptied('restore')}>
+            <RotateCcw size={13} />Put them back
+          </button>
+          <button class="btn small" disabled={answering} on:click={() => answerEmptied('delete')}>
+            Delete them on my other devices too
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 {#if game.savePathMissing && !editPath}
   <!-- The folder is not there. It is not created again: an empty folder in
@@ -223,6 +283,12 @@
   }
   .missing strong {
     color: var(--text);
+  }
+  .emptied-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
   }
   .path-line {
     display: flex;

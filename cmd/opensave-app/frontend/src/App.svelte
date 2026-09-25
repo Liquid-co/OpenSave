@@ -1,10 +1,12 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings, games } from './lib/stores.js';
   import { startController, controllerOn, padUsed, pageStep } from './lib/controller.js';
   import { appearance } from './lib/appearance.js';
   import { paletteOpen } from './lib/shortcuts.js';
+  import { newlyEmptied } from './lib/emptied.js';
+  import { demandAttention } from './lib/notify.js';
 
   import logoUrl from './assets/logo.png';
   import TitleBar from './components/TitleBar.svelte';
@@ -93,6 +95,22 @@
       }
     })
   );
+
+  // A save emptied here waits on an answer before anything syncs: said once,
+  // loudly, when it starts waiting (lib/emptied.js).
+  let emptiedBefore = null;
+  const stopEmptied = games.subscribe((all) => {
+    const { now, fresh } = newlyEmptied(emptiedBefore, all);
+    emptiedBefore = now;
+    for (const g of fresh) {
+      toast(`Every save file of ${g.name} was deleted here. Your other devices keep theirs until you choose.`, 'warning', {
+        ttl: 15000,
+        action: { label: 'Choose', run: () => navigate('game', { gameId: g.id }) }
+      });
+      demandAttention('emptied');
+    }
+  });
+  onDestroy(stopEmptied);
 
   onMount(async () => {
     // The tray's "Open Activity" and the like: the desktop shell asks for a

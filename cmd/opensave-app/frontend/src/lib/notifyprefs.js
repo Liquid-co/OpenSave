@@ -15,6 +15,7 @@ import { writable, get } from 'svelte/store';
 export const NOTIFY_EVENTS = {
   pairing: { label: 'A device asks to pair', kind: 'attention' },
   conflicts: { label: 'Two saves conflict', kind: 'attention' },
+  emptied: { label: 'Every save file of a game is deleted here', kind: 'attention' },
   cloudPulled: { label: 'A newer save is brought from the cloud', kind: 'message' },
   newGames: { label: 'A newly installed game is found', kind: 'message' }
 };
@@ -22,6 +23,7 @@ export const NOTIFY_EVENTS = {
 export const DEFAULT_NOTIFY = Object.freeze({
   pairing: true,
   conflicts: true,
+  emptied: true,
   cloudPulled: true,
   newGames: true,
   quietWhilePlaying: true

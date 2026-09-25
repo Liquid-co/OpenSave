@@ -556,7 +556,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		w.engine.GoSync(func(ctx context.Context) {
 			syncCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
-			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) {
+			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) && !errors.Is(err, syncengine.ErrHeld) {
 				w.engine.Log("warn", fmt.Sprintf("WAN-triggered sync %s: %v", gameID, err))
 			}
 		})
@@ -601,6 +601,9 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}
+	if w.engine.holdingBack(game) {
+		return 404, map[string]string{"error": syncengine.HeldMessage}
+	}
 
 	manifest, err := delta.BuildManifest(game.SavePath)
 	if err != nil {
@@ -608,6 +611,7 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	}
 	resp := map[string]any{
 		"gameId": gameID, "activeBranch": game.ActiveBranch, "manifest": manifest,
+		"deletionConfirmed": w.engine.Sync.DeletionConfirmed(game.ID),
 	}
 	if latest, err := w.engine.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		resp["latestSnapshot"] = syncengine.SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
@@ -683,7 +687,10 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	// find the very file this device just offered.
 	full := delta.LocalNameFor(game.SavePath, body.RelPath)
 	_ = os.Chmod(full, 0o666)
-	_ = os.Remove(full)
+	deleting := time.Now()
+	if os.Remove(full) == nil {
+		w.engine.Sync.NoteEmptiedByPeer(gameID, deleting)
+	}
 
 	if peer, pErr := w.engine.Store.GetPeer(fromPeerID); pErr == nil {
 		w.engine.refreshLineageAfterDeletion(gameID, syncengine.Peer{

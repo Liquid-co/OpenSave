@@ -49,6 +49,13 @@ type ManifestResponse struct {
 	// contents over the save folder. Asking only peers that answered with a
 	// proto is what stops that.
 	Proto int `json:"proto,omitempty"`
+
+	// DeletionConfirmed says a save location that is empty on the responder
+	// was emptied on purpose: someone there answered "delete them on the
+	// other devices too", or the emptying came from a device where someone
+	// did (see hold.go). Without it an empty location is not taken as every
+	// file in it deleted — see emptiedUnconfirmed.
+	DeletionConfirmed bool `json:"deletionConfirmed,omitempty"`
 }
 
 // FileRef identifies one file inside one of a game's save locations.

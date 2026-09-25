@@ -92,6 +92,10 @@ func TestDeletion_NeverRemovesAnEditThePeerMadeAfterwards(t *testing.T) {
 	a.PairWith(b)
 
 	a.WriteSave("shared.sav", "original")
+	// A second file that stays: deleting the only one would empty the save,
+	// which is held back for an answer (TestEmptiedFolder_*) and never
+	// reaches the rule this test is about.
+	a.WriteSave("other.sav", "stays")
 	gameID := a.TrackGame("SafeDeletion")
 
 	var gameB struct {

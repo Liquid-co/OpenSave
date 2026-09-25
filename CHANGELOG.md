@@ -7,6 +7,19 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **An emptied save folder asks before it empties your other devices.**
+  When every save file of a game goes at once — an uninstaller, a game
+  resetting its saves, the wrong folder cleared — syncing that used to
+  delete the files on every other device too. Now the game is held back
+  instead: nothing is synced, your other devices keep their copies, and the
+  game's page asks. "Put them back" restores them from the newest snapshot
+  that has them, and fetches anything newer from your other devices;
+  "Delete them on my other devices too" lets the deletion go, each device
+  keeping a snapshot first. Putting the files back by hand ends the question
+  too. A device also no longer takes another's empty folder as every file
+  deleted unless it was confirmed there, which covers a device on an older
+  version. `opensave emptied` lists and answers the same.
+
 - **Snapshots take far less room when a game keeps many save files.**
   Every snapshot used to be a complete copy of the save, so a game with
   twenty save slots that changed one between snapshots stored all twenty

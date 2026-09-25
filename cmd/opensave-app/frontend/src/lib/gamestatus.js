@@ -21,6 +21,10 @@ export function gameStatus(game, { peers = {}, activity, conflicted = false, now
   // Before anything else: with its folder gone nothing else about it can
   // move — no snapshot, no sync, no decision taken.
   if (game.savePathMissing) return { state: 'missing', label: 'Save folder missing', tone: 'warn' };
+  // Every save file deleted here at once, held back from the other devices
+  // until someone says whether that was meant (lib/emptied.js).
+  if (game.emptied?.state === 'held') return { state: 'emptied', label: 'Files deleted — needs a decision', tone: 'warn' };
+  if (game.emptied?.state === 'fetching') return { state: 'restoring', label: 'Putting files back', tone: 'busy' };
   if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
   // Being played here now (see daemon/sessions.go): what matters most about
   // it while it lasts; its save is kept as the session leaves it.
@@ -56,6 +60,7 @@ const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 export function librarySummary(rows) {
   const by = (state) => rows.filter((r) => r.status.state === state);
   const missing = by('missing');
+  const emptied = by('emptied');
   const conflict = by('conflict');
   const syncing = by('syncing');
   const failed = by('error');
@@ -77,6 +82,15 @@ export function librarySummary(rows) {
         missing.length === 1
           ? `${missing[0].game.name}'s save folder is missing`
           : `${missing.length} games' save folders are missing`
+    };
+  }
+  if (emptied.length > 0) {
+    return {
+      tone: 'warn',
+      headline:
+        emptied.length === 1
+          ? `${emptied[0].game.name}'s save files were all deleted here`
+          : `${emptied.length} games' save files were all deleted here`
     };
   }
   if (conflict.length > 0) {
@@ -161,7 +175,7 @@ const stamp = (s) => (s ? Date.parse(s) : null);
 const snapshotsOf = (game) => Object.values(game.branches ?? {}).flatMap((b) => b.snapshots ?? []);
 
 // What needs looking at, in the order the summary above the library reads it.
-const URGENCY = { missing: 0, conflict: 1, error: 2, syncing: 3, unsynced: 4, empty: 5, paused: 6 };
+const URGENCY = { missing: 0, emptied: 1, conflict: 2, error: 3, syncing: 4, restoring: 4, unsynced: 5, empty: 6, paused: 7 };
 
 /**
  * The orders the library can be put in. Each compares two rows, {game,

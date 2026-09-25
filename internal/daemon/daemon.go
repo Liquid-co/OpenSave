@@ -211,13 +211,16 @@ func New(opts Options) (*Daemon, error) {
 			return err
 		},
 		OnChanged: func(gameID string) {
+			// An emptied save is noticed as it happens, and said on screen,
+			// even with no other device online to hold it back from.
+			_, _ = d.P2P.Sync.CheckHold(gameID, false)
 			// Watcher-detected save change: push it to online peers. Bound to
 			// the P2P engine's lifecycle so shutdown cancels a transfer in
 			// flight instead of leaving it writing into the save folder.
 			d.P2P.GoSync(func(ctx context.Context) {
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 				defer cancel()
-				if _, err := d.P2P.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) {
+				if _, err := d.P2P.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) && !errors.Is(err, syncengine.ErrHeld) {
 					d.Log.Log("info", fmt.Sprintf("post-snapshot sync for %s: %v", gameID, err))
 				}
 			})

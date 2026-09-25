@@ -592,6 +592,10 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return
 	}
+	if e.holdingBack(game) {
+		jsonError(w, http.StatusNotFound, syncengine.HeldMessage)
+		return
+	}
 
 	// Extra save locations are included when this game has any; a game with
 	// none produces exactly the manifest it always did, down to the absent
@@ -616,9 +620,10 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	// delete request. A peer that predates this answers without it and is
 	// only ever asked about the primary location.
 	resp := syncengine.ManifestResponse{
-		Manifest:     manifest,
-		ActiveBranch: game.ActiveBranch,
-		Proto:        ServedProto(),
+		Manifest:          manifest,
+		ActiveBranch:      game.ActiveBranch,
+		Proto:             ServedProto(),
+		DeletionConfirmed: e.Sync.DeletionConfirmed(game.ID),
 	}
 	if latest, err := e.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		resp.LatestSnapshot = &syncengine.SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
@@ -708,6 +713,7 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	// find the very file this device just offered.
 	full := delta.LocalNameFor(base, body.RelPath)
 	_ = os.Chmod(full, 0o666)
+	deleting := time.Now()
 	if info, statErr := os.Stat(full); statErr == nil {
 		if info.IsDir() {
 			_ = os.Remove(full) // empty dirs only, like rmdirSync
@@ -715,6 +721,7 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(full)
 		}
 		e.Log("info", fmt.Sprintf("peer-requested deletion applied: %s", body.RelPath))
+		e.Sync.NoteEmptiedByPeer(gameID, deleting)
 
 		// This side just changed without running a sync, so nothing has
 		// updated its merge-base — it still describes a state that contains
@@ -857,7 +864,7 @@ func (e *Engine) handleSyncTrigger(w http.ResponseWriter, r *http.Request) {
 	e.GoSync(func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
-		if _, err := e.SyncGame(ctx, gameID); err != nil {
+		if _, err := e.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrHeld) {
 			e.Log("warn", fmt.Sprintf("triggered sync for %s: %v", gameID, err))
 		}
 	})
@@ -940,4 +947,17 @@ func stringsFromEventData(data map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+// holdingBack says whether this device holds a game back from its peers
+// because its save was emptied here (syncengine/hold.go). A peer asking for
+// its manifest is exactly the moment an emptied folder would be read as
+// every file deleted, so this is checked here and not only when this device
+// starts a sync.
+func (e *Engine) holdingBack(game store.Game) bool {
+	if e.Sync == nil {
+		return false
+	}
+	held, err := e.Sync.CheckHold(game.ID, true)
+	return err == nil && held
 }

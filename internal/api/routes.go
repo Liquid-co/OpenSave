@@ -71,6 +71,8 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/snapshots/all", s.handleSnapshotAll)
 	r.Get("/api/storage", s.handleStorage)
 	r.Post("/api/storage/compact", s.handleCompact)
+	r.Get("/api/emptied", s.handleEmptiedList)
+	r.Post("/api/games/{gameId}/emptied", s.handleEmptiedAnswer)
 
 	r.Get("/api/collections", s.handleListCollections)
 	r.Post("/api/collections", s.handleCreateCollection)
@@ -809,6 +811,40 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+// handleEmptiedList lists the games held back because their save was emptied
+// here.
+func (s *Server) handleEmptiedList(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Daemon.EmptiedSaves()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// handleEmptiedAnswer answers for one: {"answer": "delete"} sends the deletion
+// on to the other devices, {"answer": "restore"} puts the files back.
+func (s *Server) handleEmptiedAnswer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Answer string `json:"answer"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	res, err := s.Daemon.AnswerEmptied(chi.URLParam(r, "gameId"), body.Answer)
+	switch {
+	case errors.Is(err, daemon.ErrNotEmptied):
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		writeError(w, notFoundToStatus(err), err.Error())
+		return
+	}
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, res)
 }
 
 // handleCompact has older snapshots share the files they have in common now,

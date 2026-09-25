@@ -164,6 +164,8 @@ func Run(args []string) int {
 		return cmdSessions(d, rest)
 	case "verify":
 		return cmdVerify(d, rest)
+	case "emptied":
+		return cmdEmptied(d, rest)
 	case "snapshot-diff":
 		return cmdSnapshotDiff(d, rest)
 	case "export":
@@ -644,6 +646,9 @@ type statusReportGame struct {
 	// game until it is back, and it is not created again (see
 	// daemon.SaveFolderMissing).
 	SavePathMissing bool `json:"savePathMissing"`
+	// Every save file was deleted here and the game is held back until
+	// someone says whether that was meant (daemon.EmptiedSave).
+	Emptied *daemon.EmptiedSave `json:"emptied,omitempty"`
 	// Play on this device: total time, and when it was last played (ISO
 	// 8601, empty when never). See `opensave sessions`.
 	PlaytimeMs   int64  `json:"playtimeMs"`
@@ -688,6 +693,7 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 				MaxSnapshots:       g.MaxSnapshots,
 				MaxManualSnapshots: g.MaxManualSnapshots,
 				SavePathMissing:    daemon.SaveFolderMissing(g.SavePath),
+				Emptied:            emptiedOrNil(d, g.ID),
 			}
 			if st, err := d.Store.PlayStatsFor(g.ID); err == nil && st.Sessions > 0 {
 				entry.PlaytimeMs = st.PlaytimeMs
@@ -739,6 +745,9 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 		fmt.Printf("      %s\n", faint(g.SavePath))
 		if daemon.SaveFolderMissing(g.SavePath) {
 			fmt.Printf("      %s\n", warnText("save folder missing — nothing is watched or synced for it until it is back"))
+		}
+		if e, held := d.EmptiedSaveOf(g.ID); held && e.State == "held" {
+			fmt.Printf("      %s\n", warnText(fmt.Sprintf("every save file was deleted here — not synced until you answer (opensave emptied %s delete|restore)", g.ID)))
 		}
 		if since, ok := playing[g.ID]; ok {
 			fmt.Printf("      %s\n", accent("playing now")+faint(", since "+since.Local().Format("15:04")))
@@ -1012,4 +1021,11 @@ func runningDaemonPlaying() map[string]time.Time {
 		}
 	}
 	return out
+}
+
+func emptiedOrNil(d *daemon.Daemon, gameID string) *daemon.EmptiedSave {
+	if e, held := d.EmptiedSaveOf(gameID); held {
+		return &e
+	}
+	return nil
 }
