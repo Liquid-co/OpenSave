@@ -583,3 +583,13 @@ h2.page-title {
   white-space: nowrap;
   border: 0;
 }
+
+/* Controller navigation on (lib/controller.js): where focus is, plainly —
+   there is no pointer to show it otherwise. */
+:root[data-controller='on'] :focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:root[data-controller='on'] .tile:focus {
+  outline-offset: 3px;
+}

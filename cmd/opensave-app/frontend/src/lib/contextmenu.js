@@ -37,13 +37,26 @@ export function openMenu(event, items) {
 // up, so it stays highlighted and it is plain which game the menu is for —
 // the pointer has usually moved off it by then. Any element opening a menu
 // gets this; each styles the mark its own way.
+//
+// Closed with the keyboard or a controller, focus goes back to that element:
+// the menu had it, and would otherwise take it away with it, leaving nothing
+// in focus and the next key or button press with nowhere to start from.
 let marked = null;
 contextMenu.subscribe((menu) => {
   const next = menu?.anchor ?? null;
-  if (marked && marked !== next && marked.dataset) delete marked.dataset.menuOpen;
+  if (marked && marked !== next) {
+    if (marked.dataset) delete marked.dataset.menuOpen;
+    if (!menu) giveFocusBack(marked);
+  }
   if (next?.dataset) next.dataset.menuOpen = '';
   marked = next;
 });
+
+function giveFocusBack(el) {
+  const active = globalThis.document?.activeElement;
+  if (!el.isConnected || !el.focus) return;
+  if (!active || active === globalThis.document.body || active.closest?.('.menu')) el.focus({ preventScroll: true });
+}
 
 export const closeMenu = () => contextMenu.set(null);
 

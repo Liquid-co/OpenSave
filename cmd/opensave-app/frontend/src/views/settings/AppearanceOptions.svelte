@@ -7,6 +7,9 @@
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
   import { appearance, THEMES, ACCENTS, SCALES } from '../../lib/appearance.js';
   import { systemReducesMotion } from '../../lib/motion.js';
+  import { CONTROLLER_MODES, controllerOn, padUsed } from '../../lib/controller.js';
+  import { settings } from '../../lib/stores.js';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
@@ -53,6 +56,26 @@
   </label>
 </div>
 
+<div class="group controller">
+  <span class="label" id="ap-controller">Controller</span>
+  <div class="segmented" role="radiogroup" aria-labelledby="ap-controller">
+    {#each Object.entries(CONTROLLER_MODES) as [id, label]}
+      <button role="radio" aria-checked={$appearance.controller === id} class:on={$appearance.controller === id} on:click={() => set({ controller: id })}>
+        {#if id === 'on'}<Gamepad2 size={14} />{/if}{label}
+      </button>
+    {/each}
+  </div>
+  <p class="hint">
+    Move around with a gamepad or the arrow keys: A presses, B backs out, X opens a game's menu, Y or Start opens
+    Ctrl+K, the shoulder buttons change page.
+    {#if $appearance.controller === 'auto'}
+      {controllerOn('auto', { deviceType: $settings?.deviceType, used: $padUsed })
+        ? 'On now — a controller was used, or this device is a Steam Deck or handheld.'
+        : 'Turns on when a controller is used, and on a Steam Deck or handheld.'}
+    {/if}
+  </p>
+</div>
+
 <label class="check motion">
   <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
   Animations
@@ -67,6 +90,12 @@
 <style>
   .motion {
     margin-top: 18px;
+  }
+  .controller {
+    margin-top: 18px;
+  }
+  .controller .hint {
+    margin: 2px 0 0;
   }
   .options {
     display: flex;

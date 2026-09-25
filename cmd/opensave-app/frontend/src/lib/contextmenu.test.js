@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import { closeMenu, contextMenu, openMenu } from './contextmenu.js';
 
@@ -30,5 +30,54 @@ describe('the element a menu was opened on', () => {
     openMenu(rightClick(element(), 0, 0), []);
     expect(get(contextMenu)).toMatchObject({ x: 112, y: 52 });
     closeMenu();
+  });
+});
+
+describe('focus when the menu closes', () => {
+  // A stand-in document: what has focus, and the page itself.
+  const body = { closest: () => null };
+  const saved = globalThis.document;
+  afterEach(() => {
+    globalThis.document = saved;
+  });
+  const focusable = (inMenu = false) => {
+    const el = {
+      ...element(),
+      isConnected: true,
+      closest: (sel) => (inMenu && sel === '.menu' ? {} : null),
+      focus() {
+        globalThis.document.activeElement = el;
+      }
+    };
+    return el;
+  };
+
+  it('goes back to what it was opened on, from the menu or from nowhere', () => {
+    globalThis.document = { body, activeElement: body };
+    const tile = focusable();
+    openMenu(rightClick(tile), []);
+    globalThis.document.activeElement = focusable(true); // an item in the menu
+    closeMenu();
+    expect(globalThis.document.activeElement).toBe(tile);
+
+    openMenu(rightClick(tile), []);
+    globalThis.document.activeElement = body; // the item went with the menu
+    closeMenu();
+    expect(globalThis.document.activeElement).toBe(tile);
+  });
+
+  it('stays where it is when something else took it, or the element is gone', () => {
+    const search = focusable();
+    globalThis.document = { body, activeElement: search };
+    const tile = focusable();
+    openMenu(rightClick(tile), []);
+    closeMenu(); // clicked into the search box, say
+    expect(globalThis.document.activeElement).toBe(search);
+
+    const gone = { ...focusable(), isConnected: false };
+    openMenu(rightClick(gone), []);
+    globalThis.document.activeElement = body;
+    closeMenu();
+    expect(globalThis.document.activeElement).toBe(body);
   });
 });

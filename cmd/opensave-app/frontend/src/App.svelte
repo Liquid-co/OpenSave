@@ -1,7 +1,10 @@
 <script>
   import { onMount } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings } from './lib/stores.js';
+  import { startController, controllerOn, padUsed, pageStep } from './lib/controller.js';
+  import { appearance } from './lib/appearance.js';
+  import { paletteOpen } from './lib/shortcuts.js';
 
   import logoUrl from './assets/logo.png';
   import TitleBar from './components/TitleBar.svelte';
@@ -73,6 +76,23 @@
     showWhatsNew = true;
     updatedTo = '';
   }
+
+  // Moving around with a controller, or the arrow keys the same way, when
+  // that is on (lib/controller.js). The focus ring is drawn plainly then:
+  // with no pointer, it is the only way to see where you are.
+  $: controllerActive = controllerOn($appearance.controller, { deviceType: $settings?.deviceType, used: $padUsed });
+  $: document.documentElement.dataset.controller = controllerActive ? 'on' : 'off';
+  onMount(() =>
+    startController({
+      isOn: () => controllerActive,
+      actions: {
+        back: () => $view.name !== 'home' && navigate('home'),
+        menu: (el) => el?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+        palette: () => paletteOpen.set(true),
+        page: (delta) => navigate(pageStep($view.name, delta))
+      }
+    })
+  );
 
   onMount(async () => {
     // The tray's "Open Activity" and the like: the desktop shell asks for a

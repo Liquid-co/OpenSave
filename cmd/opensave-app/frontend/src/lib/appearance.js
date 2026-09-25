@@ -21,7 +21,11 @@ export const ACCENTS = {
 
 export const SCALES = [0.9, 1, 1.1, 1.25];
 
-export const DEFAULT_APPEARANCE = Object.freeze({ theme: 'dark', accent: 'violet', scale: 1, motion: true });
+export const DEFAULT_APPEARANCE = Object.freeze({ theme: 'dark', accent: 'violet', scale: 1, motion: true, controller: 'auto' });
+
+// Controller navigation (lib/controller.js): on by itself when a controller is
+// used or on a Steam Deck or handheld, or set on or off.
+const CONTROLLER_CHOICES = ['auto', 'on', 'off'];
 
 /** An appearance with every field valid, whatever was stored. */
 export function sanitizeAppearance(raw) {
@@ -31,7 +35,8 @@ export function sanitizeAppearance(raw) {
     theme: v.theme in THEMES ? v.theme : DEFAULT_APPEARANCE.theme,
     accent: v.accent in ACCENTS ? v.accent : DEFAULT_APPEARANCE.accent,
     scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
-    motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion
+    motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion,
+    controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller
   };
 }
 

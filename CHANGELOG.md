@@ -156,6 +156,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   game with that snapshot marked. In the library, the arrow keys move
   between games as they are laid out, and Home and End go to either end.
 
+- **Use it with a controller.** On a Steam Deck, a handheld, or a PC with a
+  gamepad, the D-pad or left stick moves to the nearest control in the
+  direction pressed, A presses it, B closes what is open or goes back, X
+  opens a game's menu, Y or Start opens Ctrl+K, and the shoulder buttons
+  change page. The arrow keys do the same, for a Deck in desktop mode where
+  Steam turns the D-pad into them. It turns itself on the first time a
+  controller is used and on a device set up as a Steam Deck or handheld;
+  Settings → Appearance → Controller turns it on or off for good.
+
 - **Undo instead of "Are you sure?"** Stopping tracking a game (one or a
   selection), declining a game another device offered, excluding a scan
   result and removing a save location no longer ask first. They happen as

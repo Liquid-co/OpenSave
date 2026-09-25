@@ -53,7 +53,14 @@ const contrast = (a, b) => {
 
 describe('sanitizeAppearance', () => {
   it('keeps valid choices and replaces the rest, field by field', () => {
-    expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25, motion: false })).toEqual({ theme: 'light', accent: 'teal', scale: 1.25, motion: false });
+    expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25, motion: false, controller: 'on' })).toEqual({
+      theme: 'light',
+      accent: 'teal',
+      scale: 1.25,
+      motion: false,
+      controller: 'on'
+    });
+    expect(sanitizeAppearance({ controller: 'sometimes' }).controller).toBe('auto');
     expect(sanitizeAppearance({ theme: 'sepia', accent: 'teal', scale: 3 })).toEqual({ ...DEFAULT_APPEARANCE, accent: 'teal' });
     expect(sanitizeAppearance({ scale: '1.1' }).scale).toBe(1.1);
     expect(sanitizeAppearance(null)).toEqual(DEFAULT_APPEARANCE);
@@ -70,8 +77,8 @@ describe('sanitizeAppearance', () => {
 describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
-    saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', scale: 0.9, motion: false });
+    saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
+    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' });
     expect(loadAppearance(memoryStorage({ 'opensave.appearance': '{nope' }))).toEqual(DEFAULT_APPEARANCE);
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
     expect(loadAppearance(broken)).toEqual(DEFAULT_APPEARANCE);
