@@ -9,6 +9,7 @@
   import Skeleton from '../components/ui/Skeleton.svelte';
   import MoreInfo from '../components/ui/MoreInfo.svelte';
   import AppearanceOptions from './settings/AppearanceOptions.svelte';
+  import ControllerOptions from './settings/ControllerOptions.svelte';
   import NotificationOptions from './settings/NotificationOptions.svelte';
   import StorageUsage from './settings/StorageUsage.svelte';
   import SnapshotChecks from './settings/SnapshotChecks.svelte';
@@ -364,6 +365,13 @@
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><Palette size={17} />Appearance</h3>
       <AppearanceOptions />
+    </div>
+
+    <!-- Using OpenSave from a gamepad: a Steam Deck, a handheld, a pad on a
+         PC. Also on this device only. -->
+    <div class="card" style="margin-top: 14px;">
+      <h3 class="section-title with-icon"><Gamepad2 size={17} />Controller</h3>
+      <ControllerOptions />
     </div>
 
     <div class="card" style="margin-top: 14px;">
