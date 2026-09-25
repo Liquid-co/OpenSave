@@ -15,6 +15,7 @@
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import { openGameMenu } from '../../lib/contextmenu.js';
+  import { playLength } from '../../lib/format.js';
 
   export let game;
   export let status;
@@ -155,7 +156,7 @@
     </div>
     {#if cover === 'wide'}
       <div class="meta">
-        {snapshots} {snapshots === 1 ? 'snapshot' : 'snapshots'}
+        {snapshots} {snapshots === 1 ? 'snapshot' : 'snapshots'}{#if game.playtimeMs >= 60_000}{' · '}{playLength(game.playtimeMs)} played{/if}
         {#if game.activeBranch && game.activeBranch !== 'main'}
           · on <strong>{game.activeBranch}</strong>
         {/if}

@@ -7,6 +7,20 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Play sessions.** OpenSave notices when a tracked game is running — by
+  its launch program, its Steam install folder, or, on Linux and the Steam
+  Deck, the Steam app it was started for — and when it closes, the save as
+  you left it is kept as a snapshot named for the session ("After playing
+  (1 h 12 min)") and sent on to your other devices. Nothing is taken when the
+  save did not change; the watcher's own snapshot of the last save is named
+  for the session rather than copied. Games show "Playing now", when they
+  were last played and for how long in all, and the library can be sorted
+  by recently played. `opensave wrap <game> -- <command>` runs a game the way
+  Ludusavi's wrap does — the newest save from your other devices first, the
+  snapshot and sync after — for a game's Steam launch options:
+  `opensave wrap hades -- %command%`. `opensave sessions` lists what was
+  played and when.
+
 - **Your other devices' newer saves come to you through the cloud.** Cloud
   backup used to be one-way: every device uploaded its snapshots, and none
   ever looked at the others'. So the thing a cloud copy is best at — getting

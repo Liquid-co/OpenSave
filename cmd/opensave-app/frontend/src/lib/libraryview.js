@@ -27,7 +27,7 @@ const MIN_WIDTH = {
 
 export const COLUMN_CHOICES = ['auto', 2, 3, 4, 5, 6, 7, 8];
 
-export const SORT_IDS = ['name', 'recent', 'synced', 'attention', 'snapshots', 'size', 'added'];
+export const SORT_IDS = ['name', 'recent', 'played', 'synced', 'attention', 'snapshots', 'size', 'added'];
 
 export const DEFAULT_VIEW = Object.freeze({ cover: 'wide', columns: 'auto', size: 'medium', sort: 'name', reverse: false, overview: true });
 

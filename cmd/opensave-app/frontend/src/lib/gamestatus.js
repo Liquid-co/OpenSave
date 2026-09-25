@@ -22,6 +22,9 @@ export function gameStatus(game, { peers = {}, activity, conflicted = false, now
   // move — no snapshot, no sync, no decision taken.
   if (game.savePathMissing) return { state: 'missing', label: 'Save folder missing', tone: 'warn' };
   if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
+  // Being played here now (see daemon/sessions.go): what matters most about
+  // it while it lasts; its save is kept as the session leaves it.
+  if (game.playingSince) return { state: 'playing', label: 'Playing now', tone: 'busy' };
   if (activity?.state === 'running') {
     return { state: 'syncing', label: `Syncing ${activity.percentage ?? 0}%`, tone: 'busy' };
   }
@@ -175,7 +178,12 @@ export const SORTS = {
     label: 'Most space',
     compare: descending((r) => snapshotsOf(r.game).reduce((n, s) => n + (Number(s.sizeBytes) || 0), 0))
   },
-  added: { label: 'Recently added', compare: descending((r) => stamp(r.game.createdAt)) }
+  added: { label: 'Recently added', compare: descending((r) => stamp(r.game.createdAt)) },
+  // A game being played now first, then by when it was last played.
+  played: {
+    label: 'Recently played',
+    compare: descending((r) => (r.game.playingSince ? Infinity : stamp(r.game.lastPlayedAt || null)))
+  }
 };
 
 /** Rows in a view's order. */

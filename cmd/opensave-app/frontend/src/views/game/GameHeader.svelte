@@ -5,6 +5,7 @@
   import { peers, navigate, toast, syncActivity } from '../../lib/stores.js';
   import { api, native, gameCover } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
+  import { playLength } from '../../lib/format.js';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import Play from 'lucide-svelte/icons/play';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -81,6 +82,11 @@
       branch <strong>{game.activeBranch}</strong>
       {#if activity?.state === 'running'}
         · <span class="syncing">syncing {activity.percentage ?? 0}%</span>
+      {/if}
+      {#if game.playingSince}
+        · <span class="playing">playing now, since {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      {:else if game.lastPlayedAt}
+        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>played {timeAgo(game.lastPlayedAt, now)}, {playLength(game.playtimeMs)} in all</span>
       {/if}
     </div>
     {#if syncedWith.length > 0}

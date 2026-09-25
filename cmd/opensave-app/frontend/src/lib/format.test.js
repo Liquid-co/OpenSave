@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fmtSize, fmtTime, plural } from './format.js';
+import { fmtSize, fmtTime, playLength, plural } from './format.js';
 
 describe('fmtSize', () => {
   it('shows KB below a megabyte and MB from one', () => {
@@ -29,5 +29,14 @@ describe('plural', () => {
     expect(plural(1, 'game')).toBe('1 game');
     expect(plural(0, 'game')).toBe('0 games');
     expect(plural(2, 'copy', 'copies')).toBe('2 copies');
+  });
+});
+
+describe('playLength', () => {
+  it('says how long, in hours and minutes', () => {
+    expect(playLength(45 * 60000)).toBe('45 min');
+    expect(playLength(3 * 3600000)).toBe('3 h');
+    expect(playLength(14 * 3600000 + 20 * 60000)).toBe('14 h 20 min');
+    expect(playLength(undefined)).toBe('0 min');
   });
 });

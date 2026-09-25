@@ -14,3 +14,12 @@ export const fmtTime = (t) => (t ? new Date(t).toLocaleString() : '—');
 
 /** "1 game", "3 games". */
 export const plural = (n, word, many = word + 's') => `${n} ${n === 1 ? word : many}`;
+
+/** How long something was played: "45 min", "3 h", "14 h 20 min". */
+export function playLength(ms) {
+  const minutes = Math.round((ms ?? 0) / 60000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}

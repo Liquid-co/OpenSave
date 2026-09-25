@@ -449,6 +449,16 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 	if lastSyncedWith == nil {
 		lastSyncedWith = map[string]string{}
 	}
+	// Play: when it was last played here and for how long in all, and
+	// whether it is being played now (see daemon/sessions.go).
+	play, _ := s.Daemon.Store.PlayStatsFor(g.ID)
+	lastPlayed, playingSince := "", ""
+	if play.LastPlayedMs > 0 {
+		lastPlayed = time.UnixMilli(play.LastPlayedMs).UTC().Format(time.RFC3339)
+	}
+	if since := s.Daemon.PlayingSince(g.ID); !since.IsZero() {
+		playingSince = since.UTC().Format(time.RFC3339)
+	}
 	return map[string]any{
 		"id":                 g.ID,
 		"name":               g.Name,
@@ -471,6 +481,10 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		// The save folder is not there — gone, moved, or on a drive not
 		// plugged in. Nothing is watched or synced for it until it is back.
 		"savePathMissing": daemon.SaveFolderMissing(g.SavePath),
+		"lastPlayedAt":    lastPlayed,
+		"playingSince":    playingSince,
+		"playtimeMs":      play.PlaytimeMs,
+		"playSessions":    play.Sessions,
 	}
 }
 

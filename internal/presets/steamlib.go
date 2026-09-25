@@ -145,3 +145,17 @@ func dedupePaths(paths []string) []string {
 	}
 	return out
 }
+
+// InstallDirs says where installed games are on this machine: Steam's by App
+// ID, from their app manifests, and every other launcher's by the lower-cased
+// name of the folder each game is in. Read from disk on each call; a few
+// small files per library.
+func (sc *Scanner) InstallDirs() (byAppID, byFolderName map[string]string) {
+	byAppID = map[string]string{}
+	for _, app := range steamInstalledApps(sc.steamLibraryPaths()) {
+		if app.InstallDir != "" {
+			byAppID[app.AppID] = app.InstallDir
+		}
+	}
+	return byAppID, sc.launcherInstallDirs()
+}

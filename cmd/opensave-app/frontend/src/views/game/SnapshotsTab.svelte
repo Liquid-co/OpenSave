@@ -268,6 +268,10 @@
   .row.kind-manual {
     border-left-color: var(--accent);
   }
+  /* The save as a play session left it: a save point by nature. */
+  .row.kind-session {
+    border-left-color: var(--success);
+  }
   .when {
     display: flex;
     flex-direction: column;
@@ -322,6 +326,10 @@
   .kind-manual .tag.kind {
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .kind-session .tag.kind {
+    border-color: rgba(var(--success-rgb), 0.45);
+    color: var(--success);
   }
   .tag.latest {
     border-color: rgba(var(--success-rgb), 0.45);

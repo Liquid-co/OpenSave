@@ -74,6 +74,23 @@ describe('conflictedIds', () => {
   });
 });
 
+describe('a game being played', () => {
+  it('says so, and the recently played order puts it first', () => {
+    expect(gameStatus(game({ id: 'h', name: 'Hades', playingSince: '2026-09-25T18:00:00Z' }))).toMatchObject({
+      state: 'playing',
+      label: 'Playing now'
+    });
+    const rowOf = (g) => ({ game: g, status: { state: 'local' } });
+    const rows = [
+      rowOf(game({ id: 'a', name: 'Long ago', lastPlayedAt: '2026-09-01T00:00:00Z' })),
+      rowOf(game({ id: 'n', name: 'Never' })),
+      rowOf(game({ id: 'p', name: 'Playing', playingSince: '2026-09-25T18:00:00Z' })),
+      rowOf(game({ id: 'y', name: 'Yesterday', lastPlayedAt: '2026-09-24T00:00:00Z' }))
+    ];
+    expect(sortRows(rows, 'played').map((r) => r.game.name)).toEqual(['Playing', 'Yesterday', 'Long ago', 'Never']);
+  });
+});
+
 describe('a missing save folder', () => {
   it('comes before everything else, for the game and for the library', () => {
     const g = game({ id: 'h', name: 'Hades', savePathMissing: true });

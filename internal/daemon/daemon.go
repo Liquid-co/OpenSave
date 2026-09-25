@@ -61,6 +61,9 @@ type Daemon struct {
 	missingMu sync.Mutex
 	missing   map[string]bool
 
+	// Play sessions; see sessions.go.
+	sessions sessionState
+
 	// OnCloudOffers receives the saves from other devices' cloud backups
 	// that are waiting for an answer, whenever that list changes, and
 	// OnCloudPulled each one put in place without asking. See cloudsync.go.
@@ -149,6 +152,8 @@ func New(opts Options) (*Daemon, error) {
 		Cloud:     cloud.New(s, log.Log),
 		opts:      opts,
 	}
+
+	d.initSessions()
 
 	// A paired peer untracking/re-tracking a game mirrors here.
 	d.P2P.OnUntrackRequest = d.untrackFromPeer
@@ -356,6 +361,10 @@ func (d *Daemon) Start() error {
 		}
 	})
 
+	// Notice which game is being played, and keep the save as each session
+	// leaves it. See sessions.go.
+	d.P2P.GoSync(d.runSessions)
+
 	// Read the cloud mirror back: shortly after start, which is "when I open
 	// the app", and every few minutes after. See cloudsync.go.
 	d.P2P.GoSync(func(ctx context.Context) {
@@ -419,6 +428,9 @@ func (d *Daemon) PruneOldSnapshots() {
 const uploadDrainTimeout = 30 * time.Second
 
 func (d *Daemon) Stop() {
+	// A game still running keeps what it was played for so far.
+	d.endOpenSessions()
+
 	// Order matters. Everything that can START a snapshot is stopped first —
 	// syncs (which follow a peer onto another branch, taking a safety copy on
 	// the way) and the watcher (which snapshots as the game saves) — because

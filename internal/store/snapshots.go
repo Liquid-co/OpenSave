@@ -90,6 +90,17 @@ func (s *Store) SetSnapshotNote(id, note string) error {
 	return checkRowAffected(res)
 }
 
+// SetSnapshotComment changes the reason a snapshot records. Used to name the
+// automatic snapshot a play session ended on after the session, when it is
+// already the save as it was left (see daemon/sessions.go).
+func (s *Store) SetSnapshotComment(id, comment string) error {
+	res, err := s.db.Exec(`UPDATE snapshots SET comment = ? WHERE id = ?`, comment, id)
+	if err != nil {
+		return fmt.Errorf("comment on snapshot %s: %w", id, err)
+	}
+	return checkRowAffected(res)
+}
+
 // BranchHasPinned reports whether any snapshot on a branch is pinned.
 func (s *Store) BranchHasPinned(gameID, branchName string) (bool, error) {
 	var n int

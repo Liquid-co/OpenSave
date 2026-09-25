@@ -56,6 +56,14 @@ describe('snapshotKind', () => {
     expect(snapshotKind({ isSystemAuto: false, comment: 'Manual snapshot' }).title).toBe('Snapshot');
   });
 
+  it('marks the save as a play session left it', () => {
+    expect(snapshotKind(auto('After playing (1 h 12 min)'))).toMatchObject({
+      kind: 'session',
+      label: 'After playing',
+      title: 'After playing (1 h 12 min)'
+    });
+  });
+
   it('says a save changed for the watcher’s own snapshots', () => {
     expect(snapshotKind(auto(''))).toMatchObject({ kind: 'auto', title: 'Save changed' });
     expect(snapshotKind(auto('Auto backup'))).toMatchObject({ kind: 'auto', title: 'Save changed' });

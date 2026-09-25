@@ -82,6 +82,8 @@ func Run(args []string) int {
 		return cmdResume(rest)
 	case "transfers":
 		return cmdTransfers(rest)
+	case "wrap":
+		return cmdWrap(rest)
 	case "collection", "collections":
 		return cmdCollection(rest)
 	case "branch-delete":
@@ -158,6 +160,8 @@ func Run(args []string) int {
 		return cmdSnapshots(d, rest)
 	case "storage":
 		return cmdStorage(d, rest)
+	case "sessions":
+		return cmdSessions(d, rest)
 	case "export":
 		return cmdExport(d, rest)
 	case "exclude":
@@ -636,6 +640,10 @@ type statusReportGame struct {
 	// game until it is back, and it is not created again (see
 	// daemon.SaveFolderMissing).
 	SavePathMissing bool `json:"savePathMissing"`
+	// Play on this device: total time, and when it was last played (ISO
+	// 8601, empty when never). See `opensave sessions`.
+	PlaytimeMs   int64  `json:"playtimeMs"`
+	LastPlayedAt string `json:"lastPlayedAt"`
 }
 
 type statusReportPeer struct {
@@ -677,6 +685,10 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 				MaxManualSnapshots: g.MaxManualSnapshots,
 				SavePathMissing:    daemon.SaveFolderMissing(g.SavePath),
 			}
+			if st, err := d.Store.PlayStatsFor(g.ID); err == nil && st.Sessions > 0 {
+				entry.PlaytimeMs = st.PlaytimeMs
+				entry.LastPlayedAt = time.UnixMilli(st.LastPlayedMs).UTC().Format(time.RFC3339)
+			}
 			branches, _ := d.Store.ListBranches(g.ID)
 			for _, b := range branches {
 				snaps, _ := d.Store.ListSnapshots(g.ID, b)
@@ -716,12 +728,19 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 		peers = nil
 	}
 
+	playing := runningDaemonPlaying()
 	section(fmt.Sprintf("Tracked games %s %d", symDot(), len(games)))
 	for _, g := range games {
 		fmt.Printf("  %s %s  %s\n", symBullet(), bold(g.Name), faint(g.ID))
 		fmt.Printf("      %s\n", faint(g.SavePath))
 		if daemon.SaveFolderMissing(g.SavePath) {
 			fmt.Printf("      %s\n", warnText("save folder missing — nothing is watched or synced for it until it is back"))
+		}
+		if since, ok := playing[g.ID]; ok {
+			fmt.Printf("      %s\n", accent("playing now")+faint(", since "+since.Local().Format("15:04")))
+		} else if st, err := d.Store.PlayStatsFor(g.ID); err == nil && st.Sessions > 0 {
+			last := timeAgo(time.UnixMilli(st.LastPlayedMs).UTC().Format("2006-01-02T15:04:05.000Z"), time.Now())
+			fmt.Printf("      %s\n", faint(fmt.Sprintf("played %s here, last %s", playLength(st.PlaytimeMs), last)))
 		}
 
 		branches, _ := d.Store.ListBranches(g.ID)
@@ -967,4 +986,26 @@ func isAddrInUse(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "address already in use") ||
 		strings.Contains(msg, "only one usage of each socket address")
+}
+
+// runningDaemonPlaying asks the running daemon which games are being played
+// now, and since when; none when there is no daemon to ask.
+func runningDaemonPlaying() map[string]time.Time {
+	out := map[string]time.Time{}
+	raw, err := daemonRequest("GET", "/api/games", nil)
+	if err != nil {
+		return out
+	}
+	var games map[string]struct {
+		PlayingSince string `json:"playingSince"`
+	}
+	if json.Unmarshal(raw, &games) != nil {
+		return out
+	}
+	for id, g := range games {
+		if at, err := time.Parse(time.RFC3339, g.PlayingSince); err == nil {
+			out[id] = at
+		}
+	}
+	return out
 }

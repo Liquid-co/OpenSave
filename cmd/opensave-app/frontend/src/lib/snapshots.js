@@ -74,7 +74,7 @@ function plainTitle(comment) {
 
 /**
  * Why a snapshot exists.
- * @returns {{kind: 'manual'|'auto'|'start'|'safety'|'other', label: string, title: string}}
+ * @returns {{kind: 'manual'|'auto'|'start'|'safety'|'session'|'other', label: string, title: string}}
  *   `label` is the short tag; `title` the line the row leads with.
  */
 export function snapshotKind(snap, now = new Date()) {
@@ -87,6 +87,8 @@ export function snapshotKind(snap, now = new Date()) {
   }
   if (comment === '') return { kind: 'auto', label: 'Automatic', title: 'Save changed' };
   if (/^initial snapshot$/i.test(comment)) return { kind: 'start', label: 'Automatic', title: 'When tracking started' };
+  // The save as a play session left it (daemon/sessions.go).
+  if (/^after playing/i.test(comment)) return { kind: 'session', label: 'After playing', title: comment };
   if (safetyPattern.test(comment)) {
     return { kind: 'safety', label: 'Safety copy', title: plainTitle(comment) };
   }
