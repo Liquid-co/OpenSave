@@ -190,7 +190,7 @@ func (s *Service) ExchangeAuthCode(provider, code, codeVerifier string) error {
 		return err
 	}
 	// Signing in IS choosing this provider: persist it so uploads work even
-	// if the user never presses "Save settings", and so the stored tokens
+	// if the user never presses "Save provider", and so the stored tokens
 	// always belong to the stored provider.
 	cfg.Provider = provider
 	cfg.AccessToken = tok.AccessToken

@@ -53,7 +53,7 @@
         toast(ownAppID.trim() ? 'Saved. Sign in to use your own app.' : 'Cleared — the built-in app will be used.', 'success');
       }
       // Reload for the fresh tokens/ids, but keep this card selected. The
-      // stored provider is whatever was last saved with "Save settings" — so
+      // stored provider is whatever was last saved with "Save provider" — so
       // without that, saving credentials for a provider you had only selected
       // drops you back onto the stored one, and the section you were filling
       // in disappears as though nothing happened.

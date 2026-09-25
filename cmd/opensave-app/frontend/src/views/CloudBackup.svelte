@@ -15,6 +15,9 @@
   import Cloud from 'lucide-svelte/icons/cloud';
 
   let config = null;
+  // The provider and its details as last saved, to tell whether the ones on
+  // screen still need saving.
+  let savedConfig = null;
   // Kept in the general settings rather than the cloud config, but it is a
   // cloud behaviour and is set here with the rest.
   let autoPull = false;
@@ -38,6 +41,7 @@
         enabled: false, provider: 'local', url: '', username: '', password: '', headers: '{}', folderId: ''
       };
       connected = connectedProviderOf(next);
+      savedConfig = structuredClone(next);
       if (keepProvider) next.provider = keepProvider;
       config = next;
       autoPull = !!s.cloudAutoPull;
@@ -46,16 +50,53 @@
     }
   }
 
+  // The provider and its details are saved with a button: a provider half
+  // filled in is not one to start sending backups to. The switches below
+  // save themselves.
+  const sansSwitch = (c) => c && { ...c, enabled: undefined };
+  $: providerDirty = !!config && !!savedConfig && JSON.stringify(sansSwitch(config)) !== JSON.stringify(sansSwitch(savedConfig));
+
   async function save() {
     busy.set(true);
     try {
-      settings.set(await api.post('/api/settings', { cloudSync: config, cloudAutoPull: autoPull }));
-      toast('Cloud settings saved', 'success');
+      settings.set(await api.post('/api/settings', { cloudSync: config }));
+      savedConfig = structuredClone(config);
+      toast('Cloud provider saved', 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
       busy.set(false);
     }
+  }
+
+  // Each switch sends only itself, one at a time and in order, and goes back
+  // if the daemon refuses it.
+  let switches = Promise.resolve();
+  let switchState = null; // null | 'saving' | 'saved'
+  function saveSwitch(patch, undo) {
+    switchState = 'saving';
+    switches = switches.then(async () => {
+      try {
+        settings.set(await api.post('/api/settings', patch));
+        switchState = 'saved';
+      } catch (e) {
+        undo();
+        switchState = null;
+        toast(`Couldn't save that: ${e.message}`, 'error');
+      }
+    });
+  }
+  function setBackupAll(on) {
+    config.enabled = on;
+    savedConfig = { ...savedConfig, enabled: on };
+    saveSwitch({ cloudSync: { enabled: on } }, () => {
+      config.enabled = !on;
+      savedConfig = { ...savedConfig, enabled: !on };
+    });
+  }
+  function setAutoPull(on) {
+    autoPull = on;
+    saveSwitch({ cloudAutoPull: on }, () => (autoPull = !on));
   }
 
   let browserOpen = false;
@@ -98,13 +139,25 @@
       </div>
     {/if}
 
+    {#if providerDirty}
+      <div class="actions">
+        <span class="unsaved">Not saved yet — backups still go to the provider saved before.</span>
+        <button class="btn primary" disabled={$busy} on:click={save}>Save provider</button>
+      </div>
+    {/if}
+
     <!-- Moved here from Settings → Sync, which the note on this card used to
          send people to: what the cloud does on its own belongs beside where
-         it goes, and one Save covers both. -->
+         it goes. These save as they are switched. -->
     <div class="auto">
-      <h4>Automatically</h4>
+      <h4>
+        Automatically
+        <span class="switch-state" aria-live="polite">
+          {#if switchState === 'saving'}Saving…{:else if switchState === 'saved'}Saved{/if}
+        </span>
+      </h4>
       <label class="check">
-        <input type="checkbox" bind:checked={config.enabled} />
+        <input type="checkbox" checked={config.enabled} on:change={(e) => setBackupAll(e.currentTarget.checked)} />
         Back up every new snapshot to the cloud
       </label>
       <p class="hint">
@@ -112,7 +165,7 @@
         <strong>OpenSave</strong> folder there.
       </p>
       <label class="check">
-        <input type="checkbox" bind:checked={autoPull} />
+        <input type="checkbox" checked={autoPull} on:change={(e) => setAutoPull(e.currentTarget.checked)} />
         Bring newer saves from my other devices
       </label>
       <p class="hint">
@@ -123,9 +176,6 @@
       </p>
     </div>
 
-    <div class="actions">
-      <button class="btn primary" disabled={$busy} on:click={save}>Save settings</button>
-    </div>
   </div>
 
   <h3 class="section">Cloud snapshots</h3>
@@ -191,9 +241,21 @@
     border-top: 1px solid var(--border);
   }
   .auto h4 {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
     font-size: 0.92rem;
     font-weight: 600;
     margin-bottom: 8px;
+  }
+  .switch-state {
+    font-size: 0.76rem;
+    font-weight: 400;
+    color: var(--text-faint);
+  }
+  .unsaved {
+    font-size: 0.82rem;
+    color: var(--warn);
   }
   .auto .hint {
     font-size: 0.8rem;

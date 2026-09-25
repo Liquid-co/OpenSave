@@ -139,6 +139,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Changed
 
+- **Settings save themselves.** There is no Save button to forget: a switch
+  or a choice is saved as you make it, and typed text when you leave the box
+  or press Enter. Only what you changed is sent, so a setting changed
+  somewhere else while the page was open is not put back. A value OpenSave
+  can't accept — an unencrypted relay address, say — is marked, with the
+  reason, and stays unsaved until you fix it without holding up anything
+  else. On Cloud Backup the two switches work the same way; the provider and
+  its details still have a button, which appears once there is something to
+  save, because a provider half filled in is not one to start backing up to.
+
 - **A cleaner look.** The emoji used as icons are replaced by one set of line
   icons, drawn in the app's colours rather than the system's; buttons are
   filled rather than outlined, with the one that matters on each screen in

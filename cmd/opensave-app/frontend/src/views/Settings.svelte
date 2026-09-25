@@ -1,7 +1,8 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { settings, toast, askConfirm, gameList, navigate } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
+  import { adoptOutsideChanges, changedFields, createAutosave } from '../lib/autosave.js';
   import qrcode from 'qrcode-generator';
   import { DISCORD_URL, DONATE_URL } from '../lib/links.js';
   import LibraryViewOptions from './home/LibraryViewOptions.svelte';
@@ -36,6 +37,9 @@
   import Wrench from 'lucide-svelte/icons/wrench';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import ArrowRight from 'lucide-svelte/icons/arrow-right';
+  import Check from 'lucide-svelte/icons/check';
+  import LoaderCircle from 'lucide-svelte/icons/loader-circle';
+  import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
 
   // QR of the same URL, generated locally so paying from a phone (where
   // Apple/Google Pay is a single tap) needs no typing. Built once — the URL
@@ -54,8 +58,6 @@
   }
 
   let tab = 'general';
-  let draft = null;
-  let busy = false;
   let pruning = false;
 
   // The running build, so the updates toggle can explain what it means for
@@ -72,19 +74,99 @@
     }
   });
 
-  // What this page saves. The cloud settings are set on the Cloud Backup page
-  // and left out here: this form is a copy taken when the page opened, and
-  // sending its copy of them back would undo a change made there since.
-  const outgoing = (d) => {
-    const { cloudSync, cloudAutoPull, ...rest } = d;
-    return rest;
+  // Every change saves itself (see lib/autosave.js): a toggle or a choice at
+  // once, typed text when you leave the box or press Enter. `draft` is what
+  // the page shows and edits; `saved` is what the daemon last confirmed.
+  let draft = null;
+  let saved = null;
+  let saveState = null; // null | 'saving' | 'saved' | {error}
+  // Values the daemon refused, and why, by field: left out of later saves
+  // until changed (lib/autosave.js), and shown until then — a later save
+  // succeeding does not mean this one did.
+  let rejected = {};
+  let refusedWhy = {};
+  const FIELD_NAMES = {
+    relayUrl: 'relay URL',
+    relayPort: 'relay hosting port',
+    port: 'daemon port',
+    deviceName: 'device name',
+    backupsDir: 'snapshots folder',
+    syncBackupsDir: 'safety backups folder',
+    pathTranslations: 'path rules'
   };
+  $: unsaved = draft ? Object.keys(rejected).filter((key) => same(draft[key], rejected[key])) : [];
+  const firstSentence = (text) => String(text).split(/(?<=\.)\s/)[0];
+
+  // The settings as this page edits them. The cloud settings are set on the
+  // Cloud Backup page and left out: they are not this page's to send.
+  function editable(s) {
+    const { cloudSync, cloudAutoPull, ...rest } = structuredClone(s);
+    // Older daemons predate the separate manual-snapshot budget; 0 is the
+    // "keep forever" default, so an omitted value behaves as it should.
+    rest.defaultMaxManualSnapshots ??= 0;
+    // Older daemons predate the update channel; stable is the default.
+    rest.updateChannel ??= 'stable';
+    return rest;
+  }
+
+  // A path rule with a side still empty is not a rule yet: it stays on the
+  // page but is not saved until both sides are filled in.
+  const ready = (d) => ({
+    ...d,
+    pathTranslations: (d.pathTranslations ?? []).filter((r) => r.fromPattern?.trim() && r.toPattern?.trim())
+  });
+
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  const saver = createAutosave({
+    collect: () => changedFields(saved, ready(draft), { rejected }),
+    send: (patch) => api.post('/api/settings', patch),
+    onSaved(result, patch) {
+      const next = editable(result);
+      // The daemon's version of what was sent — it may have tidied it — unless
+      // the field has been changed again in the meantime.
+      for (const key of Object.keys(patch)) {
+        if (same(draft[key], patch[key])) draft[key] = structuredClone(next[key]);
+        delete rejected[key];
+        delete refusedWhy[key];
+      }
+      rejected = rejected;
+      saved = next;
+      settings.set(result);
+    },
+    onFailed(patch, error) {
+      rejected = { ...rejected, ...patch };
+      for (const key of Object.keys(patch)) refusedWhy[key] = error.message;
+    },
+    onState: (state) => (saveState = state)
+  });
+  const saveNow = () => saver.flush();
+  onDestroy(saveNow);
+
+  // Arrivals from elsewhere while the page is open — the tray, the terminal,
+  // another screen — are taken in, except into a field being edited here.
+  function takeSettings(s) {
+    if (!s) return;
+    if (!draft) {
+      saved = editable(s);
+      draft = structuredClone(saved);
+      return;
+    }
+    ({ saved, draft } = adoptOutsideChanges(saved, draft, editable(s)));
+  }
+  $: takeSettings($settings);
+
+  function showTab(next) {
+    saveNow();
+    tab = next;
+  }
 
   async function cleanUpSnapshots() {
     pruning = true;
     try {
       // Save the limit first so the cleanup uses it, then prune everything.
-      await api.post('/api/settings', outgoing(draft));
+      await saver.flush();
+      if (saveState?.error) throw new Error(`the limits couldn't be saved: ${saveState.error}`);
       const res = await api.post('/api/snapshots/prune', { applyDefaultToAll: true });
       const mb = (res.freedBytes / 1048576).toFixed(1);
       toast(
@@ -100,53 +182,35 @@
     }
   }
 
-  $: if ($settings && !draft) {
-    draft = structuredClone($settings);
-    // Older daemons predate the separate manual-snapshot budget; 0 is the
-    // "keep forever" default, so an omitted value behaves as it should.
-    draft.defaultMaxManualSnapshots ??= 0;
-    // Older daemons predate the update channel; stable is the default.
-    draft.updateChannel ??= 'stable';
-  }
-
-  async function save() {
-    busy = true;
-    try {
-      const updated = await api.post('/api/settings', outgoing(draft));
-      settings.set(updated);
-      draft = structuredClone(updated);
-      toast('Settings saved', 'success');
-    } catch (e) {
-      toast(e.message, 'error');
-    } finally {
-      busy = false;
-    }
-  }
-
   // Path translations editor
   function addRule() {
     draft.pathTranslations = [...(draft.pathTranslations ?? []), { fromPattern: '', toPattern: '' }];
   }
   function removeRule(i) {
     draft.pathTranslations = draft.pathTranslations.filter((_, idx) => idx !== i);
+    saveNow();
   }
 
   // Custom scan paths
   async function addScanPath() {
     const dir = await native.selectDirectory('Add a folder to auto-scan');
     if (dir) draft.customScanPaths = [...(draft.customScanPaths ?? []), dir];
+    saveNow();
   }
   function removeScanPath(i) {
     draft.customScanPaths = draft.customScanPaths.filter((_, idx) => idx !== i);
+    saveNow();
   }
 
   // Excluded folders — locations the auto-scan should skip entirely.
   async function addExcludePath() {
     const dir = await native.selectDirectory('Choose a folder to exclude from auto-scan');
     if (dir) draft.excludePaths = [...(draft.excludePaths ?? []), dir];
+    saveNow();
   }
   function removeExcludePath(i) {
     draft.excludePaths = draft.excludePaths.filter((_, idx) => idx !== i);
+    saveNow();
   }
 
   // Reset tracking — untrack every game so the user can re-add them from the
@@ -176,11 +240,13 @@
   async function pickBackupsDir() {
     const dir = await native.selectDirectory('Select snapshots storage folder');
     if (dir) draft.backupsDir = dir;
+    saveNow();
   }
 
   async function pickSyncBackupsDir() {
     const dir = await native.selectDirectory('Select pre-sync safety backups folder');
     if (dir) draft.syncBackupsDir = dir;
+    saveNow();
   }
 
   // Relay hosting: LAN IPs / public IP to share with friends. Shown only on
@@ -214,17 +280,35 @@
 
 <div class="head">
   <h2 class="page-title">Settings</h2>
+  {#if draft}
+    <span class="save-state" class:error={saveState?.error || unsaved.length} aria-live="polite">
+      {#if saveState === 'saving'}
+        <LoaderCircle size={14} class="spin" />Saving…
+      {:else if unsaved.length}
+        <TriangleAlert size={14} />
+        <span class="why" title={refusedWhy[unsaved[0]]}>
+          Not saved: the {FIELD_NAMES[unsaved[0]] ?? unsaved[0]} — {firstSentence(refusedWhy[unsaved[0]])}
+        </span>
+      {:else if saveState?.error}
+        <TriangleAlert size={14} /><span class="why" title={saveState.error}>Couldn't save: {firstSentence(saveState.error)}</span>
+      {:else if saveState === 'saved'}
+        <Check size={14} />Saved
+      {:else}
+        Changes save as you make them
+      {/if}
+    </span>
+  {/if}
 </div>
 
 {#if !draft}
   <Skeleton kind="cards" count={3} />
 {:else}
   <div class="pill-tabs" style="margin-bottom: 18px;">
-    <button class:active={tab === 'general'} on:click={() => (tab = 'general')}>General</button>
-    <button class:active={tab === 'sync'} on:click={() => (tab = 'sync')}>Sync</button>
-    <button class:active={tab === 'storage'} on:click={() => (tab = 'storage')}>Storage</button>
-    <button class:active={tab === 'advanced'} on:click={() => (tab = 'advanced')}>Advanced</button>
-    <button class="support-tab" class:active={tab === 'support'} on:click={() => (tab = 'support')}><Heart size={14} />Support</button>
+    <button class:active={tab === 'general'} on:click={() => showTab('general')}>General</button>
+    <button class:active={tab === 'sync'} on:click={() => showTab('sync')}>Sync</button>
+    <button class:active={tab === 'storage'} on:click={() => showTab('storage')}>Storage</button>
+    <button class:active={tab === 'advanced'} on:click={() => showTab('advanced')}>Advanced</button>
+    <button class="support-tab" class:active={tab === 'support'} on:click={() => showTab('support')}><Heart size={14} />Support</button>
     <!-- Not a tab: it leaves the app. Shaped like its neighbour so the pair
          reads as one group, marked with an outward arrow so nobody expects a panel. -->
     <button class="discord-tab" on:click={() => native.openExternal(DISCORD_URL)} title="Open the OpenSave Discord in your browser">
@@ -238,12 +322,20 @@
     </button>
   </div>
 
+  <!-- A toggle or a choice commits at once; typed text when the box is left
+       or Enter is pressed. See lib/autosave.js. -->
+  <div
+    class="tab-body"
+    on:change={saveNow}
+    on:keydown={(e) => e.key === 'Enter' && e.target.matches('input') && saveNow()}
+    role="presentation"
+  >
   {#if tab === 'general'}
     <div class="card">
       <h3 class="section-title with-icon"><Monitor size={17} />Device identity</h3>
       <div class="field">
         <label for="s-name">Device name — how other devices see you</label>
-        <input id="s-name" bind:value={draft.deviceName} />
+        <input id="s-name" class:invalid={unsaved.includes('deviceName')} bind:value={draft.deviceName} />
       </div>
       <div class="field">
         <label for="s-type">Device type</label>
@@ -262,8 +354,8 @@
       </div>
     </div>
 
-    <!-- Kept on this device and applied as it is changed, like the library
-         view below; neither is part of this page's Save. -->
+    <!-- Kept on this device rather than in the daemon's settings, like the
+         library view below. -->
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><Palette size={17} />Appearance</h3>
       <AppearanceOptions />
@@ -274,9 +366,8 @@
       <NotificationOptions />
     </div>
 
-    <!-- Applies as it is changed, like the View menu on the library, which
-         changes the same thing. Not part of this page's Save: see
-         lib/libraryview.js for why. -->
+    <!-- The same thing the View menu on the library changes, kept on this
+         device: see lib/libraryview.js for why. -->
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><LayoutGrid size={17} />Library</h3>
       <p class="hint library-hint">How your games are laid out on Home. Changes apply straight away.</p>
@@ -378,7 +469,7 @@
       <h3 class="section-title with-icon"><Globe size={17} />Internet relay</h3>
       <div class="field">
         <label for="s-relay-url">WebSocket relay URL</label>
-        <input id="s-relay-url" bind:value={draft.relayUrl} placeholder="wss://relay.opensave.org" />
+        <input id="s-relay-url" class:invalid={unsaved.includes('relayUrl')} bind:value={draft.relayUrl} placeholder="wss://relay.opensave.org" />
         <span class="hint">The relay that carries syncs across the internet. Join a room from <strong>Internet Sync</strong>.</span>
       </div>
       <label class="check">
@@ -391,7 +482,7 @@
       {#if draft.hostRelay}
         <div class="field" style="margin-top: 12px;">
           <label for="s-relay-port">Relay hosting port</label>
-          <input id="s-relay-port" type="number" bind:value={draft.relayPort} />
+          <input id="s-relay-port" type="number" class:invalid={unsaved.includes('relayPort')} bind:value={draft.relayPort} />
           <span class="hint">Forward this TCP port on your router so friends on the internet can reach you.</span>
         </div>
         <button class="btn small" on:click={toggleRelayInfo} disabled={relayInfoLoading}>
@@ -554,7 +645,7 @@
       <h3 class="section-title with-icon"><Network size={17} />Network</h3>
       <div class="field" style="margin-bottom: 0;">
         <label for="s-port">Daemon port</label>
-        <input id="s-port" type="number" bind:value={draft.port} />
+        <input id="s-port" type="number" class:invalid={unsaved.includes('port')} bind:value={draft.port} />
         <span class="hint">The local API + LAN peer port. Changing it requires a restart.</span>
       </div>
     </div>
@@ -629,16 +720,44 @@
     </div>
   {/if}
 
-  {#if tab !== 'support'}
-    <div class="save-bar">
-      <button class="btn primary" disabled={busy} on:click={save}>Save changes</button>
-    </div>
-  {/if}
+  </div>
 {/if}
 
 <style>
   .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
     margin-bottom: 18px;
+  }
+  .save-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    min-width: 0;
+  }
+  .save-state.error {
+    color: var(--danger-text);
+  }
+  .why {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(560px, 60vw);
+  }
+  input.invalid {
+    border-color: var(--danger);
+  }
+  .save-state :global(.spin) {
+    animation: settings-spin 1s linear infinite;
+  }
+  @keyframes settings-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   /* .check and the checkbox itself are styled globally in app.css. */
   .path-row {
@@ -899,10 +1018,5 @@
     color: var(--text-faint);
     display: inline-block;
     width: 78px;
-  }
-  .save-bar {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
   }
 </style>
