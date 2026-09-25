@@ -21,6 +21,7 @@
   import { librarySummary, latestSnapshotAt } from '../../lib/gamestatus.js';
   import { spaceUsed } from '../../lib/overview.js';
   import { fmtSize } from '../../lib/format.js';
+  import { api } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
   import { libraryView } from '../../lib/libraryview.js';
   import RecentActivity from './RecentActivity.svelte';
@@ -32,6 +33,23 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
 
+  // The drive the snapshots are kept on, when it is nearly full: a snapshot
+  // that cannot be written is a save that is not backed up, and nothing else
+  // on screen would say why. Asked for now and every few minutes.
+  const LOW_SPACE = 1024 ** 3;
+  let lowSpace = null;
+  async function checkSpace() {
+    try {
+      const r = await api.get('/api/storage');
+      lowSpace = r.freeKnown && r.freeBytes < LOW_SPACE ? r.freeBytes : null;
+    } catch {
+      lowSpace = null;
+    }
+  }
+  checkSpace();
+  const spaceTick = setInterval(checkSpace, 5 * 60_000);
+  onDestroy(() => clearInterval(spaceTick));
+
   const ICONS = { ok: ShieldCheck, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
 
   $: summary = librarySummary(rows);
@@ -40,8 +58,9 @@
   // A pause outranks the quiet states, not a decision waiting or a sync in
   // flight: those still need seeing while it lasts.
   $: paused = $syncPause.paused;
-  $: tone = paused && (summary.tone === 'ok' || summary.tone === 'muted') ? 'paused' : summary.tone;
-  $: icon = tone === 'paused' ? CirclePause : ICONS[summary.tone];
+  $: quiet = summary.tone === 'ok' || summary.tone === 'muted';
+  $: tone = lowSpace !== null && quiet ? 'warn' : paused && quiet ? 'paused' : summary.tone;
+  $: icon = tone === 'paused' ? CirclePause : tone === 'warn' ? TriangleAlert : ICONS[summary.tone];
 
   $: paired = Object.values($peers);
   $: online = paired.filter((p) => p.status === 'online');
@@ -68,6 +87,12 @@
     <div class="state-icon" class:spin={tone === 'busy'}><svelte:component this={icon} size={20} strokeWidth={2} /></div>
     <div class="state-text">
       <p class="headline" role="status">{summary.headline}</p>
+      {#if lowSpace !== null}
+        <p class="detail warn">
+          Only {fmtSize(lowSpace)} free on the drive your snapshots are kept on — new ones may not fit.
+          <button class="inline-link" on:click={() => navigate('settings', { tab: 'storage' })}>See what takes the space</button>
+        </p>
+      {/if}
       {#if paused}
         <p class="detail">
           Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken, and everything catches up when it
@@ -175,6 +200,18 @@
   }
   .state .btn {
     flex-shrink: 0;
+  }
+  .detail.warn {
+    color: var(--warn);
+  }
+  .inline-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--text);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .facts {

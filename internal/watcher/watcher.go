@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -379,9 +380,19 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 			return fmt.Errorf("watch parent dir: %w", err)
 		}
 	} else {
-		if err := os.MkdirAll(savePath, 0o777); err != nil {
+		// A save folder that is not there is not created here. Tracking
+		// refuses a folder that does not exist, so a missing one went —
+		// deleted, moved by a reinstall, on a drive or card not plugged in.
+		// Creating it put an empty folder where the save had been, and the
+		// next sync read every file as deleted and deleted them on the other
+		// devices too: the copies left. See e2e/missing_folder_test.go. The
+		// daemon watches it again once it is back (ResyncWatchers).
+		if _, statErr := os.Stat(savePath); statErr != nil {
 			closeWatcher(fsw, fsw.Close, watchStopTimeout)
-			return fmt.Errorf("create save dir: %w", err)
+			if errors.Is(statErr, fs.ErrNotExist) {
+				return fmt.Errorf("%w: %s", ErrSaveFolderMissing, savePath)
+			}
+			return fmt.Errorf("inspect save dir: %w", statErr)
 		}
 		if err := addRecursive(context.Background(), fsw, savePath); err != nil {
 			closeWatcher(fsw, fsw.Close, watchStopTimeout)
@@ -397,8 +408,10 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 		if path == "" {
 			continue
 		}
-		if err := os.MkdirAll(path, 0o777); err != nil {
-			e.log("warn", fmt.Sprintf("cannot watch the %q save location of %s: %v", name, gameID, err))
+		// Not created either, for the same reason as the main folder.
+		if _, statErr := os.Stat(path); statErr != nil {
+			e.log("warn", fmt.Sprintf("the %q save location of %s is not there (%s), so it is not watched — "+
+				"it will not be created, since an empty folder in its place would read as its files deleted", name, gameID, path))
 			continue
 		}
 		if err := addRecursive(context.Background(), fsw, path); err != nil {
@@ -511,6 +524,10 @@ func (e *Engine) Stop() {
 		gw.stop()
 	}
 }
+
+// ErrSaveFolderMissing is a watch refused because the save folder is not
+// there. The folder is not created; see WatchWithLocations.
+var ErrSaveFolderMissing = errors.New("the save folder is not there")
 
 // watchStopTimeout bounds how long stopping one watch may wait for its run
 // loop to exit. Generous next to the work the loop does between select turns,

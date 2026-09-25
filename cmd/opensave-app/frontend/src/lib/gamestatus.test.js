@@ -74,6 +74,19 @@ describe('conflictedIds', () => {
   });
 });
 
+describe('a missing save folder', () => {
+  it('comes before everything else, for the game and for the library', () => {
+    const g = game({ id: 'h', name: 'Hades', savePathMissing: true });
+    expect(gameStatus(g, { conflicted: true })).toMatchObject({ state: 'missing', tone: 'warn', label: 'Save folder missing' });
+    const rows = [
+      { game: g, status: { state: 'missing' } },
+      { game: game({ id: 'c', name: 'Celeste' }), status: { state: 'conflict' } }
+    ];
+    expect(librarySummary(rows)).toEqual({ tone: 'warn', headline: "Hades's save folder is missing" });
+    expect(sortRows(rows, 'attention').map((r) => r.game.name)).toEqual(['Hades', 'Celeste']);
+  });
+});
+
 describe('SORTS', () => {
   const rowOf = (g, state = 'local') => ({ game: g, status: { state } });
   const names = (rows) => rows.map((r) => r.game.name);

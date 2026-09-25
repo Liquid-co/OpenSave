@@ -11,6 +11,7 @@
   import FolderOpen from 'lucide-svelte/icons/folder-open';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Star from 'lucide-svelte/icons/star';
+  import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import { collections, isFavourite, toggleFavourite } from '../../lib/collections.js';
 
   export let game;
@@ -117,6 +118,21 @@
   {/if}
 </div>
 
+{#if game.savePathMissing && !editPath}
+  <!-- The folder is not there. It is not created again: an empty folder in
+       its place would read as every file deleted, and syncing that would
+       delete them on your other devices too. -->
+  <div class="missing" role="status">
+    <TriangleAlert size={16} />
+    <div>
+      <strong>This save folder is not there.</strong>
+      It may have been moved or deleted, or be on a drive that isn't connected. Nothing is snapshotted or synced for
+      this game until it's back — OpenSave picks it up again within a minute. If the save lives somewhere else now,
+      point the game at it with Edit.
+    </div>
+  </div>
+{/if}
+
 <style>
   .title-row {
     display: flex;
@@ -182,6 +198,25 @@
   .head-actions {
     display: flex;
     gap: 8px;
+  }
+  .missing {
+    display: flex;
+    gap: 10px;
+    margin: -8px 0 18px 50px;
+    padding: 10px 12px;
+    border: 1px solid rgba(var(--warn-rgb), 0.35);
+    border-radius: var(--radius);
+    background: rgba(var(--warn-rgb), 0.08);
+    font-size: 0.84rem;
+    color: var(--text-dim);
+  }
+  .missing :global(svg) {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--warn);
+  }
+  .missing strong {
+    color: var(--text);
   }
   .path-line {
     display: flex;

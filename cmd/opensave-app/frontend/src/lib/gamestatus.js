@@ -18,6 +18,9 @@ import { timeAgo, latestOf } from './timeago.js';
  * @returns {{state: string, label: string, tone: 'warn'|'busy'|'ok'|'muted'}}
  */
 export function gameStatus(game, { peers = {}, activity, conflicted = false, now = Date.now() } = {}) {
+  // Before anything else: with its folder gone nothing else about it can
+  // move — no snapshot, no sync, no decision taken.
+  if (game.savePathMissing) return { state: 'missing', label: 'Save folder missing', tone: 'warn' };
   if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
   if (activity?.state === 'running') {
     return { state: 'syncing', label: `Syncing ${activity.percentage ?? 0}%`, tone: 'busy' };
@@ -49,6 +52,7 @@ const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
  */
 export function librarySummary(rows) {
   const by = (state) => rows.filter((r) => r.status.state === state);
+  const missing = by('missing');
   const conflict = by('conflict');
   const syncing = by('syncing');
   const failed = by('error');
@@ -58,6 +62,15 @@ export function librarySummary(rows) {
   const empty = rows.filter((r) => latestSnapshotAt(r.game) === null);
   const paused = by('paused');
 
+  if (missing.length > 0) {
+    return {
+      tone: 'warn',
+      headline:
+        missing.length === 1
+          ? `${missing[0].game.name}'s save folder is missing`
+          : `${missing.length} games' save folders are missing`
+    };
+  }
   if (conflict.length > 0) {
     return {
       tone: 'warn',
@@ -131,7 +144,7 @@ const stamp = (s) => (s ? Date.parse(s) : null);
 const snapshotsOf = (game) => Object.values(game.branches ?? {}).flatMap((b) => b.snapshots ?? []);
 
 // What needs looking at, in the order the summary above the library reads it.
-const URGENCY = { conflict: 0, error: 1, syncing: 2, unsynced: 3, empty: 4, paused: 5 };
+const URGENCY = { missing: 0, conflict: 1, error: 2, syncing: 3, unsynced: 4, empty: 5, paused: 6 };
 
 /**
  * The orders the library can be put in. Each compares two rows, {game,

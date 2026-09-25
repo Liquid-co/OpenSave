@@ -632,6 +632,10 @@ type statusReportGame struct {
 	// copy: peer id to ISO 8601. A device missing here has never finished a
 	// sync of this game.
 	LastSyncedWith map[string]string `json:"lastSyncedWith"`
+	// The save folder is not there: nothing is watched or synced for the
+	// game until it is back, and it is not created again (see
+	// daemon.SaveFolderMissing).
+	SavePathMissing bool `json:"savePathMissing"`
 }
 
 type statusReportPeer struct {
@@ -671,6 +675,7 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 				Branches:           map[string]int{},
 				MaxSnapshots:       g.MaxSnapshots,
 				MaxManualSnapshots: g.MaxManualSnapshots,
+				SavePathMissing:    daemon.SaveFolderMissing(g.SavePath),
 			}
 			branches, _ := d.Store.ListBranches(g.ID)
 			for _, b := range branches {
@@ -715,6 +720,9 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 	for _, g := range games {
 		fmt.Printf("  %s %s  %s\n", symBullet(), bold(g.Name), faint(g.ID))
 		fmt.Printf("      %s\n", faint(g.SavePath))
+		if daemon.SaveFolderMissing(g.SavePath) {
+			fmt.Printf("      %s\n", warnText("save folder missing — nothing is watched or synced for it until it is back"))
+		}
 
 		branches, _ := d.Store.ListBranches(g.ID)
 		for _, b := range branches {

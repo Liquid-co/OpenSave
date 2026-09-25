@@ -296,6 +296,16 @@ All notable changes to OpenSave are documented here. This project adheres to
   network each went on their own, so a quick sync's "started" could arrive
   after its "finished". They now arrive in the order they were sent.
 
+- **A save folder that went missing could wipe the save on your other
+  devices.** When a tracked save folder disappeared — deleted, moved by a
+  reinstall, on a drive or SD card not plugged in — OpenSave made it again,
+  empty, the next time it started, and the next sync read every file in it
+  as deleted and deleted them on your paired devices too. A missing folder is
+  now left missing: the game says "Save folder missing" on Home, on its page
+  and in `opensave status`, nothing is watched or synced for it, and it is
+  picked up again within a minute of coming back. Found by testing what a
+  restart does to a folder that has gone.
+
 - **Linking two copies of a game kept only one copy's history.** Linking
   merges one tracked copy into another, and the merged copy's snapshots went
   with its entry — gone from the app, while their files stayed on disk where

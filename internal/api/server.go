@@ -468,6 +468,9 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		"branches":       branches,
 		"createdAt":      g.CreatedAt,
 		"lastSyncedWith": lastSyncedWith,
+		// The save folder is not there — gone, moved, or on a drive not
+		// plugged in. Nothing is watched or synced for it until it is back.
+		"savePathMissing": daemon.SaveFolderMissing(g.SavePath),
 	}
 }
 

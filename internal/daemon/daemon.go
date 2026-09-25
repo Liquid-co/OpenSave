@@ -57,6 +57,10 @@ type Daemon struct {
 	// Start.
 	OnGameChanged func(gameID string)
 
+	// Games whose save folder is not there; see missing.go.
+	missingMu sync.Mutex
+	missing   map[string]bool
+
 	// OnCloudOffers receives the saves from other devices' cloud backups
 	// that are waiting for an answer, whenever that list changes, and
 	// OnCloudPulled each one put in place without asking. See cloudsync.go.
@@ -252,6 +256,10 @@ func (d *Daemon) Start() error {
 			continue
 		}
 		if err := d.watchGame(game.ID, game.SavePath); err != nil {
+			if errors.Is(err, watcher.ErrSaveFolderMissing) {
+				d.noteMissing(game.ID, game.Name, game.SavePath, true)
+				continue
+			}
 			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", game.Name, err))
 		}
 	}
@@ -558,7 +566,9 @@ func (d *Daemon) ResyncWatchers() (started, stopped int) {
 	}
 
 	want := make(map[string]string, len(games)) // id -> save path
+	names := make(map[string]string, len(games))
 	for _, game := range games {
+		names[game.ID] = game.Name
 		if game.AutoSync {
 			want[game.ID] = game.SavePath
 		}
@@ -579,6 +589,13 @@ func (d *Daemon) ResyncWatchers() (started, stopped int) {
 				continue
 			}
 			started++
+		case SaveFolderMissing(path):
+			// The folder went while it was watched. The watch is on nothing
+			// now and stays so when the folder comes back, so it is stopped,
+			// and the loop below watches again once it is there.
+			d.Watcher.Unwatch(id)
+			d.noteMissing(id, names[id], path, true)
+			stopped++
 		}
 	}
 
@@ -587,9 +604,14 @@ func (d *Daemon) ResyncWatchers() (started, stopped int) {
 			continue
 		}
 		if err := d.watchGame(id, path); err != nil {
+			if errors.Is(err, watcher.ErrSaveFolderMissing) {
+				d.noteMissing(id, names[id], path, true)
+				continue
+			}
 			d.Log.Log("warn", fmt.Sprintf("could not watch %q: %v", id, err))
 			continue
 		}
+		d.noteMissing(id, names[id], path, false)
 		started++
 	}
 

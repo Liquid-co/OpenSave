@@ -83,7 +83,7 @@ libraryView.subscribe((v) => saveView(v));
 // What a game's status line says, gathered into what someone would look for.
 export const STATUS_FILTERS = [
   { id: 'all', label: 'All', states: null },
-  { id: 'attention', label: 'Needs attention', states: ['conflict', 'error'] },
+  { id: 'attention', label: 'Needs attention', states: ['missing', 'conflict', 'error'] },
   { id: 'syncing', label: 'Syncing', states: ['syncing'] },
   { id: 'synced', label: 'Synced', states: ['synced'] },
   { id: 'unsynced', label: 'Not synced yet', states: ['unsynced'] },
