@@ -172,8 +172,12 @@ All notable changes to OpenSave are documented here. This project adheres to
   syncing, needs a decision, or auto-sync off — quietly when all is well,
   and in colour only when it is worth a look; the green dot that sat on
   every card is gone. The status bar says when the app has lost touch with
-  its background service instead of showing a grey dot. The library can
-  be sorted by recently changed, and
+  its background service instead of showing a grey dot. Below the card,
+  the latest things that happened to your saves — snapshots, safety copies,
+  syncs, each one click from its game — and how many snapshots were taken on
+  each of the last 14 days; the card also says how much space the snapshots
+  take, and opens Settings → Storage from there. The View menu can hide the
+  activity and the days. The library can be sorted by recently changed, and
   explicit cover art is blurred there as it already was in the sidebar.
 
 - **Snapshots are listed by when and why.** Each was titled with its ID —

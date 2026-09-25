@@ -19,6 +19,8 @@
   import { pauseLength, resumeSync } from '../../lib/syncpause.js';
   import { providerById } from '../../lib/cloudproviders.js';
   import { librarySummary, latestSnapshotAt } from '../../lib/gamestatus.js';
+  import { spaceUsed } from '../../lib/overview.js';
+  import { fmtSize } from '../../lib/format.js';
   import { timeAgo } from '../../lib/timeago.js';
 
   /** [{game, status}] for every tracked game, from the library. */
@@ -50,6 +52,8 @@
 
   $: cloudOn = !!$settings?.cloudSync?.enabled;
   $: cloud = cloudOn ? (providerById($settings.cloudSync.provider)?.label ?? 'On') : 'Off';
+
+  $: space = spaceUsed(Object.fromEntries(rows.map((r) => [r.game.id, r.game])));
 
   $: newest = rows.reduce((best, r) => {
     const at = latestSnapshotAt(r.game);
@@ -87,6 +91,10 @@
       <span class="label">Last snapshot</span>
       <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : 'None yet'}</span></span>
     </div>
+    <button class="fact link" on:click={() => navigate('settings', { tab: 'storage' })} title="Open Settings → Storage">
+      <span class="label">Space used</span>
+      <span class="value"><span class="v">{fmtSize(space)}</span><ChevronRight size={13} class="go" /></span>
+    </button>
   </div>
 </section>
 
@@ -101,7 +109,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 16px 18px;
-    margin-bottom: 26px;
   }
 
   .state {

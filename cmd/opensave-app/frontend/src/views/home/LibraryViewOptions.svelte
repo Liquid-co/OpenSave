@@ -56,6 +56,11 @@
   {#if $libraryView.columns !== 'auto'}
     <p class="note">With a set number per row, the tiles share the width between them.</p>
   {/if}
+
+  <label class="check">
+    <input type="checkbox" checked={$libraryView.overview} on:change={(e) => set({ overview: e.currentTarget.checked })} />
+    Show recent activity and the last 14 days above the library
+  </label>
 </div>
 
 <style>

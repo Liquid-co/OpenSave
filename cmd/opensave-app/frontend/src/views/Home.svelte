@@ -7,6 +7,9 @@
   import AddGameCard from './home/AddGameCard.svelte';
   import ScanDialog from './home/ScanDialog.svelte';
   import HomeSummary from './home/HomeSummary.svelte';
+  import RecentActivity from './home/RecentActivity.svelte';
+  import SnapshotChart from './home/SnapshotChart.svelte';
+  import { libraryView } from '../lib/libraryview.js';
   import LibraryGrid from './home/LibraryGrid.svelte';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import { visibleGames } from '../lib/gameactions.js';
@@ -109,11 +112,37 @@
   {#if showGuide}
     <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={() => (showAdd = true)} />
   {/if}
-  <HomeSummary {rows} />
+  <div class="top">
+    <HomeSummary {rows} />
+    {#if $libraryView.overview}
+      <div class="overview">
+        <RecentActivity />
+        <SnapshotChart />
+      </div>
+    {/if}
+  </div>
   <LibraryGrid {rows} />
 {/if}
 
 <style>
+  .top {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 26px;
+  }
+  /* Activity takes the wider share; side by side while both fit, stacked
+     when they would not. */
+  .overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+  }
+  @media (min-width: 1180px) {
+    .overview {
+      grid-template-columns: 3fr 2fr;
+    }
+  }
   .head {
     display: flex;
     align-items: center;

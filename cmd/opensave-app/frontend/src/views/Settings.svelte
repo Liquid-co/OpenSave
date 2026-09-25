@@ -57,7 +57,10 @@
     donateOpened = true;
   }
 
-  let tab = 'general';
+  /** From navigate('settings', {tab}). */
+  export let params = {};
+  const TABS = ['general', 'sync', 'storage', 'advanced', 'support'];
+  let tab = TABS.includes(params?.tab) ? params.tab : 'general';
   let pruning = false;
 
   // The running build, so the updates toggle can explain what it means for

@@ -570,3 +570,16 @@ h2.page-title {
     transform: translateY(10px) scale(0.985);
   }
 }
+
+/* There for a screen reader, not the eye: a chart's table, say. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

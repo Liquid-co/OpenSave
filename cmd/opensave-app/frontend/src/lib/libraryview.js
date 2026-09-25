@@ -29,7 +29,7 @@ export const COLUMN_CHOICES = ['auto', 2, 3, 4, 5, 6, 7, 8];
 
 export const SORT_IDS = ['name', 'recent'];
 
-export const DEFAULT_VIEW = Object.freeze({ cover: 'wide', columns: 'auto', size: 'medium', sort: 'name' });
+export const DEFAULT_VIEW = Object.freeze({ cover: 'wide', columns: 'auto', size: 'medium', sort: 'name', overview: true });
 
 /** A view with every field valid, whatever was stored. */
 export function sanitizeView(raw) {
@@ -39,7 +39,9 @@ export function sanitizeView(raw) {
     cover: v.cover in COVER_STYLES ? v.cover : DEFAULT_VIEW.cover,
     columns: COLUMN_CHOICES.includes(columns) ? columns : DEFAULT_VIEW.columns,
     size: v.size in TILE_SIZES ? v.size : DEFAULT_VIEW.size,
-    sort: SORT_IDS.includes(v.sort) ? v.sort : DEFAULT_VIEW.sort
+    sort: SORT_IDS.includes(v.sort) ? v.sort : DEFAULT_VIEW.sort,
+    // Recent activity and the last two weeks, above the library.
+    overview: typeof v.overview === 'boolean' ? v.overview : DEFAULT_VIEW.overview
   };
 }
 

@@ -18,8 +18,14 @@ describe('sanitizeView', () => {
       cover: 'tall',
       columns: 5,
       size: 'large',
-      sort: 'recent'
+      sort: 'recent',
+      overview: true
     });
+  });
+  it('shows the overview unless it was turned off', () => {
+    expect(sanitizeView({ cover: 'tall' }).overview).toBe(true);
+    expect(sanitizeView({ overview: 'no' }).overview).toBe(true);
+    expect(sanitizeView({ overview: false }).overview).toBe(false);
   });
   it('replaces anything unknown with the default, field by field', () => {
     expect(sanitizeView({ cover: 'round', columns: 12, size: 'huge', sort: 'rating' })).toEqual(DEFAULT_VIEW);
@@ -45,8 +51,8 @@ describe('gridColumns', () => {
 describe('loadView and saveView', () => {
   it('round-trips a view', () => {
     const s = memoryStorage();
-    saveView({ cover: 'tall', columns: 6, size: 'small', sort: 'recent' }, s);
-    expect(loadView(s)).toEqual({ cover: 'tall', columns: 6, size: 'small', sort: 'recent' });
+    saveView({ cover: 'tall', columns: 6, size: 'small', sort: 'recent', overview: false }, s);
+    expect(loadView(s)).toEqual({ cover: 'tall', columns: 6, size: 'small', sort: 'recent', overview: false });
   });
   it('carries over the order kept before the rest of the view existed', () => {
     expect(loadView(memoryStorage({ 'opensave.librarySort': 'recent' })).sort).toBe('recent');
