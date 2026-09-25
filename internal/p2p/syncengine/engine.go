@@ -108,6 +108,10 @@ type Engine struct {
 	// the first deletion it covers began.
 	noteMu sync.Mutex
 	noting map[string]*peerDeletions
+	// peerDeleted is what other devices lately asked this one to delete, by
+	// game and save location (peerdeleted.go).
+	peerDelMu   sync.Mutex
+	peerDeleted map[string]map[string]peerDeletion
 
 	mu              sync.Mutex
 	activeSyncs     map[string]bool
@@ -471,7 +475,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		}
 	}
 
-	if DetectConflict(localManifest, remoteData.Manifest, lastSyncMs, agreedHash) {
+	// A save that differs from the agreed state only by deletions the other
+	// device asked for, arriving while this runs, has not changed of its own
+	// accord (peerdeleted.go).
+	judged := e.unchangedButForPeerDeletions(gameID, delta.PrimaryRoot, localManifest, agreedHash)
+	if DetectConflict(judged, remoteData.Manifest, lastSyncMs, agreedHash) {
 		e.registerConflict(gameID, peer, localManifest, remoteData)
 		return Result{Status: "conflict", PeerID: peer.ID, PeerName: peer.Name}, nil
 	}

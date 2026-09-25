@@ -715,10 +715,16 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	_ = os.Chmod(full, 0o666)
 	deleting := time.Now()
 	if info, statErr := os.Stat(full); statErr == nil {
-		if info.IsDir() {
-			_ = os.Remove(full) // empty dirs only, like rmdirSync
-		} else {
-			_ = os.Remove(full)
+		// What is removed is remembered, so a sync of this device's own that
+		// lands before the rest of the batch does not take it for a change
+		// made here (syncengine/peerdeleted.go).
+		var entry delta.FileEntry
+		if !info.IsDir() {
+			entry, _ = delta.FileEntryFor(full)
+		}
+		// Empty dirs only, for a folder, like rmdirSync.
+		if os.Remove(full) == nil && (info.IsDir() || entry.Hash != "") {
+			e.Sync.NotePeerDeletion(game.ID, body.Root, body.RelPath, entry, info.IsDir())
 		}
 		e.Log("info", fmt.Sprintf("peer-requested deletion applied: %s", body.RelPath))
 		asker := "another device"

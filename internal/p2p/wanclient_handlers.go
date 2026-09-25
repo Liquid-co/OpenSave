@@ -692,7 +692,16 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	full := delta.LocalNameFor(game.SavePath, body.RelPath)
 	_ = os.Chmod(full, 0o666)
 	deleting := time.Now()
+	// Remembered as on the LAN route (syncengine/peerdeleted.go).
+	var entry delta.FileEntry
+	info, statErr := os.Stat(full)
+	if statErr == nil && !info.IsDir() {
+		entry, _ = delta.FileEntryFor(full)
+	}
 	if os.Remove(full) == nil {
+		if statErr == nil && (info.IsDir() || entry.Hash != "") {
+			w.engine.Sync.NotePeerDeletion(game.ID, "", body.RelPath, entry, info.IsDir())
+		}
 		asker := "another device"
 		if peer, err := w.engine.Store.GetPeer(fromPeerID); err == nil {
 			asker = peer.Name

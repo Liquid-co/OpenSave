@@ -180,6 +180,19 @@ var hashCache = struct {
 // lists are compared, never assigned into — and copying on each hit would
 // reintroduce the per-pass allocation this cache exists to remove. If you
 // need to modify one, copy it first.
+// FileEntryFor is one file's manifest entry, from the cache when the file is
+// unchanged since it was last hashed — which, for a file a peer has just
+// asked this device to delete, it nearly always is: the peer decided on it
+// from the manifest this device served a moment before. Treat the result as
+// read-only, as for cachedHashFile.
+func FileEntryFor(path string) (FileEntry, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	return cachedHashFile(path, info)
+}
+
 func cachedHashFile(path string, info os.FileInfo) (FileEntry, error) {
 	key := cacheKeyFor(path)
 	stamp := cacheStamp{size: info.Size(), mtimeNs: info.ModTime().UnixNano()}

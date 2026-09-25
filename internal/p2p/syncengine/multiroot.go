@@ -165,7 +165,8 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 			base = remote.RootHash(delta.PrimaryRoot)
 		}
 	}
-	if DetectConflict(local, remote, e.lastSyncTimeMs(peer.ID), base) {
+	judged := e.unchangedButForPeerDeletions(gameID, sr.root.Name, local, base)
+	if DetectConflict(judged, remote, e.lastSyncTimeMs(peer.ID), base) {
 		// Neither side is touched. There is no per-location resolution screen
 		// yet, so this location simply stops syncing until the two are made to
 		// agree by hand — which is the safe half of the bargain, and is said

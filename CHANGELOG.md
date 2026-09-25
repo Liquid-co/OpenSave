@@ -327,6 +327,15 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **Deleting several files no longer stops a game syncing with a false
+  conflict.** A device's deletions reach another one file at a time, and a
+  sync of the other device's own could land between two of them — see its
+  save part-way through, take that for a change of its own, and stop on a
+  conflict nobody caused until it was resolved by hand. The other device
+  now remembers the deletions it was asked to make, and a save that differs
+  from the last agreed one only by those is not a change of its own: the
+  sync carries on and finishes the deletions.
+
 - **Covers in the sidebar and the scan show again, for good.** Both could
   show a game's initials instead of its art for days at a time, while the
   art was sitting on disk and the library beside them showed it. The app
