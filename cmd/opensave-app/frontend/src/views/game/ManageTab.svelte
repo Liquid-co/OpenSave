@@ -5,6 +5,7 @@
   import { api } from '../../lib/api.js';
   import { untrackGame } from '../../lib/gameactions.js';
   import Link from 'lucide-svelte/icons/link';
+  import LinkPicker from './LinkPicker.svelte';
 
   export let game;
   export let runner;
@@ -15,6 +16,7 @@
   let aliases = [];
   let linkTarget = '';
   $: otherGames = Object.values($games).filter((g) => g.id !== game.id);
+  $: chosenName = $games[linkTarget]?.name ?? peerGames.find((g) => g.id === linkTarget)?.name ?? linkTarget;
 
   async function loadAliases() {
     try {
@@ -115,28 +117,14 @@
     </div>
   {/if}
   {#if otherGames.length > 0 || peerGames.length > 0}
+    <!-- By cover, with where each copy lives underneath: same-named entries
+         are normal now that one game can be tracked at several save
+         locations, and a name alone could not tell them apart. -->
+    <LinkPicker localGames={otherGames} {peerGames} bind:selected={linkTarget} />
     <div class="link-row">
-      <select bind:value={linkTarget}>
-        <option value="">Choose a game to link…</option>
-        {#if otherGames.length > 0}
-          <optgroup label="On this device (merges the entry)">
-            {#each otherGames as g}
-              <!-- Same-named entries are normal now that one game can be
-                   tracked at several save locations, so show the path too —
-                   otherwise duplicates are indistinguishable in this list. -->
-              <option value={g.id}>{g.name} — {g.savePath}</option>
-            {/each}
-          </optgroup>
-        {/if}
-        {#if peerGames.length > 0}
-          <optgroup label="On a paired device (nothing is removed)">
-            {#each peerGames as g}
-              <option value={g.id}>{g.name} — {g.peerName}</option>
-            {/each}
-          </optgroup>
-        {/if}
-      </select>
-      <button class="btn small primary" disabled={$busy || !linkTarget} on:click={linkGame}>Link</button>
+      <button class="btn small primary" disabled={$busy || !linkTarget} on:click={linkGame}>
+        <Link size={13} />{linkTarget ? `Link ${chosenName}` : 'Choose a game above to link'}
+      </button>
     </div>
     {#if peerGamesLoading}
       <p class="desc">Checking paired devices…</p>
@@ -196,13 +184,5 @@
     align-items: center;
     margin-top: 14px;
   }
-  .link-row select {
-    flex: 1;
-    min-width: 0;
-    padding: 8px 10px;
-    background-color: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--text);
-  }
+
 </style>

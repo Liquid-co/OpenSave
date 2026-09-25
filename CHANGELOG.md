@@ -7,6 +7,14 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Pause syncing from Home, and pick linked copies by their covers.** Home
+  has a Pause syncing button beside Sync all — for 15 minutes, an hour,
+  three hours or until you resume — which turns into Resume, with the time
+  left, while the pause lasts. Linking a game's copies now shows every
+  candidate by its cover art, with where each copy lives, instead of a list
+  of names. The status card's shield, which looked like an antivirus, is a
+  save icon now.
+
 - **An activity timeline.** Activity now opens on what happened to your
   saves, game by game: where each game was last played — here or on which
   of your other devices — when it was last snapshotted and synced, and how

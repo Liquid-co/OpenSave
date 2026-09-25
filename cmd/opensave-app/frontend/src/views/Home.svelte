@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast } from '../lib/stores.js';
+  import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast, syncPause } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { gameStatus, conflictedIds } from '../lib/gamestatus.js';
   import OfferedGames from './home/OfferedGames.svelte';
@@ -11,6 +11,7 @@
   import Skeleton from '../components/ui/Skeleton.svelte';
   import { visibleGames } from '../lib/gameactions.js';
   import SetupGuide from './home/SetupGuide.svelte';
+  import PauseButton from '../components/PauseButton.svelte';
   import { setupState, setupSteps, decideSetupFor } from '../lib/setup.js';
   import { settings } from '../lib/stores.js';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
@@ -75,7 +76,8 @@
     <button class="btn" on:click={() => scanner.start()} disabled={scanning}>
       <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Auto-scan'}
     </button>
-    <button class="btn" on:click={syncAll} disabled={$gameList.length === 0}><RefreshCw size={15} />Sync all</button>
+    <button class="btn" on:click={syncAll} disabled={$gameList.length === 0 || $syncPause.paused} title={$syncPause.paused ? 'Syncing is paused' : ''}><RefreshCw size={15} />Sync all</button>
+    <PauseButton />
     <button class="btn primary" on:click={() => (showAdd = !showAdd)}><FolderPlus size={16} />Track folder</button>
   </div>
 </div>

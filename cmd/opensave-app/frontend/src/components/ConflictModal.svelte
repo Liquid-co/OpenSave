@@ -5,7 +5,7 @@
   import Chevron from './ui/Chevron.svelte';
   import Laptop from 'lucide-svelte/icons/laptop';
   import Monitor from 'lucide-svelte/icons/monitor';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import History from 'lucide-svelte/icons/history';
   import GitCompareArrows from 'lucide-svelte/icons/git-compare-arrows';
 
   let busy = false;
@@ -222,7 +222,7 @@
         </button>
       </div>
       <p class="hint-line">
-        <ShieldCheck size={15} class="inline-icon" /> Nothing is lost whichever you pick. <strong>“Keep both”</strong> (recommended) parks
+        <History size={15} class="inline-icon" /> Nothing is lost whichever you pick. <strong>“Keep both”</strong> (recommended) parks
         {peerName}'s version on a branch and keeps playing yours. <strong>“Keep mine”</strong> makes your
         version the shared one — {peerName} receives it (their old save is snapshotted first).
         <strong>“Keep theirs”</strong> adopts {peerName}'s version here, snapshotting yours first.

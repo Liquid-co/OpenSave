@@ -13,7 +13,7 @@
   import Chevron from './ui/Chevron.svelte';
   import Laptop from 'lucide-svelte/icons/laptop';
   import Monitor from 'lucide-svelte/icons/monitor';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import History from 'lucide-svelte/icons/history';
   import FolderOpen from 'lucide-svelte/icons/folder-open';
 
   let busy = false;
@@ -169,7 +169,7 @@
         </button>
       </div>
       <p class="hint-line">
-        <ShieldCheck size={15} class="inline-icon" /> A snapshot of every one of this game's folders is taken before either choice is applied,
+        <History size={15} class="inline-icon" /> A snapshot of every one of this game's folders is taken before either choice is applied,
         so both are undoable from the Snapshots tab. <strong>“Keep mine”</strong> makes this
         device's copy the shared one and asks {peerName} to take it — {peerName} gets its own say if
         it has newer work. <strong>“Use {peerName}'s”</strong> brings their copy here.

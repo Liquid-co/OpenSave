@@ -9,7 +9,7 @@
   // stripe and dot said "status" without saying which, and the same green dot
   // then repeated on every card below.
   import { onDestroy } from 'svelte';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import Save from 'lucide-svelte/icons/save';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import CircleDashed from 'lucide-svelte/icons/circle-dashed';
@@ -55,7 +55,7 @@
   const spaceTick = setInterval(checkSpace, 5 * 60_000);
   onDestroy(() => clearInterval(spaceTick));
 
-  const ICONS = { ok: ShieldCheck, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
+  const ICONS = { ok: Save, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
 
   $: summary = librarySummary(rows);
   // The pause's countdown starts from the moment it changes.

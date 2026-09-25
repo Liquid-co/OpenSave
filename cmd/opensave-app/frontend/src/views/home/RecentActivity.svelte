@@ -9,7 +9,7 @@
   import { onDestroy } from 'svelte';
   import Camera from 'lucide-svelte/icons/camera';
   import History from 'lucide-svelte/icons/history';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import ArchiveRestore from 'lucide-svelte/icons/archive-restore';
   import ArrowLeftRight from 'lucide-svelte/icons/arrow-left-right';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
@@ -28,7 +28,7 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
 
-  const ICONS = { manual: Camera, auto: History, start: FolderPlus, safety: ShieldCheck, session: Gamepad2, other: History, sync: ArrowLeftRight };
+  const ICONS = { manual: Camera, auto: History, start: FolderPlus, safety: ArchiveRestore, session: Gamepad2, other: History, sync: ArrowLeftRight };
   const iso = (ms) => new Date(ms).toISOString();
   // What shows while a cover loads, or when a game has none — as in the sidebar.
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();

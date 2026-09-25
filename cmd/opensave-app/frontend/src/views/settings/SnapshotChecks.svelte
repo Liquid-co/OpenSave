@@ -2,7 +2,7 @@
   // Whether every snapshot can still be restored: when they were last read
   // back, what was found, and a check now. See daemon/verify.go.
   import { onMount } from 'svelte';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import FileCheck from 'lucide-svelte/icons/file-check';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import { api } from '../../lib/api.js';
   import { games, navigate, toast } from '../../lib/stores.js';
@@ -53,13 +53,13 @@
           Their archives are damaged or missing; the rest are fine.
         </span>
       {:else if summary.lastCheckedMs}
-        <ShieldCheck size={18} />
+        <FileCheck size={18} />
         <span>
           <strong>Every snapshot checked can be restored.</strong>
           {summary.checked} of {summary.total} checked, last {timeAgo(iso(summary.lastCheckedMs))}.
         </span>
       {:else}
-        <ShieldCheck size={18} />
+        <FileCheck size={18} />
         <span>Not checked yet — OpenSave reads every snapshot back once a day, the first time a little after it starts.</span>
       {/if}
     </div>

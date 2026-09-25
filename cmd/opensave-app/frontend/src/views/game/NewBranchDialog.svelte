@@ -3,7 +3,7 @@
   // current save, false for an empty one; `cancel` otherwise.
   import { createEventDispatcher } from 'svelte';
   import GitBranch from 'lucide-svelte/icons/git-branch';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import History from 'lucide-svelte/icons/history';
 
   export let name = '';
   export let activeBranch = '';
@@ -57,7 +57,7 @@
       <button class="btn primary" disabled={busy} on:click={() => dispatch('create', copySave)}>Create branch</button>
     </div>
     <p class="hint-line">
-      <ShieldCheck size={15} class="inline-icon" /> Either way nothing is lost. Switching between branches snapshots whatever is in your
+      <History size={15} class="inline-icon" /> Either way nothing is lost. Switching between branches snapshots whatever is in your
       save folder first, and refuses to change anything if that snapshot can't be taken.
     </p>
   </div>

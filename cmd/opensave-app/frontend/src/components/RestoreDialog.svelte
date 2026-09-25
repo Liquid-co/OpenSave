@@ -6,7 +6,7 @@
   import FilePen from 'lucide-svelte/icons/file-pen';
   import FilePlus from 'lucide-svelte/icons/file-plus';
   import FileMinus from 'lucide-svelte/icons/file-minus';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
+  import History from 'lucide-svelte/icons/history';
   import Modal from './ui/Modal.svelte';
   import ModalFoot from './ui/ModalFoot.svelte';
   import Spinner from './ui/Spinner.svelte';
@@ -79,7 +79,7 @@
           device; they are left out.
         </p>
       {/if}
-      <p class="safe"><ShieldCheck size={14} class="inline-icon" />Your current save is kept as a snapshot first, so this can be undone.</p>
+      <p class="safe"><History size={14} class="inline-icon" />Your current save is kept as a snapshot first, so this can be undone.</p>
     </div>
 
     <ModalFoot>
