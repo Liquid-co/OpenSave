@@ -15,7 +15,23 @@
 
   export let game;
   export let runner;
+  /** A snapshot to bring into view and mark, when the page was opened on it. */
+  export let focus = null;
   const { busy, run } = runner;
+
+  let flashing = null;
+  let listEl;
+  $: if (focus && listEl) showSnapshot(focus);
+  async function showSnapshot(id) {
+    await rendered();
+    const row = listEl?.querySelector(`[data-snap="${CSS.escape(id)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    flashing = id;
+    setTimeout(() => {
+      if (flashing === id) flashing = null;
+    }, 1800);
+  }
 
   let comment = '';
   let browsing = null; // {snap, files}
@@ -127,12 +143,13 @@
 {#if allSnapshots.length === 0}
   <div class="empty"><h3>No snapshots yet</h3><p>Snapshots are created automatically when your save changes.</p></div>
 {:else}
+  <div bind:this={listEl}>
   {#each groups as group (group.day)}
     <h4 class="day">{group.day}</h4>
     <div class="list">
       {#each group.snaps as snap (snap.id)}
         {@const k = snapshotKind(snap, now)}
-        <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id}>
+        <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id} class:flash={flashing === snap.id} data-snap={snap.id}>
           <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
             <span class="time">{new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
             <span class="ago">{timeAgo(snap.timestamp, now.getTime())}</span>
@@ -185,6 +202,7 @@
       {/each}
     </div>
   {/each}
+  </div>
 {/if}
 
 <style>
@@ -221,6 +239,11 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
+  }
+  /* Opened on this one (from Ctrl+K): marked for a moment. */
+  .row.flash {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--accent-soft);
   }
   .row {
     display: flex;

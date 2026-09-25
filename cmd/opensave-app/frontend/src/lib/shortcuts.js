@@ -23,6 +23,7 @@ export const SHORTCUTS = [
   ['Ctrl F', 'Search the page you are on'],
   ...PAGES.map((p, i) => [`Ctrl ${i + 1}`, `Go to ${p.label}`]),
   ['Ctrl ,', 'Settings'],
+  ['← → ↑ ↓', 'Move between games in the library'],
   ['Shift F10', 'Actions for the focused game (or the menu key)'],
   ['?', 'This list'],
   ['Esc', 'Close a dialog or menu']

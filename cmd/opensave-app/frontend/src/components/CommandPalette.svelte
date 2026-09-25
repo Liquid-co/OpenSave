@@ -12,7 +12,7 @@
   import { visibleGames, runGameAction } from '../lib/gameactions.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
   import { PAGES } from '../lib/shortcuts.js';
-  import { rank } from '../lib/palette.js';
+  import { rank, snapshotEntries } from '../lib/palette.js';
 
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
@@ -66,7 +66,10 @@
       { label: `Snapshot ${g.name}`, kind: 'Action', weight: -1, keywords: ['backup', 'save'], run: () => runGameAction('snapshot', g) },
       ...(g.appId || g.exePath ? [{ label: `Launch ${g.name}`, kind: 'Action', weight: -1, keywords: ['play', 'start'], run: () => runGameAction('launch', g) }] : []),
       { label: `Open ${g.name} save folder`, kind: 'Action', weight: -1, keywords: ['explorer', 'files'], run: () => runGameAction('folder', g) }
-    ])
+    ]),
+    // Snapshots with words of their own — a note, or a comment someone typed
+    // — found by those words: "boss" finds "Before the final boss".
+    ...snapshotEntries($visibleGames).map((s) => ({ ...s, run: () => navigate('game', { gameId: s.gameId, snapshot: s.snapshotId }) }))
   ];
 
   $: results = rank(entries, query);

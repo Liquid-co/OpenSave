@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchShortcut, PAGES, SHORTCUTS } from './shortcuts.js';
-import { rank, score } from './palette.js';
+import { rank, score, snapshotEntries } from './palette.js';
 
 const key = (k, mods = {}, target = { tagName: 'BODY' }) => ({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target, ...mods });
 
@@ -70,5 +70,32 @@ describe('palette ranking', () => {
   it('scores nothing typed as neutral and a miss as no match', () => {
     expect(score(entries[1], '')).toBe(0);
     expect(score(entries[1], 'xyz')).toBe(null);
+  });
+});
+
+describe('snapshotEntries', () => {
+  const games = [
+    {
+      id: 'hades',
+      name: 'Hades',
+      branches: {
+        main: {
+          snapshots: [
+            { id: 's1', isSystemAuto: true, comment: 'Auto backup', note: '' },
+            { id: 's2', isSystemAuto: false, comment: 'Before the final boss', note: '' },
+            { id: 's3', isSystemAuto: true, comment: 'Before a sync replaced local files', note: 'good run, all keys' },
+            { id: 's4', isSystemAuto: false, comment: 'Snapshot', note: '' }
+          ]
+        }
+      }
+    }
+  ];
+
+  it('offers the snapshots someone put words on, by those words', () => {
+    const entries = snapshotEntries(games);
+    expect(entries.map((e) => e.label)).toEqual(['Before the final boss — Hades', 'good run, all keys — Hades']);
+    expect(entries[0]).toMatchObject({ gameId: 'hades', snapshotId: 's2', kind: 'Snapshot' });
+    expect(rank(entries, 'boss').map((e) => e.snapshotId)).toEqual(['s2']);
+    expect(rank(entries, 'keys hades').map((e) => e.snapshotId)).toEqual(['s3']);
   });
 });

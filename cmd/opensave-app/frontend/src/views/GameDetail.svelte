@@ -38,6 +38,9 @@
   // so all of it starts over when the game changes — otherwise one game's
   // cloud list or unsaved edits would show up on the next.
   let opened = new Set([tab]);
+  // Opened on a snapshot (from Ctrl+K): the list it is in.
+  $: if (params.snapshot) tab = 'snapshots';
+
   let shownFor = params.gameId;
   $: if (params.gameId !== shownFor) {
     shownFor = params.gameId;
@@ -62,7 +65,7 @@
     {#each tabs as t (t.id)}
       {#if opened.has(t.id)}
         <div hidden={tab !== t.id}>
-          <svelte:component this={t.component} {game} {runner} />
+          <svelte:component this={t.component} {game} {runner} {...t.id === 'snapshots' ? { focus: params.snapshot } : {}} />
         </div>
       {/if}
     {/each}

@@ -121,7 +121,10 @@ All notable changes to OpenSave are documented here. This project adheres to
   page, or else the library in the sidebar); Ctrl+1 to Ctrl+6 go to the
   pages in the sidebar; Shift+F10 opens the menu for the focused game; and
   ? lists them all. Dialogs now take the keyboard when they open, so Escape
-  closes one straight away.
+  closes one straight away. Ctrl+K also finds a snapshot by its note or the
+  comment you gave it — "boss" finds "Before the final boss" — and opens its
+  game with that snapshot marked. In the library, the arrow keys move
+  between games as they are laid out, and Home and End go to either end.
 
 - **Undo instead of "Are you sure?"** Stopping tracking a game (one or a
   selection), declining a game another device offered, excluding a scan
@@ -184,7 +187,8 @@ All notable changes to OpenSave are documented here. This project adheres to
   the card, the latest things that happened to your saves — snapshots,
   safety copies, syncs, each one click from its game — as many as fit on a
   row; the card also says how much space the snapshots take, and opens
-  Settings → Storage from there. The View menu can hide the activity.
+  Settings → Storage from there, and warns when the drive they are kept on
+  has less than 1 GB free. The View menu can hide the activity.
   Explicit cover art is blurred in the library as it already was in the
   sidebar.
 

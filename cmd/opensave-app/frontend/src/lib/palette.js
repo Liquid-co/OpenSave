@@ -37,3 +37,35 @@ export function rank(entries, query, limit = 40) {
     .slice(0, limit)
     .map((x) => x.entry);
 }
+
+// The daemon's own words for a snapshot are not worth finding it by: they are
+// the same on hundreds of them.
+const generic = /^(auto backup|manual snapshot|initial snapshot|snapshot)$/i;
+
+/**
+ * Palette entries for the snapshots someone put words on — a note, or a
+ * comment of their own — labelled with those words and the game's name, and
+ * findable by either: [{label, kind, keywords, weight, gameId, snapshotId}].
+ */
+export function snapshotEntries(games) {
+  const out = [];
+  for (const g of games ?? []) {
+    for (const b of Object.values(g.branches ?? {})) {
+      for (const snap of b.snapshots ?? []) {
+        const note = (snap.note ?? '').trim();
+        const comment = !snap.isSystemAuto && !generic.test((snap.comment ?? '').trim()) ? (snap.comment ?? '').trim() : '';
+        const words = note || comment;
+        if (!words) continue;
+        out.push({
+          label: `${words} — ${g.name}`,
+          kind: 'Snapshot',
+          weight: -2,
+          keywords: [g.name, 'snapshot', ...(note && comment ? [comment] : [])],
+          gameId: g.id,
+          snapshotId: snap.id
+        });
+      }
+    }
+  }
+  return out;
+}

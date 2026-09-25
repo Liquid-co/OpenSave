@@ -29,6 +29,8 @@
 
   const ICONS = { manual: Camera, auto: History, start: FolderPlus, safety: ShieldCheck, other: History, sync: ArrowLeftRight };
   const iso = (ms) => new Date(ms).toISOString();
+  // What shows while a cover loads, or when a game has none — as in the sidebar.
+  const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
   $: events = recentEvents($games, $peers, { limit: MOST, now: new Date(now) });
   // Only as many as fit on one row are drawn at all, so none sits hidden
@@ -49,7 +51,7 @@
     {:else}
       {#each shown as e (`${e.game.id}:${e.kind}:${e.at}`)}
         <button class="item" on:click={() => navigate('game', { gameId: e.game.id })} title={new Date(e.at).toLocaleString()}>
-          <span class="thumb"><CoverImage src={gameCover(e.game)} alt="" /></span>
+          <span class="thumb"><span class="initials">{initials(e.game.name)}</span><CoverImage src={gameCover(e.game)} alt="" /></span>
           <span class="text">
             <span class="game">{e.game.name}</span>
             <span class="what">
@@ -128,6 +130,15 @@
     overflow: hidden;
     flex-shrink: 0;
     background: var(--bg-active);
+  }
+  .initials {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--text-faint);
   }
   .thumb :global(img) {
     position: absolute;

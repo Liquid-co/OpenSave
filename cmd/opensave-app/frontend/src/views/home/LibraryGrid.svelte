@@ -104,6 +104,24 @@
     toggleSelect(id);
     anchor = id;
   }
+  // The arrow keys move between games as they are laid out: left and right
+  // along a row, up and down by a row's worth, Home and End to either end.
+  // Enter opens, as it always did; while selecting it picks.
+  function gridKeys(e) {
+    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 'down', ArrowUp: 'up', Home: 'first', End: 'last' }[e.key];
+    if (step === undefined || e.altKey || e.ctrlKey || e.metaKey) return;
+    const tiles = [...e.currentTarget.querySelectorAll('.tile')];
+    const i = tiles.indexOf(document.activeElement);
+    if (i < 0) return;
+    const perRow = tiles.filter((t) => t.offsetTop === tiles[0].offsetTop).length || 1;
+    const j =
+      step === 'down' ? i + perRow : step === 'up' ? i - perRow : step === 'first' ? 0 : step === 'last' ? tiles.length - 1 : i + step;
+    if (j < 0 || j >= tiles.length || j === i) return;
+    e.preventDefault();
+    tiles[j].focus();
+    tiles[j].scrollIntoView({ block: 'nearest' });
+  }
+
   function stopSelecting() {
     selectMode = false;
     libSelected = new Set();
@@ -237,7 +255,7 @@
     <button class="btn small" on:click={clearFilters}>Clear filters</button>
   </div>
 {:else}
-  <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}">
+  <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}" on:keydown={gridKeys} role="presentation">
     {#each shown as { game, status: s }, i (game.id)}
       <LibraryTile
         {game}
