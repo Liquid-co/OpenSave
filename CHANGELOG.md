@@ -288,6 +288,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   network each went on their own, so a quick sync's "started" could arrive
   after its "finished". They now arrive in the order they were sent.
 
+- **Files you told OpenSave not to sync stayed yours only between paired
+  devices.** A save brought from another device through the cloud —
+  automatically, from an offer, or restored from the cloud browser — and a
+  backup file imported over a game put the other device's snapshot in place
+  whole, so a file this device ignores (its graphics settings, say) became
+  the other device's copy, or was deleted when that device had none. Those
+  files are now left exactly as they were. Restoring one of this device's
+  own snapshots still puts back everything, as the preview shows.
+
 - **Quitting could hang on Windows after a game wrote a lot at once.** A
   burst of writes can overflow the folder watcher's buffer, and if the watch
   was stopped then — quitting, untracking — the file-watching library lost

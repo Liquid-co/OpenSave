@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"github.com/opensave/opensave/internal/ignore"
 	"io"
 	"net/http"
 	"os"
@@ -670,7 +671,9 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 				err = s.Daemon.EnsureImportedSnapshot(g.ID, branch, snapID, destPath, size)
 			}
 			if err == nil && mode == "overwrite" {
-				_, err = s.Daemon.Snapshots.Restore(g.ID, snapID)
+				// A backup file may come from another device: this one's
+				// excluded files stay its own (Manager.RestoreKeeping).
+				_, err = s.Daemon.Snapshots.RestoreKeeping(g.ID, snapID, ignore.Parse(local.SyncIgnore))
 				res.Path = local.SavePath
 				res.Action = "restored"
 			} else if err == nil {

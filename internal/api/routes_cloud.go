@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"github.com/opensave/opensave/internal/ignore"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -311,7 +312,8 @@ func (s *Server) handleCloudRestore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "fileName does not belong to this game")
 		return
 	}
-	if _, err := s.Daemon.Store.GetGame(gameID); err != nil {
+	game, err := s.Daemon.Store.GetGame(gameID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -342,7 +344,9 @@ func (s *Server) handleCloudRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.Daemon.Snapshots.Restore(gameID, snapID); err != nil {
+	// A cloud copy may be another device's: this device's excluded files
+	// stay its own (Manager.RestoreKeeping).
+	if _, err := s.Daemon.Snapshots.RestoreKeeping(gameID, snapID, ignore.Parse(game.SyncIgnore)); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("downloaded but restore failed: %v", err))
 		return
 	}

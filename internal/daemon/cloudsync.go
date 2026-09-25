@@ -3,6 +3,7 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"github.com/opensave/opensave/internal/ignore"
 	"os"
 	"path/filepath"
 	"sort"
@@ -622,7 +623,9 @@ func (d *Daemon) pullFromCloud(game store.Game, fileName, deviceName string) err
 	if err := d.EnsureImportedSnapshot(game.ID, branch, snapID, destPath, info.Size()); err != nil {
 		return err
 	}
-	if _, err := d.Snapshots.Restore(game.ID, snapID); err != nil {
+	// Another device's save: the files this device keeps for itself stay
+	// its own. See Manager.RestoreKeeping.
+	if _, err := d.Snapshots.RestoreKeeping(game.ID, snapID, ignore.Parse(game.SyncIgnore)); err != nil {
 		return err
 	}
 	// What is on disk now is that snapshot, so record it as the baseline.
