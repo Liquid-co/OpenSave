@@ -1,6 +1,5 @@
-// What Home shows beside the library: the latest things that happened to
-// your saves, how many snapshots were taken on each of the last two weeks'
-// days, and the space the snapshots take.
+// What Home shows above the library: the latest things that happened to your
+// saves, and the space the snapshots take.
 //
 // Read from the saved state — every snapshot and every sync is recorded there
 // — and not from the log, which starts afresh each launch and is mostly
@@ -55,35 +54,6 @@ export function recentEvents(games, peers = {}, { limit = 5, now = new Date() } 
     out.push({ ...e, count: 1 });
   }
   return out;
-}
-
-const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-
-/**
- * Snapshots on each of the last `days` days, oldest first and today last,
- * by the local calendar: [{date, count, games: [{name, count}]}], games most
- * first.
- */
-export function snapshotsPerDay(games, { days = 14, now = new Date() } = {}) {
-  const buckets = [];
-  const byKey = new Map();
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const bucket = { date, count: 0, perGame: new Map() };
-    buckets.push(bucket);
-    byKey.set(dayKey(date), bucket);
-  }
-  for (const { game, at } of everySnapshot(games)) {
-    const bucket = byKey.get(dayKey(new Date(at)));
-    if (!bucket) continue;
-    bucket.count++;
-    bucket.perGame.set(game.name, (bucket.perGame.get(game.name) ?? 0) + 1);
-  }
-  return buckets.map(({ date, count, perGame }) => ({
-    date,
-    count,
-    games: [...perGame].map(([name, n]) => ({ name, count: n })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-  }));
 }
 
 /** Bytes taken by every snapshot of every game. */

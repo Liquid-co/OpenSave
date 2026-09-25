@@ -59,7 +59,7 @@
 
   <label class="check">
     <input type="checkbox" checked={$libraryView.overview} on:change={(e) => set({ overview: e.currentTarget.checked })} />
-    Show recent activity and the last 14 days above the library
+    Show recent activity on Home
   </label>
 </div>
 

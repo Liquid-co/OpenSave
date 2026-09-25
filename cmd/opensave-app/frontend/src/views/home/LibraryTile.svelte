@@ -52,6 +52,57 @@
   let revealed = false;
 
   $: snapshots = Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0);
+
+  // Held down, a tile starts selecting (the library's `longpress`), the way a
+  // phone's photo grid does — the Select button is still there, but a long
+  // press is where a hand goes first. It is a long press only while the
+  // pointer stays put: a drag or a scroll is not one. The click that ends it
+  // is not also an open.
+  const LONG_PRESS_MS = 450;
+  const SLOP = 8;
+  let pressTimer = null;
+  let pressAt = null;
+  let pressing = false;
+  let longPressed = false;
+  let longPressedAt = 0;
+  function pointerDown(e) {
+    if (e.button !== 0) return;
+    pressAt = { x: e.clientX, y: e.clientY };
+    pressing = true;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      pressing = false;
+      longPressed = true;
+      longPressedAt = Date.now();
+      globalThis.navigator?.vibrate?.(12);
+      dispatch('longpress');
+    }, LONG_PRESS_MS);
+  }
+  function pointerMove(e) {
+    if (pressTimer && pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > SLOP) endPress();
+  }
+  function endPress() {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    pressing = false;
+  }
+  function click(e) {
+    if (longPressed) {
+      longPressed = false;
+      return;
+    }
+    dispatch('open', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey });
+  }
+  function contextMenu(e) {
+    // A finger held down raises a context menu too; the long press has
+    // already answered it.
+    if (Date.now() - longPressedAt < 1000) {
+      e.preventDefault();
+      return;
+    }
+    openGameMenu(e, game);
+  }
 </script>
 
 <button
@@ -59,11 +110,19 @@
   class:enter={enter >= 0}
   style={enter >= 0 ? `--i: ${Math.min(enter, 12)}` : undefined}
   class:selected={selecting && selected}
+  class:pressing
   title={game.savePath}
-  on:click={() => dispatch('open')}
-  on:contextmenu={(e) => openGameMenu(e, game)}
+  on:click={click}
+  on:contextmenu={contextMenu}
+  on:pointerdown={pointerDown}
+  on:pointermove={pointerMove}
+  on:pointerup={endPress}
+  on:pointercancel={endPress}
   on:mouseenter={() => (revealed = true)}
-  on:mouseleave={() => (revealed = false)}
+  on:mouseleave={() => {
+    revealed = false;
+    endPress();
+  }}
 >
   {#if selecting}
     <div class="tick" class:on={selected}>{#if selected}<Check size={14} strokeWidth={3} />{/if}</div>
@@ -147,6 +206,17 @@
   .tile.selected {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
+  }
+  /* Held down: it gives a little as the press becomes a long one, so the
+     gesture shows itself. The scale property, not transform, which the
+     hover lift already uses. */
+  :global(html[data-motion='on']) .tile.pressing {
+    scale: 0.97;
+    transition:
+      scale 0.45s ease-out,
+      border-color 0.15s ease,
+      box-shadow 0.22s ease,
+      transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   /* Backwards, not both: once in, the tile's own hover lift must not be
      held down by the animation's last frame. */

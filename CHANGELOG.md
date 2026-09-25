@@ -34,7 +34,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   banner whole rather than a cropped strip of it. The library can be
   searched by name and narrowed to games that need attention, are syncing,
   have auto-sync off or have no snapshot yet; only the filters that would
-  narrow it are shown.
+  narrow it are shown. It can be sorted by name, recently changed, recently
+  synced, needs attention first, most snapshots, most space or recently
+  added, and any of those turned around with the button beside it.
+
+- **Hold a game down to select it.** A long press on a game in the library
+  starts selecting, with that game picked — as does Ctrl-click; while
+  selecting, a click adds or removes a game, Shift-click takes in the run
+  from the last one picked, and Escape stops. The selected games can be
+  snapshotted, synced or added to Favourites together, as well as untracked.
 
 - **Favourites and collections.** Star a game from its page or its menu,
   or group games into collections of your own ("Playing now",
@@ -172,13 +180,13 @@ All notable changes to OpenSave are documented here. This project adheres to
   syncing, needs a decision, or auto-sync off — quietly when all is well,
   and in colour only when it is worth a look; the green dot that sat on
   every card is gone. The status bar says when the app has lost touch with
-  its background service instead of showing a grey dot. Below the card,
-  the latest things that happened to your saves — snapshots, safety copies,
-  syncs, each one click from its game — and how many snapshots were taken on
-  each of the last 14 days; the card also says how much space the snapshots
-  take, and opens Settings → Storage from there. The View menu can hide the
-  activity and the days. The library can be sorted by recently changed, and
-  explicit cover art is blurred there as it already was in the sidebar.
+  its background service instead of showing a grey dot. Along the foot of
+  the card, the latest things that happened to your saves — snapshots,
+  safety copies, syncs, each one click from its game — as many as fit on a
+  row; the card also says how much space the snapshots take, and opens
+  Settings → Storage from there. The View menu can hide the activity.
+  Explicit cover art is blurred in the library as it already was in the
+  sidebar.
 
 - **Snapshots are listed by when and why.** Each was titled with its ID —
   `snap_1790235804433` — and every row looked the same, including the

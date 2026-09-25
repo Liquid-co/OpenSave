@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SORTS, conflictedIds, gameStatus, latestSnapshotAt, librarySummary } from './gamestatus.js';
+import { SORTS, conflictedIds, gameStatus, latestSnapshotAt, librarySummary, sortRows } from './gamestatus.js';
 
 const now = Date.parse('2026-09-24T12:00:00Z');
 const minsAgo = (m) => new Date(now - m * 60000).toISOString();
@@ -74,15 +74,54 @@ describe('conflictedIds', () => {
   });
 });
 
-describe('SORTS.recent', () => {
-  it('puts the most recently changed first and games without snapshots last, by name', () => {
-    const list = [
-      game({ id: 'z', name: 'Zed' }),
-      game({ id: 'o', name: 'Old', branches: snaps(minsAgo(600)) }),
-      game({ id: 'a', name: 'Alpha' }),
-      game({ id: 'n', name: 'New', branches: snaps(minsAgo(5)) })
+describe('SORTS', () => {
+  const rowOf = (g, state = 'local') => ({ game: g, status: { state } });
+  const names = (rows) => rows.map((r) => r.game.name);
+
+  it('recent: the most recently changed first, games without snapshots last, by name', () => {
+    const rows = [
+      rowOf(game({ id: 'z', name: 'Zed' })),
+      rowOf(game({ id: 'o', name: 'Old', branches: snaps(minsAgo(600)) })),
+      rowOf(game({ id: 'a', name: 'Alpha' })),
+      rowOf(game({ id: 'n', name: 'New', branches: snaps(minsAgo(5)) }))
     ];
-    expect([...list].sort(SORTS.recent.compare).map((g) => g.name)).toEqual(['New', 'Old', 'Alpha', 'Zed']);
+    expect(names(sortRows(rows, 'recent'))).toEqual(['New', 'Old', 'Alpha', 'Zed']);
+    // Turned around, the whole order is.
+    expect(names(sortRows(rows, 'recent', true))).toEqual(['Zed', 'Alpha', 'Old', 'New']);
+  });
+
+  it('synced: by the latest sync with any device', () => {
+    const rows = [
+      rowOf(game({ id: 'a', name: 'A', lastSyncedWith: { deck: minsAgo(60) } })),
+      rowOf(game({ id: 'b', name: 'B', lastSyncedWith: { deck: minsAgo(90), laptop: minsAgo(2) } })),
+      rowOf(game({ id: 'c', name: 'C' }))
+    ];
+    expect(names(sortRows(rows, 'synced'))).toEqual(['B', 'A', 'C']);
+  });
+
+  it('attention: a decision, then a failure, then a sync running, then the quiet ones', () => {
+    const rows = [
+      rowOf(game({ id: 'ok', name: 'Fine' }), 'local'),
+      rowOf(game({ id: 'x', name: 'Failed' }), 'error'),
+      rowOf(game({ id: 'c', name: 'Clash' }), 'conflict'),
+      rowOf(game({ id: 's', name: 'Moving' }), 'syncing')
+    ];
+    expect(names(sortRows(rows, 'attention'))).toEqual(['Clash', 'Failed', 'Moving', 'Fine']);
+  });
+
+  it('snapshots, size and added: largest or newest first', () => {
+    const sized = (id, sizes, createdAt) =>
+      rowOf(game({ id, name: id, createdAt, branches: { main: { snapshots: sizes.map((sizeBytes) => ({ timestamp: minsAgo(1), sizeBytes })) } } }));
+    const rows = [sized('few-big', [900], '2026-09-01T00:00:00Z'), sized('many-small', [1, 1, 1], '2026-09-20T00:00:00Z')];
+    expect(names(sortRows(rows, 'snapshots'))).toEqual(['many-small', 'few-big']);
+    expect(names(sortRows(rows, 'size'))).toEqual(['few-big', 'many-small']);
+    expect(names(sortRows(rows, 'added'))).toEqual(['many-small', 'few-big']);
+  });
+
+  it('falls back to name for an order it does not know', () => {
+    const rows = [rowOf(game({ id: 'b', name: 'B' })), rowOf(game({ id: 'a', name: 'A' }))];
+    expect(names(sortRows(rows, 'rating'))).toEqual(['A', 'B']);
+    expect(Object.keys(SORTS)).toContain('attention');
   });
 });
 

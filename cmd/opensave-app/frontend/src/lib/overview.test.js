@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recentEvents, snapshotsPerDay, spaceUsed } from './overview.js';
+import { recentEvents, spaceUsed } from './overview.js';
 
 const now = new Date(2026, 8, 25, 12, 0); // 25 Sep 2026, noon, local
 const at = (daysAgo, hour = 10) => new Date(2026, 8, 25 - daysAgo, hour).toISOString();
@@ -39,23 +39,6 @@ describe('recentEvents', () => {
   it('stops at the limit', () => {
     expect(recentEvents(games, peers, { now, limit: 2 })).toHaveLength(2);
     expect(recentEvents({}, peers, { now })).toEqual([]);
-  });
-});
-
-describe('snapshotsPerDay', () => {
-  it('counts each of the last days by the local calendar, today last', () => {
-    const days = snapshotsPerDay(games, { now, days: 14 });
-    expect(days).toHaveLength(14);
-    expect(days.at(-1).date.getDate()).toBe(25);
-    expect(days[0].date.getDate()).toBe(12);
-    expect(days.at(-1).count).toBe(3);
-    expect(days.at(-2).count).toBe(2);
-    expect(days.at(-2).games).toEqual([
-      { name: 'Celeste', count: 1 },
-      { name: 'Hades', count: 1 }
-    ]);
-    // Twenty days ago is outside the window.
-    expect(days.reduce((n, d) => n + d.count, 0)).toBe(5);
   });
 });
 

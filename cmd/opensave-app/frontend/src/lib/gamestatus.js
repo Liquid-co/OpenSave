@@ -118,16 +118,56 @@ export function conflictedIds(conflicts, locationConflicts) {
   return ids;
 }
 
-export const SORTS = {
-  name: { label: 'Name', compare: (a, b) => a.name.localeCompare(b.name) },
-  // Most recently changed first: the newest snapshot is the last time the
-  // save changed that OpenSave saw. Games with none go last, by name.
-  recent: {
-    label: 'Recently changed',
-    compare: (a, b) => {
-      const x = latestSnapshotAt(a) ?? '';
-      const y = latestSnapshotAt(b) ?? '';
-      return x === y ? a.name.localeCompare(b.name) : x < y ? 1 : -1;
-    }
-  }
+const byName = (a, b) => a.game.name.localeCompare(b.game.name);
+
+// Larger first, ties and the missing by name.
+const descending = (value) => (a, b) => {
+  const x = value(a) ?? -Infinity;
+  const y = value(b) ?? -Infinity;
+  return x === y ? byName(a, b) : x < y ? 1 : -1;
 };
+
+const stamp = (s) => (s ? Date.parse(s) : null);
+const snapshotsOf = (game) => Object.values(game.branches ?? {}).flatMap((b) => b.snapshots ?? []);
+
+// What needs looking at, in the order the summary above the library reads it.
+const URGENCY = { conflict: 0, error: 1, syncing: 2, unsynced: 3, empty: 4, paused: 5 };
+
+/**
+ * The orders the library can be put in. Each compares two rows, {game,
+ * status}, and puts first what that order is about; the View menu can turn
+ * any of them around.
+ */
+export const SORTS = {
+  name: { label: 'Name', compare: byName },
+  // The newest snapshot is the last time OpenSave saw the save change.
+  recent: { label: 'Recently changed', compare: descending((r) => stamp(latestSnapshotAt(r.game))) },
+  synced: {
+    label: 'Recently synced',
+    compare: descending((r) => {
+      const times = Object.values(r.game.lastSyncedWith ?? {}).map(stamp).filter((t) => t !== null);
+      return times.length ? Math.max(...times) : null;
+    })
+  },
+  attention: {
+    label: 'Needs attention first',
+    compare: (a, b) => {
+      const x = URGENCY[a.status?.state] ?? 9;
+      const y = URGENCY[b.status?.state] ?? 9;
+      return x === y ? byName(a, b) : x - y;
+    }
+  },
+  snapshots: { label: 'Most snapshots', compare: descending((r) => snapshotsOf(r.game).length) },
+  size: {
+    label: 'Most space',
+    compare: descending((r) => snapshotsOf(r.game).reduce((n, s) => n + (Number(s.sizeBytes) || 0), 0))
+  },
+  added: { label: 'Recently added', compare: descending((r) => stamp(r.game.createdAt)) }
+};
+
+/** Rows in a view's order. */
+export function sortRows(rows, sort, reverse = false) {
+  const compare = (SORTS[sort] ?? SORTS.name).compare;
+  const out = [...rows].sort(compare);
+  return reverse ? out.reverse() : out;
+}

@@ -22,6 +22,8 @@
   import { spaceUsed } from '../../lib/overview.js';
   import { fmtSize } from '../../lib/format.js';
   import { timeAgo } from '../../lib/timeago.js';
+  import { libraryView } from '../../lib/libraryview.js';
+  import RecentActivity from './RecentActivity.svelte';
 
   /** [{game, status}] for every tracked game, from the library. */
   export let rows = [];
@@ -96,6 +98,10 @@
       <span class="value"><span class="v">{fmtSize(space)}</span><ChevronRight size={13} class="go" /></span>
     </button>
   </div>
+
+  {#if $libraryView.overview}
+    <RecentActivity />
+  {/if}
 </section>
 
 <style>
