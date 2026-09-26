@@ -95,5 +95,46 @@ jobs:
       # it the answer is a faster suite, not another raise: this is the second
       # time the number has moved, and a timeout that only ever grows stops
       # being a check on anything.
+      #
+      # It did approach it: the e2e package reached 2586s and then 2703s on
+      # Windows, and timed out mid-test with nothing wrong. That package now
+      # runs in the e2e job below, split three ways; everything else stays.
       - name: Test (race detector)
-        run: go test ./... -race -p 2 -timeout 2700s
+        shell: bash
+        run: go test $(go list ./... | grep -v '/e2e$') -race -p 2 -timeout 2700s
+
+  # The e2e package, split across three runners per system. Its tests start
+  # real daemons and run one after another in a single test binary, so the
+  # package has one timeout for all of them, and every feature adds to it.
+  # Split, each part runs in about a third of the time, well inside a budget
+  # smaller than the one the whole package had outgrown — so the timeout is
+  # still a check on how long the suite takes, and CI finishes sooner.
+  #
+  # Tests are assigned by name, round-robin over the sorted list of every
+  # `func Test` in e2e, so a new test lands in some shard without anyone
+  # listing it, and no test can be in two shards or none.
+  e2e:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Stub embedded frontend assets
+        shell: bash
+        run: mkdir -p cmd/opensave-app/frontend/dist && echo stub > cmd/opensave-app/frontend/dist/.stub
+      - name: E2E shard ${{ matrix.shard }} of 3 (race detector)
+        shell: bash
+        env:
+          LC_ALL: C
+        run: |
+          names=$(grep -ho '^func Test[A-Za-z0-9_]*' e2e/*_test.go | sed 's/^func //' \
+            | grep -vx 'TestMain' | sort -u | awk -v n=3 -v i=${{ matrix.shard }} 'NR % n == i')
+          test -n "$names" || { echo "::error::shard ${{ matrix.shard }} has no tests"; exit 1; }
+          echo "$(echo "$names" | wc -l | tr -d ' ') tests in this shard"
+          go test ./e2e -race -timeout 1800s -run "^($(echo $names | tr ' ' '|'))\$"
