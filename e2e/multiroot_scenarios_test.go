@@ -1,12 +1,15 @@
 package e2e
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/testutil"
 )
 
@@ -20,6 +23,7 @@ func twoLocationPair(t *testing.T, name string, configFiles map[string]string) (
 	a, b *testutil.TestDaemon, gameID, aConfig, bConfig string) {
 	t.Helper()
 	a, b, gameID = pairAndTrack(t, name, map[string]string{"save.sav": "primary v1"})
+	logOnFailure(t, a, b)
 
 	aConfig = extraDir(t, a, "config")
 	bConfig = extraDir(t, b, "config")
@@ -54,11 +58,16 @@ func twoLocationPair(t *testing.T, name string, configFiles map[string]string) (
 // second is an ordinary later change rather than a disagreement — correct
 // behaviour, and the opposite of what a conflict test needs to set up. The
 // same trick is used by the deletion tests for the same reason.
+//
+// A sync already under way is not stopped by it, so it also waits for those
+// to finish. One still running when a test writes its two versions can pull
+// the first over the second, and then there is nothing left to disagree about.
 func pauseAutoSync(t *testing.T, a, b *testutil.TestDaemon, gameID string) {
 	t.Helper()
 	a.API(http.MethodPatch, "/api/games/"+gameID, map[string]any{"autoSync": false}, nil)
 	b.API(http.MethodPatch, "/api/games/"+gameID, map[string]any{"autoSync": false}, nil)
 	time.Sleep(syncSettleWindow)
+	testutil.SettleSync(t, gameID, a, b)
 }
 
 // Deleting a file in an extra location must propagate, the same as in the
@@ -423,6 +432,85 @@ func TestMultiRootScenario_ResolveALocationConflictKeepingTheirs(t *testing.T) {
 	}
 	if got := a.ReadSave("save.sav"); got != "primary v1" {
 		t.Errorf("resolving a location changed the save folder: %q", got)
+	}
+}
+
+// A report from the peer can arrive late: after both devices have edited the
+// location again. Processing it must not make that divergence invisible.
+//
+// It did. Either report — "I finished pulling from you", or "we are already
+// in sync" — stamped the two devices as synced "now" once the main save folder
+// matched, and a location with no merge base yet is judged against that time.
+// Neither edit then counted as new, and one quietly replaced the other with no
+// conflict raised. That is what "no conflict raised" in CI was: under load the
+// reports are slowest.
+//
+// Each report is delivered by hand here, at the moment that loses, instead of
+// hoping the machine is slow enough for it to arrive then on its own.
+func TestMultiRootScenario_ALateReportDoesNotHideADivergence(t *testing.T) {
+	for name, deliver := range map[string]func(a *testutil.TestDaemon, gameID string, peer syncengine.Peer){
+		"finished pulling": func(a *testutil.TestDaemon, gameID string, peer syncengine.Peer) {
+			a.Daemon.P2P.Sync.RefreshLineage(context.Background(), gameID, peer)
+		},
+		"already in sync": func(a *testutil.TestDaemon, gameID string, peer syncengine.Peer) {
+			// What the peer claims: the main save folder, which nobody touched.
+			m, err := delta.BuildManifest(a.SaveDir)
+			if err != nil {
+				a.T.Fatal(err)
+			}
+			a.Daemon.P2P.Sync.ConfirmInSync(context.Background(), gameID, peer, m.ManifestHash())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a, b, gameID, aConfig, bConfig := twoLocationPair(t, "LocLateReport", map[string]string{
+				"settings.ini": "shared v1",
+			})
+			pauseAutoSync(t, a, b, gameID)
+
+			// Where A stands before hearing that the location arrived: it
+			// handed the files over, so it has no merge base for them yet.
+			// Cleared only once the real report has been and gone, or it
+			// would put the base back.
+			if !testutil.WaitFor(45*time.Second, func() bool {
+				return a.Daemon.Store.GetAgreedHashForRoot(gameID, b.NodeID(), "config") != ""
+			}) {
+				t.Fatal("setup: the two devices never recorded agreeing on the location")
+			}
+			testutil.SettleSync(t, gameID, a, b)
+			if err := a.Daemon.Store.SetAgreedHashForRoot(gameID, b.NodeID(), "config", ""); err != nil {
+				t.Fatal(err)
+			}
+
+			writeIn(t, aConfig, "settings.ini", "A-version")
+			writeIn(t, bConfig, "settings.ini", "B-version")
+			time.Sleep(syncSettleWindow)
+
+			// Now the report lands.
+			var peer syncengine.Peer
+			for _, p := range a.Daemon.P2P.OnlinePeers() {
+				if p.ID == b.NodeID() {
+					peer = p
+				}
+			}
+			if peer.ID == "" {
+				t.Fatal("B is not online for A")
+			}
+			deliver(a, gameID, peer)
+
+			a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+			if !testutil.WaitFor(45*time.Second, func() bool {
+				return len(a.Daemon.P2P.Sync.ActiveRootConflicts()) > 0
+			}) {
+				t.Fatalf("both devices edited the location and no conflict was raised: A=%q B=%q",
+					readIn(aConfig, "settings.ini"), readIn(bConfig, "settings.ini"))
+			}
+			if got := readIn(aConfig, "settings.ini"); got != "A-version" {
+				t.Errorf("A's edit was replaced with %q", got)
+			}
+			if got := readIn(bConfig, "settings.ini"); got != "B-version" {
+				t.Errorf("B's edit was replaced with %q", got)
+			}
+		})
 	}
 }
 

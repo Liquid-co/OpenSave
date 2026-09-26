@@ -25,6 +25,11 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Fixed
 
+- **An edit made on both devices to a game's second save folder is no
+  longer lost.** When the other device's word that a sync had finished
+  arrived late — after both edits — one device's change quietly replaced
+  the other's, with no conflict raised. It is a conflict now, as it always
+  should have been. Found by a test that failed only on a slow machine.
 - **A game installed without a launcher is seen being played.** A game kept
   in a Games folder at the root of a drive — `D:\Games\Elden Ring` — or in
   your own Games folder was never matched to its install, so playing it
