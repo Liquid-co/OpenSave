@@ -69,13 +69,24 @@ All notable changes to OpenSave are documented here. This project adheres to
   `opensave storage --compact` do it straight away.
 
 - **Snapshots are checked, so a backup is known to work before it is
-  needed.** Once a day OpenSave reads every snapshot back in full and
+  needed.** Once a week OpenSave reads every snapshot back in full and
   compares each file with its checksum, and it does the same before any
   restore — so a damaged archive is refused before the save folder is
   touched, rather than found half-way through putting a save back. A
-  damaged snapshot is marked on its game's page and said on Home;
-  Settings → Storage shows when they were last checked and can check now,
-  as can `opensave verify`.
+  damaged snapshot is marked on its game's page and said on Home and
+  behind the bell. Settings → Storage shows when they were last checked,
+  can check now, and sets how often it happens by itself — every day to
+  every month, or never — as can `opensave verify` and
+  `opensave config set verify-every`.
+
+- **A snapshot that cannot be restored can be fixed, or let go.** With
+  cloud backup on, each snapshot was uploaded as it was taken, so a check
+  that finds an archive deleted or damaged fetches the cloud's copy, checks
+  it and puts it back by itself. What has no copy anywhere is listed by
+  game in Settings → Storage, with "Look for copies in the cloud" to try
+  again and "Remove them from the history" to drop the records of saves
+  that no longer exist; `opensave verify --repair` and `--remove-damaged`
+  do the same.
 
 - **Play sessions.** OpenSave notices when a tracked game is running — by
   its launch program, its Steam install folder, or, on Linux and the Steam

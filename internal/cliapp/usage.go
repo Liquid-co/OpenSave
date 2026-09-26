@@ -67,7 +67,7 @@ var commandGroups = []commandGroup{
 		{"snapshot-note <id> <snapId> [note]", "Write a note on a snapshot (none removes it)"},
 		{"prune [--apply-default]", "Apply retention limits now"},
 		{"storage", "Space per game, the biggest snapshots, what prune frees; --compact shares unchanged files now"},
-		{"verify [<gameId>]", "Check every snapshot can still be restored"},
+		{"verify [<gameId>] [--repair|--remove-damaged]", "Check every snapshot can still be restored; repair from the cloud, or remove what cannot be"},
 		{"emptied [<gameId> delete|restore]", "Saves emptied here, held back from your other devices; answer for one"},
 		{"files <gameId> <snapId> [path]", "List a snapshot's contents, or restore one file"},
 		{"export <gameId> <dir>", "Copy the current save out to a folder"},

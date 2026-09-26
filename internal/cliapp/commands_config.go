@@ -211,6 +211,7 @@ func cmdConfig(d *daemon.Daemon, args []string) int {
 		fmt.Printf("snapshot limit:   %d\n", settings.DefaultMaxSnapshots)
 		fmt.Printf("manual limit:     %s\n", manualLimitLabel(settings.DefaultMaxManualSnapshots))
 		fmt.Printf("update channel:   %s\n", updateChannelLabel(settings.UpdateChannel))
+		fmt.Printf("check snapshots:  %s\n", verifyEveryLabel(settings.VerifyEveryDays))
 		fmt.Printf("data dir:         %s\n", settings.DataDir)
 		fmt.Printf("snapshots dir:    %s\n", settings.BackupsDir)
 		return 0
@@ -280,6 +281,18 @@ func cmdConfig(d *daemon.Daemon, args []string) int {
 			return fail(asJSON, err)
 		}
 		settings.RelayURL = value
+	case "verify-every":
+		// How often every snapshot is read back to check it can be restored.
+		switch strings.ToLower(value) {
+		case "off", "never", "0":
+			settings.VerifyEveryDays = 0
+		default:
+			var n int
+			if _, err := fmt.Sscanf(value, "%d", &n); err != nil || n < 1 || n > 365 {
+				return fail(asJSON, fmt.Errorf("verify-every is a number of days from 1 to 365, or \"off\""))
+			}
+			settings.VerifyEveryDays = n
+		}
 	case "update-channel":
 		switch strings.ToLower(value) {
 		case "stable", "beta":
@@ -318,7 +331,10 @@ const configUsage = `usage:
   opensave config set port <n>              Local API/peer port (default 8383)
   opensave config set relay-url <url>       Relay server for internet sync
   opensave config set update-channel <stable|beta>
-                                            Whether updates include pre-releases`
+                                            Whether updates include pre-releases
+  opensave config set verify-every <days|off>
+                                            How often every snapshot is checked
+                                            it can be restored (default 7)`
 
 // manualLimitLabel renders the manual-snapshot budget. 0 is the default and
 // means "never pruned", which is worth saying in words — printing a bare 0
@@ -359,4 +375,18 @@ func unknownGameLabel(v string) string {
 		return "ask where to keep it"
 	}
 	return "track it automatically"
+}
+
+// verifyEveryLabel says how often snapshots are checked.
+func verifyEveryLabel(days int) string {
+	switch {
+	case days <= 0:
+		return "never"
+	case days == 1:
+		return "every day"
+	case days == 7:
+		return "every week"
+	default:
+		return fmt.Sprintf("every %d days", days)
+	}
 }

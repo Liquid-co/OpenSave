@@ -79,6 +79,12 @@ type Settings struct {
 	// DetectNewGames runs the save scan in the background and says when it
 	// finds a newly installed game. Nothing is tracked without being asked.
 	DetectNewGames bool `db:"detect_new_games" json:"detectNewGames"`
+	// VerifyEveryDays is how often every snapshot is read back to check it
+	// can be restored, in days; 0 is never (daemon/verify.go). A week unless
+	// changed. LastVerifyMs is when the last full check finished; written by
+	// the daemon alone (SetLastVerify), so a settings save cannot move it.
+	VerifyEveryDays int   `db:"verify_every_days" json:"verifyEveryDays"`
+	LastVerifyMs    int64 `db:"last_verify_ms" json:"lastVerifyMs"`
 
 	CustomScanPathsJSON  string `db:"custom_scan_paths" json:"-"`
 	ExcludePathsJSON     string `db:"exclude_paths" json:"-"`
@@ -301,6 +307,7 @@ func (s *Store) UpdateSettings(settings Settings) error {
 			update_channel = :update_channel,
 			cloud_auto_pull = :cloud_auto_pull,
 			detect_new_games = :detect_new_games,
+			verify_every_days = :verify_every_days,
 			updated_at = datetime('now')
 		WHERE id = 1`, settings)
 	if err != nil {
@@ -318,4 +325,12 @@ func uuidNoHyphens() string {
 		}
 	}
 	return string(out)
+}
+
+// SetLastVerify records when a full check of every snapshot finished.
+func (s *Store) SetLastVerify(ms int64) error {
+	if _, err := s.db.Exec(`UPDATE settings SET last_verify_ms = ? WHERE id = 1`, ms); err != nil {
+		return fmt.Errorf("set last verify: %w", err)
+	}
+	return nil
 }

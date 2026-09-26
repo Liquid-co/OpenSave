@@ -9,14 +9,16 @@ import (
 )
 
 // Checking every snapshot can still be restored (see snapshot/verify.go):
-// daily in the background, and on request from Settings or
-// `opensave verify`.
+// in the background as often as Settings says — once a week unless changed —
+// and on request from Settings or `opensave verify`. One found damaged is put
+// back from its cloud copy straight away when there is one (repair.go).
 
 const (
-	// verifyFirst is how long after start the first check runs, out of the way
-	// of everything a start does; verifyEvery how often after that.
+	// verifyFirst is how long after start the first look at the schedule
+	// happens, out of the way of everything a start does; verifyLook how
+	// often after that. A check runs when one is due, not at each look.
 	verifyFirst = 20 * time.Minute
-	verifyEvery = 24 * time.Hour
+	verifyLook  = time.Hour
 	// verifyPace is a pause between snapshots, so a large history is read
 	// back at a pace that does not get in the way of a game.
 	verifyPace = 50 * time.Millisecond
@@ -27,6 +29,9 @@ type VerifyReport struct {
 	Checked int                `json:"checked"`
 	Damaged []DamagedSnapshot  `json:"damaged"`
 	Summary store.CheckSummary `json:"summary"`
+	// Repaired is how many of the damaged were put back from the cloud as
+	// part of the check; Damaged lists only those still damaged after.
+	Repaired int `json:"repaired"`
 }
 
 // DamagedSnapshot is one snapshot that cannot be restored, and why.
@@ -77,6 +82,27 @@ func (d *Daemon) VerifySnapshots(ctx context.Context, gameID string, pace time.D
 			}
 		}
 	}
+	// Anything damaged that the cloud still has whole goes back now, rather
+	// than waiting to be noticed and asked for.
+	if len(report.Damaged) > 0 {
+		if repair, err := d.RepairSnapshots(ctx); err == nil && len(repair.Repaired) > 0 {
+			report.Repaired = len(repair.Repaired)
+			fixed := map[string]bool{}
+			for _, r := range repair.Repaired {
+				fixed[r.SnapshotID] = true
+			}
+			still := report.Damaged[:0]
+			for _, dmg := range report.Damaged {
+				if !fixed[dmg.SnapshotID] {
+					still = append(still, dmg)
+				}
+			}
+			report.Damaged = still
+		}
+	}
+	if gameID == "" {
+		_ = d.Store.SetLastVerify(time.Now().UnixMilli())
+	}
 	report.Summary, _ = d.Store.SnapshotChecks()
 	if len(report.Damaged) == 0 {
 		d.Log.Log("info", fmt.Sprintf("checked %d snapshot(s): every one can be restored", report.Checked))
@@ -96,11 +122,24 @@ func (d *Daemon) runVerify(ctx context.Context) {
 	case <-first.C:
 	}
 	for {
-		_, _ = d.VerifySnapshots(ctx, "", verifyPace)
+		if verifyDue(d.Store, time.Now()) {
+			_, _ = d.VerifySnapshots(ctx, "", verifyPace)
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(verifyEvery):
+		case <-time.After(verifyLook):
 		}
 	}
+}
+
+// verifyDue says whether the scheduled check should run now: it is on, and
+// the last full check finished that many days ago or more.
+func verifyDue(s *store.Store, now time.Time) bool {
+	settings, err := s.GetSettings()
+	if err != nil || settings.VerifyEveryDays <= 0 {
+		return false
+	}
+	every := time.Duration(settings.VerifyEveryDays) * 24 * time.Hour
+	return now.Sub(time.UnixMilli(settings.LastVerifyMs)) >= every
 }

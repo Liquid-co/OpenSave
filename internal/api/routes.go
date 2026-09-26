@@ -73,6 +73,8 @@ func (s *Server) routes(r chi.Router) {
 	r.Get("/api/storage", s.handleStorage)
 	r.Post("/api/storage/compact", s.handleCompact)
 	r.Get("/api/activity", s.handleActivity)
+	r.Post("/api/snapshots/repair", s.handleRepairSnapshots)
+	r.Post("/api/snapshots/forget-damaged", s.handleForgetDamaged)
 	r.Get("/api/emptied", s.handleEmptiedList)
 	r.Post("/api/games/{gameId}/emptied", s.handleEmptiedAnswer)
 
@@ -815,6 +817,30 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+// handleRepairSnapshots puts back, from the cloud, the damaged snapshots
+// that have a whole copy there.
+func (s *Server) handleRepairSnapshots(w http.ResponseWriter, r *http.Request) {
+	report, err := s.Daemon.RepairSnapshots(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, report)
+}
+
+// handleForgetDamaged removes from the history the snapshots that cannot be
+// restored.
+func (s *Server) handleForgetDamaged(w http.ResponseWriter, r *http.Request) {
+	removed, err := s.Daemon.ForgetDamagedSnapshots()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
 }
 
 // handleActivity is the activity page's timeline and each game's standing:

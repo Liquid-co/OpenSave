@@ -18,9 +18,10 @@ import (
 // A snapshot is a zip archive, and zip records a checksum for every file in
 // it. Reading each file to its end compares the two, so a disk that corrupted
 // a few bytes, an archive cut short by a crash or a full disk, or a file
-// removed by hand are all found — by a daily check in the background, and
-// before a restore empties the save folder (Restore): finding out part-way
-// through putting a save back leaves neither the old save nor the new one.
+// removed by hand are all found — by a check in the background (weekly by
+// default), and before a restore empties the save folder (Restore): finding
+// out part-way through putting a save back leaves neither the old save nor
+// the new one.
 
 // ErrDamaged marks a snapshot whose archive cannot be read back whole.
 var ErrDamaged = errors.New("snapshot is damaged")
@@ -122,7 +123,7 @@ func verifyCompacted(path string) error {
 }
 
 // sharedChecked remembers shared files read back whole recently, so the
-// daily check reads each once rather than once for every snapshot that
+// background check reads each once rather than once for every snapshot that
 // names it. Keyed by path; an entry counts while the file's size and time
 // are what they were when it was read.
 var sharedChecked sync.Map // path -> sharedCheck
