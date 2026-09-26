@@ -479,6 +479,13 @@ and `opensave install --uninstall` takes the command-line tool off again.
 
 ### Fixed
 
+- **The Mac app opens.** macOS called 2.4.0-beta.2's app "damaged" and
+  offered only the Trash: nothing in it was signed, not even the free
+  signature every download needs, so macOS read it as corrupted rather than
+  as from a developer it could not verify. It is signed now, so macOS asks,
+  and you can allow it under System Settings > Privacy & Security. The
+  command-line tools for Mac are signed the same way.
+
 - **Exports and imports follow linked copies and missing folders.** A
   backup made before two copies of a game were linked now imports into the
   game they became — it was skipped as untracked, or with "overwrite"

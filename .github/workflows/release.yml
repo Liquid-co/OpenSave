@@ -308,11 +308,20 @@ jobs:
   # cross-compile fine, but they are built here anyway so every macOS artifact
   # comes out of one job with one version stamp.
   #
-  # Nothing here is signed or notarised. That needs a paid Apple Developer
-  # account, and without one Gatekeeper refuses the first launch and tells the
-  # user the developer cannot be verified — they have to right-click and choose
-  # Open. Adding signing later means adding credentials to this job, not
-  # restructuring it.
+  # Nothing here is signed with a Developer ID or notarised: that needs a paid
+  # Apple Developer account. Everything IS signed ad hoc (codesign --sign -),
+  # which costs nothing and decides how macOS treats a download:
+  #
+  #   - Signed ad hoc, macOS says it cannot verify the developer, and the
+  #     person can allow it: System Settings > Privacy & Security > Open
+  #     Anyway (on macOS 14 and earlier, right-click > Open also works).
+  #   - Not signed as a bundle, macOS says the app "is damaged and can't be
+  #     opened" and offers only the Trash, with nothing to allow. That is what
+  #     2.4.0-beta.2 shipped: wails builds each architecture, joins them with
+  #     lipo and assembles the .app, and nothing ever sealed the result.
+  #
+  # Adding a Developer ID later means adding credentials to the signing step
+  # and a notarisation step after it, not restructuring the job.
   macos:
     runs-on: macos-latest
     steps:
@@ -341,6 +350,20 @@ jobs:
             exit 1
           fi
 
+      - name: Sign the app (ad hoc)
+        working-directory: cmd/opensave-app
+        run: |
+          APP=build/bin/OpenSave.app
+          # Extended attributes left by the build make codesign refuse
+          # ("resource fork, Finder information, or similar detritus").
+          xattr -cr "$APP"
+          # After everything that changes the bundle and before it is copied
+          # anywhere: the signature seals the executable, Info.plist and the
+          # resources as they are now, and any later change breaks it.
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP" 2>&1 | grep -E "^(Identifier|Format|Signature|Sealed Resources)"
+
       - name: Build CLI + relay for both architectures
         run: |
           V="${GITHUB_REF_NAME#v}"
@@ -351,6 +374,10 @@ jobs:
             mkdir -p "$dir"
             CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -ldflags="$LD" -o "$dir/opensave-cli" ./cmd/opensave-cli
             CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -ldflags="$LD" -o "$dir/opensave-relay" ./cmd/opensave-relay
+            # Ad hoc, like the app: Go signs an arm64 binary only as the
+            # linker, and an Intel one not at all.
+            codesign --force --sign - "$dir/opensave-cli" "$dir/opensave-relay"
+            codesign --verify --strict "$dir/opensave-cli" "$dir/opensave-relay"
             cp packaging/man/opensave.1 "$dir/" 2>/dev/null || true
             tar -czf "$dir.tar.gz" "$dir"
           done
@@ -367,6 +394,16 @@ jobs:
           hdiutil create -volname OpenSave -srcfolder "$STAGE" -ov -format UDZO OpenSave-macos.dmg
           hdiutil verify OpenSave-macos.dmg
 
+          # What a Mac gets is the app inside the image, so check that one:
+          # mounted read-only, its signature must still be whole — the
+          # "damaged" message is a signature that does not verify.
+          MNT="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$MNT" OpenSave-macos.dmg
+          codesign --verify --deep --strict --verbose=2 "$MNT/OpenSave.app"
+          codesign --display --verbose=2 "$MNT/OpenSave.app" 2>&1 | grep -q "Sealed Resources version=2" \
+            || { hdiutil detach "$MNT"; echo "::error::the app in the .dmg has no sealed resources — macOS would call it damaged"; exit 1; }
+          hdiutil detach "$MNT"
+
       - name: Check the bundle is what it claims to be
         run: |
           # Structural checks only. The app opens a webview on start and has no
@@ -380,6 +417,8 @@ jobs:
           # Universal or it is not universal: a single-architecture binary means
           # half the Macs that download it cannot open it, and nothing else in
           # this job would notice.
+          codesign --verify --deep --strict "$APP" \
+            || { echo "::error::the app's signature does not verify — macOS would call it damaged"; exit 1; }
           ARCHS="$(lipo -archs "$BIN")"
           echo "architectures: $ARCHS"
           case "$ARCHS" in

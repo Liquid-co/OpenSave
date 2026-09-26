@@ -89,6 +89,12 @@ OpenSave gives **every** game the Steam Cloud experience:
 
 Grab the latest from the [**Releases**](https://github.com/Liquid-co/OpenSave/releases) page.
 
+> **macOS says OpenSave "is damaged and can't be opened"?** That is what
+> 2.4.0-beta.2 does: its app was not signed at all, which macOS reports as
+> damaged, with nothing to allow. Later builds are signed, so macOS asks
+> instead. For beta.2, clear the download flag once in Terminal:
+> `xattr -dr com.apple.quarantine /Applications/OpenSave.app`
+
 ### Steam Deck install
 
 > **Use `OpenSave.flatpak`, not `opensave-linux-amd64.tar.gz`.** The tarball's
