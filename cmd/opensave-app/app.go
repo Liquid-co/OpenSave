@@ -37,6 +37,7 @@ type App struct {
 	bootErr     string
 	reallyQuit  bool
 	updatedFrom string // previous version when this run is the first on a new build
+	notifyErr   error  // why desktop notifications cannot be shown, where known (notify_other.go)
 }
 
 // NewApp creates the App shell (daemon boots in startup).
@@ -126,6 +127,7 @@ func (a *App) startup(ctx context.Context) {
 	a.addr = addr
 	d.Log.Log("info", "desktop app connected to daemon at "+addr)
 
+	a.initNotifications()
 	a.startTray()
 
 	// Repair the autostart entry every launch. The entry written by earlier

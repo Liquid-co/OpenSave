@@ -25,7 +25,11 @@ var appIcon []byte
 // by it and hands over focus. A build for testing beside a running OpenSave
 // sets its own (-ldflags "-X main.instanceID=…"), or it would find that one
 // and quit; releases never set it.
-var instanceID = "opensave-desktop-single-instance"
+var instanceID = defaultInstanceID
+
+// defaultInstanceID is the installed app's. See notify_windows.go for what
+// else is told apart by it.
+const defaultInstanceID = "opensave-desktop-single-instance"
 
 func main() {
 	// WebKitGTK's DMA-BUF renderer instantly crashes or blanks the window

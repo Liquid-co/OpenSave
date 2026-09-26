@@ -17,8 +17,8 @@
   function onRequests(list) {
     const fresh = list.filter((r) => !seen.has(r.peerId));
     if (fresh.length > 0) {
-      demandAttention('pairing');
       const who = fresh[0].deviceName ?? 'A device';
+      demandAttention('pairing', { title: `${who} wants to pair`, body: 'Open OpenSave to accept or decline.', open: { view: 'devices', params: {} } });
       toast(`${who} wants to pair`, 'info');
     }
     seen = new Set(list.map((r) => r.peerId));

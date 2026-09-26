@@ -7,6 +7,18 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Notifications on the desktop.** What OpenSave tells you in its window
+  now also reaches you when the window is not in front — hidden in the tray,
+  minimised, or behind something else: a save arriving from another device,
+  a newer save brought from the cloud, a new game found, a device asking to
+  pair, a conflict, an emptied save. On Windows it comes from OpenSave, with
+  the game's cover across the top and its name, and clicking it opens that
+  game (or the Devices page, for pairing); on Linux and macOS it is the
+  system's own notification. Each follows the switch for its event, "Stay
+  quiet while a full-screen game is running" holds them back over a game,
+  and Settings → Notifications can turn them off. "Show me" there sends one
+  to see.
+
 - **Tracking a folder by hand goes straight to it.** "Track folder" opens the
   folder picker at once, and what you pick is then named — with a name
   suggested from the path: the game's own folder rather than "Saves" or a

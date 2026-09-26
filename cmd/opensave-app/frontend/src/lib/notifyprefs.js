@@ -6,10 +6,14 @@
 // newer save brought from the cloud, a new game found). Each can be turned
 // off; what it was about is still on screen when you look.
 //
-// "Quiet while playing" holds the chime and the window back while a
-// full-screen game is running, where both are at their most unwelcome — the
-// window jumping in front of a game can take focus out of it. The banner or
-// dialog is there when you come back.
+// Either also shows on the desktop, as the system's own notification, when
+// OpenSave is not in front to show it (lib/notify.js) — unless "desktop" is
+// turned off.
+//
+// "Quiet while playing" holds the chime, the window and the desktop
+// notification back while a full-screen game is running, where all three are
+// at their most unwelcome — the window jumping in front of a game can take
+// focus out of it. The banner or dialog is there when you come back.
 import { writable, get } from 'svelte/store';
 
 export const NOTIFY_EVENTS = {
@@ -28,6 +32,7 @@ export const DEFAULT_NOTIFY = Object.freeze({
   arrivals: true,
   cloudPulled: true,
   newGames: true,
+  desktop: true,
   quietWhilePlaying: true
 });
 

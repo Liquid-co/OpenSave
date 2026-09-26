@@ -166,6 +166,9 @@ export const native = {
   toggleMaximise: () => app()?.WindowToggleMaximise(),
   close: () => app()?.WindowClose(),
   showWindow: () => app()?.ShowWindow(),
+  // A notification on the desktop (cmd/opensave-app/notify.go). Resolves to
+  // '' once shown, or why it could not be.
+  desktopNotify: (note) => app()?.DesktopNotify?.(note) ?? Promise.resolve('not available in browser preview'),
   // Whether a full-screen game or presentation is running (Windows asks the
   // OS; elsewhere, and in a browser, never).
   userBusy: () => app()?.UserBusy?.() ?? Promise.resolve(false),

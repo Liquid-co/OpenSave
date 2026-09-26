@@ -127,6 +127,26 @@ export function arrivalMessage(ev, games, lastShown, now = Date.now()) {
   return `${games[ev.gameId].name}: got ${plural(ev.files || 1, 'file')} from ${ev.device}`;
 }
 
+/** An arrival as the desktop shows it: the game's name over what came, with
+ *  its cover. Asked only once arrivalMessage has said to. */
+export function arrivalNote(ev, games) {
+  const game = games?.[ev.gameId];
+  if (!game) return null;
+  return { title: game.name, body: `Got ${plural(ev.files || 1, 'file')} from ${ev.device}`, game };
+}
+
+/** New games found, as the desktop shows them. */
+export function newGamesNote(found) {
+  if (!found?.length) return null;
+  const names = found.map((g) => g.name);
+  const body = names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  return {
+    title: names.length === 1 ? 'New game found' : `${names.length} new games found`,
+    body: `${body} — track ${names.length === 1 ? 'it' : 'them'} to keep ${names.length === 1 ? 'its' : 'their'} saves in sync`,
+    open: { view: 'home', params: {} }
+  };
+}
+
 // Examples, from "Show me" in Settings → Notifications: entries in the bell
 // that look like the real thing, gone once the bell has been looked at.
 export const exampleEvents = writable([]);

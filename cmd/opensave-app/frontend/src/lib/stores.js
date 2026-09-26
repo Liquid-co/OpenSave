@@ -1,10 +1,14 @@
 // Central app state, fed by the daemon's init dump + live WS updates.
 import { writable, derived, get } from 'svelte/store';
 import { notifyPrefs } from './notifyprefs.js';
-import { arrivalMessage } from './notifications.js';
+import { arrivalMessage, arrivalNote, newGamesNote } from './notifications.js';
+import { toDesktop } from './notify.js';
 
 // When each game's arrival was last said (lib/notifications.js).
 const arrivalShown = {};
+// New games already told about, by folder, so a list that shrinks or comes
+// round again is not announced twice.
+const newGamesSeen = new Set();
 
 export const view = writable({ name: 'home', params: {} });
 export const settings = writable(null);
@@ -160,6 +164,7 @@ export function applyMessage(msg) {
       logEntries.set(data.logHistory ?? []);
       cloudOffers.set(data.cloudOffers ?? []);
       newGames.set(data.newGames ?? []);
+      for (const g of data.newGames ?? []) newGamesSeen.add(g.savePath);
       syncPause.set(pauseFromWire(data.syncPause));
       collectionsIn(data.collections ?? []);
       stateLoaded.set(true);
@@ -170,9 +175,14 @@ export function applyMessage(msg) {
     case 'sync-pause':
       syncPause.set(pauseFromWire(data));
       break;
-    case 'new-games':
-      newGames.set(data ?? []);
+    case 'new-games': {
+      const found = data ?? [];
+      const fresh = found.filter((g) => !newGamesSeen.has(g.savePath));
+      for (const g of found) newGamesSeen.add(g.savePath);
+      newGames.set(found);
+      if (fresh.length) toDesktop('newGames', newGamesNote(fresh));
       break;
+    }
     case 'cloud-offers':
       cloudOffers.set(data ?? []);
       break;
@@ -180,7 +190,14 @@ export function applyMessage(msg) {
       // Taken without asking, because it carried on from the save this
       // device had and this device had not changed since. Said out loud all
       // the same: a save that changes by itself should say who changed it.
-      if (get(notifyPrefs).cloudPulled) toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
+      if (get(notifyPrefs).cloudPulled) {
+        toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
+        toDesktop('cloudPulled', {
+          title: data.gameName,
+          body: `Brought ${data.deviceName}'s newer save from the cloud`,
+          game: get(games)[data.gameId]
+        });
+      }
       break;
     case 'games-update':
       games.set(data ?? {});
@@ -189,7 +206,10 @@ export function applyMessage(msg) {
       lastActivity.set(data);
       activityTick.update((n) => n + 1);
       const said = get(notifyPrefs).arrivals ? arrivalMessage(data, get(games), arrivalShown) : null;
-      if (said) toast(said, 'info', { action: { label: 'Open', run: () => navigate('game', { gameId: data.gameId }) } });
+      if (said) {
+        toast(said, 'info', { action: { label: 'Open', run: () => navigate('game', { gameId: data.gameId }) } });
+        toDesktop('arrivals', arrivalNote(data, get(games)));
+      }
       break;
     }
     case 'peers-update':

@@ -107,7 +107,11 @@
         ttl: 15000,
         action: { label: 'Choose', run: () => navigate('game', { gameId: g.id }) }
       });
-      demandAttention('emptied');
+      demandAttention('emptied', {
+        title: g.name,
+        body: 'Every save file was deleted here. Your other devices keep theirs until you choose.',
+        game: g
+      });
     }
   });
   onDestroy(stopEmptied);
@@ -116,6 +120,15 @@
     // The tray's "Open Activity" and the like: the desktop shell asks for a
     // page by name. Absent in a browser.
     globalThis.runtime?.EventsOn?.('navigate', (page) => navigate(page));
+    // A desktop notification clicked: where it was about (lib/notify.js).
+    globalThis.runtime?.EventsOn?.('notification-open', (target) => {
+      try {
+        const { view, params } = JSON.parse(target);
+        if (view) navigate(view, params ?? {});
+      } catch {
+        // Not one of ours.
+      }
+    });
     await boot();
     // First launch after an update (including peer-to-peer, which carries
     // no release notes): announce it and offer the embedded changelog.

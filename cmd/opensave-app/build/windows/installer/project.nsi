@@ -415,6 +415,13 @@ Section "uninstall"
     ; it stop.
     DeleteRegValue HKCU "${OPENSAVE_RUN_KEY}" "${INFO_PRODUCTNAME}"
 
+    ; What the app registers so its desktop notifications show as OpenSave's
+    ; and can be clicked (notify_windows.go): its name and icon, and the class
+    ; Windows starts when one is clicked. Left behind, Windows would try to
+    ; start a program that is no longer there.
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\OpenSave"
+    DeleteRegKey HKCU "Software\Classes\CLSID\{898771DA-ECF7-4FD5-BC28-27D73882593F}"
+
     ; The command-line tool installs itself separately, outside this folder,
     ; and a `opensave` that still answers after the app is gone is a surprise
     ; — but it is also a thing people use on its own, so it is asked about

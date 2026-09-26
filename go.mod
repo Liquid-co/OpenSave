@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	fyne.io/systray v1.12.2
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
 	github.com/andybalholm/brotli v1.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.10.1
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
