@@ -25,6 +25,7 @@ import (
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/store/legacyimport"
+	"github.com/opensave/opensave/internal/switchtitle"
 	"github.com/opensave/opensave/internal/watcher"
 )
 
@@ -88,7 +89,7 @@ type Daemon struct {
 	heldMu sync.Mutex
 	// compactMu runs one compaction pass at a time; see compact.go.
 	compactMu sync.Mutex
-	held   []heldUpload
+	held      []heldUpload
 
 	// initialSnapshots counts the first-snapshot goroutines TrackGame starts.
 	// They run in the background so the API can answer immediately, which is
@@ -160,6 +161,8 @@ func New(opts Options) (*Daemon, error) {
 	// A paired peer untracking/re-tracking a game mirrors here.
 	d.P2P.OnUntrackRequest = d.untrackFromPeer
 	d.P2P.OnRetrackRequest = d.retrackFromPeer
+	// A Switch save a peer syncs goes into this device's own emulator profile.
+	d.P2P.SwitchSaveFolder = d.Scanner.SwitchSaveFolder
 
 	// Every new snapshot mirrors to the configured cloud provider in the
 	// background; failures are logged, never fatal.
@@ -247,6 +250,10 @@ func (d *Daemon) Start() error {
 	if err != nil {
 		return err
 	}
+	// Switch games tracked under a made-up name get their real one, when an
+	// emulator here knows it by now.
+	d.nameSwitchGames()
+
 	// Size the manifest hash cache to the library. A fixed budget is either
 	// wasteful for someone with ten games or too small for someone with three
 	// hundred — and too small is the expensive direction, because the cache
@@ -680,6 +687,12 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 			return store.Game{}, fmt.Errorf("this folder is already tracked (as %q)", existing.Name)
 		}
 		base := store.SlugifyGameID(game.Name)
+		// A Switch game is tracked under its title id rather than its name:
+		// that is the same on every device, whichever emulator holds the save
+		// and whatever language it shows names in. See internal/switchtitle.
+		if titleID := switchtitle.FromSavePath(abs); titleID != "" {
+			base = switchtitle.GameID(titleID)
+		}
 		if base == "" {
 			return store.Game{}, fmt.Errorf("game name %q produces an empty id", game.Name)
 		}

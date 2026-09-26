@@ -160,6 +160,7 @@ func portableEmulatorSaves(dir string) []DiscoveredSave {
 						Name:     fmt.Sprintf("%s - Title ID: %s", p.Name, filepath.Base(title)),
 						Type:     p.Type,
 						SavePath: title,
+						TitleID:  strings.ToUpper(filepath.Base(title)),
 					})
 				}
 			} else {

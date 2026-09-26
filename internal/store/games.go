@@ -177,6 +177,18 @@ func (s *Store) SetLastManifestHash(gameID, hash string) error {
 	return checkRowAffected(res)
 }
 
+// RenameGameIf renames a game only while it still has the name from: a name
+// given automatically must never replace one the person typed in between.
+// Reports whether it was renamed.
+func (s *Store) RenameGameIf(gameID, from, to string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE games SET name = ? WHERE id = ? AND name = ?`, to, gameID, from)
+	if err != nil {
+		return false, fmt.Errorf("rename game %s: %w", gameID, err)
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // DeleteGame removes a game and (via ON DELETE CASCADE) its branches,
 // snapshots metadata, and sync-state rows. It does NOT delete the
 // underlying snapshot ZIP files on disk — callers must do that themselves

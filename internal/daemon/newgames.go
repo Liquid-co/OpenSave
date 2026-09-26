@@ -68,6 +68,8 @@ func (d *Daemon) ScanForSaves() ([]presets.DiscoveredSave, error) {
 	if found == nil {
 		found = []presets.DiscoveredSave{}
 	}
+	// A scan is when an emulator's list is likeliest to have changed.
+	d.nameSwitchGames()
 	return found, nil
 }
 

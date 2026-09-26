@@ -19,6 +19,11 @@ type DiscoveredSave struct {
 	Type     string `json:"type"` // "emulator" | "repack" | "game"
 	SavePath string `json:"savePath"`
 	AppID    string `json:"appId,omitempty"`
+	// TitleID is a Switch game's title id, for a save found in an emulator's
+	// NAND. It is what names the game (switchtitles.go), groups its copies in
+	// several emulators, and makes it the same game on every device
+	// (internal/switchtitle).
+	TitleID string `json:"titleId,omitempty"`
 
 	// What is actually in the folder, filled in by Measure. Detection leaves
 	// these zero, and zero means "not measured" rather than "empty" —

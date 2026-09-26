@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/opensave/opensave/internal/switchtitle"
 )
 
 // httpStatusError distinguishes a "the CDN answered, but not 200" failure
@@ -101,23 +103,30 @@ func recentCoverMiss(key string) bool {
 // can always reach the local API. So covers load from localhost and keep
 // working offline once cached.
 //
-// GET /api/cover?appId=<numeric>[&portrait=1]
+// GET /api/cover?appId=<numeric>[&name=…][&titleId=<switch title id>][&portrait=1]
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	appID := r.URL.Query().Get("appId")
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	titleID := strings.ToUpper(r.URL.Query().Get("titleId"))
 	// A game with no App ID can still have art, under its name. Steam cannot
 	// answer about it — its CDN is keyed on App ID — but the second source can.
 	if !isNumericID(appID) {
 		appID = ""
 	}
-	if appID == "" && name == "" {
-		writeError(w, http.StatusBadRequest, "appId must be numeric, or a name must be given")
+	if !switchtitle.Valid(titleID) {
+		titleID = ""
+	}
+	if appID == "" && name == "" && titleID == "" {
+		writeError(w, http.StatusBadRequest, "appId must be numeric, or a name or titleId must be given")
 		return
 	}
 	portrait := r.URL.Query().Get("portrait") == "1"
 
 	// One cache key per game, whichever source ends up answering.
 	cacheKey := appID
+	if cacheKey == "" && titleID != "" {
+		cacheKey = switchtitle.GameID(titleID)
+	}
 	if cacheKey == "" {
 		cacheKey = coverKeyForName(name)
 	}
@@ -136,6 +145,15 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 		s.writeCoverCache(cacheKey, portrait, data)
 		writeCover(w, data)
 		return
+	}
+	// A Switch game's icon, as its emulator keeps it — exact, and on this
+	// disk too. See cover_switch.go.
+	if titleID != "" {
+		if data := s.switchCover(titleID, portrait); len(data) > 0 {
+			s.writeCoverCache(cacheKey, portrait, data)
+			writeCover(w, data)
+			return
+		}
 	}
 
 	// Known to have no art — don't re-walk the network for it on every scan.

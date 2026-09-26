@@ -340,7 +340,7 @@
             <CoverTile
               name={item.name}
               title={item.savePath}
-              src={coverURL(item.appId, true, item.name)}
+              src={coverURL(item.appId, true, item.name, item.titleId)}
               icon={typeIcon(item.type)}
               selected={groupSelected(group, selected)}
               badge={typeLabels[item.type] ?? item.type}

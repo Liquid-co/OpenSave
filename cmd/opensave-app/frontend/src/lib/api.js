@@ -1,5 +1,7 @@
 // REST + WebSocket client for the embedded OpenSave daemon.
 
+import { switchTitleId } from './switchtitle.js';
+
 let baseURL = '';
 
 /** Resolve the daemon address from the Wails-bound Go method. */
@@ -67,11 +69,15 @@ export const api = {
  * or itch — or one found under a folder name no manifest recognises — used to
  * get an empty string here and never ask at all. The daemon can look those up
  * by name, and returning '' meant nothing ever reached the code that does.
+ *
+ * A Switch game is asked for by its title id too: the daemon makes its cover
+ * from the icon its emulator keeps (lib/switchtitle.js).
  */
-export function coverURL(appId, portrait = false, name = '') {
+export function coverURL(appId, portrait = false, name = '', titleId = '') {
   const q = new URLSearchParams();
   if (appId) q.set('appId', String(appId));
   if (name) q.set('name', name);
+  if (titleId) q.set('titleId', titleId);
   if (![...q.keys()].length) return '';
   if (portrait) q.set('portrait', '1');
   return `${baseURL}/api/cover?${q.toString()}`;
@@ -83,7 +89,7 @@ export function coverURL(appId, portrait = false, name = '') {
 export function gameCover(game, portrait = false) {
   const custom = game?.coverUrl;
   if (custom && !custom.includes('steamstatic.com')) return custom;
-  return coverURL(game?.appId, portrait, game?.name ?? '');
+  return coverURL(game?.appId, portrait, game?.name ?? '', switchTitleId(game?.savePath));
 }
 
 /** Whether a URL points at this app's own daemon — which is what decides

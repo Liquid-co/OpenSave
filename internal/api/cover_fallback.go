@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/opensave/opensave/internal/store"
+
+	"github.com/opensave/opensave/internal/switchtitle"
 )
 
 // The second source of cover art, for the games Steam's CDN has nothing for.
@@ -142,6 +144,9 @@ func coverKeyForName(name string) string {
 func coverKeyFor(g store.Game) string {
 	if isNumericID(g.AppID) {
 		return g.AppID
+	}
+	if titleID := switchtitle.Of(g.ID, g.SavePath); titleID != "" {
+		return switchtitle.GameID(titleID)
 	}
 	return coverKeyForName(g.Name)
 }

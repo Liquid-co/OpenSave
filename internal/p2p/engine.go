@@ -65,6 +65,11 @@ type Engine struct {
 	OnUntrackRequest func(gameID string)
 	OnRetrackRequest func(gameID string)
 
+	// SwitchSaveFolder picks where a Switch save arriving from a peer belongs
+	// on this device (presets.Scanner.SwitchSaveFolder). Wired by the daemon.
+	// May be nil.
+	SwitchSaveFolder func(titleID, translated string) string
+
 	// Failsafe: games whose last sync was interrupted (network error mid-
 	// transfer) are queued here and retried automatically, no prompt, until
 	// they complete.
@@ -440,6 +445,9 @@ func (e *Engine) localGameID(gameID string) string {
 	if canonical, ok := e.Store.ResolveGameAlias(gameID); ok {
 		return canonical
 	}
+	if game, ok := e.matchSwitchTitle(gameID, ""); ok {
+		return game.ID
+	}
 	return gameID
 }
 
@@ -461,6 +469,9 @@ func (e *Engine) trackedGameForPeer(gameID string) (store.Game, error) {
 		if aliased, aErr := e.Store.GetGame(canonical); aErr == nil {
 			return aliased, nil
 		}
+	}
+	if game, ok := e.matchSwitchTitle(gameID, ""); ok {
+		return game, nil
 	}
 	return store.Game{}, err
 }

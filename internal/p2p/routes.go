@@ -20,6 +20,7 @@ import (
 	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
+	"github.com/opensave/opensave/internal/switchtitle"
 	"github.com/opensave/opensave/internal/version"
 )
 
@@ -467,6 +468,11 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 			return e.backfillCover(game, q), nil
 		}
 	}
+	// A Switch game's title id next: it is the same game whatever id each
+	// device tracks it under (switchmatch.go).
+	if game, ok := e.matchSwitchTitle(gameID, q.SavePath); ok {
+		return e.backfillCover(game, q), nil
+	}
 
 	settings, sErr := e.Store.GetSettings()
 	if sErr != nil {
@@ -537,6 +543,11 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 		rules[i] = delta.TranslationRule{FromPattern: tr.FromPattern, ToPattern: tr.ToPattern}
 	}
 	localPath := delta.TranslatePathToLocal(q.SavePath, rules)
+	// A Switch save goes where this device's emulator keeps that game — not
+	// under the other install's profile id, which no emulator here has.
+	if titleID := switchtitle.FromSavePath(q.SavePath); titleID != "" && e.SwitchSaveFolder != nil {
+		localPath = e.SwitchSaveFolder(titleID, localPath)
+	}
 
 	// Never auto-track at a profile/system-level folder: syncing it would
 	// hash the user's whole profile. Send the requester a clear reason

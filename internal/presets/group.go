@@ -80,10 +80,15 @@ var genericNames = map[string]bool{
 	"backups": true, "remote": true, "storage": true, "local": true,
 }
 
-// groupKey is what two rows must share to be treated as one game. An AppID is
-// authoritative; without one the normalized name has to do, and a name that
-// could belong to anything is refused a group of its own.
+// groupKey is what two rows must share to be treated as one game. A Switch
+// title id or an AppID is authoritative; without one the normalized name has
+// to do, and a name that could belong to anything is refused a group of its
+// own. The title id comes first: the same game in two emulators is one game
+// whatever each calls it, and never the PC game of the same name.
 func groupKey(d DiscoveredSave) string {
+	if d.TitleID != "" {
+		return "switch:" + d.TitleID
+	}
 	if d.AppID != "" {
 		return "app:" + d.AppID
 	}

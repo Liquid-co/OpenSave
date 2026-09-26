@@ -149,6 +149,7 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 						Name:     fmt.Sprintf("%s - Title ID: %s", p.Name, filepath.Base(title)),
 						Type:     p.Type,
 						SavePath: title,
+						TitleID:  strings.ToUpper(filepath.Base(title)),
 					})
 				}
 			} else {
@@ -398,10 +399,17 @@ func (sc *Scanner) Scan(customScanPaths []string) []DiscoveredSave {
 	// matter how the game was installed.
 	discovered = append(discovered, sc.scanWinePrefixes(dedupSet(discovered))...)
 
-	// Infer AppIDs from names for entries that lack one.
+	// Switch games, by the names their emulators know them by — before
+	// anything reads a name.
+	sc.nameSwitchTitles(discovered)
+
+	// Infer AppIDs from names for entries that lack one. Never for a Switch
+	// save: "Hollow Knight" on a Switch is not Steam's Hollow Knight, whose
+	// saves are another format entirely — an App ID would group the two as
+	// one game and, with App-ID matching on, sync one over the other.
 	nameIndex := nameToAppIDIndex()
 	for i := range discovered {
-		if discovered[i].AppID == "" {
+		if discovered[i].AppID == "" && discovered[i].TitleID == "" {
 			discovered[i].AppID = inferAppIDFromName(discovered[i].Name, nameIndex)
 		}
 	}

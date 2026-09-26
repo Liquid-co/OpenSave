@@ -7,6 +7,23 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Switch games by name and cover, not by Title ID.** A scan found each
+  Switch save as "Citron Switch Emulator - Title ID: 0100F2C0115B6000".
+  Now it is "The Legend of Zelda: Tears of the Kingdom", with its icon as the
+  cover — read from what the emulators on this device already keep about
+  every game in their list (the yuzu family's game-list cache, including
+  Citron's and Eden's for ROM folders, and Ryujinx's game data), so nothing
+  is looked up online and the name is the one the emulator shows. Games
+  tracked under the old made-up name are renamed too; a name you typed is
+  left alone. A game no emulator here has listed keeps its old name.
+
+  A Switch game is also the same game everywhere now. It is tracked under its
+  title id, so a save in Citron on a PC and in Eden on a Steam Deck sync with
+  each other without linking them by hand, as do copies tracked before this
+  under different names once both devices have this version. And a save arriving from another device goes into
+  this device's own emulator profile: it used to land under the other
+  install's profile id, a folder the emulator here never reads.
+
 - **The setup guide can be brought back.** It greets a new install whose
   library starts empty; anyone who put it away, or set up before it
   existed, can show it again from Settings → Library or Ctrl+K ("Show the

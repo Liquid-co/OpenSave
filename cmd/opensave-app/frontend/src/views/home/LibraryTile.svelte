@@ -8,7 +8,7 @@
   import { createEventDispatcher } from 'svelte';
   import Check from 'lucide-svelte/icons/check';
   import CoverImage from '../../components/CoverImage.svelte';
-  import { coverURL, gameCover, isDaemonURL } from '../../lib/api.js';
+  import { gameCover, isDaemonURL } from '../../lib/api.js';
   import { COVER_STYLES } from '../../lib/libraryview.js';
   import { collections, isFavourite } from '../../lib/collections.js';
   import Star from 'lucide-svelte/icons/star';
@@ -32,7 +32,7 @@
   // A custom cover wins in either style; otherwise Steam's art in the shape
   // asked for, which for tall art may still come back as the banner.
   $: custom = game.coverUrl && !game.coverUrl.includes('steamstatic.com') ? game.coverUrl : '';
-  $: src = custom || (cover === 'tall' ? coverURL(game.appId, true, game.name) : gameCover(game));
+  $: src = custom || gameCover(game, cover === 'tall');
 
   const frameAspect = { wide: 460 / 215, tall: 600 / 900 };
   let letterbox = false;
