@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -778,5 +782,177 @@ func TestUploadIsDoneWithTheArchiveWhenItSaysSo(t *testing.T) {
 	}
 	if removeErr != nil {
 		t.Errorf("the archive could not be removed once the upload said it was done: %v", removeErr)
+	}
+}
+
+// A snapshot copied into the local folder appears under its name only once it
+// is all there. The folder is often one another device reads — a NAS, a
+// synced folder — and it lists and restores what it finds by name.
+
+// stallingReader hands over its first half, then waits to be let go before
+// the rest: a copy caught in the middle.
+type stallingReader struct {
+	data    []byte
+	sent    int
+	midway  chan struct{} // closed once the first half has been handed over
+	release chan struct{}
+}
+
+func (r *stallingReader) Read(p []byte) (int, error) {
+	if r.sent == len(r.data)/2 {
+		close(r.midway)
+		<-r.release
+	}
+	if r.sent == len(r.data) {
+		return 0, io.EOF
+	}
+	end := len(r.data)
+	if r.sent < len(r.data)/2 {
+		end = len(r.data) / 2
+	}
+	n := copy(p, r.data[r.sent:end])
+	r.sent += n
+	return n, nil
+}
+
+// failingReader hands over some of a snapshot and then fails, as a copy from
+// a drive that goes away does.
+type failingReader struct{ sent bool }
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if !r.sent {
+		r.sent = true
+		return copy(p, "the first part of an archive"), nil
+	}
+	return 0, errors.New("the drive went away")
+}
+
+func folderNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+func TestALocalCopyInProgressIsNotListed(t *testing.T) {
+	dir := t.TempDir()
+	p := localFolder{cfg: store.CloudConfig{URL: dir}}
+	const name = "game__main__snap_1.zip"
+	body := []byte(strings.Repeat("archive bytes ", 4096))
+	r := &stallingReader{data: body, midway: make(chan struct{}), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- p.put(r, name) }()
+
+	<-r.midway
+	files, _ := p.list()
+	if len(files) != 0 {
+		t.Errorf("half-copied, the snapshot is already listed: %+v", files)
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		t.Error("half-copied, the snapshot is already under its own name")
+	}
+	// Nor is the working file taken for one by what reads a snapshot's name:
+	// that splits at "__" and does not insist on the .zip.
+	for _, n := range folderNames(t, dir) {
+		if g, _, _, ok := snapshot.ParseExportEntryName(n); ok {
+			t.Errorf("the working file %s reads as a snapshot of %q", n, g)
+		}
+		if _, _, _, ok := ParseHeadFileName(n); ok {
+			t.Errorf("the working file %s reads as a head", n)
+		}
+	}
+	close(r.release)
+	if err := <-done; err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	files, _ = p.list()
+	if len(files) != 1 || files[0].Name != name || files[0].SizeBytes != int64(len(body)) {
+		t.Fatalf("once copied: %+v, want %s of %d bytes", files, name, len(body))
+	}
+	if got := folderNames(t, dir); !slices.Equal(got, []string{name}) {
+		t.Errorf("the folder holds %v; the copy's working file was left behind", got)
+	}
+}
+
+func TestALocalCopyThatFailsLeavesNothing(t *testing.T) {
+	dir := t.TempDir()
+	p := localFolder{cfg: store.CloudConfig{URL: dir}}
+	if err := p.put(&failingReader{}, "game__main__snap_1.zip"); err == nil {
+		t.Fatal("a copy whose source failed reported success")
+	}
+	if got := folderNames(t, dir); len(got) != 0 {
+		t.Errorf("a failed copy left %v in the folder", got)
+	}
+}
+
+// Coming the other way, a download that fails must not cost the file already
+// there. It used to empty that file before the first byte arrived, then
+// remove it when the transfer broke: re-fetching a snapshot this device
+// already had, and losing the connection, lost the snapshot.
+func TestADownloadThatFailsKeepsTheFileAlreadyThere(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Promises more than it sends: the transfer breaks partway.
+		w.Header().Set("Content-Length", "100000")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "the first part of an archive")
+	}))
+	defer server.Close()
+	svc, s := newTestService(t)
+	setCloudConfig(t, s, func(c *store.CloudConfig) {
+		c.Enabled = true
+		c.Provider = "webdav"
+		c.URL = server.URL + "/dav"
+	})
+
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "snap_1.zip")
+	if err := os.WriteFile(dest, []byte("the archive this device already had"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Download("game__main__snap_1.zip", dest); err == nil {
+		t.Fatal("a broken transfer reported success")
+	}
+	if got, err := os.ReadFile(dest); err != nil || string(got) != "the archive this device already had" {
+		t.Errorf("after the failed download the file there is %q (%v)", got, err)
+	}
+	for _, n := range folderNames(t, dir) {
+		if n != "snap_1.zip" {
+			t.Errorf("the download's working file %s was left behind", n)
+		}
+	}
+}
+
+// Written through a working file, a snapshot is still as readable to the
+// other devices sharing the folder as one os.Create would have made. A
+// working file from os.CreateTemp is readable by its owner alone, and on a
+// NAS the other devices are other users.
+func TestALocalCopyIsAsReadableAsBefore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not how Windows shares a folder")
+	}
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain")
+	f, err := os.Create(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := (localFolder{cfg: store.CloudConfig{URL: dir}}).put(strings.NewReader("x"), "game__main__snap_1.zip"); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := os.Stat(plain)
+	got, err := os.Stat(filepath.Join(dir, "game__main__snap_1.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode().Perm() != want.Mode().Perm() {
+		t.Errorf("the copy's permissions are %v; os.Create gives %v", got.Mode().Perm(), want.Mode().Perm())
 	}
 }

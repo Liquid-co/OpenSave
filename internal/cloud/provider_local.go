@@ -18,21 +18,21 @@ type localFolder struct {
 }
 
 func (p localFolder) upload(f *os.File, size int64, fileName string) error {
+	return p.put(f, fileName)
+}
+
+// put stores what r holds under fileName, appearing under that name only
+// once it is all there (see writeFileWhole). Another device reading the same
+// folder never lists a snapshot that is still being copied, and a copy that
+// fails leaves nothing that looks like one.
+func (p localFolder) put(r io.Reader, fileName string) error {
 	if p.cfg.URL == "" {
 		return fmt.Errorf("no local folder destination configured")
 	}
-	if err := os.MkdirAll(p.cfg.URL, 0o777); err != nil {
+	return writeFileWhole(filepath.Join(p.cfg.URL, fileName), func(w io.Writer) error {
+		_, err := io.Copy(w, r)
 		return err
-	}
-	out, err := os.Create(filepath.Join(p.cfg.URL, fileName))
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, f); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
+	})
 }
 
 func (p localFolder) list() ([]CloudFile, error) {
@@ -69,19 +69,10 @@ func (p localFolder) download(fileName, localPath string) error {
 		return fmt.Errorf("file %q not found in local folder", fileName)
 	}
 	defer src.Close()
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o777); err != nil {
+	return writeFileWhole(localPath, func(w io.Writer) error {
+		_, err := io.Copy(w, src)
 		return err
-	}
-	out, err := os.Create(localPath)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, src); err != nil {
-		out.Close()
-		os.Remove(localPath)
-		return err
-	}
-	return out.Close()
+	})
 }
 
 func (p localFolder) remove(f CloudFile) error {

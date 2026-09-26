@@ -8,8 +8,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -171,19 +174,67 @@ func (s *Service) fetchToFile(req *http.Request, localPath string) error {
 	if err := transferOK(resp); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o777); err != nil {
+	return writeFileWhole(localPath, func(w io.Writer) error {
+		_, err := io.Copy(w, resp.Body)
+		return err
+	})
+}
+
+// partialSuffix ends the name of a file still being written. Nothing that
+// looks for snapshots takes it for one: they all end in .zip.
+//
+// The rest of the name is not the snapshot's either. A snapshot's name is
+// read by splitting it at "__" (snapshot.ParseExportEntryName), which does
+// not insist on the .zip, so a working file named after its snapshot was
+// taken for a snapshot of a game called ".<game>" by anything that read the
+// folder itself rather than through list.
+const partialSuffix = ".part"
+
+// writeFileWhole writes path through a temporary file beside it, which takes
+// path's name only once it is complete.
+//
+// Writing to the final name directly put a snapshot under its real name
+// while it was still arriving. In a folder another device reads — a NAS, a
+// synced folder — that device could list it and restore half an archive, and
+// a crash mid-copy left the half under the real name for good. Coming the
+// other way it was worse: the file already at path was emptied before the
+// first byte arrived, so a download that failed took a good archive with it.
+//
+// Created the way os.Create creates, so a file in a shared folder is as
+// readable to the other devices as it always was.
+func writeFileWhole(path string, fill func(io.Writer) error) (err error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return err
 	}
-	out, err := os.Create(localPath)
-	if err != nil {
+	var tmp *os.File
+	for i := 0; ; i++ {
+		name := filepath.Join(dir, fmt.Sprintf(".opensave-%08x%s", rand.Uint32(), partialSuffix))
+		tmp, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) || i == 9 {
+			return err
+		}
+	}
+	defer func() {
+		if err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+		}
+	}()
+	if err = fill(tmp); err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		out.Close()
-		os.Remove(localPath)
+	// On disk before it is given the name that says it is whole.
+	if err = tmp.Sync(); err != nil {
 		return err
 	}
-	return out.Close()
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // Upload sends a snapshot zip to the configured provider. Errors are

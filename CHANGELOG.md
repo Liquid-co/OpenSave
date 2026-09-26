@@ -36,6 +36,12 @@ All notable changes to OpenSave are documented here. This project adheres to
   wrote into its main folder — a `settings.ini` in both, say — read as one
   the other device had deleted, and was deleted. Each folder's files are
   now recorded against that folder.
+- **A backup in a local or shared cloud folder is never half a backup.** It
+  was copied in under its final name, so another device reading the same
+  folder — a NAS, a synced folder — could list and restore one still being
+  copied, and an interrupted copy stayed there looking whole. It now appears
+  only once complete. Downloads work the same way: one that failed used to
+  take the copy already on this device with it.
 - **An edit to a game's second save folder no longer raises a conflict when
   only one device made it**, after the other device's word that it had
   taken the last change went missing.
