@@ -318,7 +318,8 @@ jobs:
   #   - Not signed as a bundle, macOS says the app "is damaged and can't be
   #     opened" and offers only the Trash, with nothing to allow. That is what
   #     2.4.0-beta.2 shipped: wails builds each architecture, joins them with
-  #     lipo and assembles the .app, and nothing ever sealed the result.
+  #     lipo and assembles the .app, and nothing ever sealed the result. Its
+  #     Info.plist was not even valid XML either (see the signing step).
   #
   # Adding a Developer ID later means adding credentials to the signing step
   # and a notarisation step after it, not restructuring the job.
@@ -367,6 +368,12 @@ jobs:
           # attempt verified "valid on disk" and then "does not satisfy its
           # designated Requirement". macOS also keys permissions on it, so it
           # names the app by its bundle identifier instead.
+          # The Info.plist first: macOS cannot open an app whose Info.plist it
+          # cannot read, and says it is damaged. wails writes wails.json's
+          # text into it unescaped, so a "&" in the copyright made it invalid
+          # XML — which is what 2.4.0-beta.2 shipped.
+          plutil -lint "$APP/Contents/Info.plist" \
+            || { echo "::error::Info.plist is not valid — check wails.json's info for & < >"; exit 1; }
           ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
           echo "bundle identifier: $ID"
           codesign --force --sign - --identifier "$ID" \
@@ -427,6 +434,7 @@ jobs:
           APP=cmd/opensave-app/build/bin/OpenSave.app
           BIN="$APP/Contents/MacOS/OpenSave"
           test -f "$APP/Contents/Info.plist" || { echo "::error::the bundle has no Info.plist"; exit 1; }
+          plutil -lint "$APP/Contents/Info.plist" || { echo "::error::the bundle's Info.plist is not valid"; exit 1; }
           test -x "$BIN" || { echo "::error::no executable at $BIN"; exit 1; }
           # Universal or it is not universal: a single-architecture binary means
           # half the Macs that download it cannot open it, and nothing else in

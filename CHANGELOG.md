@@ -480,11 +480,13 @@ and `opensave install --uninstall` takes the command-line tool off again.
 ### Fixed
 
 - **The Mac app opens.** macOS called 2.4.0-beta.2's app "damaged" and
-  offered only the Trash: nothing in it was signed, not even the free
-  signature every download needs, so macOS read it as corrupted rather than
-  as from a developer it could not verify. It is signed now, so macOS asks,
-  and you can allow it under System Settings > Privacy & Security. The
-  command-line tools for Mac are signed the same way.
+  offered only the Trash, and it was right: the app's Info.plist was not
+  valid (an "&" in the copyright line, written into it unescaped), and
+  nothing in the app was signed, not even with the free signature every
+  download needs. Both are fixed, and the build now refuses to publish a Mac
+  app with either problem. macOS asks about it instead, and you can allow it
+  under System Settings > Privacy & Security. The command-line tools for Mac
+  are signed the same way.
 
 - **Exports and imports follow linked copies and missing folders.** A
   backup made before two copies of a game were linked now imports into the
