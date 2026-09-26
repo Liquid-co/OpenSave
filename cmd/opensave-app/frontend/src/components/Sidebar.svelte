@@ -31,6 +31,7 @@
   import ScrollText from 'lucide-svelte/icons/scroll-text';
   import Plus from 'lucide-svelte/icons/plus';
   import Search from 'lucide-svelte/icons/search';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
   let filter = '';
 
@@ -94,6 +95,7 @@
       <button
         class="game"
         class:active={$view.name === 'game' && $view.params.gameId === game.id}
+        class:insession={!!game.playingSince}
         on:click={() => navigate('game', { gameId: game.id })}
         on:contextmenu={(e) => openGameMenu(e, game)}
         on:mouseenter={() => reveal(game)}
@@ -118,6 +120,9 @@
           />
         </span>
         <span class="game-name">{game.name}</span>
+        {#if game.playingSince}
+          <span class="session" title="In session"><Gamepad2 size={13} /></span>
+        {/if}
         {#if $syncActivity[game.id]?.state === 'running'}
           <span class="spin" title="Syncing"></span>
         {/if}
@@ -359,6 +364,16 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* The game being played: its name and a controller, in green. */
+  .game.insession .game-name {
+    color: var(--success);
+  }
+  .session {
+    display: inline-flex;
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--success);
   }
   .library-empty {
     padding: 18px 10px;

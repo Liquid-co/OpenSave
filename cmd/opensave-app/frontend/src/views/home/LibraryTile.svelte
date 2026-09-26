@@ -14,6 +14,7 @@
   import Star from 'lucide-svelte/icons/star';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import { openGameMenu } from '../../lib/contextmenu.js';
   import { playLength } from '../../lib/format.js';
 
@@ -111,6 +112,7 @@
   class:enter={enter >= 0}
   style={enter >= 0 ? `--i: ${Math.min(enter, 12)}` : undefined}
   class:selected={selecting && selected}
+  class:insession={status.state === 'playing'}
   class:pressing
   title={game.savePath}
   on:click={click}
@@ -149,7 +151,10 @@
       {#if isFavourite($collections, game.id)}<span class="fav" title="In Favourites"><Star size={12} /></span>{/if}{game.name}
     </div>
     <div class="status tone-{status.tone}">
-      {#if status.tone === 'warn'}<TriangleAlert size={13} class="status-icon" />{:else if status.tone === 'busy'}<RefreshCw
+      {#if status.tone === 'warn'}<TriangleAlert size={13} class="status-icon" />{:else if status.tone === 'playing'}<Gamepad2
+          size={13}
+          class="status-icon"
+        />{:else if status.tone === 'busy'}<RefreshCw
           size={12}
           class="status-icon spin"
         />{/if}<span class="status-text" title={status.label}>{status.label}</span>
@@ -355,6 +360,18 @@
   }
   .status.tone-busy {
     color: var(--accent);
+  }
+  .status.tone-playing {
+    color: var(--success);
+    font-weight: 600;
+  }
+  /* Being played right now: the one tile outlined in green, so the game in
+     session is found at a glance. */
+  .tile.insession,
+  .tile.insession:hover,
+  .tile.insession:focus-visible {
+    border-color: var(--success);
+    box-shadow: 0 0 0 1px var(--success);
   }
   .status.tone-muted {
     color: var(--text-faint);

@@ -7,6 +7,7 @@
 // safety net is a snapshot, so that is what the line reports instead. Never
 // "up to date": this device cannot know what another device has done since.
 import { timeAgo, latestOf } from './timeago.js';
+import { playLength } from './format.js';
 
 /**
  * @param {object} game A game from the games payload.
@@ -15,7 +16,7 @@ import { timeAgo, latestOf } from './timeago.js';
  * @param {object} [ctx.activity] This game's syncActivity entry.
  * @param {boolean} [ctx.conflicted] A conflict for this game is waiting.
  * @param {number} [ctx.now]
- * @returns {{state: string, label: string, tone: 'warn'|'busy'|'ok'|'muted'}}
+ * @returns {{state: string, label: string, tone: 'warn'|'busy'|'playing'|'ok'|'muted'}}
  */
 export function gameStatus(game, { peers = {}, activity, conflicted = false, now = Date.now() } = {}) {
   // Before anything else: with its folder gone nothing else about it can
@@ -27,8 +28,9 @@ export function gameStatus(game, { peers = {}, activity, conflicted = false, now
   if (game.emptied?.state === 'fetching') return { state: 'restoring', label: 'Putting files back', tone: 'busy' };
   if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
   // Being played here now (see daemon/sessions.go): what matters most about
-  // it while it lasts; its save is kept as the session leaves it.
-  if (game.playingSince) return { state: 'playing', label: 'Playing now', tone: 'busy' };
+  // it while it lasts; its save is kept as the session leaves it. Its own
+  // tone, green, and never the spinning "busy" one — nothing is syncing.
+  if (game.playingSince) return { state: 'playing', label: sessionLabel(game.playingSince, now), tone: 'playing' };
   if (activity?.state === 'running') {
     return { state: 'syncing', label: `Syncing ${activity.percentage ?? 0}%`, tone: 'busy' };
   }
@@ -219,4 +221,10 @@ export function sortRows(rows, sort, reverse = false) {
   const compare = (SORTS[sort] ?? SORTS.name).compare;
   const out = [...rows].sort(compare);
   return reverse ? out.reverse() : out;
+}
+
+/** "In session", and for how long once it is a minute or more. */
+export function sessionLabel(since, now = Date.now()) {
+  const ms = now - Date.parse(since);
+  return Number.isFinite(ms) && ms >= 60_000 ? `In session for ${playLength(ms)}` : 'In session';
 }

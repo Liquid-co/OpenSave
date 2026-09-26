@@ -86,10 +86,17 @@ describe('a damaged snapshot', () => {
 
 describe('a game being played', () => {
   it('says so, and the recently played order puts it first', () => {
-    expect(gameStatus(game({ id: 'h', name: 'Hades', playingSince: '2026-09-25T18:00:00Z' }))).toMatchObject({
+    const since = '2026-09-25T18:00:00Z';
+    expect(gameStatus(game({ id: 'h', name: 'Hades', playingSince: since }), { now: Date.parse(since) + 20_000 })).toMatchObject({
       state: 'playing',
-      label: 'Playing now'
+      label: 'In session',
+      tone: 'playing'
     });
+    expect(gameStatus(game({ id: 'h', name: 'Hades', playingSince: since }), { now: Date.parse(since) + 72 * 60_000 }).label).toBe(
+      'In session for 1 h 12 min'
+    );
+    // Before a sync in flight: being played is what matters about it.
+    expect(gameStatus(game({ id: 'h', playingSince: since }), { activity: { state: 'running', percentage: 40 } }).state).toBe('playing');
     const rowOf = (g) => ({ game: g, status: { state: 'local' } });
     const rows = [
       rowOf(game({ id: 'a', name: 'Long ago', lastPlayedAt: '2026-09-01T00:00:00Z' })),

@@ -112,7 +112,7 @@
         · <span class="syncing">syncing {activity.percentage ?? 0}%</span>
       {/if}
       {#if game.playingSince}
-        · <span class="playing">playing now, since {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        · <span class="playing">in session since {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       {:else if game.lastPlayedAt}
         · <span title={new Date(game.lastPlayedAt).toLocaleString()}>played {timeAgo(game.lastPlayedAt, now)}, {playLength(game.playtimeMs)} in all</span>
       {/if}
@@ -312,5 +312,9 @@
     color: var(--text);
     font-size: 0.82rem;
     outline: none;
+  }
+  .playing {
+    color: var(--success);
+    font-weight: 600;
   }
 </style>

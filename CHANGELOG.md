@@ -3,6 +3,17 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **The game you are playing shows it.** While a tracked game is running,
+  its tile on Home is outlined in green and says "In session" — and for how
+  long, once it has been a minute — its name is green in the sidebar with
+  a controller beside it, and its page says when the session began. It
+  used to say "Playing now" in the colour of a sync, with a spinning sync
+  icon, though nothing was syncing.
+
 ## [2.4.0-beta.3] — 2026-09-26
 
 The biggest beta yet, and the one that has been waiting as beta.3: it was
