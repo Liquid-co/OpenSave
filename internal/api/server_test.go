@@ -332,9 +332,16 @@ func TestDeckyPluginContract(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/api/status = %d", resp.StatusCode)
 	}
-	for _, key := range []string{"settings", "gameCount", "peerCount"} {
+	for _, key := range []string{"settings", "gameCount", "peerCount", "peersOnline", "syncPause"} {
 		if _, ok := body[key]; !ok {
 			t.Errorf("/api/status missing %q", key)
+		}
+	}
+	// What waits on someone besides a conflict, as lists — [] and never null,
+	// which the panel would have to guard against on every render.
+	for _, key := range []string{"locationConflicts", "emptied"} {
+		if got := strings.TrimSpace(string(body[key])); !strings.HasPrefix(got, "[") {
+			t.Errorf("/api/status %q = %s, want a list", key, got)
 		}
 	}
 
@@ -378,13 +385,15 @@ func TestDeckyPluginContract(t *testing.T) {
 	// game is already running, {"queued": true}. The plugin treats any 2xx
 	// as success, so both shapes have to stay 2xx.
 	//
-	// With no peer online this answers 409 and an explanation, which the
-	// plugin surfaces as a failed sync. Worth knowing that sync-all above
-	// returns 200 in the same situation: the panel's "sync everything"
-	// button succeeds while the per-game one reports an error, on a Deck
-	// whose desktop is simply asleep. Pinned rather than corrected, because
-	// which of the two is right is a product decision, not a test's.
+	// With no peer online this answers 409, an explanation, and the reason
+	// "offline" — which the panel reads to stay quiet about a desktop that
+	// is simply asleep, rather than report a failure at every game launch.
+	// Sync-all answers 200 in the same situation with the same reason on
+	// each game, so the panel can say nothing synced instead of "started".
 	resp, body = ts.do(t, http.MethodPost, "/api/games/"+gameID+"/sync", map[string]any{})
+	if resp.StatusCode == http.StatusConflict && string(body["reason"]) != `"offline"` {
+		t.Errorf("/api/games/{id}/sync with nobody online: reason = %s, want \"offline\"", body["reason"])
+	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		_, hasResults := body["results"]
@@ -399,6 +408,29 @@ func TestDeckyPluginContract(t *testing.T) {
 		}
 	default:
 		t.Fatalf("/api/games/{id}/sync = %d (%v)", resp.StatusCode, body)
+	}
+
+	// Pausing from Game Mode: the panel pauses and resumes, and a sync while
+	// paused says so by reason.
+	resp, body = ts.do(t, http.MethodPost, "/api/sync/pause", map[string]any{"minutes": 60})
+	if resp.StatusCode != http.StatusOK || string(body["paused"]) != "true" {
+		t.Fatalf("/api/sync/pause = %d (%v)", resp.StatusCode, body)
+	}
+	resp, body = ts.do(t, http.MethodPost, "/api/games/"+gameID+"/sync", map[string]any{})
+	if resp.StatusCode != http.StatusConflict || string(body["reason"]) != `"paused"` {
+		t.Errorf("sync while paused = %d reason %s, want 409 \"paused\"", resp.StatusCode, body["reason"])
+	}
+	resp, body = ts.do(t, http.MethodPost, "/api/sync/resume", map[string]any{})
+	if resp.StatusCode != http.StatusOK || string(body["paused"]) != "false" {
+		t.Errorf("/api/sync/resume = %d (%v)", resp.StatusCode, body)
+	}
+
+	// Answering for an emptied save: the panel sends "restore" or "delete".
+	// Nothing is emptied here, so the answer is refused — but as "not
+	// emptied" (409), not as a request the endpoint no longer understands.
+	resp, body = ts.do(t, http.MethodPost, "/api/games/"+gameID+"/emptied", map[string]any{"answer": "restore"})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("/api/games/{id}/emptied for a game that is not emptied = %d (%v), want 409", resp.StatusCode, body)
 	}
 
 	// POST /api/games/{id}/snapshot — sent with a comment, which is how a

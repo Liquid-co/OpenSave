@@ -417,6 +417,11 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 	}
 }
 
+// ErrNoPeersOnline is a sync with no other device to sync with: none of the
+// paired devices answered. Not a failure of anything — the save goes over when
+// one is back — which is why it is told apart from errors that are.
+var ErrNoPeersOnline = errors.New("no online peers available")
+
 // SyncGame pings peers and then syncs one game with everyone online.
 func (e *Engine) SyncGame(ctx context.Context, gameID string) (map[string]syncengine.Result, error) {
 	if e.Pause.Paused() {
@@ -426,7 +431,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string) (map[string]syncen
 	e.PingPairedPeers(ctx)
 	online := e.OnlinePeers()
 	if len(online) == 0 {
-		return nil, fmt.Errorf("no online peers available")
+		return nil, ErrNoPeersOnline
 	}
 	results, err := e.Sync.SyncGame(ctx, gameID, online)
 	e.trackSyncOutcome(gameID, results)

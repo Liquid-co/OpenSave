@@ -117,12 +117,22 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if conflicts == nil {
 		conflicts = map[string]syncengine.Conflict{}
 	}
+	// The rest of what waits on someone, for the same clients: a divergence
+	// in one of a game's extra save folders, and a save emptied here.
+	emptied, _ := s.Daemon.EmptiedSaves()
+	if emptied == nil {
+		emptied = []daemon.EmptiedSave{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"settings":      settings,
-		"gameCount":     len(games),
-		"peerCount":     len(peers),
-		"conflicts":     conflicts,
-		"conflictCount": len(conflicts),
+		"settings":          settings,
+		"gameCount":         len(games),
+		"peerCount":         len(peers),
+		"peersOnline":       len(s.Daemon.P2P.OnlinePeers()),
+		"conflicts":         conflicts,
+		"conflictCount":     len(conflicts),
+		"locationConflicts": s.Daemon.P2P.Sync.ActiveRootConflicts(),
+		"emptied":           emptied,
+		"syncPause":         s.Daemon.SyncPauseStatus(),
 	})
 }
 

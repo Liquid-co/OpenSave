@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 )
 
@@ -241,6 +242,23 @@ func (s *Server) handleProbePeer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reachable": resp.StatusCode == http.StatusOK})
 }
 
+// syncReason names why a sync did not happen, for a client to act on rather
+// than parse the message: "paused" (this device paused syncing), "held" (the
+// game's save was emptied here and waits for an answer), "offline" (no other
+// device answered), or "error" for anything else.
+func syncReason(err error) string {
+	switch {
+	case errors.Is(err, syncengine.ErrPaused):
+		return "paused"
+	case errors.Is(err, syncengine.ErrHeld):
+		return "held"
+	case errors.Is(err, p2p.ErrNoPeersOnline):
+		return "offline"
+	default:
+		return "error"
+	}
+}
+
 // handleSyncAll triggers a sync of every tracked game (used by the Steam
 // Deck plugin's one-button flow).
 func (s *Server) handleSyncAll(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +279,7 @@ func (s *Server) handleSyncAll(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err != nil {
-			results[g.ID] = map[string]string{"status": "error", "error": err.Error()}
+			results[g.ID] = map[string]string{"status": "error", "error": err.Error(), "reason": syncReason(err)}
 			continue
 		}
 		results[g.ID] = res
@@ -280,7 +298,7 @@ func (s *Server) handleSyncGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "reason": syncReason(err)})
 		return
 	}
 	s.BroadcastGamesUpdate()

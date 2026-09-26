@@ -7,6 +7,24 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **The command line catches up with the app.**
+  - `opensave offers` lists the games your other devices sync that this one
+    was set to ask about, and `offers place <game> <folder>` or `offers
+    decline <game>` answers them. The setting could be turned on from the
+    command line, but an offer could not be answered there, so those games
+    never synced on a device without the app.
+  - `opensave conflicts` also lists conflicts in a game's extra save folders
+    (`--locations --json` for scripts), and `opensave resolve <game>
+    keep-local|keep-remote --location <folder>` settles one; a game whose only
+    conflict is in one folder needs no `--location`.
+  - `opensave activity [<game>]` shows the Activity timeline: what came from
+    and went to your other devices, snapshots, play and restores, by day.
+  - `opensave sync` says what it did, and exits non-zero when nothing could
+    sync (paused, or no other device online) or something failed. It used to
+    print "Sync started" and exit 0 whatever happened.
+  - The man page covers every command again; it had not been updated since
+    August and was missing thirty-eight of them, the whole cloud section included.
+
 - **Notifications on the desktop.** What OpenSave tells you in its window
   now also reaches you when the window is not in front — hidden in the tray,
   minimised, or behind something else: a save arriving from another device,

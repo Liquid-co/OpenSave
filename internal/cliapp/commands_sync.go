@@ -2,9 +2,11 @@ package cliapp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -24,13 +26,18 @@ func cmdSync(args []string) int {
 		if asJSON {
 			return emitRawJSON(raw)
 		}
-		success("Sync started for all tracked games.")
-		return 0
+		return reportSyncAll(raw)
 	}
 
 	gameID := args[0]
 	raw, err := daemonRequest("POST", "/api/games/"+gameID+"/sync", map[string]any{})
 	if err != nil {
+		var refused *daemonError
+		if !asJSON && errors.As(err, &refused) {
+			if said := sayWhyNotSynced(gameID, refused); said {
+				return 1
+			}
+		}
 		return fail(asJSON, err)
 	}
 	if asJSON {
@@ -38,13 +45,118 @@ func cmdSync(args []string) int {
 	}
 	// A sync that lands while another is running is queued, not an error.
 	var res struct {
-		Queued bool `json:"queued"`
+		Queued  bool                      `json:"queued"`
+		Results map[string]peerSyncResult `json:"results"`
 	}
 	if json.Unmarshal(raw, &res) == nil && res.Queued {
 		success("Queued %s behind the sync already running.", bold(gameID))
 		return 0
 	}
-	success("Sync started for %s.", bold(gameID))
+	o := outcomeFromPeers(gameID, res.Results)
+	switch o.Kind {
+	case "changed":
+		success("Synced %s.", bold(gameID))
+	case "conflict":
+		warning("%s changed here and on %s at once — choose which to keep.", bold(gameID), o.Detail)
+		hint("opensave conflicts")
+		return 1
+	case "waiting":
+		success("Synced %s with the devices that could take it.", bold(gameID))
+		note(o.Detail)
+	default:
+		success("%s is already in sync.", bold(gameID))
+	}
+	return 0
+}
+
+// sayWhyNotSynced explains a sync the daemon refused for a reason that is
+// not a failure — paused, held, nobody online — and reports whether it did.
+func sayWhyNotSynced(gameID string, refused *daemonError) bool {
+	reason := refused.Reason
+	if reason == "" {
+		reason = reasonFromMessage(refused.Message)
+	}
+	switch reason {
+	case "paused":
+		warning("Syncing is paused, so %s was not synced.", bold(gameID))
+		hint("opensave resume")
+	case "offline":
+		warning("No other device is online, so %s was not synced. It goes over when one is.", bold(gameID))
+	case "held":
+		warning("%s is held back: every save file of it was deleted here.", bold(gameID))
+		note("Your other devices keep theirs until you say whether that was meant.")
+		hint("opensave emptied")
+	default:
+		return false
+	}
+	return true
+}
+
+// reportSyncAll says what a sync of everything did, game by game where it
+// matters, and exits non-zero when nothing could sync or something failed.
+func reportSyncAll(raw []byte) int {
+	var body struct {
+		Results map[string]json.RawMessage `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return emitRawJSON(raw) // shape changed; show what came back
+	}
+	ids := make([]string, 0, len(body.Results))
+	for id := range body.Results {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	outcomes := make([]syncOutcome, 0, len(ids))
+	for _, id := range ids {
+		outcomes = append(outcomes, syncOutcomeOf(id, body.Results[id]))
+	}
+	s := summarizeSync(outcomes)
+
+	switch s.nothingSynced() {
+	case "paused":
+		warning("Syncing is paused, so nothing was synced.")
+		hint("opensave resume")
+		return 1
+	case "offline":
+		warning("No other device is online, so nothing was synced. Saves go over when one is.")
+		return 1
+	}
+	if s.Total == 0 {
+		note("Nothing is tracked yet.")
+		hint("opensave scan")
+		return 0
+	}
+
+	success("%s", s.headline())
+	for _, o := range s.Conflicts {
+		fmt.Printf("  %s %s changed here and on %s at once — needs a decision\n", symBullet(), bold(o.Game), o.Detail)
+	}
+	for _, o := range s.Held {
+		fmt.Printf("  %s %s is held back: every save file of it was deleted here\n", symBullet(), bold(o.Game))
+	}
+	for _, o := range s.Waiting {
+		fmt.Printf("  %s %s: %s\n", symBullet(), bold(o.Game), o.Detail)
+	}
+	for _, o := range s.Failed {
+		fmt.Printf("  %s %s: %s\n", symFail(), bold(o.Game), o.Detail)
+	}
+	if s.Offline > 0 {
+		note(fmt.Sprintf("%s not synced: no other device answered.", plural(s.Offline, "game", "games")))
+	}
+	if s.Paused > 0 {
+		note(fmt.Sprintf("%s not synced: syncing is paused.", plural(s.Paused, "game", "games")))
+	}
+	switch {
+	case len(s.Conflicts) > 0 && len(s.Held) > 0:
+		hint("opensave conflicts", "opensave emptied")
+	case len(s.Conflicts) > 0:
+		hint("opensave conflicts")
+	case len(s.Held) > 0:
+		hint("opensave emptied")
+	}
+	if len(s.Failed) > 0 {
+		return 1
+	}
 	return 0
 }
 
@@ -80,19 +192,41 @@ func conflictSizeNote(d conflictDiffFile) string {
 // cmdConflicts lists saves that diverged on two devices and are waiting on a
 // decision. Until one is made that game stops syncing, so a headless machine
 // needs to see and settle them without a desktop.
+//
+// A game's extra save folders can diverge on their own, and are listed after
+// the games: `--locations --json` gives those alone, since `--json` on its own
+// has always been the games keyed by id.
 func cmdConflicts(args []string) int {
-	asJSON, _ := jsonFlag(args)
+	asJSON, args := jsonFlag(args)
+	locationsOnly := false
+	for _, a := range args {
+		if a == "--locations" {
+			locationsOnly = true
+		}
+	}
 
 	conflicts, err := fetchConflicts()
 	if err != nil {
 		return fail(asJSON, err)
 	}
+	locations, err := fetchLocationConflicts()
+	if err != nil {
+		return fail(asJSON, err)
+	}
 	if asJSON {
+		if locationsOnly {
+			return emitJSON(locations)
+		}
 		return emitJSON(conflicts)
 	}
-	if len(conflicts) == 0 {
+	if len(conflicts) == 0 && len(locations) == 0 {
 		section("Conflicts")
 		fmt.Printf("  %s Everything is in sync.\n", symOK())
+		fmt.Println()
+		return 0
+	}
+	if len(conflicts) == 0 {
+		printLocationConflicts(locations)
 		fmt.Println()
 		return 0
 	}
@@ -157,19 +291,60 @@ func cmdConflicts(args []string) int {
 		"opensave resolve <game> keep-local     this device's save wins",
 		"opensave resolve <game> keep-remote    the other device's save wins",
 	)
+	if len(locations) > 0 {
+		printLocationConflicts(locations)
+	}
 	fmt.Println()
 	return 0
 }
 
+// printLocationConflicts lists a game's extra save folders that diverged.
+// There is no keeping both for one of those: that parks the other device's
+// copy on a branch, and branches belong to the whole game.
+func printLocationConflicts(list []locationConflictInfo) {
+	section(fmt.Sprintf("Save locations %s %d waiting on a decision", symDot(), len(list)))
+	t := newTable("game", "folder", "diverged from", "newer side", "files")
+	for _, c := range list {
+		newer := faint("same age")
+		switch {
+		case c.LocalStats.LatestMtimeMs > c.RemoteStats.LatestMtimeMs:
+			newer = accent("this device")
+		case c.RemoteStats.LatestMtimeMs > c.LocalStats.LatestMtimeMs:
+			newer = accent(c.Peer.Name)
+		}
+		files := faint("—")
+		if c.DiffTotal > 0 {
+			files = fmt.Sprintf("%d", c.DiffTotal)
+		}
+		t.add(bold(c.GameID), c.Root, c.Peer.Name, newer, files)
+	}
+	t.render()
+	hint(
+		"opensave resolve <game> keep-local --location <folder>    this device's copy of that folder wins",
+		"opensave resolve <game> keep-remote --location <folder>   the other device's copy wins",
+	)
+}
+
 // cmdResolve settles one conflict. The peer id is looked up from the conflict
 // itself, so the user never has to find and type a node id.
+//
+// With --location <folder>, it settles one of the game's extra save folders
+// instead; and a game whose only conflict is in one such folder needs no
+// --location at all.
 func cmdResolve(args []string) int {
 	asJSON, args := jsonFlag(args)
+	location, args, err := locationFlag(args)
+	if err != nil {
+		return fail(asJSON, fmt.Errorf("%v\n\n%s", err, resolveUsage))
+	}
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, resolveUsage)
 		return 1
 	}
 	gameID, choice := args[0], args[1]
+	if location != "" {
+		return resolveLocation(asJSON, gameID, choice, location)
+	}
 
 	// "keep-both" is what the app calls this; merge-branch is the wire name.
 	resolution := choice
@@ -188,7 +363,27 @@ func cmdResolve(args []string) int {
 	}
 	c, ok := conflicts[gameID]
 	if !ok {
-		return fail(asJSON, fmt.Errorf("no active conflict for %q — run `opensave conflicts`", gameID))
+		// Not the whole game: one of its extra save folders, when that is
+		// the only thing it could mean.
+		locations, lErr := fetchLocationConflicts()
+		if lErr != nil {
+			return fail(asJSON, lErr)
+		}
+		var roots []string
+		for _, l := range locations {
+			if l.GameID == gameID {
+				roots = append(roots, l.Root)
+			}
+		}
+		switch len(roots) {
+		case 0:
+			return fail(asJSON, fmt.Errorf("no active conflict for %q — run `opensave conflicts`", gameID))
+		case 1:
+			return resolveLocation(asJSON, gameID, choice, roots[0])
+		default:
+			return fail(asJSON, fmt.Errorf("%q has %d save locations in conflict (%s) — say which with --location <folder>",
+				gameID, len(roots), strings.Join(roots, ", ")))
+		}
 	}
 
 	if _, err := daemonRequest("POST", "/api/games/"+gameID+"/resolve-conflict", map[string]any{
@@ -210,10 +405,108 @@ func cmdResolve(args []string) int {
 }
 
 const resolveUsage = `usage: opensave resolve <gameId> keep-both|keep-local|keep-remote
+       opensave resolve <gameId> keep-local|keep-remote --location <folder>
 
   keep-both     Keep both saves; the peer's lands on a separate branch (safest)
   keep-local    This device's save wins
-  keep-remote   The other device's save wins`
+  keep-remote   The other device's save wins
+  --location    Settle one of the game's extra save folders (see opensave conflicts)`
+
+// locationFlag takes --location <folder> (or --location=<folder>) out of args.
+func locationFlag(args []string) (string, []string, error) {
+	out := args[:0:0]
+	location := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--location":
+			if i+1 >= len(args) {
+				return "", nil, fmt.Errorf("--location needs the folder's name")
+			}
+			location = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--location="):
+			location = strings.TrimPrefix(a, "--location=")
+		default:
+			out = append(out, a)
+		}
+	}
+	return location, out, nil
+}
+
+// resolveLocation settles a divergence in one of a game's extra save folders.
+func resolveLocation(asJSON bool, gameID, choice, root string) int {
+	if choice == "keep-both" || choice == "merge-branch" {
+		return fail(asJSON, fmt.Errorf("a save location has no keep-both — that parks the other copy on a branch, and branches belong to the whole game; use keep-local or keep-remote"))
+	}
+	if choice != "keep-local" && choice != "keep-remote" {
+		return fail(asJSON, fmt.Errorf("unknown resolution %q\n\n%s", choice, resolveUsage))
+	}
+	locations, err := fetchLocationConflicts()
+	if err != nil {
+		return fail(asJSON, err)
+	}
+	var match *locationConflictInfo
+	for i, l := range locations {
+		if l.GameID == gameID && strings.EqualFold(l.Root, root) {
+			match = &locations[i]
+			break
+		}
+	}
+	if match == nil {
+		return fail(asJSON, fmt.Errorf("no conflict in %q's %q location — run `opensave conflicts`", gameID, root))
+	}
+	if _, err := daemonRequest("POST", "/api/games/"+gameID+"/resolve-location-conflict", map[string]any{
+		"peerId":     match.Peer.ID,
+		"root":       match.Root,
+		"resolution": choice,
+	}); err != nil {
+		return fail(asJSON, err)
+	}
+	if asJSON {
+		return emitJSON(map[string]any{"game": gameID, "location": match.Root, "resolution": choice, "applying": true})
+	}
+	success("Resolving %s's %s folder (%s).", bold(gameID), bold(match.Root), accent(choice))
+	note("This runs in the background — a large folder can take a while.")
+	hint("opensave conflicts")
+	return 0
+}
+
+// locationConflictInfo mirrors /api/status's locationConflicts.
+type locationConflictInfo struct {
+	GameID string `json:"gameId"`
+	Root   string `json:"root"`
+	Peer   struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"peer"`
+	LocalStats struct {
+		LatestMtimeMs int64 `json:"latestMtimeMs"`
+	} `json:"localStats"`
+	RemoteStats struct {
+		LatestMtimeMs int64 `json:"latestMtimeMs"`
+	} `json:"remoteStats"`
+	DiffTotal int `json:"diffTotal"`
+}
+
+// fetchLocationConflicts lists diverged save locations; a daemon from before
+// status carried them reports none.
+func fetchLocationConflicts() ([]locationConflictInfo, error) {
+	raw, err := daemonRequest("GET", "/api/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	var st struct {
+		LocationConflicts []locationConflictInfo `json:"locationConflicts"`
+	}
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return nil, err
+	}
+	if st.LocationConflicts == nil {
+		st.LocationConflicts = []locationConflictInfo{}
+	}
+	return st.LocationConflicts, nil
+}
 
 // conflictInfo mirrors the conflict shape /api/status reports.
 type conflictInfo struct {

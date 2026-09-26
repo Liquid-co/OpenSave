@@ -97,15 +97,27 @@ func daemonRequestWith(client *http.Client, method, path string, body any) ([]by
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		var errBody struct {
-			Error string `json:"error"`
+			Error  string `json:"error"`
+			Reason string `json:"reason"`
 		}
 		if json.Unmarshal(raw, &errBody) == nil && errBody.Error != "" {
-			return nil, fmt.Errorf("%s", errBody.Error)
+			return nil, &daemonError{Message: errBody.Error, Reason: errBody.Reason, Status: resp.StatusCode}
 		}
 		return nil, fmt.Errorf("%s %s failed (%d)", method, path, resp.StatusCode)
 	}
 	return raw, nil
 }
+
+// daemonError is a refusal from the daemon: its message as it wrote it, and,
+// where it gave one, a reason a command can act on rather than parse the
+// message for — a sync's "paused", "held" or "offline".
+type daemonError struct {
+	Message string
+	Reason  string
+	Status  int
+}
+
+func (e *daemonError) Error() string { return e.Message }
 
 // daemonRunning reports whether a daemon is answering.
 func daemonRunning() bool {

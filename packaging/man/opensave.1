@@ -29,7 +29,7 @@ command, for use in scripts.
 .SH GAMES
 .TP
 .BR scan " [" --all ]
-Auto\-detect game saves on this machine: Steam libraries, Proton prefixes,
+Look for game saves on this machine: Steam libraries, Proton prefixes,
 emulators, and thousands of titles from the Ludusavi manifest. Each result
 shows how many files the folder holds, how big it is, and when it was last
 written \(em which is what tells a save still in use from one an install left
@@ -67,10 +67,54 @@ Stop tracking a game. Save files and existing snapshots are left on disk.
 .TP
 .B status
 Show tracked games, their branches, and paired devices.
+.TP
+.BI "add " path
+Track a folder or file named from its path: the game's own folder rather than
+.I Saves
+or a Steam account's number, and a Nintendo Switch save by the name its
+emulator shows.
+.TP
+.B untrack-all --yes
+Stop tracking every game at once. Snapshots are kept; scanning again adds the
+games back from where they are now.
+.TP
+.BI "launch " gameId
+Start the game with its launch program.
+.TP
+.BI "wrap " gameId " -- " command
+Run a game through OpenSave: the newest save from your other devices first,
+then the command, and a snapshot and a sync when it exits. For a Steam launch
+option, or anything else that starts a game.
+.TP
+.BR sessions " [" \fIgameId\fR ]
+When games were played on this device, and for how long.
+.TP
+.BR activity " [" \fIgameId\fR "] [" "--limit \fIN\fR" ]
+What happened to each save lately, newest first and by day: what came from
+your other devices and what went to them, snapshots, play, deletions and
+restores \(em the app's Activity timeline.
+.TP
+.B collection list|create|rename|delete|add|remove
+Group games into collections.
+.I Favourites
+is built in.
 .SH SYNC
 .TP
 .BI "sync [" gameId "|--all]"
-Sync now. With no argument, syncs every tracked game.
+Sync now. With no argument, syncs every tracked game. Says what each game did,
+or why it did not sync: syncing is paused, no other device is online, or the
+game is held back because its save was emptied here.
+.TP
+.BR pause " [" \fIduration\fR ]
+Stop syncing for a while (30m, 1h, 3h and so on) or, with no duration, until
+.BR resume .
+Snapshots are still taken.
+.TP
+.B resume
+Start syncing again, and catch up on what changed while paused.
+.TP
+.B transfers
+What is moving between this device and others now, and what moved lately.
 .TP
 .B peers
 List paired devices, devices discovered on this network, and pending pairing
@@ -88,6 +132,47 @@ Approve an incoming pairing request.
 .TP
 .BI "pair reject " peerId
 Reject an incoming pairing request.
+.TP
+.BI "peers games " peerId
+What that device is tracking.
+.TP
+.BI "probe " "host[:port]"
+Check whether a device answers, before pairing with it.
+.TP
+.BI "forget " peerId
+Remove a stale device record.
+.TP
+.BR conflicts " [" --locations ]
+Saves that changed on two devices at once and wait on a decision, with what
+differs; then any of a game's extra save folders that diverged the same way.
+With
+.BR --json ,
+the games keyed by id;
+.B --locations --json
+gives the folders instead.
+.TP
+.BI "resolve " "gameId choice" " [--location " folder ]
+Settle a conflict:
+.B keep-both
+(the other device's save goes on a branch),
+.BR keep-local " or " keep-remote .
+With
+.BR --location ,
+settles one of the game's extra save folders instead, with
+.BR keep-local " or " keep-remote ;
+a game whose only conflict is in one folder needs no
+.BR --location .
+.TP
+.B offers
+Games your other devices sync that this device was set to ask about
+.RB ( "config set unknown-game-from-peer ask" ),
+waiting for a folder here.
+.TP
+.BI "offers place " "gameId folder"
+Track an offered game here, in that folder.
+.TP
+.BI "offers decline " gameId
+Decline it; it is not offered again unless you track it yourself.
 .TP
 .BI "unpair " peerId
 Drop a paired device.
@@ -121,6 +206,90 @@ snapshot cannot be taken, nothing is changed.
 .BI "export " "gameId directory"
 Copy the current save out to a folder, exactly as the game wrote it \(em no
 archive and no proprietary wrapper.
+.TP
+.BI "snapshot --all " [ comment ]
+Snapshot every tracked game.
+.TP
+.BI "snapshot-diff " "gameId from to"
+What changed from one snapshot to another, file by file.
+.TP
+.BI "branch-delete " "gameId name"
+Delete a branch and its snapshots.
+.TP
+.BI "snapshot-delete " "gameId snapshotId"
+Delete one snapshot.
+.TP
+.BI "snapshot-pin " "gameId snapshotId"
+Keep a snapshot through every limit and clean-up;
+.B snapshot-unpin
+lets the limits apply to it again.
+.TP
+.BI "snapshot-note " "gameId snapshotId" " [" note ]
+Write a note on a snapshot; with no note, remove it.
+.TP
+.BR prune " [" --apply-default ]
+Apply the retention limits now.
+.TP
+.BR storage " [" --compact ]
+Space taken per game, the biggest snapshots, and what pruning would free.
+.B --compact
+has older snapshots share the files they have in common now, rather than in
+the background.
+.TP
+.BR verify " [" \fIgameId\fR "] [" --repair | --remove-damaged ]
+Read every snapshot back and check each file against its checksum.
+.B --repair
+puts back damaged ones from their cloud copies;
+.B --remove-damaged
+removes from the history what cannot be restored.
+.TP
+.BR emptied " [" "\fIgameId\fR delete|restore" ]
+Games whose save files were all deleted here, held back from your other
+devices until you say whether that was meant:
+.B restore
+puts them back,
+.B delete
+lets the deletion reach your other devices.
+.TP
+.BI "files " "gameId snapshotId" " [" path ]
+List a snapshot's contents, or restore one file from it.
+.TP
+.BI "backup export " file.sscb
+Write every save into one portable backup archive;
+.B backup import
+reads one back.
+.SH CLOUD BACKUP
+.TP
+.BI "cloud connect " provider
+Sign in to Google Drive, Dropbox or OneDrive.
+.TP
+.BI "cloud setup " provider
+Configure WebDAV, a webhook, or a local folder.
+.TP
+.B cloud status
+The provider, and whether it is connected;
+.B cloud disconnect
+forgets it.
+.TP
+.B cloud browse
+Everything stored in the cloud;
+.BI "cloud list " gameId
+one game's snapshots there.
+.TP
+.BI "cloud push " gameId
+Upload a game's local snapshots.
+.TP
+.BI "cloud restore " "gameId file"
+Bring one cloud snapshot back;
+.BI "cloud delete " "gameId file"
+removes one, and
+.BI "cloud delete " gameId " --yes"
+every cloud copy of a game.
+.TP
+.B cloud check
+Newer saves your other devices left in the cloud;
+.BR "cloud take" | skip " \fIgameId\fR"
+brings one here or keeps this device's.
 .SH CONFIGURATION
 .TP
 .B config [list]
@@ -169,8 +338,11 @@ caps the ones you took yourself, and defaults to 0, meaning they are kept
 forever. The two are counted separately so a game that autosaves often cannot
 push out a snapshot you took on purpose.
 .TP
+.B scanpath list|add|remove
+Extra folders to scan, for libraries in places the scan does not look.
+.TP
 .B exclude list|add|remove
-Manage folders that auto\-scan skips, for stale save locations you do not want
+Manage folders that scans skip, for stale save locations you do not want
 offered again.
 .TP
 .BI "link " "gameId otherGameId"
@@ -328,6 +500,9 @@ Returns 0 on success and 1 on failure. With
 failures print an object with an
 .I error
 field.
+.B sync
+also returns 1 when nothing could sync \(em paused, or no other device
+online \(em so a script can tell a sync that happened from one that could not.
 .SH SEE ALSO
 Project home: https://github.com/Liquid-co/OpenSave
 .SH LICENSE

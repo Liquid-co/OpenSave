@@ -64,6 +64,8 @@ func Run(args []string) int {
 		return cmdConflicts(rest)
 	case "resolve":
 		return cmdResolve(rest)
+	case "offers":
+		return cmdOffers(rest)
 	case "backup":
 		return cmdBackup(rest)
 	case "prune":
@@ -162,6 +164,8 @@ func Run(args []string) int {
 		return cmdStorage(d, rest)
 	case "sessions":
 		return cmdSessions(d, rest)
+	case "activity":
+		return cmdActivity(d, rest)
 	case "verify":
 		return cmdVerify(d, rest)
 	case "emptied":

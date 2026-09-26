@@ -23,7 +23,7 @@ type commandGroup struct {
 
 var commandGroups = []commandGroup{
 	{"Games", []commandEntry{
-		{"scan [--all]", "Auto-detect game saves (--all includes empty folders)"},
+		{"scan [--all]", "Look for game saves on this device (--all includes empty folders)"},
 		{"add <name> <path>", "Track a game save folder or file"},
 		{"add <path>", "Track a folder or file, named from its path"},
 		{"add <number>", "Track one of the last scan's results"},
@@ -33,6 +33,7 @@ var commandGroups = []commandGroup{
 		{"launch <gameId>", "Start the game"},
 		{"wrap <gameId> -- <command>", "Run a game: newest save first, a snapshot and sync after"},
 		{"sessions [<gameId>]", "When games were played here, and for how long"},
+		{"activity [<gameId>] [--limit N]", "What happened to each save lately: syncs, snapshots, play"},
 		{"status", "Tracked games, branches and peers"},
 		{"collection list|create|rename|delete|add|remove", "Group games (Favourites is built in)"},
 	}},
@@ -50,8 +51,9 @@ var commandGroups = []commandGroup{
 		{"probe <host[:port]>", "Check whether a device answers"},
 		{"forget <peerId>", "Remove a stale device record"},
 		{"relay status|join|leave", "Internet sync between networks"},
-		{"conflicts", "Saves waiting on a decision"},
-		{"resolve <gameId> <choice>", "Settle a conflict"},
+		{"conflicts [--locations]", "Saves waiting on a decision, and diverged save folders"},
+		{"resolve <gameId> <choice> [--location <folder>]", "Settle a conflict, or one save folder's"},
+		{"offers [place <gameId> <folder>|decline <gameId>]", "Games another device syncs, waiting for a folder here"},
 	}},
 	{"History", []commandEntry{
 		{"snapshot <gameId> [-m] [comment]", "Create a snapshot"},
@@ -91,8 +93,8 @@ var commandGroups = []commandGroup{
 	}},
 	{"Configuration", []commandEntry{
 		{"config [set <key> <value>]", "Read or change settings"},
-		{"scanpath list|add|remove", "Extra folders to auto-scan"},
-		{"exclude list|add|remove", "Folders auto-scan should skip"},
+		{"scanpath list|add|remove", "Extra folders to scan"},
+		{"exclude list|add|remove", "Folders scans skip"},
 		{"link <gameId> <otherId>", "Treat two tracked games as the same"},
 		{"unlink <aliasId>", "Undo a link"},
 		{"links <gameId>", "Show ids linked to a game"},
