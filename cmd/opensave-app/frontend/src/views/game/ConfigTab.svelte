@@ -125,11 +125,14 @@
     </div>
     <AppIdField bind:value={cfg.appId} error={appIdError} />
     <div class="field">
-      <label for="c-exe">Executable path (non-Steam)</label>
+      <label for="c-exe">Executable path</label>
       <div class="path-row">
         <input id="c-exe" placeholder="Browse to the game .exe" bind:value={cfg.exePath} />
         <button class="btn" on:click={browseExe}>Browse</button>
       </div>
+      <span class="hint">
+        Launch starts this, even for a Steam game. Leave it empty to launch through Steam.
+      </span>
     </div>
     <div class="field">
       <label for="c-cover">Custom cover image URL</label>

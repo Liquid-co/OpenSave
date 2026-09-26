@@ -98,7 +98,7 @@ const gameUsage = `usage: opensave game <gameId> set <key> <value>
   name <text>            Display name (also how peers match this game)
   path <dir|file>        Move tracking to a different save location
   app-id <steam-id>      Steam App ID, used for cover art and cross-device matching
-  exe-path <file>        Executable, so the app can launch the game
+  exe-path <file>        Program to launch the game with, before Steam
   cover-url <url>        Custom cover image
   auto-sync <true|false> Watch this save and sync it automatically
   max-snapshots <n>      Automatic snapshots kept per branch (0 = unlimited)

@@ -14,6 +14,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   used to say "Playing now" in the colour of a sync, with a spinning sync
   icon, though nothing was syncing.
 
+### Changed
+
+- **Launch starts the program you set.** A game with an executable set is
+  started with it, even when it also has a Steam App ID — which is often
+  there only for its name and cover, and launched a different copy through
+  Steam, or asked to install one. It starts in its own folder, where games
+  look for their files, and a shortcut or batch file opens as a double-click
+  would. Games with no program set still launch through Steam.
+
 ### Fixed
 
 - **A game installed without a launcher is seen being played.** A game kept
