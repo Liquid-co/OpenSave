@@ -27,6 +27,7 @@ import (
 func TestLastSynced_PerGamePerPeer(t *testing.T) {
 	a := testutil.NewTestDaemon(t, "Stamp-A")
 	b := testutil.NewTestDaemon(t, "Stamp-B")
+	logOnFailure(t, a, b)
 	a.PairWith(b)
 	// B does not adopt games it has not been told where to keep. That makes
 	// a game tracked only on A one that A "syncs" with B and nothing moves —

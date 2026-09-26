@@ -26,6 +26,7 @@ func TestSoak_ManyAlternatingRoundsNeverConflict(t *testing.T) {
 	}
 
 	a, b, gameID := trackBothOverRelay(t, "Soak", map[string]string{"slot1.sav": "round-0"})
+	logOnFailure(t, a, b)
 
 	const rounds = 8
 	for round := 1; round <= rounds; round++ {
@@ -90,6 +91,7 @@ func TestSoak_AddingAndDeletingFilesNeverConflicts(t *testing.T) {
 	}
 
 	a, b, gameID := trackBothOverRelay(t, "SoakFiles", map[string]string{"keep.sav": "constant"})
+	logOnFailure(t, a, b)
 
 	for round := 1; round <= 4; round++ {
 		name := fmt.Sprintf("slot%d.sav", round)

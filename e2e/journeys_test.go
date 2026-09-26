@@ -339,6 +339,7 @@ func TestJourney_RestoreOntoAFreshMachineAfterALoss(t *testing.T) {
 	// here is what someone does on a new machine anyway, and it keeps the
 	// restore aimed at this device.
 	fresh := testutil.NewTestDaemon(t, "Loss-Fresh")
+	logOnFailure(t, original, fresh)
 	if id := fresh.TrackGame("Loss"); id != gameID {
 		t.Fatalf("step 2: both devices should derive the id %q, this one got %q", gameID, id)
 	}

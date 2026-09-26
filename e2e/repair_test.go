@@ -21,6 +21,27 @@ type checkReport struct {
 	} `json:"damaged"`
 }
 
+// waitUploaded waits until a snapshot's upload has finished, not merely begun.
+//
+// The local provider creates the file under its final name and then copies
+// into it, so the name turning up in the folder means the copy has started.
+// Until it ends the archive here is still open — Windows refuses to delete it,
+// which is how this failed in CI — and the copy there is still short.
+func waitUploaded(t *testing.T, td *testutil.TestDaemon, dir, snapID string) {
+	t.Helper()
+	if !testutil.WaitFor(30*time.Second, func() bool {
+		for _, e := range td.Daemon.Log.History() {
+			if e.Level == "success" && strings.Contains(e.Message, "cloud: uploaded") &&
+				strings.Contains(e.Message, snapID) {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatalf("setup: the snapshot never finished reaching the cloud: %v", cloudFiles(t, dir))
+	}
+}
+
 // A snapshot whose archive went missing here, with its cloud copy whole, is
 // put back from the cloud by the check itself — and can be restored again.
 func TestRepair_AMissingArchiveComesBackFromTheCloud(t *testing.T) {
@@ -33,16 +54,7 @@ func TestRepair_AMissingArchiveComesBackFromTheCloud(t *testing.T) {
 		ZipPath string `json:"zipPath"`
 	}
 	td.API(http.MethodPost, "/api/games/"+gameID+"/snapshot", map[string]string{"comment": "keep"}, &snap)
-	if !testutil.WaitFor(30*time.Second, func() bool {
-		for _, n := range cloudFiles(t, dir) {
-			if strings.Contains(n, snap.ID) {
-				return true
-			}
-		}
-		return false
-	}) {
-		t.Fatalf("setup: the snapshot never reached the cloud: %v", cloudFiles(t, dir))
-	}
+	waitUploaded(t, td, dir, snap.ID)
 
 	// The archive goes, here only.
 	if err := os.Remove(snap.ZipPath); err != nil {
@@ -90,16 +102,7 @@ func TestRepair_ACompactedSnapshotComesBackWhole(t *testing.T) {
 	oldSlot1 := td.ReadSave("slot1.sav")
 	td.WriteSave("slot2.sav", slot())
 	td.API(http.MethodPost, "/api/games/"+gameID+"/snapshot", map[string]string{"comment": "newer"}, nil)
-	if !testutil.WaitFor(30*time.Second, func() bool {
-		for _, n := range cloudFiles(t, dir) {
-			if strings.Contains(n, old.ID) {
-				return true
-			}
-		}
-		return false
-	}) {
-		t.Fatalf("setup: the snapshot never reached the cloud: %v", cloudFiles(t, dir))
-	}
+	waitUploaded(t, td, dir, old.ID)
 	if _, err := td.Daemon.Snapshots.CompactAll(context.Background(), 0, 0); err != nil {
 		t.Fatal(err)
 	}

@@ -24,6 +24,13 @@ func TestIgnored_PeerSyncLeavesAnIgnoredFileAlone(t *testing.T) {
 	a := testutil.NewTestDaemon(t, "IgnorePeer-A")
 	b := testutil.NewTestDaemon(t, "IgnorePeer-B")
 	a.PairWith(b)
+	// Synced by hand below, once both have the rule. Left on, B's tracking
+	// syncs in the background, A adopts the game from it, and A's own track
+	// fails with 409 "already exists" — which it did. See
+	// testutil.NewTestDaemon.
+	for _, d := range []*testutil.TestDaemon{a, b} {
+		d.API(http.MethodPost, "/api/settings", map[string]any{"autoSyncOnTrack": false}, nil)
+	}
 
 	b.WriteSave("settings.ini", "b's graphics")
 	gameID := b.TrackGame("Ignore Peer Game")

@@ -749,3 +749,34 @@ func TestWebDAVUploadVerificationCatchesTruncation(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// "Uploaded" has to mean this device is finished with the archive: the
+// snapshot's own housekeeping may delete or replace it next, and on Windows an
+// open file can be neither. The archive was still open when the line was
+// written, and a test that removed it on seeing the line failed in CI.
+func TestUploadIsDoneWithTheArchiveWhenItSaysSo(t *testing.T) {
+	svc, s := newTestService(t)
+	setCloudConfig(t, s, func(c *store.CloudConfig) {
+		c.Enabled = true
+		c.Provider = "local"
+		c.URL = t.TempDir()
+	})
+	src := writeTempZip(t, "zip bytes")
+	var removeErr error
+	said := false
+	svc.Log = func(level, msg string) {
+		if level == "success" && strings.Contains(msg, "cloud: uploaded") {
+			said = true
+			removeErr = os.Remove(src)
+		}
+	}
+	if err := svc.Upload(src, "game__main__snap_1.zip"); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	if !said {
+		t.Fatal("the upload never said it was done")
+	}
+	if removeErr != nil {
+		t.Errorf("the archive could not be removed once the upload said it was done: %v", removeErr)
+	}
+}

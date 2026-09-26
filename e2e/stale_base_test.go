@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/testutil"
 )
 
@@ -21,13 +23,41 @@ import (
 // This test injects that state directly rather than trying to lose a message,
 // because the harness delivers reliably: the earlier version of this test
 // synced normally and passed with the fix reverted, proving nothing at all.
+//
+// Exactly that state, and nothing else in motion. The injection used to set
+// the base alone, which also clears the record of what was pushed — the very
+// record a lost report leaves behind, and the one the repair works from. The
+// test then passed only when some background sync or late report happened to
+// re-record the base before the edit, and failed when none did: 3 runs in
+// 110 under load.
 func TestStaleBase_OneSidedEditDoesNotConflict(t *testing.T) {
 	a, b, gameID := pairAndTrack(t, "StaleBase", map[string]string{"slot1.sav": "shared"})
 
-	// Both devices agree right now. Freeze the base at a state neither one
-	// holds — exactly what a lost convergence report leaves behind.
+	// Nothing may run between the injection and the edit: a sync or a report
+	// while the two still agree repairs the base by another route and proves
+	// nothing about this one. So both stop syncing on their own, and the
+	// test waits until they have finished and recorded agreeing.
+	for _, d := range []*testutil.TestDaemon{a, b} {
+		d.API(http.MethodPatch, "/api/games/"+gameID, map[string]any{"autoSync": false}, nil)
+	}
+	shared, err := delta.BuildManifest(a.SaveDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !testutil.WaitFor(45*time.Second, func() bool {
+		return a.Daemon.Store.GetAgreedHash(gameID, b.NodeID()) == shared.ManifestHash()
+	}) {
+		t.Fatal("setup: A never recorded agreeing with B")
+	}
+	testutil.SettleSync(t, gameID, a, b)
+
+	// Freeze the base at a state neither one holds, with the push that the
+	// lost report was about still on record: B holds exactly what A sent.
 	if err := a.Daemon.Store.SetAgreedHash(gameID, b.NodeID(), "stale-base-neither-side-holds"); err != nil {
 		t.Fatalf("SetAgreedHash error = %v", err)
+	}
+	if err := a.Daemon.Store.SetPushedHash(gameID, b.NodeID(), shared.ManifestHash()); err != nil {
+		t.Fatalf("SetPushedHash error = %v", err)
 	}
 
 	// One device edits. The other has not been touched.

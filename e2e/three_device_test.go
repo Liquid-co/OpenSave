@@ -30,6 +30,11 @@ func TestThreeDevices_PerPeerStateStaysSeparate(t *testing.T) {
 	pairOverRelay(t, a, b, relayURL, "trio-room")
 	pairOverRelay(t, a, c, relayURL, "trio-room")
 
+	// Synced by hand below; see TestThreeDevices_AGenuineDivergenceIsRaisedPerPeer.
+	for _, d := range []*testutil.TestDaemon{a, b, c} {
+		d.API(http.MethodPost, "/api/settings", map[string]any{"autoSyncOnTrack": false}, nil)
+	}
+
 	a.WriteSave("slot1.sav", "start")
 	gameID := a.TrackGame("Trio")
 	b.API(http.MethodPost, "/api/games", map[string]string{"name": "Trio", "savePath": b.SaveDir}, nil)
@@ -99,6 +104,14 @@ func TestThreeDevices_AGenuineDivergenceIsRaisedPerPeer(t *testing.T) {
 
 	pairOverRelay(t, a, b, relayURL, "trio-div")
 	pairOverRelay(t, a, c, relayURL, "trio-div")
+
+	// The test syncs by hand below. Left on, A's tracking syncs in the
+	// background, B or C adopts the game from it, and their own track then
+	// fails with 409 "already exists" — which it did, under load. See
+	// testutil.NewTestDaemon.
+	for _, d := range []*testutil.TestDaemon{a, b, c} {
+		d.API(http.MethodPost, "/api/settings", map[string]any{"autoSyncOnTrack": false}, nil)
+	}
 
 	a.WriteSave("slot1.sav", "shared")
 	gameID := a.TrackGame("TrioDiv")

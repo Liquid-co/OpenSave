@@ -221,6 +221,10 @@ func (s *Service) upload(filePath, fileName string, logged bool) error {
 	if err := p.upload(f, size, fileName); err != nil {
 		return err
 	}
+	// Closed before saying it is done, so that "uploaded" means this device
+	// is finished with the archive. On Windows an open file cannot be deleted
+	// or replaced, and the snapshot's own housekeeping may do either next.
+	f.Close()
 
 	if logged {
 		s.Log("success", fmt.Sprintf("cloud: uploaded %q to %s", fileName, cfg.Provider))

@@ -126,9 +126,16 @@ func (t *lanTransport) ReportSyncEvent(peer syncengine.Peer, gameID, eventType s
 	post := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_ = t.postJSON(ctx, peer, peerURL(peer, "/sync-event/"+gameID), map[string]any{
+		err := t.postJSON(ctx, peer, peerURL(peer, "/sync-event/"+gameID), map[string]any{
 			"eventType": eventType, "data": data,
 		}, nil)
+		// A lost progress report costs nothing. These two carry state — what
+		// the other device records as synced and agreed — and losing one
+		// was invisible on both sides.
+		if err != nil && (eventType == "in-sync" || eventType == "sync-complete") && t.engine != nil && t.engine.Log != nil {
+			t.engine.Log("info", fmt.Sprintf("could not tell %s that %s is %s: %v",
+				peer.Name, gameID, eventType, err))
+		}
 	}
 	t.eventsMu.Lock()
 	defer t.eventsMu.Unlock()
