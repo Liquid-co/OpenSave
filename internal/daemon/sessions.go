@@ -128,6 +128,9 @@ func (d *Daemon) sessionTargets() ([]sessions.Target, error) {
 		t := sessions.Target{GameID: g.ID, AppID: g.AppID}
 		if exe := strings.TrimSpace(g.ExePath); exe != "" && !launcherPrograms[programName(exe)] {
 			t.Exe = exe
+			if dir := programFolder(exe); dir != "" {
+				t.Dirs = append(t.Dirs, dir)
+			}
 		}
 		if dir := byAppID[g.AppID]; g.AppID != "" && dir != "" {
 			t.Dirs = append(t.Dirs, dir)
@@ -139,6 +142,29 @@ func (d *Daemon) sessionTargets() ([]sessions.Target, error) {
 		targets = append(targets, t)
 	}
 	return targets, nil
+}
+
+// programFolder is the folder a game's launch program is in, whose programs
+// all count as the game running.
+//
+// The program chosen is often not the one that stays running. Many games
+// start through a small program of their own that hands over and exits —
+// Elden Ring's start_protected_game.exe starts eldenring.exe beside it — so
+// matching the chosen program alone saw the game for a few seconds, or not
+// at all. Whichever of them was picked, the game runs from that folder.
+//
+// Not for a shortcut, which is kept anywhere and points somewhere else, and
+// not for a folder near a drive root, which holds more than one game.
+func programFolder(exe string) string {
+	switch strings.ToLower(filepath.Ext(exe)) {
+	case ".lnk", ".url":
+		return ""
+	}
+	dir := filepath.Dir(exe)
+	if !specificEnough(dir) {
+		return ""
+	}
+	return dir
 }
 
 // folderish is a game name as a folder is usually named: "Hollow Knight: Silksong"

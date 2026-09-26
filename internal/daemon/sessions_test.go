@@ -139,6 +139,51 @@ func TestSessionIgnoresALauncherAsTheLaunchProgram(t *testing.T) {
 	}
 }
 
+// A game started through a small program that hands over to the real one and
+// exits is still being played: whichever was chosen as the launch program,
+// the game runs from that folder.
+func TestSessionRecognisesTheGameBesideItsLaunchProgram(t *testing.T) {
+	d := newTestDaemon(t)
+	g, _ := sessionGame(t, d, "handover")
+	gameDir := filepath.Join(t.TempDir(), "ELDEN RING", "Game")
+	g.ExePath = filepath.Join(gameDir, "start_protected_game.exe")
+	if err := d.Store.UpdateGame(g); err != nil {
+		t.Fatal(err)
+	}
+	// The program chosen has exited; the one it started is running.
+	d.sessions.list = func() ([]sessions.Proc, error) {
+		return []sessions.Proc{{PID: 9, Exe: filepath.Join(gameDir, "eldenring.exe")}}, nil
+	}
+	d.PollSessions()
+	if d.PlayingSince(g.ID).IsZero() {
+		t.Error("the game its launch program started was not seen as playing")
+	}
+}
+
+// That folder and nothing more: a program beside it is not the game, and the
+// folder a shortcut is kept in says nothing about where the game is.
+func TestSessionLaunchFolderClaimsNothingElse(t *testing.T) {
+	root := t.TempDir()
+	for label, c := range map[string]struct{ exe, running string }{
+		"a neighbouring folder": {filepath.Join(root, "Game", "game.exe"), filepath.Join(root, "Tools", "editor.exe")},
+		"a shortcut's folder":   {filepath.Join(root, "Desktop", "Game.lnk"), filepath.Join(root, "Desktop", "portable.exe")},
+	} {
+		d := newTestDaemon(t)
+		g, _ := sessionGame(t, d, "claims")
+		g.ExePath = c.exe
+		if err := d.Store.UpdateGame(g); err != nil {
+			t.Fatal(err)
+		}
+		d.sessions.list = func() ([]sessions.Proc, error) {
+			return []sessions.Proc{{PID: 11, Exe: c.running}}, nil
+		}
+		d.PollSessions()
+		if !d.PlayingSince(g.ID).IsZero() {
+			t.Errorf("%s: %s running counted as playing a game launched by %s", label, c.running, c.exe)
+		}
+	}
+}
+
 func TestSpokenLength(t *testing.T) {
 	for dur, want := range map[time.Duration]string{
 		40 * time.Second: "1 min", 45 * time.Minute: "45 min", time.Hour: "1 h", 72 * time.Minute: "1 h 12 min",

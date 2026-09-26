@@ -145,6 +145,17 @@ func (sc *Scanner) installParentDirs() []string {
 	add(home, "Games", "Amazon Games", "Library")
 	// Riot.
 	add(systemDrive + string(filepath.Separator) + "Riot Games")
+	// No launcher at all: a game copied into place or unpacked from a
+	// DRM-free download. Those conventionally live in a Games folder at the
+	// root of a drive, and nothing records them anywhere, so without this a
+	// game kept in D:\Games is never matched to its install and is never seen
+	// being played. Children are only ever looked up by name, so the other
+	// folders in there cost nothing.
+	for _, root := range driveRoots() {
+		add(root, "Games")
+	}
+	// The same, per user. Lutris installs here by default.
+	add(home, "Games")
 
 	return dedupePaths(out)
 }

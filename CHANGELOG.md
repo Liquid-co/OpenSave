@@ -14,6 +14,18 @@ All notable changes to OpenSave are documented here. This project adheres to
   used to say "Playing now" in the colour of a sync, with a spinning sync
   icon, though nothing was syncing.
 
+### Fixed
+
+- **A game installed without a launcher is seen being played.** A game kept
+  in a Games folder at the root of a drive — `D:\Games\Elden Ring` — or in
+  your own Games folder was never matched to its install, so playing it
+  started no session. Those folders are now looked in.
+- **A game started through a program of its own is seen being played.** Many
+  games start with a small program that hands over to the real one and
+  exits; with that one chosen as the game's program, the game was seen for
+  a few seconds or not at all. Anything running from the chosen program's
+  folder now counts.
+
 ## [2.4.0-beta.3] — 2026-09-26
 
 The biggest beta yet, and the one that has been waiting as beta.3: it was

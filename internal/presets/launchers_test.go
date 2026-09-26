@@ -209,3 +209,32 @@ Samurai Riot:
 		t.Errorf("SavePath = %q, want %q", found[0].SavePath, saveDir)
 	}
 }
+
+// A game no launcher knows about — copied into place, or unpacked from a
+// DRM-free download — conventionally sits in a Games folder at the root of a
+// drive, or in the user's own. Without these it was never matched to its
+// install, so it was never seen being played.
+func TestInstallsInAGamesFolderAreFound(t *testing.T) {
+	drive := t.TempDir()
+	onDrive := filepath.Join(drive, "Games", "Elden Ring")
+	home := t.TempDir()
+	inHome := filepath.Join(home, "Games", "Celeste")
+	for _, dir := range []string{onDrive, inHome} {
+		if err := os.MkdirAll(dir, 0o777); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prev := driveRoots
+	driveRoots = func() []string { return []string{drive} }
+	t.Cleanup(func() { driveRoots = prev })
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+
+	dirs := (&Scanner{EpicManifestDirs: []string{}}).launcherInstallDirs()
+	if got := dirs["elden ring"]; got != onDrive {
+		t.Errorf("a game in a drive's Games folder: %q, want %q", got, onDrive)
+	}
+	if got := dirs["celeste"]; got != inHome {
+		t.Errorf("a game in the user's Games folder: %q, want %q", got, inHome)
+	}
+}
