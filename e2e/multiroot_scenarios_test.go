@@ -514,6 +514,53 @@ func TestMultiRootScenario_ALateReportDoesNotHideADivergence(t *testing.T) {
 	}
 }
 
+// The location's own TestStaleBase_OneSidedEditDoesNotConflict. A report that
+// never arrives leaves the base behind both devices, with the push it was
+// about still on record — B holds exactly what A sent. An edit on A alone must
+// read as A's alone, and go over.
+//
+// The push record was written for locations and never read, so here it read
+// as both having moved: a conflict over a change only one device made.
+func TestMultiRootScenario_ALostReportDoesNotMakeAOneSidedEditAConflict(t *testing.T) {
+	a, b, gameID, aConfig, bConfig := twoLocationPair(t, "LocStaleBase", map[string]string{
+		"settings.ini": "shared v1",
+	})
+	pauseAutoSync(t, a, b, gameID)
+
+	// Nothing may run between the injection and the edit: a sync or a report
+	// while the two still agree records the base by another route.
+	m, err := delta.BuildManifest(aConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared := m.RootHash(delta.PrimaryRoot)
+	if !testutil.WaitFor(45*time.Second, func() bool {
+		return a.Daemon.Store.GetAgreedHashForRoot(gameID, b.NodeID(), "config") == shared
+	}) {
+		t.Fatal("setup: A never recorded agreeing with B on the location")
+	}
+	testutil.SettleSync(t, gameID, a, b)
+
+	if err := a.Daemon.Store.SetAgreedHashForRoot(gameID, b.NodeID(), "config", "stale-base-neither-side-holds"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Daemon.Store.SetPushedHashForRoot(gameID, b.NodeID(), "config", shared); err != nil {
+		t.Fatal(err)
+	}
+
+	writeIn(t, aConfig, "settings.ini", "edited on A only")
+	a.API(http.MethodPost, "/api/games/"+gameID+"/sync", nil, nil)
+	testutil.SettleSync(t, gameID, a, b)
+	if c := a.Daemon.P2P.Sync.ActiveRootConflicts(); len(c) > 0 {
+		t.Fatalf("an edit made on A alone raised a conflict in the location: %+v", c[0].DiffFiles)
+	}
+	if !testutil.WaitFor(45*time.Second, func() bool {
+		return readIn(bConfig, "settings.ini") == "edited on A only"
+	}) {
+		t.Errorf("A's edit never reached B: %q", readIn(bConfig, "settings.ini"))
+	}
+}
+
 // While a location waits on a decision, later syncs must not quietly answer
 // it. This is the rule that makes a conflict mean anything.
 func TestMultiRootScenario_AnOpenLocationConflictBlocksFurtherSyncsOfIt(t *testing.T) {

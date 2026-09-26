@@ -143,26 +143,14 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			if w.engine.Sync.Progress.OnSyncComplete != nil {
 				w.engine.Sync.Progress.OnSyncComplete(msg.GameID, ev)
 			}
-			// Peer finished pulling from us over the relay: refresh the
-			// shared lineage so pushed files start counting as synced.
+			// Peer finished pulling from us over the relay. Handled exactly as
+			// on the LAN; recording the files now matters more here, since the
+			// manifest round trip it saves is slower over the relay.
 			if peer, err := w.engine.Store.GetPeer(msg.From); err == nil {
 				sp := syncengine.Peer{ID: peer.ID, Name: peer.Name, Address: "relay", Port: peer.Port, IsWan: true}
-				// Same as the LAN path: the peer named the files it wrote, so
-				// record them now instead of waiting on a manifest round trip
-				// — over the relay that trip is slower still, so the window
-				// this closes is wider here than on a LAN.
 				var raw map[string]any
 				_ = json.Unmarshal(msg.Data, &raw)
-				took := stringsFromEventData(raw, "pulledFiles")
-				w.engine.Sync.AddConfirmedLineage(msg.GameID, sp.ID, took)
-				if len(took) > 0 {
-					w.engine.Sync.RecordActivity(store.ActivityEvent{GameID: w.engine.localGameID(msg.GameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
-				}
-				go func() {
-					refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-					defer cancel()
-					w.engine.Sync.RefreshLineage(refreshCtx, msg.GameID, sp)
-				}()
+				w.engine.peerFinishedPulling(msg.GameID, sp, raw)
 			}
 		case "in-sync":
 			// Peer verified both sides match: confirm on our side (hash

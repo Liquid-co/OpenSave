@@ -151,6 +151,20 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 	// second detector that is nearly right is worse than none, because it
 	// looks like the work has been done.
 	base := e.Store.GetAgreedHashForRoot(gameID, peer.ID, sr.root.Name)
+	// A push is proven once the peer is seen holding exactly what was handed
+	// over, whatever became of its report — the repair the main folder makes
+	// (see SyncWithPeer), and for the same reason. The push was recorded below
+	// and nothing ever read it, so a lost report left this location's base
+	// behind both devices, and the next edit on one of them read as both
+	// having moved: a conflict over a change only one device made.
+	//
+	// Both hashes are of the filtered view, which is what the push recorded.
+	if pushed := e.Store.GetPushedHashForRoot(gameID, peer.ID, sr.root.Name); pushed != "" {
+		if remoteHash := remote.RootHash(delta.PrimaryRoot); base != remoteHash && remoteHash == pushed {
+			_ = e.Store.SetAgreedHashForRoot(gameID, peer.ID, sr.root.Name, remoteHash)
+			base = remoteHash
+		}
+	}
 	// A base recorded before the rules existed was hashed over everything, so
 	// it can equal neither filtered side — and a base matching neither reads
 	// as both having moved, which is a conflict on the first sync after anyone

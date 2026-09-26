@@ -30,6 +30,15 @@ All notable changes to OpenSave are documented here. This project adheres to
   arrived late — after both edits — one device's change quietly replaced
   the other's, with no conflict raised. It is a conflict now, as it always
   should have been. Found by a test that failed only on a slow machine.
+- **A file in a game's main save folder could be deleted because of its
+  second one.** Files pulled into a second save folder were recorded as
+  shared in the main folder too, so a file of the same name the game later
+  wrote into its main folder — a `settings.ini` in both, say — read as one
+  the other device had deleted, and was deleted. Each folder's files are
+  now recorded against that folder.
+- **An edit to a game's second save folder no longer raises a conflict when
+  only one device made it**, after the other device's word that it had
+  taken the last change went missing.
 - **A game installed without a launcher is seen being played.** A game kept
   in a Games folder at the root of a drive — `D:\Games\Elden Ring` — or in
   your own Games folder was never matched to its install, so playing it

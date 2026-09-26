@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,15 @@ import (
 type deviceA struct {
 	dir   string
 	extra map[string]string // its extra save locations, by name
+
+	mu      sync.Mutex
+	reports []sentReport // what B told it about syncs, in order
+}
+
+// sentReport is one sync-event B sent to A.
+type sentReport struct {
+	eventType string
+	data      map[string]any
 }
 
 func (a *deviceA) base(root string) string {
@@ -78,6 +88,9 @@ func (a *deviceA) DeleteRemote(ctx context.Context, peer syncengine.Peer, ref sy
 }
 func (a *deviceA) TriggerPeerPull(peer syncengine.Peer, gameID string) {}
 func (a *deviceA) ReportSyncEvent(peer syncengine.Peer, gameID, eventType string, data map[string]any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.reports = append(a.reports, sentReport{eventType, data})
 }
 
 type raceFixture struct {

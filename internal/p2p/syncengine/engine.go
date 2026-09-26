@@ -846,10 +846,34 @@ func keepPendingDirDeletions(fresh, previous, localDirs, remoteDirs []string) []
 // shared set, and overwriting the lineage with it would drop every other file
 // the two devices agree on — which would then look like a mass deletion.
 func (e *Engine) AddConfirmedLineage(gameID, peerID string, files []string) {
+	e.AddConfirmedLineageForRoot(gameID, peerID, delta.PrimaryRoot, files)
+}
+
+// AddConfirmedLineageForRoot is AddConfirmedLineage for one save location.
+//
+// Every location reported into the main folder's record once, because the
+// report did not say which it was. A second folder's settings.ini was then
+// "shared" in the main save folder too — and the record keeps a path for as
+// long as either device holds it there, so the first settings.ini the game
+// wrote into its main folder read as one the other device had deleted, and
+// was deleted.
+//
+// A location this device does not have is ignored rather than recorded
+// against the main folder, which is the mistake this exists to stop.
+func (e *Engine) AddConfirmedLineageForRoot(gameID, peerID, root string, files []string) {
 	if len(files) == 0 {
 		return
 	}
-	existingFiles, existingDirs, err := e.Store.GetSyncState(gameID, peerID)
+	if root != delta.PrimaryRoot {
+		paths, err := e.Store.GameRootPaths(gameID)
+		if err != nil {
+			return
+		}
+		if _, ok := paths[root]; !ok {
+			return
+		}
+	}
+	existingFiles, existingDirs, err := e.Store.GetSyncStateForRoot(gameID, peerID, root)
 	if err != nil {
 		return
 	}
@@ -872,7 +896,7 @@ func (e *Engine) AddConfirmedLineage(gameID, peerID string, files []string) {
 		merged = filterPathList(merged, rules)
 	}
 	sort.Strings(merged)
-	if err := e.Store.SetSyncState(gameID, peerID, merged, existingDirs); err != nil {
+	if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, merged, existingDirs); err != nil {
 		e.Log("warn", fmt.Sprintf("recording confirmed lineage failed: %v", err))
 	}
 }
@@ -1442,6 +1466,11 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// We already know what we wrote, so we say so.
 	e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
 		"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
+		// Which save location they were written into. The paths are relative
+		// to it, and recorded against the main save folder they name files
+		// that are not there. Empty for the main folder; older versions leave
+		// it out, which reads the same.
+		"root": root.Name,
 	})
 	if len(pulled) > 0 {
 		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityReceived, Device: peer.Name,

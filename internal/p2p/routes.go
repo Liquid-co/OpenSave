@@ -826,27 +826,8 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 		if e.Sync.Progress.OnSyncComplete != nil {
 			e.Sync.Progress.OnSyncComplete(gameID, ev)
 		}
-		// The peer finished pulling from us: whatever we pushed is now on
-		// both sides, so refresh the shared lineage. Until this runs,
-		// freshly-pushed files deliberately stay out of the lineage (see
-		// persistLineage), so deleting one locally would pull it back
-		// instead of propagating the delete.
 		if peer, ok := e.peerByAddress(clientIP(r)); ok {
-			// Recorded first, and synchronously: the peer told us exactly which
-			// files it wrote, so the lineage can be updated now rather than
-			// after a manifest round trip. That round trip is what left a
-			// window in which deleting a just-synced file pulled it back
-			// instead of propagating the delete.
-			took := stringsFromEventData(body.Data, "pulledFiles")
-			e.Sync.AddConfirmedLineage(gameID, peer.ID, took)
-			if len(took) > 0 {
-				e.Sync.RecordActivity(store.ActivityEvent{GameID: e.localGameID(gameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
-			}
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				e.Sync.RefreshLineage(ctx, gameID, peer)
-			}()
+			e.peerFinishedPulling(gameID, peer, body.Data)
 		}
 	case "in-sync":
 		// The peer verified both sides hold identical content; confirm on
@@ -956,6 +937,39 @@ func ServedProto() int { return int(servedProto.Load()) }
 // get an older peer into an end-to-end test. Nothing in the product calls it.
 func SetServedProto(v int) int {
 	return int(servedProto.Swap(int64(v)))
+}
+
+// peerFinishedPulling handles a peer's report that it finished pulling from
+// this device, over the LAN or the relay alike: whatever was pushed is now on
+// both sides, so the shared lineage is brought up to date. Until it is,
+// freshly-pushed files deliberately stay out of it (see persistLineage), so
+// deleting one here would pull it back instead of propagating the delete.
+func (e *Engine) peerFinishedPulling(gameID string, peer syncengine.Peer, data map[string]any) {
+	// Recorded first, and synchronously: the peer said exactly which files it
+	// wrote, so the lineage can be updated now rather than after a manifest
+	// round trip. That round trip is what left a window in which deleting a
+	// just-synced file pulled it back instead of propagating the delete.
+	//
+	// Against the location it names. A report without one is from a version
+	// that did not say, and means the main save folder, as it always has.
+	took := stringsFromEventData(data, "pulledFiles")
+	root, _ := data["root"].(string)
+	e.Sync.AddConfirmedLineageForRoot(gameID, peer.ID, root, took)
+	if len(took) > 0 {
+		e.Sync.RecordActivity(store.ActivityEvent{GameID: e.localGameID(gameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
+	}
+	refreshAfterPull(e, gameID, peer)
+}
+
+// refreshAfterPull re-checks the lineage against the peer's manifest after a
+// report, in the background so the report is answered at once. A variable so
+// a test can run it in line and look at the result without racing it.
+var refreshAfterPull = func(e *Engine, gameID string, peer syncengine.Peer) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		e.Sync.RefreshLineage(ctx, gameID, peer)
+	}()
 }
 
 // stringsFromEventData pulls a []string out of a sync-event payload, which
