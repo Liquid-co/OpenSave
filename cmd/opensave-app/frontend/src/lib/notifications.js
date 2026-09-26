@@ -9,7 +9,9 @@
 // from another device, one brought from the cloud, a deletion made
 // elsewhere, a restore — come from the activity history (lib/timeline.js)
 // and are unread until the bell has been opened since.
+import { writable } from 'svelte/store';
 import { describe } from './timeline.js';
+import { plural } from './format.js';
 
 /** Activity kinds worth a notification; the rest stay on the timeline. */
 export const NOTIFY_KINDS = ['received', 'cloud-pulled', 'deleted', 'restored', 'emptied', 'conflict'];
@@ -109,4 +111,35 @@ export function saveSeenAt(ms, storage = globalThis.localStorage) {
   } catch {
     // Storage refused: everything reads as unread again after a restart.
   }
+}
+
+// A save arriving from another device is said in the corner too — at most
+// once in a while for each game, since a game played on the other device
+// saves every few minutes, and each of those arrives here.
+export const ARRIVAL_QUIET_MS = 5 * 60_000;
+
+/** The message for an activity event of a save arriving, or null when it is
+ *  not one or one was shown for that game lately. lastShown is updated. */
+export function arrivalMessage(ev, games, lastShown, now = Date.now()) {
+  if (ev?.kind !== 'received' || !games?.[ev.gameId]) return null;
+  if (now - (lastShown[ev.gameId] ?? 0) < ARRIVAL_QUIET_MS) return null;
+  lastShown[ev.gameId] = now;
+  return `${games[ev.gameId].name}: got ${plural(ev.files || 1, 'file')} from ${ev.device}`;
+}
+
+// Examples, from "Show me" in Settings → Notifications: entries in the bell
+// that look like the real thing, gone once the bell has been looked at.
+export const exampleEvents = writable([]);
+
+export function exampleEvent(now = Date.now()) {
+  return {
+    id: `example:${now}`,
+    example: true,
+    atMs: now,
+    tone: 'info',
+    title: 'Hades: got 3 files from Steam Deck',
+    detail: 'An example — this is how a save arriving from another device shows',
+    unread: true,
+    go: null
+  };
 }

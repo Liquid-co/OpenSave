@@ -19,7 +19,10 @@ All notable changes to OpenSave are documented here. This project adheres to
   cannot be restored, an update — and what happened lately, such as a save
   arriving from another device or brought from the cloud. What happened is
   unread until you have opened the bell; what waits on you stays until it
-  is dealt with. Each one opens where it is dealt with.
+  is dealt with. Each one opens where it is dealt with. A save arriving from
+  another device is also said in the corner — once in a while for each game,
+  not at every save — and can be turned off in Settings → Notifications,
+  where "Show me" plays through how each kind of notification appears.
 
 - **Pause syncing from Home, and pick linked copies by their covers.** Home
   has a Pause syncing button beside Sync all — for 15 minutes, an hour,
@@ -34,8 +37,8 @@ All notable changes to OpenSave are documented here. This project adheres to
   of your other devices — when it was last snapshotted and synced, and how
   long it has been played here; and below that every sync ("Got 3 files
   from Steam Deck"), snapshot, play session, restore and anything that
-  needed you, grouped by day and filterable by kind and game. "All
-  activity" on Home opens it. The full technical log is one click away as
+  needed you, grouped by day and filterable by game and by syncs,
+  snapshots or play. "All activity" on Home opens it. The full technical log is one click away as
   before.
 
 - **An emptied save folder asks before it empties your other devices.**

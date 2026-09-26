@@ -1,6 +1,10 @@
 // Central app state, fed by the daemon's init dump + live WS updates.
 import { writable, derived, get } from 'svelte/store';
 import { notifyPrefs } from './notifyprefs.js';
+import { arrivalMessage } from './notifications.js';
+
+// When each game's arrival was last said (lib/notifications.js).
+const arrivalShown = {};
 
 export const view = writable({ name: 'home', params: {} });
 export const settings = writable(null);
@@ -181,10 +185,13 @@ export function applyMessage(msg) {
     case 'games-update':
       games.set(data ?? {});
       break;
-    case 'activity':
+    case 'activity': {
       lastActivity.set(data);
       activityTick.update((n) => n + 1);
+      const said = get(notifyPrefs).arrivals ? arrivalMessage(data, get(games), arrivalShown) : null;
+      if (said) toast(said, 'info', { action: { label: 'Open', run: () => navigate('game', { gameId: data.gameId }) } });
       break;
+    }
     case 'peers-update':
       applyPeersPayload(data ?? {});
       break;

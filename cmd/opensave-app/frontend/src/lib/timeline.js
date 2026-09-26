@@ -5,12 +5,14 @@ import { snapshotKind, whenLabel } from './snapshots.js';
 import { fmtSize, playLength, plural } from './format.js';
 
 /** The filters over the timeline, and the kinds each shows. */
+// A conflict and an emptied save are things that happened to a sync, so they
+// are among the syncs; a filter of their own was nearly always empty, and
+// what is waiting on you now is the bell's to say.
 export const TIMELINE_FILTERS = {
   all: { label: 'Everything', kinds: null },
-  syncs: { label: 'Syncs', kinds: ['received', 'sent', 'deleted', 'cloud-pulled'] },
+  syncs: { label: 'Syncs', kinds: ['received', 'sent', 'deleted', 'cloud-pulled', 'conflict', 'emptied'] },
   snapshots: { label: 'Snapshots', kinds: ['snapshot', 'restored'] },
-  play: { label: 'Play', kinds: ['played'] },
-  attention: { label: 'Needed you', kinds: ['emptied', 'conflict'] }
+  play: { label: 'Play', kinds: ['played'] }
 };
 
 export function filterItems(items, filter = 'all', gameId = '') {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { badgeCount, happened, loadSeenAt, saveSeenAt, waitingOnYou } from './notifications.js';
+import { arrivalMessage, badgeCount, happened, loadSeenAt, saveSeenAt, waitingOnYou, ARRIVAL_QUIET_MS } from './notifications.js';
 
 const games = {
   hades: { id: 'hades', name: 'Hades', branches: { main: { snapshots: [{ id: 's1', problem: 'damaged' }] } } },
@@ -42,5 +42,18 @@ describe('notifications', () => {
     expect(loadSeenAt(storage)).toBe(0);
     saveSeenAt(1234, storage);
     expect(loadSeenAt(storage)).toBe(1234);
+  });
+});
+
+describe('a save arriving', () => {
+  it('is said once in a while for each game, not at every save the other device makes', () => {
+    const shown = {};
+    const t0 = 1_000_000;
+    const ev = { kind: 'received', gameId: 'hades', device: 'Steam Deck', files: 2 };
+    expect(arrivalMessage(ev, games, shown, t0)).toBe('Hades: got 2 files from Steam Deck');
+    expect(arrivalMessage(ev, games, shown, t0 + 60_000)).toBeNull();
+    expect(arrivalMessage({ ...ev, gameId: 'celeste' }, games, shown, t0 + 60_000)).toBe('Celeste: got 2 files from Steam Deck');
+    expect(arrivalMessage(ev, games, shown, t0 + ARRIVAL_QUIET_MS + 1)).not.toBeNull();
+    expect(arrivalMessage({ ...ev, kind: 'sent' }, games, {}, t0)).toBeNull();
   });
 });

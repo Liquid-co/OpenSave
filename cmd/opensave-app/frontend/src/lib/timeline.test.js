@@ -45,6 +45,7 @@ suite('timeline', () => {
       { kind: 'snapshot', gameId: 'b', comment: '', auto: true, atMs: at(9, 0, 24) }
     ];
     expect(filterItems(items, 'syncs').map((i) => i.kind)).toEqual(['received']);
+    expect(filterItems([{ kind: 'conflict', gameId: 'a' }, { kind: 'emptied', gameId: 'a' }], 'syncs')).toHaveLength(2);
     expect(filterItems(items, 'all', 'b').map((i) => i.gameId)).toEqual(['b']);
     expect(byDay(runs(items, now), now).map((d) => d.day)).toEqual(['Today', 'Yesterday']);
   });

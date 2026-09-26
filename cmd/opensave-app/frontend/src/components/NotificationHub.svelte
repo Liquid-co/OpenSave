@@ -9,7 +9,7 @@
   import CoverImage from './CoverImage.svelte';
   import { api, gameCover } from '../lib/api.js';
   import { stateLoaded, games, conflicts, locationConflicts, pairingRequests, cloudOffers, newGames, navigate, activityTick, availableUpdate } from '../lib/stores.js';
-  import { waitingOnYou, happened, badgeCount, loadSeenAt, saveSeenAt } from '../lib/notifications.js';
+  import { waitingOnYou, happened, badgeCount, loadSeenAt, saveSeenAt, exampleEvents } from '../lib/notifications.js';
   import { timeAgo } from '../lib/timeago.js';
 
   let open = false;
@@ -52,7 +52,7 @@
     newGames: $newGames,
     update: $availableUpdate
   });
-  $: events = happened(items, $games, seenAt, now);
+  $: events = [...$exampleEvents, ...happened(items, $games, seenAt, now)];
   $: count = badgeCount(waiting, events);
 
   // Opened and then closed, everything shown has been seen. Marked on
@@ -65,6 +65,7 @@
     open = false;
     seenAt = Date.now();
     saveSeenAt(seenAt);
+    exampleEvents.set([]); // seen, and only ever an example
   }
   function markAllRead() {
     seenAt = Date.now();
@@ -123,7 +124,11 @@
           <div class="section">Earlier</div>
           {#each events as e (e.id)}
             <button class="item" class:unread={e.unread} on:click={() => go(e)}>
-              <span class="thumb"><span class="initials">{initials($games[e.gameId]?.name)}</span><CoverImage src={gameCover($games[e.gameId])} alt="" /></span>
+              {#if e.example}
+                <span class="thumb icon"><Info size={15} /></span>
+              {:else}
+                <span class="thumb"><span class="initials">{initials($games[e.gameId]?.name)}</span><CoverImage src={gameCover($games[e.gameId])} alt="" /></span>
+              {/if}
               <span class="text">
                 <span class="t">{e.title}</span>
                 <span class="d">{e.detail ? `${e.detail} · ` : ''}{timeAgo(iso(e.atMs), now)}</span>
