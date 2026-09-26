@@ -7,6 +7,28 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **The Steam Deck panel catches up.** The Game Mode panel had not changed
+  since August, and it showed. Now:
+  - It says what a sync did: synced, already in sync, or why not — paused,
+    held, or no other device online. "Sync all now" used to say "Sync
+    started" even when nothing could sync.
+  - It stays quiet when your other devices are simply off. With "Sync around
+    gameplay" on, a Deck away from home used to report a failed sync at every
+    game launch and exit.
+  - Syncing can be paused and resumed from Game Mode, and the panel shows
+    when it is paused.
+  - An emptied save can be answered from Game Mode — put the files back, or
+    delete them on your other devices too — and so can a conflict in one of
+    a game's extra save folders. Both used to wait for Desktop Mode.
+  - It counts devices online, not devices paired.
+  - Every game has its cover, Switch games included.
+  - "Start sync service" finds an `opensave-cli` installed with install.sh,
+    in `~/.local/bin`, which Decky's own PATH leaves out; it used to find
+    only the Flatpak.
+
+  It is now version 2.4.0, like the app. It has still not been run on a
+  Steam Deck by anyone who wrote it.
+
 - **The command line catches up with the app.**
   - `opensave offers` lists the games your other devices sync that this one
     was set to ask about, and `offers place <game> <folder>` or `offers

@@ -1,5 +1,6 @@
 import {
   ButtonItem,
+  DropdownItem,
   PanelSection,
   PanelSectionRow,
   ToggleField,
@@ -25,11 +26,37 @@ interface Snapshot {
   timestamp?: string;
 }
 
+interface SideStats {
+  files: number;
+  totalBytes: number;
+  latestMtimeMs: number;
+}
+
 interface Conflict {
   peer: { id: string; name: string };
-  localStats?: { files: number; totalBytes: number; latestMtimeMs: number };
-  remoteStats?: { files: number; totalBytes: number; latestMtimeMs: number };
+  localStats?: SideStats;
+  remoteStats?: SideStats;
   diffTotal?: number;
+}
+
+/** One of a game's extra save folders, diverged on two devices. */
+interface LocationConflict extends Conflict {
+  gameId: string;
+  root: string;
+}
+
+/** A game whose save files were all deleted here, held back until answered. */
+interface EmptiedSave {
+  gameId: string;
+  name: string;
+  state: "held" | "fetching";
+  files: number;
+}
+
+interface SyncPause {
+  paused: boolean;
+  untilRestart?: boolean;
+  until?: string;
 }
 
 interface DaemonStatus {
@@ -38,26 +65,41 @@ interface DaemonStatus {
     settings?: { deviceName?: string };
     gameCount?: number;
     peerCount?: number;
+    peersOnline?: number;
     conflicts?: Record<string, Conflict>;
     conflictCount?: number;
+    locationConflicts?: LocationConflict[];
+    emptied?: EmptiedSave[];
+    syncPause?: SyncPause;
   };
   error?: string;
 }
 
+/** A sync of one game: what it did, or why it did not happen. */
+interface SyncResult {
+  success: boolean;
+  outcome?: "changed" | "in-sync" | "conflict" | "queued";
+  reason?: "paused" | "held" | "offline" | "error";
+  error?: string;
+}
+
+type Done = { success: boolean; error?: string };
+
 const getDaemonStatus = callable<[], DaemonStatus>("get_daemon_status");
 const getGames = callable<[], Record<string, Game>>("get_games");
-const syncAll = callable<[], { success: boolean; error?: string }>("sync_all");
-const syncGame = callable<[game_id: string], { success: boolean; error?: string }>("sync_game");
+const syncAll = callable<[], { success: boolean; message: string }>("sync_all");
+const syncGame = callable<[game_id: string], SyncResult>("sync_game");
 const startDaemon =
   callable<[], { success: boolean; alreadyRunning?: boolean; error?: string }>("start_daemon");
 const findGameByAppId =
   callable<[app_id: string], { found: boolean; game?: Game }>("find_game_by_appid");
-const snapshotGame =
-  callable<[game_id: string, comment: string], { success: boolean; error?: string }>("snapshot_game");
-const resolveConflict = callable<
-  [game_id: string, peer_id: string, resolution: string],
-  { success: boolean; error?: string }
->("resolve_conflict");
+const snapshotGame = callable<[game_id: string, comment: string], Done>("snapshot_game");
+const resolveConflict = callable<[game_id: string, peer_id: string, resolution: string], Done>("resolve_conflict");
+const resolveLocationConflict =
+  callable<[game_id: string, peer_id: string, root: string, resolution: string], Done>("resolve_location_conflict");
+const answerEmptied = callable<[game_id: string, answer: string], Done>("answer_emptied");
+const pauseSync = callable<[minutes: number], Done>("pause_sync");
+const resumeSync = callable<[], Done>("resume_sync");
 
 const daemonBaseUrl = callable<[], string>("get_daemon_base_url");
 
@@ -87,6 +129,61 @@ function lastSyncedLabel(game: Game): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/** A Switch game's title id, from its save folder in an emulator's NAND
+ *  (…/save/<account>/<profile>/<title id>) — the same rule as the app's. */
+function switchTitleId(savePath?: string): string {
+  const parts = String(savePath ?? "").split(/[\\/]+/).filter(Boolean);
+  if (parts.length < 4) return "";
+  const id = parts[parts.length - 1];
+  if (!/^[0-9a-f]{16}$/i.test(id) || parts[parts.length - 4].toLowerCase() !== "save") return "";
+  return id.toUpperCase();
+}
+
+/** The cover the daemon serves for a game — by App ID, by name, and for a
+ *  Switch game by title id, as the desktop app asks for it. */
+function coverUrl(base: string, game: Game): string {
+  if (!base) return "";
+  const q = new URLSearchParams();
+  if (game.appId) q.set("appId", game.appId);
+  if (game.name) q.set("name", game.name);
+  const titleId = switchTitleId(game.savePath);
+  if (titleId) q.set("titleId", titleId);
+  return `${base}/api/cover?${q.toString()}`;
+}
+
+/** What a sync of one game did, or why it did not, in a few words. */
+function syncSaid(res: SyncResult): string {
+  if (res.success) {
+    switch (res.outcome) {
+      case "changed":
+        return "Synced";
+      case "queued":
+        return "Queued behind a sync already running";
+      case "conflict":
+        return "Changed here and on another device — choose which to keep";
+      default:
+        return "Already in sync";
+    }
+  }
+  switch (res.reason) {
+    case "offline":
+      return "No other device is online — it syncs when one is";
+    case "paused":
+      return "Syncing is paused";
+    case "held":
+      return "Held back: every save file was deleted here";
+    default:
+      return `Sync failed: ${res.error ?? "unknown error"}`;
+  }
+}
+
+function pausedUntil(p?: SyncPause): string {
+  if (!p?.paused) return "";
+  if (p.untilRestart || !p.until) return "until you resume";
+  const t = new Date(p.until);
+  return isNaN(t.getTime()) ? "for now" : `until ${t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 // ── Auto-sync preferences ──────────────────────────────────────────────
 // Stored in localStorage rather than the daemon: these govern this device's
 // Game Mode behaviour, and must be readable before the daemon is reachable.
@@ -99,6 +196,12 @@ function autoSyncEnabled(): boolean {
 function setAutoSyncEnabled(on: boolean) {
   localStorage.setItem(AUTO_SYNC_KEY, on ? "true" : "false");
 }
+
+const PAUSE_CHOICES = [
+  { data: 60, label: "For an hour" },
+  { data: 180, label: "For 3 hours" },
+  { data: 0, label: "Until I resume" },
+];
 
 // ── Panel ──────────────────────────────────────────────────────────────
 
@@ -163,6 +266,18 @@ function Content() {
     return () => removeEventListener<[string, any]>("opensave_sync", onSync);
   }, []);
 
+  /** Runs an action with the panel busy, says how it went, and refreshes. */
+  const act = async (run: () => Promise<Done>, said: string, title = "OpenSave") => {
+    setBusy(true);
+    try {
+      const res = await run();
+      toaster.toast({ title, body: res.success ? said : res.error ?? "That didn't work" });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onStartDaemon = async () => {
     setStarting(true);
     try {
@@ -182,10 +297,7 @@ function Content() {
     setBusy(true);
     try {
       const res = await syncAll();
-      toaster.toast({
-        title: "OpenSave",
-        body: res.success ? "Sync started for all games" : res.error ?? "Sync failed",
-      });
+      toaster.toast({ title: "OpenSave", body: res.message });
       await refresh();
     } finally {
       setBusy(false);
@@ -195,11 +307,8 @@ function Content() {
   const onSyncOne = async (game: Game) => {
     setBusy(true);
     try {
-      const res = await syncGame(game.id);
-      toaster.toast({
-        title: game.name,
-        body: res.success ? "Sync started" : res.error ?? "Sync failed",
-      });
+      toaster.toast({ title: game.name, body: syncSaid(await syncGame(game.id)) });
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -223,109 +332,203 @@ function Content() {
     );
   }
 
-  const onSnapshot = async (game: Game) => {
-    setBusy(true);
-    try {
-      const res = await snapshotGame(game.id, "Snapshot from Game Mode");
-      toaster.toast({
-        title: game.name,
-        body: res.success ? "Snapshot taken" : res.error ?? "Snapshot failed",
-      });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onResolve = async (gameId: string, peerId: string, resolution: string, label: string) => {
-    setBusy(true);
-    try {
-      const res = await resolveConflict(gameId, peerId, resolution);
-      toaster.toast({
-        title: "OpenSave",
-        body: res.success ? `Resolving: ${label}…` : res.error ?? "Could not resolve",
-      });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const list = Object.values(games);
-  const conflicts = Object.entries(status?.data?.conflicts ?? {});
+  const data = status?.data;
+  const conflicts = Object.entries(data?.conflicts ?? {});
+  const locations = data?.locationConflicts ?? [];
+  const emptied = data?.emptied ?? [];
+  const heldIds = new Set(emptied.map((e) => e.gameId));
+  const pause = data?.syncPause;
+  const paused = !!pause?.paused;
+  const waiting = conflicts.length + locations.length + emptied.length;
+  const nameOf = (id: string) => games[id]?.name ?? id;
+  const devices =
+    data?.peersOnline !== undefined
+      ? `${data.peersOnline} of ${data.peerCount ?? 0} device${(data.peerCount ?? 0) === 1 ? "" : "s"} online`
+      : `${data?.peerCount ?? 0} device${(data?.peerCount ?? 0) === 1 ? "" : "s"} paired`;
+
+  const newerSide = (c: Conflict) => {
+    const mine = c.localStats?.latestMtimeMs ?? 0;
+    const theirs = c.remoteStats?.latestMtimeMs ?? 0;
+    return mine === theirs ? "same age" : mine > theirs ? "yours is newer" : "theirs is newer";
+  };
 
   return (
     <PanelSection title="OpenSave">
       <PanelSectionRow>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>{status?.data?.settings?.deviceName ?? "This device"}</span>
-          <span style={{ color: "#2eff76", fontWeight: "bold" }}>● ONLINE</span>
+          <span>{data?.settings?.deviceName ?? "This device"}</span>
+          {paused ? (
+            <span style={{ color: "#ffc857", fontWeight: "bold" }}>❚❚ PAUSED</span>
+          ) : (
+            <span style={{ color: "#2eff76", fontWeight: "bold" }}>● ONLINE</span>
+          )}
         </div>
       </PanelSectionRow>
       <PanelSectionRow>
         <div style={{ fontSize: "0.85em", opacity: 0.75 }}>
-          {list.length} game{list.length === 1 ? "" : "s"} tracked ·{" "}
-          {status?.data?.peerCount ?? 0} peer{(status?.data?.peerCount ?? 0) === 1 ? "" : "s"} online
+          {list.length} game{list.length === 1 ? "" : "s"} tracked · {devices}
         </div>
       </PanelSectionRow>
 
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={onSyncAll} disabled={busy || list.length === 0}>
-          {busy ? "Syncing…" : "Sync all now"}
-        </ButtonItem>
-      </PanelSectionRow>
+      {paused ? (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={busy}
+            onClick={() => act(resumeSync, "Syncing resumed")}
+            description={`Syncing is paused ${pausedUntil(pause)}. Saves are still kept as snapshots here.`}
+          >
+            Resume syncing
+          </ButtonItem>
+        </PanelSectionRow>
+      ) : (
+        <>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={onSyncAll} disabled={busy || list.length === 0}>
+              {busy ? "Syncing…" : "Sync all now"}
+            </ButtonItem>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <DropdownItem
+              label="Pause syncing"
+              description="Nothing is sent or taken while paused; snapshots are still kept."
+              rgOptions={PAUSE_CHOICES}
+              selectedOption={null}
+              strDefaultLabel="Choose…"
+              disabled={busy}
+              onChange={(o) => act(() => pauseSync(o.data), "Syncing paused")}
+            />
+          </PanelSectionRow>
+        </>
+      )}
 
-      {/* A conflict stops a game syncing until someone chooses a side. Without
-          this the only way out was Desktop Mode. */}
-      {conflicts.length > 0 && (
-        <PanelSection title={`Needs a decision (${conflicts.length})`}>
-          {conflicts.map(([gameId, c]) => {
-            const game = games[gameId];
-            const mine = c.localStats?.latestMtimeMs ?? 0;
-            const theirs = c.remoteStats?.latestMtimeMs ?? 0;
-            const newer = mine === theirs ? "same age" : mine > theirs ? "yours is newer" : "theirs is newer";
-            return (
-              <div key={gameId}>
-                <PanelSectionRow>
-                  <div style={{ fontSize: "0.85em" }}>
-                    <div style={{ fontWeight: "bold" }}>{game?.name ?? gameId}</div>
-                    <div style={{ opacity: 0.75 }}>
-                      Both this device and {c.peer?.name ?? "a peer"} changed this save
-                      {c.diffTotal ? ` (${c.diffTotal} file${c.diffTotal === 1 ? "" : "s"} differ)` : ""} — {newer}.
-                    </div>
+      {/* What stops a game syncing until someone decides. Without these the
+          only way out was Desktop Mode. */}
+      {waiting > 0 && (
+        <PanelSection title={`Needs a decision (${waiting})`}>
+          {emptied.map((e) => (
+            <div key={`emptied-${e.gameId}`}>
+              <PanelSectionRow>
+                <div style={{ fontSize: "0.85em" }}>
+                  <div style={{ fontWeight: "bold" }}>{e.name || nameOf(e.gameId)}</div>
+                  <div style={{ opacity: 0.75 }}>
+                    {e.state === "fetching"
+                      ? "Putting its save files back…"
+                      : `Every save file was deleted here. Your other devices keep theirs${e.files ? ` (${e.files} file${e.files === 1 ? "" : "s"})` : ""} until you choose.`}
                   </div>
-                </PanelSectionRow>
-                <PanelSectionRow>
-                  <ButtonItem
-                    layout="below"
-                    disabled={busy}
-                    onClick={() => onResolve(gameId, c.peer.id, "merge-branch", "keeping both")}
-                    description="Safest: keeps both saves, theirs on a separate branch."
-                  >
-                    Keep both
-                  </ButtonItem>
-                </PanelSectionRow>
-                <PanelSectionRow>
-                  <ButtonItem
-                    layout="below"
-                    disabled={busy}
-                    onClick={() => onResolve(gameId, c.peer.id, "keep-local", "keeping this device's save")}
-                  >
-                    Keep this device's
-                  </ButtonItem>
-                </PanelSectionRow>
-                <PanelSectionRow>
-                  <ButtonItem
-                    layout="below"
-                    disabled={busy}
-                    onClick={() => onResolve(gameId, c.peer.id, "keep-remote", `keeping ${c.peer?.name ?? "the peer"}'s save`)}
-                  >
-                    Keep {c.peer?.name ?? "peer"}'s
-                  </ButtonItem>
-                </PanelSectionRow>
-              </div>
-            );
-          })}
+                </div>
+              </PanelSectionRow>
+              {e.state !== "fetching" && (
+                <>
+                  <PanelSectionRow>
+                    <ButtonItem
+                      layout="below"
+                      disabled={busy}
+                      onClick={() => act(() => answerEmptied(e.gameId, "restore"), "Putting the files back…", e.name)}
+                      description="From the newest snapshot that has them, and anything newer from your other devices."
+                    >
+                      Put them back
+                    </ButtonItem>
+                  </PanelSectionRow>
+                  <PanelSectionRow>
+                    <ButtonItem
+                      layout="below"
+                      disabled={busy}
+                      onClick={() => act(() => answerEmptied(e.gameId, "delete"), "Deleting them on your other devices", e.name)}
+                      description="Each device keeps a snapshot first."
+                    >
+                      Delete them on my other devices too
+                    </ButtonItem>
+                  </PanelSectionRow>
+                </>
+              )}
+            </div>
+          ))}
+
+          {conflicts.map(([gameId, c]) => (
+            <div key={gameId}>
+              <PanelSectionRow>
+                <div style={{ fontSize: "0.85em" }}>
+                  <div style={{ fontWeight: "bold" }}>{nameOf(gameId)}</div>
+                  <div style={{ opacity: 0.75 }}>
+                    Both this device and {c.peer?.name ?? "a peer"} changed this save
+                    {c.diffTotal ? ` (${c.diffTotal} file${c.diffTotal === 1 ? "" : "s"} differ)` : ""} — {newerSide(c)}.
+                  </div>
+                </div>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() => act(() => resolveConflict(gameId, c.peer.id, "merge-branch"), "Resolving: keeping both…")}
+                  description="Safest: keeps both saves, theirs on a separate branch."
+                >
+                  Keep both
+                </ButtonItem>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() => act(() => resolveConflict(gameId, c.peer.id, "keep-local"), "Resolving: keeping this device's save…")}
+                >
+                  Keep this device's
+                </ButtonItem>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() =>
+                    act(() => resolveConflict(gameId, c.peer.id, "keep-remote"), `Resolving: keeping ${c.peer?.name ?? "the peer"}'s save…`)
+                  }
+                >
+                  Keep {c.peer?.name ?? "peer"}'s
+                </ButtonItem>
+              </PanelSectionRow>
+            </div>
+          ))}
+
+          {locations.map((c) => (
+            <div key={`${c.gameId}/${c.root}`}>
+              <PanelSectionRow>
+                <div style={{ fontSize: "0.85em" }}>
+                  <div style={{ fontWeight: "bold" }}>
+                    {nameOf(c.gameId)} · {c.root}
+                  </div>
+                  <div style={{ opacity: 0.75 }}>
+                    This folder changed here and on {c.peer?.name ?? "a peer"} at once — {newerSide(c)}.
+                  </div>
+                </div>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() =>
+                    act(() => resolveLocationConflict(c.gameId, c.peer.id, c.root, "keep-local"), `Keeping this device's ${c.root}…`)
+                  }
+                >
+                  Keep this device's
+                </ButtonItem>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() =>
+                    act(
+                      () => resolveLocationConflict(c.gameId, c.peer.id, c.root, "keep-remote"),
+                      `Keeping ${c.peer?.name ?? "the peer"}'s ${c.root}…`,
+                    )
+                  }
+                >
+                  Keep {c.peer?.name ?? "peer"}'s
+                </ButtonItem>
+              </PanelSectionRow>
+            </div>
+          ))}
         </PanelSection>
       )}
 
@@ -350,51 +553,52 @@ function Content() {
           </PanelSectionRow>
         ) : (
           list.map((game) => {
-            const act = activity[game.id];
-            const subtitle =
-              act?.state === "running"
-                ? `Syncing${act.percentage ? ` ${act.percentage}%` : "…"}${act.peerName ? ` with ${act.peerName}` : ""}`
-                : act?.state === "done"
+            const live = activity[game.id];
+            const subtitle = heldIds.has(game.id)
+              ? "Held back: every save file was deleted here"
+              : live?.state === "running"
+                ? `Syncing${live.percentage ? ` ${live.percentage}%` : "…"}${live.peerName ? ` with ${live.peerName}` : ""}`
+                : live?.state === "done"
                   ? "Synced just now"
-                  : act?.state === "error"
-                    ? `Sync failed: ${act.error ?? "unknown error"}`
+                  : live?.state === "error"
+                    ? `Sync failed: ${live.error ?? "unknown error"}`
                     : `Last snapshot ${lastSyncedLabel(game)} · branch ${game.activeBranch}`;
-            const cover = game.appId && baseUrl ? `${baseUrl}/api/cover?appId=${game.appId}` : "";
+            const cover = coverUrl(baseUrl, game);
             return (
-            <div key={game.id}>
-              {cover && (
+              <div key={game.id}>
+                {cover && (
+                  <PanelSectionRow>
+                    <img
+                      src={cover}
+                      alt=""
+                      style={{ width: "100%", borderRadius: "4px", display: "block" }}
+                      // Not every game has art; drop the element rather than
+                      // show a broken image.
+                      onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+                    />
+                  </PanelSectionRow>
+                )}
                 <PanelSectionRow>
-                  <img
-                    src={cover}
-                    alt=""
-                    style={{ width: "100%", borderRadius: "4px", display: "block" }}
-                    // Not every game has art (unreleased or non-Steam titles);
-                    // drop the element rather than show a broken image.
-                    onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-                  />
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => onSyncOne(game)}
+                    disabled={busy || paused}
+                    description={subtitle}
+                  >
+                    {game.name}
+                  </ButtonItem>
                 </PanelSectionRow>
-              )}
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  onClick={() => onSyncOne(game)}
-                  disabled={busy}
-                  description={subtitle}
-                >
-                  {game.name}
-                </ButtonItem>
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  onClick={() => onSnapshot(game)}
-                  disabled={busy}
-                  description="Checkpoint the current save before a risky run."
-                >
-                  Snapshot
-                </ButtonItem>
-              </PanelSectionRow>
-            </div>
+                <PanelSectionRow>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => act(() => snapshotGame(game.id, "Snapshot from Game Mode"), "Snapshot taken", game.name)}
+                    disabled={busy}
+                    description="Checkpoint the current save before a risky run."
+                  >
+                    Snapshot
+                  </ButtonItem>
+                </PanelSectionRow>
+              </div>
             );
           })
         )}
@@ -406,6 +610,26 @@ function Content() {
 // ── Game lifecycle hooks ───────────────────────────────────────────────
 // The point of a Game Mode plugin: sync at the moments saves actually
 // matter, so nobody has to remember to open this panel.
+
+/** What a lifecycle sync should say, or "" for nothing. A Deck away from
+ *  home has no other device online at every launch; that is not news. */
+function lifecycleSaid(res: SyncResult, when: "launch" | "exit"): string {
+  if (res.success) {
+    if (res.outcome === "changed") return when === "launch" ? "Brought the newest save in" : "Save synced";
+    if (res.outcome === "conflict") return "Changed here and on another device — open OpenSave to choose";
+    return when === "exit" ? "Save synced" : "";
+  }
+  switch (res.reason) {
+    case "offline":
+      return "";
+    case "paused":
+      return when === "exit" ? "Syncing is paused — this save goes over when you resume" : "";
+    case "held":
+      return "Held back: every save file was deleted here — open OpenSave to choose";
+    default:
+      return `Save sync failed: ${res.error ?? ""}`;
+  }
+}
 
 function registerLifecycleHooks(): () => void {
   // SteamClient is a global declared by @decky/ui, but Game Mode is the only
@@ -430,15 +654,8 @@ function registerLifecycleHooks(): () => void {
       const match = await findGameByAppId(appId);
       if (!match.found || !match.game) return;
 
-      const res = await syncGame(match.game.id);
-      if (!res.success) {
-        toaster.toast({ title: match.game.name, body: `Save sync failed: ${res.error ?? ""}` });
-        return;
-      }
-      toaster.toast({
-        title: match.game.name,
-        body: when === "launch" ? "Save synced before launch" : "Save synced",
-      });
+      const said = lifecycleSaid(await syncGame(match.game.id), when);
+      if (said) toaster.toast({ title: match.game.name, body: said });
     } catch (e) {
       console.error("[OpenSave] lifecycle sync failed", e);
     } finally {

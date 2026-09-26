@@ -9,12 +9,20 @@ sync service without dropping to Desktop Mode.
 
 ## What it does
 
-- Live sync status, per-game **Sync now**, and **Sync all**
-- **Resolves conflicts** — keep both / keep this device's / keep the peer's
-- **Auto-syncs around gameplay** — when a game starts and when it exits
+- Live sync status, per-game **Sync now**, and **Sync all** — which say what
+  happened: synced, already in sync, or why not (paused, nobody online, held)
+- **Resolves conflicts** — keep both / keep this device's / keep the peer's —
+  and conflicts in one of a game's extra save folders
+- **Answers for an emptied save** — every save file of a game deleted here:
+  put them back, or delete them on your other devices too
+- **Pauses and resumes syncing** — for an hour, three, or until resumed
+- **Auto-syncs around gameplay** — when a game starts and when it exits, and
+  stays quiet when your other devices are simply off
 - **Snapshot** a save before a risky run
+- Cover art for every game, Switch games included
 - **Starts the sync service** if it isn't running (Game Mode never launches the
-  desktop app, so this is what makes the plugin usable at all)
+  desktop app, so this is what makes the plugin usable at all) — from the
+  Flatpak, or an `opensave-cli` installed with install.sh in `~/.local/bin`
 
 ## Requirements
 

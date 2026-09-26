@@ -28,6 +28,29 @@ jobs:
       # tests say.
       - run: npm run build
 
+  # The Decky plugin is a separate codebase that ships in every release and
+  # can only be run on a Deck. Its backend's decisions — what a sync answer
+  # means, where the daemon is — are tested against a stand-in daemon here;
+  # the panel has to type-check and build. Its side of the wire is pinned in
+  # Go by TestDeckyPluginContract.
+  decky-plugin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opensave-decky-plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p .
+      - run: npm run build
+
   tests:
     runs-on: ${{ matrix.os }}
     strategy:
