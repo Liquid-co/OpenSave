@@ -360,9 +360,23 @@ jobs:
           # After everything that changes the bundle and before it is copied
           # anywhere: the signature seals the executable, Info.plist and the
           # resources as they are now, and any later change breaks it.
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
+          #
+          # With an explicit designated requirement. An ad hoc signature's
+          # implicit one is the hash of one architecture's code, which the
+          # other half of a universal binary can never satisfy — the first
+          # attempt verified "valid on disk" and then "does not satisfy its
+          # designated Requirement". macOS also keys permissions on it, so it
+          # names the app by its bundle identifier instead.
+          ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+          echo "bundle identifier: $ID"
+          codesign --force --sign - --identifier "$ID" \
+            --requirements "=designated => identifier \"$ID\"" "$APP"
+          codesign --display --requirements - "$APP" 2>&1 | tail -2
           codesign --display --verbose=2 "$APP" 2>&1 | grep -E "^(Identifier|Format|Signature|Sealed Resources)"
+          for arch in arm64 x86_64; do
+            codesign --verify --deep --strict --verbose=2 --arch "$arch" "$APP"
+          done
+          codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Build CLI + relay for both architectures
         run: |
