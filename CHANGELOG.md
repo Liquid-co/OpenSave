@@ -3,7 +3,41 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0-beta.3] — 2026-09-26
+
+The biggest beta yet, and the one that has been waiting as beta.3: it was
+never published, so everything since beta.2 is here.
+
+Your saves are safer. A save folder emptied by an uninstaller or a game
+resetting itself no longer empties your other devices — the game is held back
+until you say whether that was meant. Snapshots are checked in the background
+and, with cloud backup on, a damaged one is put back from its cloud copy.
+Older snapshots share the files they have in common, so a game with many save
+slots takes a fraction of the room.
+
+OpenSave tells you more. A bell keeps what happened and what is waiting on
+you, and the same news reaches your desktop when the app is not in front. An
+Activity timeline shows every sync, snapshot and play session, and where each
+game was last played. Switch games are named and given covers from what your
+emulators already know, and match across emulators and devices by title id.
+
+It is easier to use: a Home that says where your saves stand, a library you
+can lay out, filter and group, a pause button, keyboard shortcuts, controller
+navigation, a light theme, and a Track folder that goes straight to the
+folder picker. The Steam Deck panel and the command line catch up with all of
+it.
+
+A fix for a way a paired device could lose a save file: untracking a game
+while a sync was still running, then tracking it again, could make
+OpenSave send a deletion the other device never asked for. If you sync
+between devices, update. And on Windows, a game's watch could freeze and
+stop sending that game's saves on as they happened; it no longer does.
+
+The Windows installer is new. Run it over an existing install and it asks
+whether to reinstall or remove OpenSave; it can start OpenSave when it
+finishes, and with Windows; it closes a running copy properly first; and it
+matches the app. Sidebar cover art that failed to load once now comes back,
+and `opensave install --uninstall` takes the command-line tool off again.
 
 ### Added
 
@@ -344,6 +378,12 @@ All notable changes to OpenSave are documented here. This project adheres to
   The first background scan takes stock quietly, so games you chose not to
   track aren't announced. It can be switched off in Settings.
 
+- **`opensave install --uninstall`.** It removes what `opensave install` —
+  or `install.ps1` — put on this computer: the program, the `os` and
+  `opensave-cli` shortcuts, and the entry on your PATH. Your snapshots and
+  settings are left alone. It asks first; with no terminal to ask in, it
+  refuses unless given `--yes`. The Windows uninstaller offers to run it.
+
 ### Changed
 
 - **Settings save themselves.** There is no Save button to forget: a switch
@@ -416,6 +456,26 @@ All notable changes to OpenSave are documented here. This project adheres to
   compressed if a quick test shows it compresses, and stored as before if it
   doesn't, so saves that are already compressed cost no extra time. Older
   versions restore the new snapshots as they always have.
+
+- **The Windows installer asks what you want, and looks like the app.** Run
+  it when OpenSave is already installed and it says so, and offers the two
+  things you might have opened it for: install this version over the top, or
+  remove OpenSave from the computer. It used to reinstall silently, and
+  someone who downloaded it to uninstall had no way in at all.
+
+  Two checkboxes on the last page: start OpenSave now, and start it when
+  Windows starts. The second writes the same setting the app's own Settings
+  screen does, and the app picks it up, so the two never disagree.
+
+  It also closes a running OpenSave before touching anything — asking it to
+  shut down properly rather than killing it, since this is an app that writes
+  a database and zips save archives, and a snapshot interrupted halfway is
+  not a snapshot. Installing over a running copy used to leave files it could
+  not replace.
+
+  And it is dark, in the app's own colours, with the app's icon. It also
+  shows which version it is installing, down to the beta. Every beta used
+  to call itself plain 2.4.0, there and in Installed apps.
 
 ### Fixed
 
@@ -554,52 +614,6 @@ All notable changes to OpenSave are documented here. This project adheres to
 - `opensave add` no longer logs "could not watch" for every game it adds
   while the app is running. The command's own short-lived daemon was never
   going to watch the game — the running one does, and did.
-
-## [2.4.0-beta.3] — 2026-09-23
-
-A fix for a way a paired device could lose a save file: untracking a game
-while a sync was still running, then tracking it again, could make
-OpenSave send a deletion the other device never asked for. If you sync
-between devices, update. And on Windows, a game's watch could freeze and
-stop sending that game's saves on as they happened; it no longer does.
-
-The Windows installer is new. Run it over an existing install and it asks
-whether to reinstall or remove OpenSave; it can start OpenSave when it
-finishes, and with Windows; it closes a running copy properly first; and it
-matches the app. Sidebar cover art that failed to load once now comes back,
-and `opensave install --uninstall` takes the command-line tool off again.
-
-### Added
-
-- **`opensave install --uninstall`.** It removes what `opensave install` —
-  or `install.ps1` — put on this computer: the program, the `os` and
-  `opensave-cli` shortcuts, and the entry on your PATH. Your snapshots and
-  settings are left alone. It asks first; with no terminal to ask in, it
-  refuses unless given `--yes`. The Windows uninstaller offers to run it.
-
-### Changed
-
-- **The Windows installer asks what you want, and looks like the app.** Run
-  it when OpenSave is already installed and it says so, and offers the two
-  things you might have opened it for: install this version over the top, or
-  remove OpenSave from the computer. It used to reinstall silently, and
-  someone who downloaded it to uninstall had no way in at all.
-
-  Two checkboxes on the last page: start OpenSave now, and start it when
-  Windows starts. The second writes the same setting the app's own Settings
-  screen does, and the app picks it up, so the two never disagree.
-
-  It also closes a running OpenSave before touching anything — asking it to
-  shut down properly rather than killing it, since this is an app that writes
-  a database and zips save archives, and a snapshot interrupted halfway is
-  not a snapshot. Installing over a running copy used to leave files it could
-  not replace.
-
-  And it is dark, in the app's own colours, with the app's icon. It also
-  shows which version it is installing, down to the beta. Every beta used
-  to call itself plain 2.4.0, there and in Installed apps.
-
-### Fixed
 
 - **A peer could lose a file when a game was untracked and tracked again.**
   Untracking clears everything a game had agreed with its paired devices —
