@@ -7,6 +7,15 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
+- **Tracking a folder by hand goes straight to it.** "Track folder" opens the
+  folder picker at once, and what you pick is then named — with a name
+  suggested from the path: the game's own folder rather than "Saves" or a
+  Steam account's number, and a Switch game's name as its emulator shows it.
+  A single save file can be picked instead from the same step. A folder
+  dropped on the window, the sidebar's +, and Ctrl+K go the same way.
+  `opensave add <path>` names it the same way from the command line.
+  "Auto-scan" is now "Scan saves", and is the highlighted button on Home.
+
 - **Switch games by name and cover, not by Title ID.** A scan found each
   Switch save as "Citron Switch Emulator - Title ID: 0100F2C0115B6000".
   Now it is "The Legend of Zelda: Tears of the Kingdom", with its icon as the

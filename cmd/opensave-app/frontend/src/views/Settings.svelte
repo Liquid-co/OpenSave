@@ -200,7 +200,7 @@
 
   // Custom scan paths
   async function addScanPath() {
-    const dir = await native.selectDirectory('Add a folder to auto-scan');
+    const dir = await native.selectDirectory('Add a folder to scan');
     if (dir) draft.customScanPaths = [...(draft.customScanPaths ?? []), dir];
     saveNow();
   }
@@ -209,9 +209,9 @@
     saveNow();
   }
 
-  // Excluded folders — locations the auto-scan should skip entirely.
+  // Excluded folders — locations the scan should skip entirely.
   async function addExcludePath() {
-    const dir = await native.selectDirectory('Choose a folder to exclude from auto-scan');
+    const dir = await native.selectDirectory('Choose a folder to exclude from scans');
     if (dir) draft.excludePaths = [...(draft.excludePaths ?? []), dir];
     saveNow();
   }
@@ -628,8 +628,8 @@
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><ScanSearch size={17} />Game scanner</h3>
       <div class="field" style="margin-bottom: 0;">
-        <label for="s-scan-paths">Extra folders to auto-scan</label>
-        <span class="hint">Auto-scan already checks Steam and common emulators — add custom libraries here.</span>
+        <label for="s-scan-paths">Extra folders to scan</label>
+        <span class="hint">Scanning already checks Steam and common emulators — add custom libraries here.</span>
         {#each draft.customScanPaths ?? [] as p, i}
           <div class="rule-row">
             <span class="rule-path" title={p}>{p}</span>
@@ -641,7 +641,7 @@
 
       <div class="field" style="margin: 18px 0 0;">
         <label for="s-exclude-paths">Folders to exclude</label>
-        <span class="hint">Auto-scan skips these folders and everything inside them — handy for stale save locations (like an old GSE saves directory) you don't want offered again.</span>
+        <span class="hint">Scans skip these folders and everything inside them — handy for stale save locations (like an old GSE saves directory) you don't want offered again.</span>
         {#each draft.excludePaths ?? [] as p, i}
           <div class="rule-row">
             <span class="rule-path" title={p}>{p}</span>
@@ -655,7 +655,7 @@
     <div class="card" style="margin-top: 14px;">
       <h3 class="section-title with-icon"><RotateCcw size={17} />Reset tracking</h3>
       <div class="field" style="margin-bottom: 0;">
-        <span class="hint">Untrack every game at once, then re-run Auto-scan to add them back from the correct locations — useful after moving games between launchers or drives. This only clears the tracking list; your save snapshots on disk are kept.</span>
+        <span class="hint">Untrack every game at once, then scan again to add them back from the correct locations — useful after moving games between launchers or drives. This only clears the tracking list; your save snapshots on disk are kept.</span>
         <button
           class="btn small danger"
           style="margin-top: 12px; width: fit-content; align-self: flex-start;"

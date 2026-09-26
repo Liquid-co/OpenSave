@@ -1,5 +1,5 @@
 <script>
-  // The auto-scan: every save folder the daemon can find, grouped per game,
+  // The scan: every save folder the daemon can find, grouped per game,
   // with the ones already tracked set apart.
   //
   // Opened with start(). `scanning` is bindable so the page can disable the
@@ -297,7 +297,7 @@
 <svelte:window on:keydown={onKeydown} />
 
 {#if open}
-  <Modal title="Auto-scan results" icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
+  <Modal title="Scan results" icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
     <svelte:fragment slot="sub">
       {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {availableGroups.length} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} empty hidden{/if}{/if}
     </svelte:fragment>

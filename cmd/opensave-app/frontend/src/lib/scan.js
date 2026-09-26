@@ -1,4 +1,4 @@
-// Pure logic behind the auto-scan screen.
+// Pure logic behind the scan screen.
 //
 // This lives outside the component because it is where the mistakes were. The
 // scan grid's real bugs have all been decisions, not rendering: which folder

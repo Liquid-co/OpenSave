@@ -31,7 +31,7 @@
     ...PAGES.map((p) => ({ label: `Go to ${p.label}`, kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
     { label: 'Sync all games', kind: 'Action', idle: true, run: syncAll },
     { label: 'Snapshot every game now', kind: 'Action', idle: true, keywords: ['backup', 'save', 'all'], run: snapshotAll },
-    { label: 'Auto-scan for saves', kind: 'Action', idle: true, keywords: ['find', 'detect'], run: () => navigate('home', { scan: Date.now() }) },
+    { label: 'Scan for saves', kind: 'Action', idle: true, keywords: ['find', 'detect', 'auto-scan'], run: () => navigate('home', { scan: Date.now() }) },
     { label: 'Track a folder', kind: 'Action', idle: true, keywords: ['add', 'game'], run: () => navigate('home', { add: true }) },
     {
       label: isDark() ? 'Switch to light theme' : 'Switch to dark theme',

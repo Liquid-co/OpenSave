@@ -569,8 +569,17 @@ func cmdAdd(d *daemon.Daemon, args []string) int {
 	if len(args) == 1 {
 		n, err := strconv.Atoi(strings.TrimSpace(args[0]))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "usage: opensave add <name> <path>\n       opensave add <number>   (from the last `opensave scan`)")
-			return 1
+			// A path on its own: named from the path, as the app does when a
+			// folder is picked.
+			name := ""
+			if d.Scanner != nil {
+				name = d.Scanner.SuggestName(args[0])
+			}
+			if name == "" {
+				fmt.Fprintln(os.Stderr, "error: nothing in that path says which game it is — give a name: opensave add <name> <path>")
+				return 1
+			}
+			return trackGame(d, name, args[0])
 		}
 		choices := loadScanResults(d.Paths.HomeDir)
 		if len(choices) == 0 {
@@ -586,7 +595,7 @@ func cmdAdd(d *daemon.Daemon, args []string) int {
 	}
 
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: opensave add <name> <path>\n       opensave add <number>   (from the last `opensave scan`)")
+		fmt.Fprintln(os.Stderr, "usage: opensave add <name> <path>\n       opensave add <path>     (named from the path)\n       opensave add <number>   (from the last `opensave scan`)")
 		return 1
 	}
 	return trackGame(d, args[0], args[1])

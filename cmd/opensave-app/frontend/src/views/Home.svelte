@@ -1,7 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
   import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast, syncPause } from '../lib/stores.js';
-  import { api } from '../lib/api.js';
+  import { api, native } from '../lib/api.js';
   import { gameStatus, conflictedIds } from '../lib/gamestatus.js';
   import OfferedGames from './home/OfferedGames.svelte';
   import AddGameCard from './home/AddGameCard.svelte';
@@ -24,8 +24,38 @@
   let scanner;
   let scanning = false;
 
-  let showAdd = params.add ?? false;
-  $: if (params.add) showAdd = true;
+  // Tracking by hand: "Track folder" goes straight to the system's folder
+  // picker, and the folder picked is then named (AddGameCard). A folder
+  // dropped on the window arrives with its path and skips the picker. Keyed
+  // on the params object, so each request — the sidebar's +, Ctrl+K — opens
+  // it once, and not again on every re-render.
+  let showAdd = false;
+  let addPath = '';
+  let handledAdd = null;
+  $: if (params.add && params !== handledAdd) {
+    handledAdd = params;
+    if (params.path) {
+      addPath = params.path;
+      showAdd = true;
+    } else {
+      trackFolder();
+    }
+  }
+
+  async function trackFolder() {
+    if (!native.isWails()) {
+      // No picker in a browser: the dialog takes a typed path instead.
+      addPath = '';
+      showAdd = true;
+      return;
+    }
+    const dir = await native.selectDirectory('Choose the save folder to track');
+    if (dir) {
+      addPath = dir;
+      showAdd = true;
+    }
+  }
+
   // Opened from the new-games card. A token rather than a flag: this
   // statement re-runs whenever the scan closes, and a flag still set would
   // start the scan all over again. Waits for the dialog to exist, which it
@@ -73,19 +103,19 @@
 <div class="head">
   <h2 class="page-title">Home</h2>
   <div class="head-actions">
-    <button class="btn" on:click={() => scanner.start()} disabled={scanning}>
-      <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Auto-scan'}
+    <button class="btn primary" on:click={() => scanner.start()} disabled={scanning} title="Look for game saves on this device">
+      <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Scan saves'}
     </button>
     <button class="btn" on:click={syncAll} disabled={$gameList.length === 0 || $syncPause.paused} title={$syncPause.paused ? 'Syncing is paused' : ''}><RefreshCw size={15} />Sync all</button>
     <PauseButton />
-    <button class="btn primary" on:click={() => (showAdd = !showAdd)}><FolderPlus size={16} />Track folder</button>
+    <button class="btn" on:click={trackFolder} title="Pick a save folder or file to track"><FolderPlus size={16} />Track folder</button>
   </div>
 </div>
 
 <OfferedGames />
 
 {#if showAdd}
-  <AddGameCard initialPath={params.path ?? ''} on:close={() => (showAdd = false)} />
+  <AddGameCard path={addPath} on:close={() => (showAdd = false)} />
 {/if}
 
 <ScanDialog bind:this={scanner} bind:scanning />
@@ -93,7 +123,7 @@
 {#if !$stateLoaded}
   <Skeleton kind="tiles" count={6} />
 {:else if showGuide && $visibleGames.length === 0}
-  <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={() => (showAdd = true)} />
+  <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={trackFolder} />
 {:else if $visibleGames.length === 0}
   <div class="welcome">
     <div class="welcome-icon"><Gamepad2 size={34} strokeWidth={1.6} /></div>
@@ -101,15 +131,15 @@
     <p>Keep your game saves in sync across every device — no accounts, no cloud lock-in. Start by finding your saves:</p>
     <div class="welcome-actions">
       <button class="btn primary" on:click={() => scanner.start()} disabled={scanning}>
-        <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Auto-scan for saves'}
+        <ScanSearch size={16} />{scanning ? 'Scanning…' : 'Scan for saves'}
       </button>
-      <button class="btn" on:click={() => (showAdd = true)}><FolderPlus size={16} />Track a folder manually</button>
+      <button class="btn" on:click={trackFolder}><FolderPlus size={16} />Track a folder manually</button>
     </div>
     <p class="welcome-hint">Then open <strong>Devices</strong> to pair another PC or Steam Deck, or <strong>Cloud Backup</strong> to mirror snapshots online.</p>
   </div>
 {:else}
   {#if showGuide}
-    <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={() => (showAdd = true)} />
+    <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={trackFolder} />
   {/if}
   <div class="top">
     <HomeSummary {rows} />

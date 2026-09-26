@@ -25,6 +25,7 @@ var commandGroups = []commandGroup{
 	{"Games", []commandEntry{
 		{"scan [--all]", "Auto-detect game saves (--all includes empty folders)"},
 		{"add <name> <path>", "Track a game save folder or file"},
+		{"add <path>", "Track a folder or file, named from its path"},
 		{"add <number>", "Track one of the last scan's results"},
 		{"remove <gameId>", "Stop tracking a game"},
 		{"untrack-all --yes", "Stop tracking everything (keeps snapshots)"},

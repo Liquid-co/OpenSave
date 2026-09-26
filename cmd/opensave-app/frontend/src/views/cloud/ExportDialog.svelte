@@ -39,7 +39,7 @@
       const [games, scan] = await Promise.all([api.get('/api/games'), api.get('/api/presets/scan')]);
       const tracked = Object.values(games ?? {}).map((g) => ({
         id: g.id, name: g.name, savePath: g.savePath, appId: g.appId,
-        // Portrait box art first (matches the auto-scan tiles); the stored
+        // Portrait box art first (matches the scan tiles); the stored
         // coverUrl is Steam's landscape header — wrong shape for tiles.
         cover: portraitUrl(g.appId, g.name) || g.coverUrl || '', tracked: true
       }));

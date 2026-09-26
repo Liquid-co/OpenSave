@@ -29,6 +29,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Get("/api/games", s.handleListGames)
 	r.Post("/api/games", s.handleTrackGame)
+	r.Get("/api/suggest-name", s.handleSuggestName)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
 
 	// Games a peer syncs that this device has no folder for. Only ever
@@ -1010,4 +1011,17 @@ func (s *Server) handlePresetScan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleNewGamesDismiss(w http.ResponseWriter, r *http.Request) {
 	s.Daemon.DismissNewGames()
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// handleSuggestName is a name for a folder or file picked to track, for the
+// person to confirm (presets.Scanner.SuggestName). Never an error: an empty
+// name just leaves the box for them to fill.
+//
+// GET /api/suggest-name?path=<folder or file>
+func (s *Server) handleSuggestName(w http.ResponseWriter, r *http.Request) {
+	name := ""
+	if s.Daemon.Scanner != nil {
+		name = s.Daemon.Scanner.SuggestName(r.URL.Query().Get("path"))
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
