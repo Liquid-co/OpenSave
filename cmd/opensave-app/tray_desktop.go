@@ -230,11 +230,6 @@ func (a *App) showWindow() {
 	wailsruntime.WindowUnminimise(a.ctx)
 }
 
-func (a *App) quitFromTray() {
-	a.reallyQuit = true
-	wailsruntime.Quit(a.ctx)
-}
-
 // trayGrace is how long a hidden start waits for the tray before giving up
 // and showing the window. systray is up within a few hundred milliseconds
 // where a host exists; where none does, it never will be, and nobody should

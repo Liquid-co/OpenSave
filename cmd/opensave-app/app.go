@@ -389,4 +389,13 @@ func (a *App) WindowToggleMaximise() {
 }
 func (a *App) WindowClose() { runtime.Quit(a.ctx) }
 
+// quitFromTray quits for good rather than hiding to the tray: the tray's
+// Quit, and the installer asking a running copy to get out of the way. Here
+// rather than beside the tray because the second happens on every platform —
+// defined only where there is a tray, it stopped the Mac app compiling.
+func (a *App) quitFromTray() {
+	a.reallyQuit = true
+	runtime.Quit(a.ctx)
+}
+
 var _ = fmt.Sprintf // reserved

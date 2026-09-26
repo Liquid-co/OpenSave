@@ -69,6 +69,16 @@ jobs:
         run: mkdir -p cmd/opensave-app/frontend/dist && echo stub > cmd/opensave-app/frontend/dist/.stub
       - name: Vet
         run: go vet ./...
+      # Nothing else here compiles for macOS, which only the release build
+      # does. A call to a method defined only where there is a tray stopped
+      # the Mac app compiling for five weeks, found only when a release was
+      # about to be cut. Type-checking it for macOS catches that in a minute.
+      - name: Vet for macOS
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+        run: go vet ./...
       # -p 2 and a longer timeout because the e2e package now starts real
       # daemons, binds real ports and spawns the CLI as a subprocess. Run at
       # full package parallelism alongside everything else it saturates the
