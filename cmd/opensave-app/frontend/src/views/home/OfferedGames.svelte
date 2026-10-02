@@ -9,6 +9,7 @@
   import { gameList, toast } from '../../lib/stores.js';
   import { withUndo, hiddenKeys } from '../../lib/undo.js';
   import { api, native } from '../../lib/api.js';
+  import { t, segments } from '../../lib/i18n.js';
 
   let offeredGames = [];
   async function load() {
@@ -24,11 +25,11 @@
   $: if ($gameList) load();
 
   async function place(offer) {
-    const dir = await native.selectDirectory(`Folder for "${offer.name}" on this device`);
+    const dir = await native.selectDirectory($t('home.offered.folderPrompt', { name: offer.name }));
     if (!dir) return;
     try {
       await api.post(`/api/offered-games/${offer.gameId}/place`, { path: dir });
-      toast(`${offer.name} is now tracked here`, 'success');
+      toast($t('home.offered.trackedToast', { name: offer.name }), 'success');
       await load();
     } catch (e) {
       toast(e.message, 'error');
@@ -37,7 +38,7 @@
 
   function decline(offer) {
     withUndo({
-      message: `You won't be asked about ${offer.name} again. Tracking it yourself later still works.`,
+      message: $t('home.offered.declineToast', { name: offer.name }),
       keys: [`offer:${offer.gameId}`],
       stillThere: () => offeredGames.some((o) => o.gameId === offer.gameId),
       run: async () => {
@@ -51,23 +52,21 @@
 
 {#if shownOffers.length > 0}
   <div class="card offers">
-    <h3>Waiting for a folder</h3>
-    <p class="intro">
-      {shownOffers.length === 1 ? 'Another device syncs this game' : 'Other devices sync these games'},
-      but this one doesn't know where to keep
-      {shownOffers.length === 1 ? 'it' : 'them'} yet. Nothing syncs until you choose.
-    </p>
+    <h3>{$t('home.offered.title')}</h3>
+    <p class="intro">{$t('home.offered.intro', { n: shownOffers.length })}</p>
     {#each shownOffers as offer (offer.gameId + offer.peerId)}
       <div class="row">
         <div class="info">
           <strong>{offer.name}</strong>
-          <span class="hint">
-            Kept at <code>{offer.peerPath}</code> on the other device.
-          </span>
+          <span class="hint"
+            >{#each segments($t('home.offered.pathHint'), { path: offer.peerPath }, ['path']) as part}{#if part.bold}<code
+                >{part.text}</code
+              >{:else}{part.text}{/if}{/each}</span
+          >
         </div>
         <div class="actions">
-          <button class="btn primary" on:click={() => place(offer)}>Choose folder…</button>
-          <button class="btn" on:click={() => decline(offer)}>Decline</button>
+          <button class="btn primary" on:click={() => place(offer)}>{$t('home.offered.chooseFolder')}</button>
+          <button class="btn" on:click={() => decline(offer)}>{$t('home.offered.decline')}</button>
         </div>
       </div>
     {/each}

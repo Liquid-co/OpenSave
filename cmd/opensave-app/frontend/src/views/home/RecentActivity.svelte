@@ -19,6 +19,7 @@
   import { gameCover } from '../../lib/api.js';
   import { recentEvents } from '../../lib/overview.js';
   import { timeAgo } from '../../lib/timeago.js';
+  import { t } from '../../lib/i18n.js';
 
   const MOST = 6;
   const MIN_WIDTH = 210;
@@ -43,12 +44,12 @@
 
 <div class="recent">
   <div class="head">
-    <span class="label">Recent</span>
-    <button class="more" on:click={() => navigate('activity')}>All activity<ArrowRight size={12} /></button>
+    <span class="label">{$t('home.recent.label')}</span>
+    <button class="more" on:click={() => navigate('activity')}>{$t('home.recent.allActivity')}<ArrowRight size={12} /></button>
   </div>
   <div class="row" bind:clientWidth={width} style="grid-template-columns: repeat({fit}, minmax(0, 1fr))">
     {#if events.length === 0}
-      <p class="empty">Nothing yet. Snapshots and syncs show up here as they happen.</p>
+      <p class="empty">{$t('home.recent.empty')}</p>
     {:else}
       {#each shown as e (`${e.game.id}:${e.kind}:${e.at}`)}
         <button class="item" on:click={() => navigate('game', { gameId: e.game.id })} title={new Date(e.at).toLocaleString()}>

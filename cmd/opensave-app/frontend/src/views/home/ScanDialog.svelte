@@ -8,6 +8,7 @@
   import { api, coverURL } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
   import { withUndo, hiddenKeys } from '../../lib/undo.js';
+  import { t } from '../../lib/i18n.js';
   import Chevron from '../../components/ui/Chevron.svelte';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
@@ -60,7 +61,7 @@
       const results = (await api.get('/api/presets/scan')) ?? [];
       // A list, always. Anything else is not a scan, and reading one as a
       // list failed with "i is not iterable" — which says nothing.
-      if (!Array.isArray(results)) throw new Error("The scan's answer was not a list of saves. Restart OpenSave and scan again.");
+      if (!Array.isArray(results)) throw new Error($t('home.scan.badResponse'));
       fillMissingAppIds(results);
       scanResults = results;
     } catch (e) {
@@ -89,7 +90,7 @@
     selected.delete(item.id);
     selected = selected;
     withUndo({
-      message: `"${item.name}" won't be offered in scans again.`,
+      message: $t('home.scan.excludeToast', { name: item.name }),
       keys: [`scan:${item.savePath}`],
       stillThere: () => (scanResults ?? []).some((r) => r.id === item.id),
       run: async () => {
@@ -228,11 +229,11 @@
       const { failed } = await trackAsOneGame(primary, extras);
       consumeRows(new Set(group.suggested.map((m) => m.id)));
       if (failed.length > 0) {
-        toast(`Tracking "${primary.name}" — ${failed.length} folder(s) could not be added: ${failed[0]}`, 'error');
+        toast($t('home.scan.trackPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
       } else if (extras.length > 0) {
-        toast(`Now tracking "${primary.name}" across ${extras.length + 1} folders`, 'success');
+        toast($t('home.scan.trackedAcrossFolders', { name: primary.name, n: extras.length + 1 }), 'success');
       } else {
-        toast(`Now tracking "${primary.name}"`, 'success');
+        toast($t('common.nowTracking', { name: primary.name }), 'success');
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -263,8 +264,10 @@
 
     consumeRows(new Set(items.map((i) => i.id)));
     clearSelection();
-    const extra = locations > 0 ? ` with ${locations} extra location${locations === 1 ? '' : 's'}` : '';
-    toast(`Tracked ${games} game${games === 1 ? '' : 's'}${extra}`, problems.length > 0 ? 'error' : 'success');
+    toast(
+      locations > 0 ? $t('home.scan.trackedGamesWithExtras', { n: games, m: locations }) : $t('home.scan.trackedGames', { n: games }),
+      problems.length > 0 ? 'error' : 'success'
+    );
     if (problems.length > 0) toast(problems[0], 'error');
     if (filteredResults.length === 0) close();
   }
@@ -284,41 +287,46 @@
       const { failed } = await trackAsOneGame(primary, extras);
       consumeRows(new Set(items.map((i) => i.id)));
       clearSelection();
-      if (failed.length > 0) toast(`Tracked "${primary.name}", but ${failed.length} folder(s) failed: ${failed[0]}`, 'error');
-      else toast(`Tracking "${primary.name}" across ${items.length} folders`, 'success');
+      if (failed.length > 0) toast($t('home.scan.mergedPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
+      else toast($t('home.scan.trackedAcrossFolders', { name: primary.name, n: items.length }), 'success');
       if (filteredResults.length === 0) close();
     } catch (e) {
       toast(e.message, 'error');
     }
   }
 
-  const typeLabels = { emulator: 'Emulator', repack: 'Repack', game: 'Game' };
+  $: typeLabels = { emulator: $t('home.scan.type.emulator'), repack: $t('home.scan.type.repack'), game: $t('home.scan.type.game') };
   const typeIcon = (t) => (t === 'emulator' ? Joystick : t === 'repack' ? Package : Gamepad2);
-  const typeTabs = [['all', 'All'], ['game', 'Games'], ['emulator', 'Emulators'], ['repack', 'Repacks']];
+  $: typeTabs = [
+    ['all', $t('home.scan.tab.all')],
+    ['game', $t('home.scan.tab.games')],
+    ['emulator', $t('home.scan.tab.emulators')],
+    ['repack', $t('home.scan.tab.repacks')]
+  ];
 </script>
 
 <svelte:window on:keydown={onKeydown} />
 
 {#if open}
-  <Modal title="Scan results" icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
+  <Modal title={$t('home.scan.title')} icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
     <svelte:fragment slot="sub">
-      {#if scanning}Scanning your system…{:else}Found {scanCounts.all} save location{scanCounts.all === 1 ? '' : 's'} — {availableGroups.length} available to track{#if emptyCount > 0 && !showEmpty}, {emptyCount} empty hidden{/if}{/if}
+      {#if scanning}{$t('home.scan.subScanning')}{:else if emptyCount > 0 && !showEmpty}{$t('home.scan.foundSummaryEmpty', { n: scanCounts.all, m: availableGroups.length, e: emptyCount })}{:else}{$t('home.scan.foundSummary', { n: scanCounts.all, m: availableGroups.length })}{/if}
     </svelte:fragment>
 
     {#if scanning}
-      <ModalLoading>Scanning Steam, emulators, and configured folders…</ModalLoading>
+      <ModalLoading>{$t('home.scan.scanningDetail')}</ModalLoading>
     {:else}
       <div class="toolbar">
-        <SearchInput placeholder="Filter by name or path…" bind:value={scanFilter} />
+        <SearchInput placeholder={$t('home.scan.filterPlaceholder')} bind:value={scanFilter} />
         <FilterTabs options={typeTabs} counts={scanCounts} bind:value={scanType} />
-        <label class="toggle" title="Also show saves you already track">
+        <label class="toggle" title={$t('home.scan.showTrackedTitle')}>
           <input type="checkbox" bind:checked={showTracked} />
-          Show tracked
+          {$t('home.scan.showTracked')}
         </label>
         {#if emptyCount > 0}
-          <label class="toggle" title="Folders that exist but hold no files — Steam makes one for every game you own, whether or not saves go there. A game with nothing saved anywhere is in here too.">
+          <label class="toggle" title={$t('home.scan.showEmptyTitle')}>
             <input type="checkbox" bind:checked={showEmpty} />
-            Show {emptyCount} empty
+            {$t('home.scan.showEmpty', { n: emptyCount })}
           </label>
         {/if}
       </div>
@@ -330,7 +338,7 @@
             {@const tracked = isTracked(item)}
             {#if i === availableGroups.length && trackedGroups.length > 0}
               <div class="divider">
-                Already tracked ({trackedGroups.length})
+                {$t('home.scan.alreadyTracked', { n: trackedGroups.length })}
               </div>
             {/if}
             <!--
@@ -347,7 +355,7 @@
               icon={typeIcon(item.type)}
               selected={groupSelected(group, selected)}
               badge={typeLabels[item.type] ?? item.type}
-              stamp={tracked ? 'Tracked' : ''}
+              stamp={tracked ? $t('home.scan.tracked') : ''}
               dimmed={tracked}
               faded={isEmptyResult(item)}
               meta={contentsLabel(item)}
@@ -356,15 +364,15 @@
             >
               <svelte:fragment slot="hover">
                 <button class="btn small primary" on:click|stopPropagation={() => trackGroup(group)}>
-                  {group.suggested.length > 1 ? `Track all ${group.suggested.length}` : 'Track'}
+                  {group.suggested.length > 1 ? $t('home.scan.trackAll', { n: group.suggested.length }) : $t('home.scan.track')}
                 </button>
                 <button
                   class="btn small"
                   disabled={excluding === item.id}
-                  title="Stop offering this location in future scans"
+                  title={$t('home.scan.excludeTitle')}
                   on:click|stopPropagation={() => excludeResult(item)}
                 >
-                  {excluding === item.id ? 'Excluding…' : 'Exclude'}
+                  {excluding === item.id ? $t('home.scan.excluding') : $t('home.scan.exclude')}
                 </button>
               </svelte:fragment>
               {#if group.extras.length > 0}
@@ -373,8 +381,8 @@
                   class:open={expandedGroup === group.id}
                   on:click|stopPropagation={() => (expandedGroup = expandedGroup === group.id ? null : group.id)}
                 >
-                  <Chevron open={expandedGroup === group.id} size={12} /> found in {group.members.length} folders
-                  {#if group.suggested.length > 1}<span class="folders-hint">· {group.suggested.length} are one save</span>{/if}
+                  <Chevron open={expandedGroup === group.id} size={12} /> {$t('home.scan.foundInFolders', { n: group.members.length })}
+                  {#if group.suggested.length > 1}<span class="folders-hint">{$t('home.scan.oneSave', { n: group.suggested.length })}</span>{/if}
                 </button>
               {/if}
             </CoverTile>
@@ -384,7 +392,7 @@
             {/if}
           {:else}
             <div class="empty-grid">
-              {scanCounts.all === 0 ? 'Nothing detected. You can still track any folder manually.' : 'No matches for this filter.'}
+              {scanCounts.all === 0 ? $t('home.scan.emptyNothingDetected') : $t('home.scan.emptyNoMatches')}
             </div>
           {/each}
         </div>
@@ -392,9 +400,9 @@
 
       <ModalFoot>
         <div class="actions">
-          <button class="btn small" on:click={selectAllVisible} disabled={availableGroups.length === 0}>Select all ({availableGroups.length})</button>
+          <button class="btn small" on:click={selectAllVisible} disabled={availableGroups.length === 0}>{$t('home.scan.selectAll', { n: availableGroups.length })}</button>
           {#if selectedCount > 0}
-            <button class="btn small" on:click={clearSelection}>Clear</button>
+            <button class="btn small" on:click={clearSelection}>{$t('home.scan.clear')}</button>
           {/if}
         </div>
         <!-- Both tracking actions sit together on the right: they are the
@@ -404,14 +412,14 @@
           {#if selectedCount > 1}
             <button
               class="btn primary"
-              title="Track everything ticked as a single game, whatever it was grouped under. For a split save the scan did not spot."
+              title={$t('home.scan.trackAsOneTitle')}
               on:click={mergeSelectedIntoOneGame}
             >
-              Track as one game
+              {$t('home.scan.trackAsOne')}
             </button>
           {/if}
           <button class="btn primary" disabled={selectedCount === 0} on:click={trackSelected}>
-            Track selected ({selectedCount})
+            {$t('home.scan.trackSelected', { n: selectedCount })}
           </button>
         </div>
       </ModalFoot>

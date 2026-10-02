@@ -2,6 +2,7 @@
   // How the library looks: cover style, tiles per row, tile size. Shown in
   // Settings and in the library's View menu; both change the same thing, at
   // once. See lib/libraryview.js.
+  import { t } from '../../lib/i18n.js';
   import { slidingIndicator } from '../../lib/motion.js';
   import { libraryView, COVER_STYLES, TILE_SIZES, COLUMN_CHOICES } from '../../lib/libraryview.js';
 
@@ -10,8 +11,8 @@
 
 <div class="options">
   <div class="group">
-    <div class="label">Covers</div>
-    <div class="styles" role="radiogroup" aria-label="Cover style">
+    <div class="label">{$t('home.viewOptions.covers')}</div>
+    <div class="styles" role="radiogroup" aria-label={$t('home.viewOptions.coverStyle')}>
       {#each Object.entries(COVER_STYLES) as [id, style]}
         <button
           class="style"
@@ -31,16 +32,16 @@
 
   <div class="row">
     <label class="group">
-      <span class="label">Tiles per row</span>
+      <span class="label">{$t('home.viewOptions.tilesPerRow')}</span>
       <select value={String($libraryView.columns)} on:change={(e) => set({ columns: e.currentTarget.value === 'auto' ? 'auto' : Number(e.currentTarget.value) })}>
         {#each COLUMN_CHOICES as c}
-          <option value={String(c)}>{c === 'auto' ? 'As many as fit' : c}</option>
+          <option value={String(c)}>{c === 'auto' ? $t('home.viewOptions.autoFit') : c}</option>
         {/each}
       </select>
     </label>
 
     <div class="group">
-      <span class="label">Tile size</span>
+      <span class="label">{$t('home.viewOptions.tileSize')}</span>
       <div class="segmented" class:off={$libraryView.columns !== 'auto'} use:slidingIndicator={{ mode: 'fill' }}>
         {#each Object.entries(TILE_SIZES) as [id, label]}
           <button
@@ -55,12 +56,12 @@
     </div>
   </div>
   {#if $libraryView.columns !== 'auto'}
-    <p class="note">With a set number per row, the tiles share the width between them.</p>
+    <p class="note">{$t('home.viewOptions.fixedNote')}</p>
   {/if}
 
   <label class="check">
     <input type="checkbox" checked={$libraryView.overview} on:change={(e) => set({ overview: e.currentTarget.checked })} />
-    Show recent activity on Home
+    {$t('home.viewOptions.overview')}
   </label>
 </div>
 

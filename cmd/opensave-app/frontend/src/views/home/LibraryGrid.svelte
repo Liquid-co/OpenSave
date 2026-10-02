@@ -12,6 +12,7 @@
   // once (e.g. clear a batch of wrongly-tracked entries) without going in and
   // out of each one.
   import { navigate, toast } from '../../lib/stores.js';
+  import { t } from '../../lib/i18n.js';
   import { api } from '../../lib/api.js';
   import Camera from 'lucide-svelte/icons/camera';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -146,13 +147,14 @@
     }
     bulkBusy = false;
     const done = games.length - failed.length;
-    if (failed.length) toast(`${verb} ${done} of ${games.length} — ${failed.join('; ')}`, 'error');
-    else toast(`${verb} ${done} ${done === 1 ? 'game' : 'games'}`, 'success');
+    if (failed.length) toast($t('home.library.bulkPartial', { verb, done, total: games.length, failed: failed.join('; ') }), 'error');
+    else toast($t('home.library.bulkDone', { verb, n: done }), 'success');
   }
-  const snapshotPicked = () => forEachPicked('Took a snapshot of', (g) => api.post(`/api/games/${g.id}/snapshot`, { comment: '' }));
-  const syncPicked = () => forEachPicked('Started syncing', (g) => api.post(`/api/games/${g.id}/sync`, {}));
+  const snapshotPicked = () =>
+    forEachPicked($t('home.library.verbSnapshot'), (g) => api.post(`/api/games/${g.id}/snapshot`, { comment: '' }));
+  const syncPicked = () => forEachPicked($t('home.library.verbSync'), (g) => api.post(`/api/games/${g.id}/sync`, {}));
   const favouritePicked = () =>
-    forEachPicked('Added to Favourites:', (g) => api.post('/api/collections/favourites/games', { gameId: g.id, in: true }));
+    forEachPicked($t('home.library.verbFavourite'), (g) => api.post('/api/collections/favourites/games', { gameId: g.id, in: true }));
   // "All" is what is on screen: selecting games a filter is hiding, to then
   // untrack them, would act on things nobody was looking at.
   $: allSelected = shown.length > 0 && shown.every((r) => libSelected.has(r.game.id));
@@ -176,30 +178,52 @@
 />
 
 <div class="toolbar">
-  <h3>Library</h3>
-  <input class="search" type="search" data-find placeholder="Find a game…" bind:value={query} aria-label="Find a game" />
+  <h3>{$t('home.library.title')}</h3>
+  <input
+    class="search"
+    type="search"
+    data-find
+    placeholder={$t('home.library.searchPlaceholder')}
+    bind:value={query}
+    aria-label={$t('home.library.searchLabel')}
+  />
   <div class="spacer"></div>
   {#if selectMode}
-    <span class="select-count">{libSelected.size} selected</span>
+    <span class="select-count">{$t('home.library.selectedCount', { n: libSelected.size })}</span>
     <button class="btn small" on:click={toggleSelectAll}>
-      {allSelected ? 'Unselect all' : `Select all (${shown.length})`}
+      {allSelected ? $t('home.library.unselectAll') : $t('home.library.selectAll', { count: shown.length })}
     </button>
-    <button class="btn small" disabled={libSelected.size === 0 || bulkBusy} on:click={snapshotPicked} title="Take a snapshot of each">
-      <Camera size={14} />Snapshot
+    <button
+      class="btn small"
+      disabled={libSelected.size === 0 || bulkBusy}
+      on:click={snapshotPicked}
+      title={$t('home.library.snapshotTitle')}
+    >
+      <Camera size={14} />{$t('home.library.snapshot')}
     </button>
-    <button class="btn small" disabled={libSelected.size === 0 || bulkBusy} on:click={syncPicked} title="Sync each with your devices">
-      <RefreshCw size={14} />Sync
+    <button
+      class="btn small"
+      disabled={libSelected.size === 0 || bulkBusy}
+      on:click={syncPicked}
+      title={$t('home.library.syncTitle')}
+    >
+      <RefreshCw size={14} />{$t('home.library.sync')}
     </button>
-    <button class="btn small" disabled={libSelected.size === 0 || bulkBusy} on:click={favouritePicked} title="Add each to Favourites">
-      <Star size={14} />Favourite
+    <button
+      class="btn small"
+      disabled={libSelected.size === 0 || bulkBusy}
+      on:click={favouritePicked}
+      title={$t('home.library.favouriteTitle')}
+    >
+      <Star size={14} />{$t('home.library.favourite')}
     </button>
     <button class="btn small danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
-      Untrack selected
+      {$t('home.library.untrackSelected')}
     </button>
-    <button class="btn small" on:click={stopSelecting}>Cancel</button>
+    <button class="btn small" on:click={stopSelecting}>{$t('common.cancel')}</button>
   {:else}
     <label class="sort">
-      <span>Sort</span>
+      <span>{$t('home.library.sort')}</span>
       <select bind:value={$libraryView.sort}>
         {#each Object.entries(SORTS) as [id, s]}
           <option value={id}>{s.label}</option>
@@ -209,25 +233,25 @@
     <button
       class="btn small icon order"
       on:click={() => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))}
-      title={$libraryView.reverse ? 'Reversed — put back in order' : 'Reverse the order'}
-      aria-label="Reverse the order"
+      title={$libraryView.reverse ? $t('home.library.reversedTitle') : $t('home.library.reverseTitle')}
+      aria-label={$t('home.library.reverseTitle')}
       aria-pressed={$libraryView.reverse}
     >
       <svelte:component this={$libraryView.reverse ? ArrowUpNarrowWide : ArrowDownWideNarrow} size={15} />
     </button>
     <div class="view-anchor">
       <button class="btn small" class:active={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
-        <LayoutGrid size={14} />View
+        <LayoutGrid size={14} />{$t('home.library.view')}
       </button>
       {#if viewOpen}
         <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
-        <div class="view-panel card" role="dialog" aria-label="Library view">
+        <div class="view-panel card" role="dialog" aria-label={$t('home.library.viewLabel')}>
           <LibraryViewOptions />
-          <p class="view-hint">Also in Settings → General.</p>
+          <p class="view-hint">{$t('home.library.viewHint')}</p>
         </div>
       {/if}
     </div>
-    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />Select</button>
+    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />{$t('home.library.select')}</button>
   {/if}
 </div>
 
@@ -238,7 +262,7 @@
     {/if}
     {#if chips.length}
       {#if filters.length > 1}<span class="chip-sep" aria-hidden="true"></span>{/if}
-      <div class="collection-chips" role="group" aria-label="Collections">
+      <div class="collection-chips" role="group" aria-label={$t('home.library.collectionsLabel')}>
         {#each chips as c}
           <button class="collection-chip" class:active={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
             {#if c.builtin}<Star size={12} />{/if}{c.label}<span class="count">{c.count}</span>
@@ -251,8 +275,12 @@
 
 {#if shown.length === 0}
   <div class="none">
-    <p>No games match{query.trim() ? ` "${query.trim()}"` : ''}.</p>
-    <button class="btn small" on:click={clearFilters}>Clear filters</button>
+    {#if query.trim()}
+      <p>{$t('home.library.emptyFor', { query: query.trim() })}</p>
+    {:else}
+      <p>{$t('home.library.empty')}</p>
+    {/if}
+    <button class="btn small" on:click={clearFilters}>{$t('home.library.clearFilters')}</button>
   </div>
 {:else}
   <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}" on:keydown={gridKeys} role="presentation">
@@ -270,7 +298,10 @@
     {/each}
   </div>
   {#if filtering}
-    <p class="showing">Showing {shown.length} of {rows.length}. <button class="linklike" on:click={clearFilters}>Show all</button></p>
+    <p class="showing">
+      {$t('home.library.showing', { shown: shown.length, total: rows.length })}
+      <button class="linklike" on:click={clearFilters}>{$t('home.library.showAll')}</button>
+    </p>
   {/if}
 {/if}
 

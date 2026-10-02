@@ -3,6 +3,7 @@
   // Ticking one fires `toggle` with its id.
   import { createEventDispatcher } from 'svelte';
   import { contentsLabel, normPath } from '../../lib/scan.js';
+  import { t, segments } from '../../lib/i18n.js';
 
   export let group;
   export let selected = new Set();
@@ -14,8 +15,8 @@
 
 <div class="panel">
   <div class="head">
-    <strong>{group.primary.name}</strong> was found in {group.members.length} places.
-    Tick the folders that belong to this save — they are tracked as one game.
+    {#each segments($t('home.scan.folderList.headFound'), { name: group.primary.name, n: group.members.length }, ['name']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
+    {$t('home.scan.folderList.headTick')}
   </div>
   {#each group.members as m (m.id)}
     {@const tracked = trackedPaths.has(normPath(m.savePath))}
@@ -30,11 +31,11 @@
         <span class="path">{m.savePath}</span>
         <span class="meta">
           {contentsLabel(m)}
-          {#if m.role === 'primary'}<span class="tag tag-primary">the save folder</span>
-          {:else if m.role === 'location'}<span class="tag tag-loc">part of the same save</span>
-          {:else if m.role === 'inside'}<span class="tag">already inside the folder above</span>
-          {:else if m.role === 'alternative'}<span class="tag tag-alt">another copy — probably an old install</span>{/if}
-          {#if tracked}<span class="tag tag-primary">already tracked</span>{/if}
+          {#if m.role === 'primary'}<span class="tag tag-primary">{$t('home.scan.folderList.tagSave')}</span>
+          {:else if m.role === 'location'}<span class="tag tag-loc">{$t('home.scan.folderList.tagLocation')}</span>
+          {:else if m.role === 'inside'}<span class="tag">{$t('home.scan.folderList.tagInside')}</span>
+          {:else if m.role === 'alternative'}<span class="tag tag-alt">{$t('home.scan.folderList.tagAlt')}</span>{/if}
+          {#if tracked}<span class="tag tag-primary">{$t('home.scan.folderList.tagTracked')}</span>{/if}
         </span>
       </span>
     </label>

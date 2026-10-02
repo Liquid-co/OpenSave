@@ -10,6 +10,7 @@
   import X from 'lucide-svelte/icons/x';
   import { gameList, peers, settings, navigate } from '../../lib/stores.js';
   import { setupState, setupSteps } from '../../lib/setup.js';
+  import { t } from '../../lib/i18n.js';
 
   /** Whether a scan is running, from the page's scan dialog. */
   export let scanning = false;
@@ -25,21 +26,23 @@
   const skip = (id) => setupState.update((s) => ({ ...s, skipped: [...new Set([...s.skipped, id])] }));
   const later = () => setupState.update((s) => ({ ...s, dismissed: true }));
 
+  // Steps carry i18n keys rather than text: the copy has to follow the picked
+  // language, which means reading `t` at render time, not once here.
   const copy = {
     saves: {
       icon: ScanSearch,
-      title: 'Find your game saves',
-      text: 'OpenSave looks through Steam, emulators and the usual save folders, and you choose what to keep.'
+      titleKey: 'home.setup.stepSaves.title',
+      textKey: 'home.setup.stepSaves.text'
     },
     devices: {
       icon: MonitorSmartphone,
-      title: 'Add your other devices',
-      text: 'A PC, a Steam Deck or a handheld with OpenSave on it — on your Wi-Fi, or anywhere over the internet.'
+      titleKey: 'home.setup.stepDevices.title',
+      textKey: 'home.setup.stepDevices.text'
     },
     cloud: {
       icon: Cloud,
-      title: 'Back up to the cloud',
-      text: 'A copy of every snapshot in Google Drive, OneDrive, Dropbox or a folder of your own.'
+      titleKey: 'home.setup.stepCloud.title',
+      textKey: 'home.setup.stepCloud.text'
     }
   };
 </script>
@@ -47,10 +50,10 @@
 <div class="card guide">
   <div class="top">
     <div>
-      <h3>Get OpenSave set up</h3>
-      <p class="progress">{plan.settled} of 3 done</p>
+      <h3>{$t('home.setup.title')}</h3>
+      <p class="progress">{$t('home.setup.progress', { n: plan.settled })}</p>
     </div>
-    <button class="btn small ghost" on:click={later} title="Hide this guide"><X size={14} />Later</button>
+    <button class="btn small ghost" on:click={later} title={$t('home.setup.hideTitle')}><X size={14} />{$t('home.setup.later')}</button>
   </div>
   <ol>
     {#each plan.steps as step, i}
@@ -60,21 +63,21 @@
           {#if step.done}<Check size={14} strokeWidth={3} />{:else}{i + 1}{/if}
         </span>
         <div class="body">
-          <div class="title">{c.title}{#if step.skipped}<span class="tag">Skipped</span>{/if}</div>
+          <div class="title">{$t(c.titleKey)}{#if step.skipped}<span class="tag">{$t('home.setup.skipped')}</span>{/if}</div>
           {#if plan.next === step.id}
-            <p class="text">{c.text}</p>
+            <p class="text">{$t(c.textKey)}</p>
             <div class="actions">
               {#if step.id === 'saves'}
                 <button class="btn small primary" disabled={scanning} on:click={() => dispatch('scan')}>
-                  <ScanSearch size={14} />{scanning ? 'Scanning…' : 'Scan for saves'}
+                  <ScanSearch size={14} />{scanning ? $t('home.scanning') : $t('home.welcome.scanForSaves')}
                 </button>
-                <button class="btn small" on:click={() => dispatch('add')}><FolderPlus size={14} />Pick a folder</button>
+                <button class="btn small" on:click={() => dispatch('add')}><FolderPlus size={14} />{$t('home.setup.pickFolder')}</button>
               {:else if step.id === 'devices'}
-                <button class="btn small primary" on:click={() => navigate('devices')}><MonitorSmartphone size={14} />Pair a device</button>
-                <button class="btn small ghost" on:click={() => skip('devices')}>Only this device for now</button>
+                <button class="btn small primary" on:click={() => navigate('devices')}><MonitorSmartphone size={14} />{$t('home.setup.pairDevice')}</button>
+                <button class="btn small ghost" on:click={() => skip('devices')}>{$t('home.setup.onlyThisDevice')}</button>
               {:else}
-                <button class="btn small primary" on:click={() => navigate('cloud')}><Cloud size={14} />Choose where</button>
-                <button class="btn small ghost" on:click={() => skip('cloud')}>No cloud backup</button>
+                <button class="btn small primary" on:click={() => navigate('cloud')}><Cloud size={14} />{$t('home.setup.chooseWhere')}</button>
+                <button class="btn small ghost" on:click={() => skip('cloud')}>{$t('home.setup.noCloudBackup')}</button>
               {/if}
             </div>
           {/if}

@@ -6,6 +6,7 @@
   // someone found. Art whose shape is far from the tile's is shown whole over
   // a blurred copy of itself rather than cropped to a sliver of its middle.
   import { createEventDispatcher, onDestroy } from 'svelte';
+  import { t, segments } from '../../lib/i18n.js';
   import Check from 'lucide-svelte/icons/check';
   import CoverImage from '../../components/CoverImage.svelte';
   import { gameCover, isDaemonURL } from '../../lib/api.js';
@@ -166,7 +167,7 @@
   </div>
   <div class="body">
     <div class="name">
-      {#if isFavourite($collections, game.id)}<span class="fav" title="In Favourites"><Star size={12} /></span>{/if}{game.name}
+      {#if isFavourite($collections, game.id)}<span class="fav" title={$t('home.tile.inFavourites')}><Star size={12} /></span>{/if}{game.name}
     </div>
     <div class="status tone-{status.tone}">
       {#if status.tone === 'warn'}<TriangleAlert size={13} class="status-icon" />{:else if status.tone === 'playing'}<Gamepad2
@@ -179,9 +180,9 @@
     </div>
     {#if cover === 'wide'}
       <div class="meta">
-        {snapshots} {snapshots === 1 ? 'snapshot' : 'snapshots'}{#if game.playtimeMs >= 60_000}{' · '}{playLength(game.playtimeMs)} played{/if}
+        {$t('home.tile.snapshots', { n: snapshots })}{#if game.playtimeMs >= 60_000}{' · '}{$t('home.tile.played', { length: playLength(game.playtimeMs) })}{/if}
         {#if game.activeBranch && game.activeBranch !== 'main'}
-          · on <strong>{game.activeBranch}</strong>
+          {' · '}{#each segments($t('home.tile.onBranch', { branch: game.activeBranch }), { branch: game.activeBranch }, ['branch']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
         {/if}
       </div>
     {/if}
