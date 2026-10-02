@@ -48,13 +48,16 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 			continue
 		}
 		installBases := baseDirs(g.Installs)
+		// Lower case on every system, as the blocked roots are keyed and as a
+		// scan compares them (expandGamePaths): folded only where the
+		// filesystem folds, ~/Documents slipped past on Linux and macOS.
 		tooBroad := func(dir string) bool {
-			d := foldCase(filepath.Clean(dir))
+			d := strings.ToLower(filepath.Clean(dir))
 			if blocked[d] {
 				return true
 			}
 			for _, b := range installBases {
-				if d == foldCase(filepath.Clean(b)) {
+				if d == strings.ToLower(filepath.Clean(b)) {
 					return true
 				}
 			}
