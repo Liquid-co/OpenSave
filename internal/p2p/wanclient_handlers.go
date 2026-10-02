@@ -609,7 +609,8 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	// Same auto-track + cover-backfill behavior as the LAN route — relay
 	// peers were previously auto-tracked without cover art, which is why
 	// covers didn't propagate between WAN-paired devices.
-	game, err := w.engine.ensureManifestGame(gameID, query, peerID)
+	// Over the relay, the request's MAC proved the sender (routeRequest).
+	game, err := w.engine.ensureManifestGame(gameID, query, peerID, peerID)
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}
