@@ -21,6 +21,9 @@ import { playLength } from './format.js';
 export function gameStatus(game, { peers = {}, activity, conflicted = false, now = Date.now() } = {}) {
   // Before anything else: with its folder gone nothing else about it can
   // move — no snapshot, no sync, no decision taken.
+  // …unless the whole drive is absent here: the game's saves live on another
+  // device's D:\ or E:\, and there is nothing on this one to worry about.
+  if (game.savePathMissing && game.saveDriveMissing) return { state: 'elsewhere', label: 'Not on this device', tone: 'muted' };
   if (game.savePathMissing) return { state: 'missing', label: 'Save folder missing', tone: 'warn' };
   // Every save file deleted here at once, held back from the other devices
   // until someone says whether that was meant (lib/emptied.js).
@@ -177,7 +180,7 @@ const stamp = (s) => (s ? Date.parse(s) : null);
 const snapshotsOf = (game) => Object.values(game.branches ?? {}).flatMap((b) => b.snapshots ?? []);
 
 // What needs looking at, in the order the summary above the library reads it.
-const URGENCY = { missing: 0, emptied: 1, conflict: 2, error: 3, syncing: 4, restoring: 4, unsynced: 5, empty: 6, paused: 7 };
+const URGENCY = { missing: 0, emptied: 1, conflict: 2, error: 3, syncing: 4, restoring: 4, unsynced: 5, empty: 6, paused: 7, elsewhere: 10 }; // unlisted states (synced, local…) rank 9
 
 /**
  * The orders the library can be put in. Each compares two rows, {game,

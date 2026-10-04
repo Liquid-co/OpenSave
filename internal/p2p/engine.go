@@ -9,11 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/p2p/discovery"
 	"github.com/opensave/opensave/internal/p2p/pairing"
@@ -119,6 +123,20 @@ type Engine struct {
 	// that a device has gone away — see offlineStrikes.
 	pingMu     sync.Mutex
 	pingMisses map[string]int
+	// probeMu serializes PingPairedPeers rounds.
+	probeMu sync.Mutex
+	// probingLinks: peers whose connection is being speed-tested now
+	// (probeLinkSoon).
+	probeLinksMu sync.Mutex
+	probingLinks map[string]bool
+	// When each game last got a safety snapshot before a peer's deletions
+	// (snapshotBeforePeerDeletions).
+	peerDeleteSnapMu sync.Mutex
+	peerDeleteSnap   map[string]time.Time
+	// answered holds the peers that answered a probe during this run, and
+	// startedMs is when the run began (heardThisRun).
+	answered  map[string]bool
+	startedMs int64
 
 	// Lineage refreshes already running after a peer-applied deletion, keyed
 	// by game+peer. Deletions arrive one file at a time, and each one leaves
@@ -283,6 +301,7 @@ func New(s *store.Store, snaps *snapshot.Manager, logf func(level, msg string)) 
 		Log:       logf,
 		ctx:       ctx,
 		cancel:    cancel,
+		startedMs: time.Now().UnixMilli(),
 	}
 	e.Wan = newWanClient(e)
 	e.RelayHost = NewRelayHost(logf)
@@ -379,9 +398,34 @@ func (e *Engine) clearPingMisses(peerID string) {
 	delete(e.pingMisses, peerID)
 }
 
+// noteAnswered records that a peer answered a probe during this run.
+func (e *Engine) noteAnswered(peerID string) {
+	e.pingMu.Lock()
+	defer e.pingMu.Unlock()
+	if e.answered == nil {
+		e.answered = map[string]bool{}
+	}
+	e.answered[peerID] = true
+}
+
+// heardThisRun reports whether there is any sign of a peer since this engine
+// started: a probe it answered, or a sighting (discovery, a request from it,
+// the relay) recent enough to postdate the start.
+func (e *Engine) heardThisRun(p store.Peer) bool {
+	e.pingMu.Lock()
+	answered := e.answered[p.ID]
+	e.pingMu.Unlock()
+	return answered || p.LastSeenMs >= e.startedMs
+}
+
 // PingPairedPeers probes every paired LAN peer and updates their
 // online/offline status.
 func (e *Engine) PingPairedPeers(ctx context.Context) {
+	// One probe round at a time: the presence loop and a sync starting can
+	// both ask, and two overlapping rounds would count one outage as two
+	// misses toward offlineStrikes.
+	e.probeMu.Lock()
+	defer e.probeMu.Unlock()
 	peers, err := e.Store.ListPeers()
 	if err != nil {
 		return
@@ -414,11 +458,19 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 		// failed cannot lose anything: a device that really has gone is
 		// declared offline a few probes later, and the only cost is a sync
 		// attempt that fails the way it would have anyway.
+		//
+		// That patience is for a device seen during this run. A status
+		// carried over from the previous run is not evidence of anything: a
+		// PC switched off overnight came back "online" from the database on
+		// every start, and stayed so until three probes had failed. A device
+		// not heard from since this start goes offline on its first miss.
 		newStatus := p.Status
 		if ok {
 			e.clearPingMisses(p.ID)
+			e.noteAnswered(p.ID)
 			newStatus = "online"
-		} else if e.notePingMiss(p.ID) >= offlineStrikes {
+			e.probeLinkSoon(p)
+		} else if misses := e.notePingMiss(p.ID); misses >= offlineStrikes || !e.heardThisRun(p) {
 			newStatus = "offline"
 		}
 
@@ -432,6 +484,35 @@ func (e *Engine) PingPairedPeers(ctx context.Context) {
 	if changed {
 		e.notifyPeerUpdate()
 	}
+}
+
+// probeLinkSoon tests the connection to a peer that just answered, in the
+// background, when nothing has measured it for a while
+// (syncengine/linkspeed.go). One test per peer at a time.
+func (e *Engine) probeLinkSoon(p store.Peer) {
+	if e.Sync == nil || p.Address == "relay" {
+		return
+	}
+	e.probeLinksMu.Lock()
+	if e.probingLinks == nil {
+		e.probingLinks = map[string]bool{}
+	}
+	if e.probingLinks[p.ID] {
+		e.probeLinksMu.Unlock()
+		return
+	}
+	e.probingLinks[p.ID] = true
+	e.probeLinksMu.Unlock()
+	go func() {
+		defer func() {
+			e.probeLinksMu.Lock()
+			delete(e.probingLinks, p.ID)
+			e.probeLinksMu.Unlock()
+		}()
+		if e.Sync.ProbeLinkIfDue(context.Background(), syncengine.Peer{ID: p.ID, Name: p.Name, Address: p.Address, Port: p.Port}) {
+			e.notifyPeerUpdate()
+		}
+	}()
 }
 
 // ErrNoPeersOnline is a sync with no other device to sync with: none of the
@@ -542,6 +623,8 @@ func (e *Engine) StartResyncLoop() {
 	stop := e.stopRetry
 	e.pendingMu.Unlock()
 
+	e.startPresenceLoop(stop)
+
 	// Tracked on the engine's lifecycle so a shutdown lands between ticks
 	// rather than half-way through a transfer.
 	e.GoSync(func(ctx context.Context) {
@@ -566,6 +649,43 @@ func (e *Engine) StartResyncLoop() {
 				if ticks%reconcileEveryNTicks == 0 {
 					e.reconcileAllGames(ctx)
 				}
+			}
+		}
+	})
+}
+
+// presenceInterval is how often paired LAN peers are probed just to know
+// whether they are there.
+//
+// Probing used to happen only as a side effect: before the 60-second
+// reconcile, before a retry, before a manual sync. The reconcile runs on the
+// same goroutine as the sync-everything pass it starts, so while a big
+// library synced the next probe waited minutes, and with offlineStrikes
+// that was minutes more before a device that had gone showed as gone. Peers
+// seen by UDP broadcast hid this; one reached over a VPN such as Tailscale,
+// which does not carry broadcasts, depends on probes alone.
+//
+// 10s makes "back" show within ~10s and "gone" within ~30s. A probe is one
+// small GET per peer. A var only so a test can shorten it.
+var presenceInterval = 10 * time.Second
+
+// startPresenceLoop probes paired peers on its own ticker, independent of
+// whatever sync work is running. It stops with the resync loop.
+func (e *Engine) startPresenceLoop(stop chan struct{}) {
+	e.GoSync(func(ctx context.Context) {
+		// At once, then on the ticker: until the first round, every peer
+		// shows whatever the previous run left in the database.
+		e.PingPairedPeers(ctx)
+		ticker := time.NewTicker(presenceInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				e.PingPairedPeers(ctx)
 			}
 		}
 	})
@@ -602,6 +722,13 @@ func (e *Engine) retryPendingResyncs(ctx context.Context) {
 		if ctx.Err() != nil {
 			return // shutting down; the failsafe picks these up next start
 		}
+		// A save folder that is not here cannot be synced, and retrying it
+		// every tick only logs the same failure. Dropped from the queue; the
+		// periodic reconcile picks it up once the folder is back.
+		if g, err := e.Store.GetGame(id); err == nil && saveFolderAbsent(g.SavePath) {
+			e.ClearPendingResync(id)
+			continue
+		}
 		e.Log("info", fmt.Sprintf("retrying interrupted sync for %s", id))
 		results, err := e.Sync.SyncGame(ctx, id, online)
 		if err == nil {
@@ -614,6 +741,22 @@ func (e *Engine) retryPendingResyncs(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// saveFolderAbsent reports whether a game's save folder is not on this device
+// — the same test as daemon.SaveFolderMissing, which this package cannot
+// import. For a single-file save it is the folder the file goes in that
+// counts: the file itself may not have been written yet.
+func saveFolderAbsent(savePath string) bool {
+	if savePath == "" {
+		return false
+	}
+	folder := savePath
+	if isFile, err := delta.ResolveLocalSaveFilePath(savePath); err == nil && isFile {
+		folder = filepath.Dir(savePath)
+	}
+	_, err := os.Stat(folder)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // SyncAllGames syncs every tracked game (used when a peer comes online).
@@ -631,6 +774,12 @@ func (e *Engine) SyncAllGames(ctx context.Context) {
 	}
 	for _, g := range games {
 		if !g.AutoSync {
+			continue
+		}
+		// Not on this device (a drive it doesn't have, a folder that is
+		// gone): nothing to sync, and it is shown as such on screen. Trying
+		// anyway logged an error for it against every peer, every pass.
+		if saveFolderAbsent(g.SavePath) {
 			continue
 		}
 		results, err := e.Sync.SyncGame(ctx, g.ID, online)

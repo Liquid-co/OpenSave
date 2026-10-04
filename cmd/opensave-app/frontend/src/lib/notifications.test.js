@@ -21,6 +21,11 @@ describe('notifications', () => {
     expect(w.find((x) => x.id.startsWith('damaged')).title).toBe("1 snapshot of Hades can't be restored");
   });
 
+  it('does not ask about a game whose drive this device does not have', () => {
+    const w = waitingOnYou({ games: { ark: { id: 'ark', name: 'ARK', savePathMissing: true, saveDriveMissing: true, branches: {} } } });
+    expect(w).toEqual([]);
+  });
+
   it('turns activity into events, unread since the bell was last opened', () => {
     const now = Date.UTC(2026, 8, 25, 12);
     const items = [

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,6 +50,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Post("/api/games/{gameId}/snapshot", s.handleCreateSnapshot)
 	r.Post("/api/games/{gameId}/rollback", s.handleRollback)
+	r.Post("/api/games/{gameId}/use-everywhere", s.handleUseSaveEverywhere)
 	r.Get("/api/games/{gameId}/save-files", s.handleGameSaveFiles)
 	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/files", s.handleSnapshotFiles)
 	r.Post("/api/games/{gameId}/snapshot/{snapshotId}/restore-file", s.handleRestoreFile)
@@ -56,6 +58,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Patch("/api/games/{gameId}/snapshot/{snapshotId}", s.handleEditSnapshot)
 	r.Get("/api/games/{gameId}/sessions", s.handleGameSessions)
 	r.Get("/api/snapshots/check", s.handleSnapshotChecks)
+	r.Post("/api/snapshots/merge-duplicates", s.handleMergeDuplicates)
 	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/compare/{otherId}", s.handleCompareSnapshots)
 	r.Post("/api/snapshots/check", s.handleVerifySnapshots)
 	r.Post("/api/games/{gameId}/session", s.handleMarkSession)
@@ -377,7 +380,7 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 
 	oldSavePath := game.SavePath
 	oldAutoSync := game.AutoSync
-	oldIgnore := game.SyncIgnore
+	oldIgnore := s.Daemon.IgnoreText(game)
 	oldAppID := game.AppID
 	if err := readJSON(r, &game); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -418,7 +421,7 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		forgetCoverMiss(game.AppID)
 	}
 
-	if game.SyncIgnore != oldIgnore {
+	if s.Daemon.IgnoreText(game) != oldIgnore {
 		// The merge bases were computed over a save that included files the
 		// new rules exclude, so neither device could ever match them again —
 		// which reads as permanent divergence and prompts a conflict on every
@@ -453,6 +456,9 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())
 		return
+	}
+	if s.Daemon.IgnoreText(game) != oldIgnore {
+		s.Daemon.NoteExclusions(game)
 	}
 
 	// Re-watch if the save location or autoSync flag changed.
@@ -635,6 +641,50 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 	s.Daemon.P2P.Sync.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityRestored,
 		Detail: fmt.Sprintf("%s|%s", snap.ID, snap.Timestamp)})
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// snapshotID is the request's snapshot id, followed when it is kept as an
+// alias of the snapshot holding the same files (snapshot/content.go). For
+// reading a snapshot only: deleting or editing takes the id as given, so an
+// old id can never reach the snapshot that took its place.
+func (s *Server) snapshotID(r *http.Request) string {
+	return s.resolveID(chi.URLParam(r, "snapshotId"))
+}
+
+func (s *Server) resolveID(id string) string {
+	if resolved, ok := s.Daemon.Store.ResolveSnapshotID(id); ok {
+		return resolved
+	}
+	return id
+}
+
+// handleMergeDuplicates keeps every game's identical snapshots once, now
+// rather than at the next start (daemon.MergeSnapshotDuplicates).
+func (s *Server) handleMergeDuplicates(w http.ResponseWriter, r *http.Request) {
+	merged, freed := s.Daemon.MergeSnapshotDuplicates(true)
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"merged": merged, "freedBytes": freed})
+}
+
+// handleUseSaveEverywhere makes this device's save the one every other device
+// takes (syncengine.UseSaveEverywhere), and starts a sync to hand it out. The
+// sync runs in the background: a large save takes a while, and the answer the
+// person needs is that it was accepted. A paused device hands it out when it
+// resumes.
+func (s *Server) handleUseSaveEverywhere(w http.ResponseWriter, r *http.Request) {
+	gameID := chi.URLParam(r, "gameId")
+	vec, err := s.Daemon.P2P.Sync.UseSaveEverywhere(gameID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.Daemon.P2P.GoSync(func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		defer cancel()
+		_, _ = s.Daemon.P2P.SyncGame(ctx, gameID)
+	})
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"version": vec.String()})
 }
 
 func (s *Server) handleCreateBranch(w http.ResponseWriter, r *http.Request) {
@@ -973,7 +1023,7 @@ func (s *Server) handleSyncResume(w http.ResponseWriter, r *http.Request) {
 // handlePreviewRestore says what restoring a snapshot would change, file by
 // file, without changing anything.
 func (s *Server) handlePreviewRestore(w http.ResponseWriter, r *http.Request) {
-	preview, err := s.Daemon.Snapshots.PreviewRestore(chi.URLParam(r, "gameId"), chi.URLParam(r, "snapshotId"))
+	preview, err := s.Daemon.Snapshots.PreviewRestore(chi.URLParam(r, "gameId"), s.snapshotID(r))
 	if err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())
 		return

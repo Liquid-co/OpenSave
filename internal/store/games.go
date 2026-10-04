@@ -72,7 +72,11 @@ type Game struct {
 	// else — snapshots keep capturing every file, so a restore can never be
 	// the thing that deletes an excluded config.
 	SyncIgnore string `db:"sync_ignore" json:"syncIgnore"`
-	CreatedAt  string `db:"created_at" json:"createdAt"`
+	// SyncDeviceSettings syncs the files the game database names as the
+	// game's settings, which are otherwise left out of syncing
+	// (presets/devicesettings.go). Off unless the user turns it on.
+	SyncDeviceSettings bool   `db:"sync_device_settings" json:"syncDeviceSettings"`
+	CreatedAt          string `db:"created_at" json:"createdAt"`
 }
 
 // CreateGame inserts a new game and its default "main" branch in one
@@ -159,7 +163,8 @@ func (s *Store) UpdateGame(g Game) error {
 			exe_path = :exe_path,
 			cover_url = :cover_url,
 			last_manifest_hash = :last_manifest_hash,
-			sync_ignore = :sync_ignore
+			sync_ignore = :sync_ignore,
+			sync_device_settings = :sync_device_settings
 		WHERE id = :id`, g)
 	if err != nil {
 		return fmt.Errorf("update game %s: %w", g.ID, err)

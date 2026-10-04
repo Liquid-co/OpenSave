@@ -140,7 +140,17 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, local.RootHash(delta.PrimaryRoot)); err != nil {
 			return err
 		}
-		files, dirs := IntersectLineage(local, local)
+		// Shared only what the peer verifiably holds too — see
+		// markResolvedLocal for what recording the whole local copy as shared
+		// did once the peer's pull did not finish.
+		var files, dirs []string
+		if remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
+			Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL,
+		}); err == nil {
+			if remoteRoot, has := remoteData.Manifest.Extra[root]; has {
+				files, dirs = IntersectLineage(local, delta.Manifest{Files: remoteRoot.Files, Dirs: remoteRoot.Dirs})
+			}
+		}
 		_ = e.Store.SetSyncStateForRoot(gameID, peerID, root, files, dirs)
 		e.clearRootConflict(gameID, root)
 		e.Transport.TriggerPeerPull(peer, gameID)

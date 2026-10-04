@@ -85,6 +85,11 @@ type emptiness struct {
 func (x emptiness) back(held map[string][]string) bool {
 	for name, files := range held {
 		for _, f := range files {
+			if delta.NeverSynced(f) {
+				// Recorded by a build that still counted it; never part of
+				// the save, so not something that has to come back.
+				continue
+			}
 			if _, ok := x.present[name][f]; !ok {
 				return false
 			}

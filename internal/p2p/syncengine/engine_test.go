@@ -224,6 +224,59 @@ func TestSync_PullNewRemoteFile(t *testing.T) {
 	}
 }
 
+// Saves identical on both sides from the start (Steam Cloud, a copied folder)
+// never pull anything — and used to never share the peer's history entry
+// either, so the game showed a snapshot on one device and none on the other.
+func TestSync_InSyncMirrorsPeerSnapshot(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "save.dat", "same progress")
+	write(t, env.remoteDir, "save.dat", "same progress")
+	env.transport.latestSnap = &SnapshotInfo{ID: "snap_888", Timestamp: "2026-06-01T00:00:00.000Z", Comment: "Initial snapshot"}
+
+	res, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer)
+	if err != nil {
+		t.Fatalf("SyncWithPeer error = %v", err)
+	}
+	if res.Status != "in_sync" {
+		t.Fatalf("result = %+v, want in_sync", res)
+	}
+	snap, err := env.store.GetSnapshot("snap_888")
+	if err != nil {
+		t.Fatalf("peer snapshot not mirrored on an in-sync pass: %v", err)
+	}
+	if !strings.Contains(snap.Comment, "Synced from peer: Remote Device") {
+		t.Errorf("mirror comment = %q", snap.Comment)
+	}
+
+	// A second in-sync pass must not take it again.
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	game, err := env.store.GetGame("game1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := env.store.ListSnapshots("game1", game.ActiveBranch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snaps) != 1 {
+		t.Errorf("snapshots after two in-sync passes = %d, want 1", len(snaps))
+	}
+}
+
+// An empty save folder in sync with an empty peer has nothing to mirror.
+func TestSync_InSyncEmptyFolderTakesNoMirror(t *testing.T) {
+	env := setupEngine(t)
+	env.transport.latestSnap = &SnapshotInfo{ID: "snap_999", Timestamp: "2026-06-01T00:00:00.000Z", Comment: "Initial snapshot"}
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.GetSnapshot("snap_999"); err == nil {
+		t.Error("an empty folder was mirrored")
+	}
+}
+
 func TestSync_InsufficientDiskSpace(t *testing.T) {
 	env := setupEngine(t)
 	write(t, env.remoteDir, "save.dat", "remote progress that needs space")

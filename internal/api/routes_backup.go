@@ -25,7 +25,7 @@ import (
 // granular-restore browser in the UI).
 func (s *Server) handleSnapshotFiles(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
-	snapshotID := chi.URLParam(r, "snapshotId")
+	snapshotID := s.snapshotID(r)
 
 	snap, err := s.Daemon.Store.GetSnapshot(snapshotID)
 	if err != nil || snap.GameID != gameID {
@@ -59,7 +59,7 @@ func (s *Server) handleSnapshotFiles(w http.ResponseWriter, r *http.Request) {
 // save location, taking a safety snapshot first.
 func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
-	snapshotID := chi.URLParam(r, "snapshotId")
+	snapshotID := s.snapshotID(r)
 
 	var body struct {
 		RelPath string `json:"relPath"`
@@ -723,7 +723,7 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 			if err == nil && mode == "overwrite" {
 				// A backup file may come from another device: this one's
 				// excluded files stay its own (Manager.RestoreKeeping).
-				_, err = s.Daemon.Snapshots.RestoreKeeping(gameID, snapID, ignore.Parse(local.SyncIgnore))
+				_, err = s.Daemon.Snapshots.RestoreKeeping(gameID, snapID, ignore.Parse(s.Daemon.IgnoreText(local)))
 				res.Path = local.SavePath
 				res.Action = "restored"
 			} else if err == nil {

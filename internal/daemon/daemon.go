@@ -62,9 +62,16 @@ type Daemon struct {
 	// Games whose save folder is not there; see missing.go.
 	missingMu sync.Mutex
 	missing   map[string]bool
+	// relocateChecked is when each missing save folder was last looked for on
+	// another drive (missing.go).
+	relocateChecked map[string]time.Time
 
 	// Play sessions; see sessions.go.
 	sessions sessionState
+
+	// Device settings; see devicesettings.go.
+	devMu sync.Mutex
+	dev   devSettingsCache
 
 	// OnCloudOffers receives the saves from other devices' cloud backups
 	// that are waiting for an answer, whenever that list changes, and
@@ -80,6 +87,9 @@ type Daemon struct {
 	newGames   newGameState
 	// scanMu runs one save scan at a time. See ScanForSaves.
 	scanMu sync.Mutex
+	// mergeMu runs one merge of identical snapshots at a time
+	// (MergeSnapshotDuplicates).
+	mergeMu sync.Mutex
 
 	// uploads counts cloud mirrors still running, so Stop can wait for them
 	// rather than letting process exit truncate one.
@@ -145,6 +155,9 @@ func New(opts Options) (*Daemon, error) {
 
 	snaps := snapshot.New(s)
 	snaps.Log = log.Log
+	// Each new snapshot takes the place of older automatic ones it holds
+	// whole (snapshot/content.go).
+	snaps.PruneOnCreate = true
 
 	d := &Daemon{
 		Paths:     paths,
@@ -158,6 +171,10 @@ func New(opts Options) (*Daemon, error) {
 	}
 
 	d.initSessions()
+
+	// A game's device settings are left out of syncing (devicesettings.go).
+	d.P2P.Sync.DeviceSettingsFor = d.deviceSettingsFor
+	d.P2P.Sync.ObserveSettings = d.observeSettings
 
 	// A restore or a branch switch rewrites a save folder; nothing syncing it
 	// may read it half-way (syncengine/settle.go).
@@ -215,7 +232,7 @@ func New(opts Options) (*Daemon, error) {
 			if err != nil {
 				return ""
 			}
-			return game.SyncIgnore
+			return d.IgnoreText(game)
 		},
 		GetLastManifestHash: func(gameID string) (string, error) {
 			game, err := s.GetGame(gameID)
@@ -229,7 +246,19 @@ func New(opts Options) (*Daemon, error) {
 			_, err := snaps.Create(gameID, "", true)
 			return err
 		},
+		SyncWriting: func(gameID string) bool {
+			return d.P2P != nil && d.P2P.Sync != nil && d.P2P.Sync.BeingWritten(gameID)
+		},
+		SyncWritingNow: func(gameID string) bool {
+			return d.P2P != nil && d.P2P.Sync != nil && d.P2P.Sync.WritingNow(gameID)
+		},
 		OnChanged: func(gameID string) {
+			// A change made here, by the game or the user: a new version of
+			// the save, recorded before anyone is offered it.
+			d.P2P.Sync.NoteLocalChange(gameID)
+			// How the files left out as its settings changed with it
+			// (detectsettings.go).
+			d.observeLocalSettings(gameID)
 			// An emptied save is noticed as it happens, and said on screen,
 			// even with no other device online to hold it back from.
 			_, _ = d.P2P.Sync.CheckHold(gameID, false)
@@ -266,6 +295,10 @@ func (d *Daemon) Start() error {
 	if err != nil {
 		return err
 	}
+	// Snapshots that hold the same files are kept once (snapshot/content.go).
+	// In the background, once things have settled: naming a snapshot taken
+	// before contents were recorded reads its whole archive.
+	time.AfterFunc(2*time.Minute, func() { d.MergeSnapshotDuplicates(false) })
 	// Switch games tracked under a made-up name get their real one, when an
 	// emulator here knows it by now.
 	d.nameSwitchGames()
@@ -275,6 +308,9 @@ func (d *Daemon) Start() error {
 	// hundred — and too small is the expensive direction, because the cache
 	// then evicts entries it is about to want and starts re-reading saves.
 	delta.SetHashCacheBudgetForGames(len(games))
+
+	// Before anything is watched or compared.
+	d.adoptExclusionView(games)
 
 	for _, game := range games {
 		// Backfill cover art for games tracked before covers existed (or
@@ -362,6 +398,29 @@ func (d *Daemon) Start() error {
 				return
 			case <-ticker.C:
 				d.PruneOldSnapshots()
+			}
+		}
+	})
+
+	// Find each game's settings by what they hold (detectsettings.go): a few
+	// minutes after start, then hourly for whatever is due.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(newGameFirstScan)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.detectSettingsDue(ctx)
+		}
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.detectSettingsDue(ctx)
 			}
 		}
 	})
@@ -983,6 +1042,40 @@ func (d *Daemon) checkSavePathShape(abs string) error {
 		}
 	}
 	return nil
+}
+
+// MergeSnapshotDuplicates keeps every game's identical snapshots once
+// (snapshot.Manager.MergeDuplicates), one game at a time. Returns how many
+// were merged and the bytes freed. all looks at every game; otherwise only at
+// games with snapshots whose content is not named yet.
+func (d *Daemon) MergeSnapshotDuplicates(all bool) (merged int, freed int64) {
+	d.mergeMu.Lock()
+	defer d.mergeMu.Unlock()
+	games, err := d.Store.ListGames()
+	if err != nil {
+		return 0, 0
+	}
+	for _, g := range games {
+		// Once per game: snapshots taken since are named as they are taken,
+		// and checked against the older ones then (PruneOnCreate). A game
+		// whose snapshots all have their content named has had its pass.
+		if unnamed, err := d.Store.SnapshotsWithoutContentHash(g.ID); !all && (err != nil || len(unnamed) == 0) {
+			continue
+		}
+		if n, f, err := d.Snapshots.MergeDuplicates(g.ID); err == nil {
+			merged += n
+			freed += f
+		}
+		// And steps on the way to a newer snapshot that holds them whole.
+		if n, f, err := d.Snapshots.PruneContained(g.ID); err == nil {
+			merged += n
+			freed += f
+		}
+	}
+	if merged > 0 {
+		d.Log.Log("info", fmt.Sprintf("snapshots cleaned up: %d identical or held whole by a newer one, %d MB freed", merged, freed>>20))
+	}
+	return merged, freed
 }
 
 // EnsureImportedSnapshot registers a snapshot restored from an .sscb

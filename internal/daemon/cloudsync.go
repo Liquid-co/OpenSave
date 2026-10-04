@@ -401,7 +401,7 @@ func (d *Daemon) currentContentHash(game store.Game) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return watcher.ContentHash(m, game.SyncIgnore), nil
+	return watcher.ContentHash(m, d.IgnoreText(game)), nil
 }
 
 // CheckCloud reads the other devices' heads and acts on the ones ahead of
@@ -633,7 +633,7 @@ func (d *Daemon) pullFromCloud(game store.Game, fileName, deviceName string) err
 	}
 	// Another device's save: the files this device keeps for itself stay
 	// its own. See Manager.RestoreKeeping.
-	if _, err := d.Snapshots.RestoreKeeping(game.ID, snapID, ignore.Parse(game.SyncIgnore)); err != nil {
+	if _, err := d.Snapshots.RestoreKeeping(game.ID, snapID, ignore.Parse(d.IgnoreText(game))); err != nil {
 		return err
 	}
 	// What is on disk now is that snapshot, so record it as the baseline.

@@ -31,7 +31,7 @@ func (s *Server) handleVerifySnapshots(w http.ResponseWriter, r *http.Request) {
 // handleCompareSnapshots says what changed from one of a game's snapshots to
 // another (snapshot.Manager.Compare).
 func (s *Server) handleCompareSnapshots(w http.ResponseWriter, r *http.Request) {
-	c, err := s.Daemon.Snapshots.Compare(chi.URLParam(r, "gameId"), chi.URLParam(r, "snapshotId"), chi.URLParam(r, "otherId"))
+	c, err := s.Daemon.Snapshots.Compare(chi.URLParam(r, "gameId"), s.snapshotID(r), s.resolveID(chi.URLParam(r, "otherId")))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
