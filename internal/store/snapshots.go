@@ -26,13 +26,16 @@ type Snapshot struct {
 	// if it was not (migration 0032; internal/snapshot/verify.go).
 	CheckedMs int64  `db:"checked_ms" json:"checkedMs"`
 	Problem   string `db:"problem" json:"problem"`
+	// ContentHash names what the snapshot holds (snapshot.ContentKey), the
+	// same on every device for the same files; '' until computed.
+	ContentHash string `db:"content_hash" json:"contentHash"`
 }
 
 // CreateSnapshot inserts a new snapshot record.
 func (s *Store) CreateSnapshot(snap Snapshot) error {
 	_, err := s.db.NamedExec(`
-		INSERT INTO snapshots (id, game_id, branch_name, timestamp, comment, is_system_auto, zip_path, size_bytes)
-		VALUES (:id, :game_id, :branch_name, :timestamp, :comment, :is_system_auto, :zip_path, :size_bytes)`,
+		INSERT INTO snapshots (id, game_id, branch_name, timestamp, comment, is_system_auto, zip_path, size_bytes, content_hash)
+		VALUES (:id, :game_id, :branch_name, :timestamp, :comment, :is_system_auto, :zip_path, :size_bytes, :content_hash)`,
 		snap)
 	if err != nil {
 		return fmt.Errorf("create snapshot %s: %w", snap.ID, err)

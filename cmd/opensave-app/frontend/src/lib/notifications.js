@@ -46,7 +46,8 @@ export function waitingOnYou({ games = {}, conflicts = {}, locationConflicts = [
     out.push({ id: `offer:${o.gameId}:${o.snapshotId}`, tone: 'info', gameId: o.gameId, title: `A newer save for ${o.gameName ?? name(o.gameId)}`, detail: `From ${o.deviceName ?? 'another device'}, through the cloud`, go: { view: 'home' } });
   }
   for (const g of Object.values(games)) {
-    if (g.savePathMissing) {
+    // A drive this device doesn't have is not waiting on anyone.
+    if (g.savePathMissing && !g.saveDriveMissing) {
       out.push({ id: `missing:${g.id}`, tone: 'warn', gameId: g.id, title: `${g.name}'s save folder is missing`, detail: 'Nothing is synced for it until it is back', go: { view: 'game', params: { gameId: g.id } } });
     }
   }

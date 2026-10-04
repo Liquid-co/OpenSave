@@ -13,10 +13,12 @@
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import Play from 'lucide-svelte/icons/play';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
+  import Upload from 'lucide-svelte/icons/upload';
   import FolderOpen from 'lucide-svelte/icons/folder-open';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Star from 'lucide-svelte/icons/star';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
+  import Info from 'lucide-svelte/icons/info';
   import { collections, isFavourite, toggleFavourite } from '../../lib/collections.js';
 
   export let game;
@@ -41,6 +43,20 @@
 
   const syncNow = () => run('Sync triggered', () => api.post(`/api/games/${game.id}/sync`));
   const launchGame = () => run('Launching…', () => api.post(`/api/games/${game.id}/launch`));
+
+  // For when the devices hold states nobody can rank — a copy that arrived
+  // only half-way, a mixture of two saves — and the person knows which device
+  // has the right one. Every other device takes this save whole, keeping a
+  // snapshot of its own first; one that changed the save on its own since is
+  // still asked.
+  async function useEverywhere() {
+    const ok = await askConfirm(
+      `Make this device's save of ${game.name} the one every other device uses? They each replace theirs with it — every file, including removing files this device does not have — and keep a snapshot of their own first. A device where the save was changed after this update is asked instead.`,
+      { title: 'Use this save everywhere?', confirmText: 'Use this save everywhere', danger: true }
+    );
+    if (!ok) return;
+    await run(`${game.name}: this save goes to your other devices`, () => api.post(`/api/games/${game.id}/use-everywhere`));
+  }
 
   let editPath = false;
   let pathDraft = '';
@@ -137,6 +153,7 @@
     {#if canLaunch(game)}
       <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />Launch</button>
     {/if}
+    <button class="btn" disabled={$busy} on:click={useEverywhere} title="Every other device replaces its save of this game with this one"><Upload size={15} />Use this save everywhere</button>
     <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />Sync now</button>
   </div>
 </div>
@@ -188,7 +205,18 @@
   </div>
 {/if}
 
-{#if game.savePathMissing && !editPath}
+{#if game.savePathMissing && game.saveDriveMissing && !editPath}
+  <!-- The drive itself isn't on this device: the game lives on another PC's
+       D:\ or E:\. Nothing was lost here, so this informs rather than warns. -->
+  <div class="missing elsewhere" role="status">
+    <Info size={16} />
+    <div>
+      <strong>This game isn't on this device.</strong>
+      Its saves are on {game.savePath.slice(0, 2)}, which this PC doesn't have, so it's skipped here and keeps syncing
+      between your other devices. If it is installed here, point the game at its save folder with Edit.
+    </div>
+  </div>
+{:else if game.savePathMissing && !editPath}
   <!-- The folder is not there. It is not created again: an empty folder in
        its place would read as every file deleted, and syncing that would
        delete them on your other devices too. -->
@@ -287,6 +315,13 @@
   }
   .missing strong {
     color: var(--text);
+  }
+  .missing.elsewhere {
+    border-color: var(--border);
+    background: transparent;
+  }
+  .missing.elsewhere :global(svg) {
+    color: var(--text-faint);
   }
   .emptied-actions {
     display: flex;

@@ -558,7 +558,9 @@ func TestSwitchingToABranchWhoseNewestIsCompacted(t *testing.T) {
 	env := setup(t)
 	snaps, originals := threeSnapshots(t, env)
 	// Over to another branch: the switch keeps the save on main first, and
-	// that copy is main's newest.
+	// that copy is main's newest. Changed first, or the copy would hold the
+	// same files as the third snapshot, and be that snapshot (content.go).
+	writeSave(t, env.saveDir, "slot_switch.sav", "before the switch")
 	if _, err := env.mgr.CreateBranch("game1", "other", true); err != nil {
 		t.Fatal(err)
 	}
