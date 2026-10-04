@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -217,9 +218,17 @@ func HashFile(path string) (FileEntry, error) {
 		}
 	}
 
+	wholeHash := hex.EncodeToString(whole.Sum(nil))
+	// A single-block file's block hash is the whole-file hash; share the one
+	// string. Most save files are single-block, and on a save of a quarter
+	// million of them the duplicate hex strings cost ~20MB per manifest.
+	if len(blocks) == 1 {
+		blocks[0].Hash = wholeHash
+	}
+
 	return FileEntry{
 		Size:      info.Size(),
-		Hash:      hex.EncodeToString(whole.Sum(nil)),
+		Hash:      wholeHash,
 		Blocks:    blocks,
 		BlockSize: blockSize,
 		MtimeMs:   Milli(info.ModTime().UnixMilli()),
@@ -263,7 +272,20 @@ func buildManifest(root string) (Manifest, error) {
 	}
 
 	var dirs []string
-	err = filepath.Walk(root, func(path string, walkInfo os.FileInfo, walkErr error) error {
+	// WalkDir, not Walk: Walk issues an extra Lstat per entry, which on
+	// Windows opens every file and dominated the cost of a warm build of a
+	// large save (13-19s vs ~1.2s for 240k files). WalkDir takes size and
+	// mtime from the directory listing itself.
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		var walkInfo os.FileInfo
+		if walkErr == nil && path != root {
+			// Reparse points are rejected below from the listing's type bits,
+			// before Info is asked for anything.
+			if d.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+				return nil
+			}
+			walkInfo, walkErr = d.Info()
+		}
 		if walkErr != nil {
 			// The save folder itself could not be read — its listing refused,
 			// or the folder gone since it was looked at. That is not an empty
@@ -282,7 +304,7 @@ func buildManifest(root string) (Manifest, error) {
 			// skipped instead of failing the whole manifest — one
 			// unreadable directory must not abort every sync of the game.
 			if os.IsPermission(walkErr) {
-				if walkInfo != nil && walkInfo.IsDir() {
+				if d != nil && d.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil

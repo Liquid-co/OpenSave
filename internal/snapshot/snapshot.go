@@ -41,6 +41,18 @@ import (
 // before starting one.
 type UploadHook func(zipPath, remoteFileName string)
 
+// IncompleteError is a snapshot discarded because files of the save could not
+// be read — in use by the game, or changing while it was archived.
+type IncompleteError struct {
+	Game    string
+	Skipped []string
+}
+
+func (e *IncompleteError) Error() string {
+	return fmt.Sprintf("snapshot of %q discarded: %d file(s) could not be read (e.g. %s) — taken again at the next chance",
+		e.Game, len(e.Skipped), e.Skipped[0])
+}
+
 // Manager performs snapshot/branch operations against the store and
 // filesystem.
 type Manager struct {
@@ -80,6 +92,10 @@ type Manager struct {
 	// running past shutdown it wrote into a directory that was being deleted
 	// and recorded against a database that was already closed.
 	inFlight drain.Group
+	// PruneOnCreate checks each new snapshot against the older ones of its
+	// branch and removes those it holds entirely (content.go,
+	// PruneContainedBy). Off unless set: the daemon sets it.
+	PruneOnCreate bool
 	// sharedMu is held by a compaction and by the clean-up of shared files
 	// (shared.go): a compaction names shared files before any list does, and
 	// a clean-up running then would take them for unused. pendingRoots are
@@ -236,20 +252,48 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 	} else {
 		src = from
 	}
-	skipped, captured, err := ZipRootsCapturing(src, extraRoots, stagingPath)
+	// The game's own save, onto its branch: unchanged files are copied from
+	// the branch's previous snapshot rather than compressed again (reuse.go).
+	var reuse *reuseSource
+	if from == "" {
+		reuse = m.openReuseSource(gameID, branch)
+	}
+	skipped, captured, err := zipRootsCapturing(src, extraRoots, stagingPath, reuse)
+	reuse.Close()
 	if err != nil {
 		os.Remove(stagingPath)
 		return store.Snapshot{}, fmt.Errorf("zip save data: %w", err)
 	}
 	defer os.Remove(stagingPath) // no-op once renamed
-	if len(skipped) > 0 && m.Log != nil {
-		sample := skipped[0]
-		m.Log("warn", fmt.Sprintf("snapshot of %q skipped %d unreadable file(s), e.g. %s", game.Name, len(skipped), sample))
+	// A snapshot missing files is not kept: it would stand in the history as
+	// a save that never existed — and, counted against retention, push out a
+	// complete one. The caller tries again at the next chance (the watcher
+	// leaves the change unrecorded, so its next pass takes it again; a sync
+	// that needed the copy before replacing files does not replace them).
+	if len(skipped) > 0 {
+		return store.Snapshot{}, &IncompleteError{Game: game.Name, Skipped: skipped}
+	}
+
+	// A copy taken before a sync replaces the save, of files a snapshot on this
+	// branch already holds: that one is the copy, and the save is not archived
+	// again (content.go). Syncs took one of these each time, mostly of a save
+	// already archived. Only when that snapshot is the branch's newest: a
+	// branch switch puts back the newest, and retention removes older ones
+	// first — an older copy standing in would leave the save behind either way. Snapshots the
+	// game's changes or a person ask for are always taken: the watcher takes
+	// them only when something changed, and a person asked.
+	contentKey := ContentKey(captured)
+	if existing, ok, _ := m.Store.SnapshotByContent(gameID, branch, contentKey); !current && ok && ArchiveExists(existing.ZipPath) &&
+		m.isNewest(gameID, branch, existing.ID) {
+		if m.Log != nil {
+			m.Log("info", fmt.Sprintf("%q holds the same files as snapshot %s; not archived again", game.Name, existing.ID))
+		}
+		return existing, nil
 	}
 
 	if comment == "" {
 		if isSystemAuto {
-			comment = "Auto backup"
+			comment = defaultAutoComment
 		} else {
 			comment = "Manual snapshot"
 		}
@@ -260,6 +304,11 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 		return store.Snapshot{}, err
 	}
 	snapshotID := snap.ID
+	_ = m.Store.SetSnapshotContentHash(snapshotID, contentKey)
+	snap.ContentHash = contentKey
+	// Older automatic snapshots this one holds entirely are steps on the way
+	// to it (content.go).
+	defer m.PruneContainedBy(snap, captured)
 
 	// What this snapshot holds, file by file, recorded once and never
 	// revisited. It is what lets a later caller ask whether some exact content
@@ -729,6 +778,11 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 	game, err := m.Store.GetGame(gameID)
 	if err != nil {
 		return store.Snapshot{}, err
+	}
+	// An id kept as an alias of the snapshot holding the same files
+	// (content.go) restores that snapshot.
+	if resolved, ok := m.Store.ResolveSnapshotID(snapshotID); ok {
+		snapshotID = resolved
 	}
 	snap, err := m.Store.GetSnapshot(snapshotID)
 	if err != nil || snap.GameID != gameID {

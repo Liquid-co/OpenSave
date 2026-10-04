@@ -578,7 +578,11 @@ func TestDeleteSnapshotAndBranch(t *testing.T) {
 	ts.do(t, http.MethodPost, "/api/games", map[string]string{"name": "Del Game", "savePath": ts.saveDir})
 	waitInitialSnapshot(t, ts, "del-game")
 
-	// A manual second snapshot so we have one to delete.
+	// A manual second snapshot so we have one to delete — of a changed save:
+	// one of the same files would be the first snapshot, kept once.
+	if err := os.WriteFile(filepath.Join(ts.saveDir, "s.sav"), []byte("y"), 0o666); err != nil {
+		t.Fatal(err)
+	}
 	ts.do(t, http.MethodPost, "/api/games/del-game/snapshot", map[string]string{"comment": "manual"})
 	snaps, _ := ts.daemon.Store.ListSnapshots("del-game", "main")
 	if len(snaps) < 2 {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -44,6 +45,8 @@ func main() {
 	// After a self-update this waits for the replaced process to exit (and
 	// removes its leftover binary) before claiming the single-instance lock.
 	cleanupReplacedBinary()
+
+	tuneGC()
 
 	app := NewApp()
 
@@ -95,5 +98,19 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "opensave: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// tuneGC trades a little CPU for a smaller footprint. OpenSave is a
+// background app, and Go's default (let the heap double before collecting)
+// meant a large save's manifests showed up as twice their size in Task
+// Manager. The soft limit makes the runtime collect and hand memory back to
+// the OS harder as it approaches 1GiB. Explicit GOGC / GOMEMLIMIT win.
+func tuneGC() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(50)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(1 << 30)
 	}
 }

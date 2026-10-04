@@ -32,6 +32,7 @@ import (
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
 	"github.com/opensave/opensave/internal/logging"
+	"github.com/opensave/opensave/internal/owntouch"
 )
 
 const (
@@ -118,6 +119,25 @@ type Callbacks struct {
 	OnChanged func(gameID string)
 	// Log receives human-readable watcher activity. May be nil.
 	Log func(level, msg string)
+	// SyncWriting reports whether a sync on this device is writing the game
+	// now, or was a moment ago: a burst the watcher cannot attribute — an
+	// overflow of file events — is then taken for the sync's. May be nil.
+	SyncWriting func(gameID string) bool
+	// SyncWritingNow reports whether a sync is writing the game at this
+	// moment: the watcher looks at the burst once it has finished. May be nil.
+	SyncWritingNow func(gameID string) bool
+}
+
+// syncWriting reports whether a sync is or was just writing a game
+// (Callbacks.SyncWriting).
+func (e *Engine) syncWriting(gameID string) bool {
+	return e.cb.SyncWriting != nil && e.cb.SyncWriting(gameID)
+}
+
+// syncWritingNow reports whether a sync is writing a game at this moment
+// (Callbacks.SyncWritingNow).
+func (e *Engine) syncWritingNow(gameID string) bool {
+	return e.cb.SyncWritingNow != nil && e.cb.SyncWritingNow(gameID)
 }
 
 // Engine owns one watch goroutine per tracked game.
@@ -187,6 +207,17 @@ type gameWatch struct {
 	// Atomic because two goroutines set it: the event loop, and
 	// registerFolders when an Add fails.
 	rewatch atomic.Bool
+
+	// What the burst since the last snapshot check was made of: changes
+	// OpenSave applied itself (owntouch), anything else, or both. Read and
+	// written only by the event loop.
+	ownEvents, otherEvents bool
+	// foreignFolders: a folder queued for watching since the last rescan was
+	// not one OpenSave created, or the watch started on a busy folder. The
+	// rescan that follows registration counts as someone else's change only
+	// then — a pull creates folders and writes into them before they are
+	// watched, and that is still the pull. Event loop only.
+	foreignFolders bool
 
 	// folders carries directories to put under watch to registerFolders. See
 	// there for why the event loop does not register them itself.
@@ -450,6 +481,11 @@ func (e *Engine) WatchWithLocations(gameID, savePath string, extra map[string]st
 	}
 	if busy {
 		gw.rewatch.Store(true)
+		// What the folder holds is nobody's change OpenSave knows of: this
+		// rescan must not record it as its own, or a change made while the
+		// app was closed would become the baseline before the catch-up
+		// below could see it. Set before the event loop starts.
+		gw.foreignFolders = true
 		gw.rescan <- struct{}{} // buffered and empty: cannot block
 	}
 	e.games[gameID] = gw
@@ -676,10 +712,19 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			if !gw.eventRelevant(event) {
 				continue
 			}
+			own := owntouch.Recent(event.Name)
+			if own {
+				gw.ownEvents = true
+			} else {
+				gw.otherEvents = true
+			}
 			// New subdirectory in directory mode: extend the watch — on
 			// registerFolders, never here. See registerFolders.
 			if !gw.isFile && event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					if !own {
+						gw.foreignFolders = true
+					}
 					gw.queueFolder(event.Name)
 				}
 			}
@@ -689,7 +734,14 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			// Folders just came under watch, or the watch started on a folder
 			// that was busy. Anything written into a folder before its watch
 			// existed raised no event of its own, so read the tree again once
-			// things are quiet.
+			// things are quiet. Whose change that is follows from whose
+			// folders they were: what OpenSave created, it also filled.
+			if gw.foreignFolders {
+				gw.otherEvents = true
+			} else {
+				gw.ownEvents = true
+			}
+			gw.foreignFolders = false
 			resetDebounce()
 
 		case err, ok := <-gw.fsw.Errors:
@@ -718,6 +770,16 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 				// directory and allocates no second buffer for one it already
 				// has.
 				gw.rewatch.Store(true)
+				// The missed events could be anyone's — unless a sync is
+				// writing this game, which is what overflows the queue: a
+				// pull of a save of many files does, again and again, and
+				// each was taken for the game saving, an automatic snapshot
+				// of a half-pulled save every few seconds.
+				if e.syncWriting(gw.gameID) {
+					gw.ownEvents = true
+				} else {
+					gw.otherEvents = true
+				}
 			} else {
 				e.log("warn", fmt.Sprintf("watching %q: %v", gw.gameID, err))
 				continue
@@ -727,6 +789,12 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 		case <-debounceC:
 			debounce = nil
 			debounceC = nil
+			// A sync still writing this game: look at the burst once it has
+			// finished, not at a save half-way between two states.
+			if e.syncWritingNow(gw.gameID) {
+				resetDebounce()
+				continue
+			}
 			// Re-register, so a folder that went unwatched is watched from
 			// here on, and read the tree below, so it is found now. Doing only
 			// one of those leaves it correct today and silent tomorrow.
@@ -758,7 +826,9 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			for _, path := range gw.extra {
 				delta.InvalidateRoot(path)
 			}
-			e.handleChange(ctx, gw)
+			ownOnly := gw.ownEvents && !gw.otherEvents
+			gw.ownEvents, gw.otherEvents = false, false
+			e.handleChangeFrom(ctx, gw, ownOnly)
 		}
 	}
 }
@@ -788,6 +858,22 @@ func (gw *gameWatch) eventRelevant(event fsnotify.Event) bool {
 // (gameplay guard), skip if content is unchanged since the last
 // auto-snapshot, then snapshot with retries and notify.
 func (e *Engine) handleChange(ctx context.Context, gw *gameWatch) {
+	e.handleChangeFrom(ctx, gw, false)
+}
+
+// handleChangeFrom is handleChange told whether every change in the burst was
+// one OpenSave applied itself — a pull, a deletion a peer asked for, mtimes a
+// conflict resolution touched (owntouch).
+//
+// Those are not a new save. They are a sync, which keeps its own history
+// (the mirror snapshot of a pull, the safety snapshot before files are
+// replaced). Snapshotting them as well took a full auto-snapshot every couple
+// of seconds while a peer deleted files one request at a time, each of a save
+// half-way between two states, until they had filled the retention budget and
+// pushed out the snapshots worth keeping. So the burst only moves the recorded
+// hash, which keeps the next real change measured against what is actually on
+// disk; anything not known to be ours is snapshotted as before.
+func (e *Engine) handleChangeFrom(ctx context.Context, gw *gameWatch, ownOnly bool) {
 	// Gameplay guard: the game may still be mid-write.
 	for anyFileLocked(gw.savePath) {
 		e.log("info", fmt.Sprintf("save files for %q are in use; waiting (gameplay guard)", gw.gameID))
@@ -819,6 +905,12 @@ func (e *Engine) handleChange(ctx context.Context, gw *gameWatch) {
 	lastHash, err := e.cb.GetLastManifestHash(gw.gameID)
 	if err == nil && lastHash == currentHash {
 		e.log("info", fmt.Sprintf("no content change for %q; skipping auto-snapshot", gw.gameID))
+		return
+	}
+	if ownOnly {
+		if err := e.cb.SetLastManifestHash(gw.gameID, currentHash); err != nil {
+			e.log("warn", fmt.Sprintf("failed to record manifest hash for %q: %v", gw.gameID, err))
+		}
 		return
 	}
 
