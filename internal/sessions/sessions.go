@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Proc is a running process, as much of it as matching needs.
@@ -32,8 +33,20 @@ type Proc struct {
 	PID int
 	// Exe is the program's full path, where the system says.
 	Exe string
+	// Name is the program's file name, where the system gives no path: a
+	// game protected against tampering lets nobody read where it runs from,
+	// but the process list still says what it is called.
+	Name string
 	// Args is the command line, where the system says (Linux).
 	Args []string
+	// Measured says Memory and CPU were read: the program's working set in
+	// bytes, and the processor time it has used so far. A game being played
+	// holds hundreds of megabytes and keeps the processor busy; what a game
+	// leaves behind when it closes — a crash handler, a stub of the same name
+	// — holds next to nothing and does nothing (Idle).
+	Measured bool
+	Memory   uint64
+	CPU      time.Duration
 	// SteamAppID is the Steam app the process was started for, where Steam
 	// tagged it (Linux: SteamAppId in the environment, or AppId=… on the
 	// command line of Steam's launcher).
@@ -49,6 +62,14 @@ type Target struct {
 	// Dirs are the game's install folders: anything running from inside one
 	// is the game.
 	Dirs []string
+	// FolderNames are names the game's install folder goes by, for a game
+	// installed where no library lists it ("G:GamesCrimson Desert"):
+	// a program running from inside a folder of one of these names is the
+	// game. Normalised with FolderName.
+	FolderNames []string
+	// Programs are the file names of the programs in the install folders, for
+	// a process known only by name (Proc.Name). Lower-case.
+	Programs []string
 }
 
 // Running reports which targets have a process running, from a list of
@@ -72,6 +93,20 @@ func matches(p Proc, t Target) bool {
 		return true
 	}
 	if p.Exe != "" && t.Exe != "" && samePath(p.Exe, t.Exe) {
+		return true
+	}
+	if p.Exe == "" && p.Name != "" {
+		name := strings.ToLower(p.Name)
+		if t.Exe != "" && strings.EqualFold(filepath.Base(t.Exe), name) {
+			return true
+		}
+		for _, prog := range t.Programs {
+			if prog == name {
+				return true
+			}
+		}
+	}
+	if p.Exe != "" && FolderOf(p, t) != "" {
 		return true
 	}
 	for _, dir := range t.Dirs {
@@ -252,3 +287,53 @@ func (t *Tracker) Finish(gameID string, at time.Time) {
 // List returns the processes running now. Where the system cannot say, it
 // returns none and an error, and nothing is ever seen playing.
 func List() ([]Proc, error) { return listProcesses() }
+
+// FolderName normalises a folder or game name for comparing the two: lower
+// case, letters, digits and single spaces.
+func FolderName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		default:
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// FolderOf returns the folder, among those above a process's program, that
+// is named as one of a target's install folders (Target.FolderNames), or "".
+func FolderOf(p Proc, t Target) string {
+	if p.Exe == "" || len(t.FolderNames) == 0 {
+		return ""
+	}
+	dir := filepath.Dir(p.Exe)
+	for dir != "" && dir != filepath.Dir(dir) {
+		name := FolderName(filepath.Base(dir))
+		for _, want := range t.FolderNames {
+			if name == want {
+				return dir
+			}
+		}
+		dir = filepath.Dir(dir)
+	}
+	return ""
+}
+
+// Idle reports a process that holds next to no memory and has used no
+// processor time since it was last seen (prevCPU, when it was): not a game
+// being played, whatever it is called. A process that could not be measured
+// is never called idle.
+func Idle(p Proc, prevCPU time.Duration, seenBefore bool) bool {
+	if !p.Measured || p.Memory >= idleMemory {
+		return false
+	}
+	return !seenBefore || p.CPU-prevCPU < idleCPU
+}
+
+const (
+	idleMemory = 32 << 20               // a game holds far more
+	idleCPU    = 100 * time.Millisecond // per poll: 1% of ten seconds
+)

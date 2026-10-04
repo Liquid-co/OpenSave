@@ -1,10 +1,14 @@
 package e2e
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/opensave/opensave/internal/snapshot"
 
 	"github.com/opensave/opensave/testutil"
 )
@@ -14,6 +18,7 @@ type snapshotWire struct {
 	Comment      string `json:"comment"`
 	Branch       string `json:"branch"`
 	IsSystemAuto bool   `json:"isSystemAuto"`
+	ZipPath      string `json:"zipPath"`
 }
 
 type gameWire struct {
@@ -82,11 +87,49 @@ func TestHistory_SnapshotAndRollback(t *testing.T) {
 	}
 
 	// Rolling back is itself non-destructive: the pre-rollback state must
-	// still be reachable, or "undo" would be a one-way door.
-	snaps := snapshotsOn(a, gameID, "main")
-	if len(snaps) < 3 {
-		t.Errorf("expected a safety snapshot of the pre-rollback state, have %d snapshots", len(snaps))
+	// still be reachable, or "undo" would be a one-way door. Asked of the
+	// snapshots themselves, not counted: a state already snapshotted is not
+	// archived a second time.
+	if !snapshotHolds(t, a, gameID, "slot1.sav", "level-9") || !snapshotHolds(t, a, gameID, "inventory.dat", "cursed sword") {
+		t.Error("the pre-rollback state is in no snapshot")
 	}
+}
+
+// snapshotHolds reports whether any snapshot on a game's main branch holds the
+// archive entry name (a path in the save; ".opensave-locations/<name>/<path>"
+// in another location) with exactly content.
+func snapshotHolds(t *testing.T, td *testutil.TestDaemon, gameID, name, content string) bool {
+	t.Helper()
+	for _, s := range snapshotsOn(td, gameID, "main") {
+		path, done, err := snapshot.OpenArchive(s.ZipPath)
+		if err != nil {
+			continue
+		}
+		zr, err := zip.OpenReader(path)
+		if err != nil {
+			done()
+			continue
+		}
+		for _, f := range zr.File {
+			if f.Name != name {
+				continue
+			}
+			rc, err := f.Open()
+			if err != nil {
+				continue
+			}
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			if string(b) == content {
+				zr.Close()
+				done()
+				return true
+			}
+		}
+		zr.Close()
+		done()
+	}
+	return false
 }
 
 // Branches let two playthroughs coexist. Switching between them has to carry

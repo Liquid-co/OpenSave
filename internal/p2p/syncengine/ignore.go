@@ -2,6 +2,7 @@ package syncengine
 
 import (
 	"context"
+	"strings"
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
@@ -39,15 +40,85 @@ func (e *Engine) rulesFor(gameID string) ignore.Rules {
 	if err != nil {
 		return ignore.Rules{}
 	}
-	return ignore.Parse(game.SyncIgnore)
+	return ignore.Parse(e.IgnoreText(game))
+}
+
+// IgnoreText is the exclusion list a game is synced under: the rules written
+// for it, and the files the game database names as its settings
+// (DeviceSettingsFor) unless it is set to sync those too. Everything that
+// applies a game's rules takes them from here, so the two can never be
+// applied by one part of the app and not another.
+func (e *Engine) IgnoreText(game store.Game) string {
+	if game.SyncDeviceSettings || e.DeviceSettingsFor == nil {
+		return game.SyncIgnore
+	}
+	settings := e.DeviceSettingsFor(game)
+	if len(settings) == 0 {
+		return game.SyncIgnore
+	}
+	text := game.SyncIgnore
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	// The game's own rules come last, so a "!" line there can still bring a
+	// settings file back into syncing.
+	return "# device settings (game database)\n" + strings.Join(settings, "\n") + "\n" + text
+}
+
+// excluded says whether a path takes no part in syncing: a file no save is
+// made of on any device (delta.NeverSynced), or one the game's rules exclude.
+// The first is handled exactly like the second — the manifest served still
+// lists it, the decision never sees it — so a device on an older build, which
+// still counts it, is never told it was deleted.
+func excluded(rules ignore.Rules, p string) bool {
+	return delta.NeverSynced(p) || (!rules.Empty() && rules.Match(p))
+}
+
+func holdsNeverSynced(m delta.Manifest) bool {
+	for p := range m.Files {
+		if delta.NeverSynced(p) {
+			return true
+		}
+	}
+	for _, root := range m.Extra {
+		for p := range root.Files {
+			if delta.NeverSynced(p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func anyNeverSynced(paths []string) bool {
+	for _, p := range paths {
+		if delta.NeverSynced(p) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyNeverSyncedIn(paths map[string]struct{}) bool {
+	for p := range paths {
+		if delta.NeverSynced(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // filterManifest returns a copy with every excluded path removed. The
 // original is untouched: it is still what gets served to peers.
 func filterManifest(m delta.Manifest, rules ignore.Rules) delta.Manifest {
-	if rules.Empty() {
+	if rules.Empty() && !holdsNeverSynced(m) {
 		return m
 	}
+	return filterManifestBy(m, func(p string) bool { return excluded(rules, p) })
+}
+
+// filterManifestBy is filterManifest with what to leave out given directly.
+func filterManifestBy(m delta.Manifest, leaveOut func(string) bool) delta.Manifest {
 	out := delta.Manifest{
 		Timestamp: m.Timestamp,
 		Files:     make(map[string]delta.FileEntry, len(m.Files)),
@@ -61,7 +132,7 @@ func filterManifest(m delta.Manifest, rules ignore.Rules) delta.Manifest {
 	// would be told their saves diverged, over a file neither of them is
 	// syncing.
 	for p, entry := range m.Files {
-		if rules.Match(p) {
+		if leaveOut(p) {
 			continue
 		}
 		out.Files[p] = entry
@@ -70,7 +141,7 @@ func filterManifest(m delta.Manifest, rules ignore.Rules) delta.Manifest {
 		}
 	}
 	for _, d := range m.Dirs {
-		if rules.Match(d) {
+		if leaveOut(d) {
 			continue
 		}
 		out.Dirs = append(out.Dirs, d)
@@ -83,13 +154,13 @@ func filterManifest(m delta.Manifest, rules ignore.Rules) delta.Manifest {
 		for name, root := range m.Extra {
 			sub := delta.RootManifest{Files: make(map[string]delta.FileEntry, len(root.Files))}
 			for p, entry := range root.Files {
-				if rules.Match(p) {
+				if leaveOut(p) {
 					continue
 				}
 				sub.Files[p] = entry
 			}
 			for _, d := range root.Dirs {
-				if rules.Match(d) {
+				if leaveOut(d) {
 					continue
 				}
 				sub.Dirs = append(sub.Dirs, d)
@@ -107,12 +178,12 @@ func filterManifest(m delta.Manifest, rules ignore.Rules) delta.Manifest {
 // decision reads "we both had this and now I don't" and propagates a deletion
 // to the peer.
 func filterLineage(paths map[string]struct{}, rules ignore.Rules) map[string]struct{} {
-	if rules.Empty() {
+	if rules.Empty() && !anyNeverSyncedIn(paths) {
 		return paths
 	}
 	out := make(map[string]struct{}, len(paths))
 	for p := range paths {
-		if rules.Match(p) {
+		if excluded(rules, p) {
 			continue
 		}
 		out[p] = struct{}{}
@@ -123,12 +194,12 @@ func filterLineage(paths map[string]struct{}, rules ignore.Rules) map[string]str
 // filterPathList drops excluded paths from a plain list, for the lineage that
 // is persisted back after a sync.
 func filterPathList(paths []string, rules ignore.Rules) []string {
-	if rules.Empty() {
+	if rules.Empty() && !anyNeverSynced(paths) {
 		return paths
 	}
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
-		if rules.Match(p) {
+		if excluded(rules, p) {
 			continue
 		}
 		out = append(out, p)
@@ -152,5 +223,5 @@ func (e *Engine) FilteredContentHash(gameID string, game store.Game) string {
 	if err != nil {
 		return ""
 	}
-	return filterManifest(m, ignore.Parse(game.SyncIgnore)).ManifestHash()
+	return filterManifest(m, ignore.Parse(e.IgnoreText(game))).ManifestHash()
 }

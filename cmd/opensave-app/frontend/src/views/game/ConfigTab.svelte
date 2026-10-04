@@ -25,8 +25,12 @@
     autoSync: game.autoSync ?? true,
     maxSnapshots: game.maxSnapshots ?? 5,
     maxManualSnapshots: game.maxManualSnapshots ?? 0,
-    syncIgnore: game.syncIgnore ?? ''
+    syncIgnore: game.syncIgnore ?? '',
+    syncDeviceSettings: game.syncDeviceSettings ?? false
   };
+  // The files the game database names as this game's settings rather than its
+  // save (graphics, resolution): left out of syncing unless asked for.
+  $: deviceSettings = game.deviceSettings ?? [];
   let locations = [];
 
   // Cover preview: a custom URL wins, else the proxied Steam art for the App
@@ -76,7 +80,8 @@
         autoSync: cfg.autoSync,
         maxSnapshots: Number(cfg.maxSnapshots),
         maxManualSnapshots: Number(cfg.maxManualSnapshots),
-        syncIgnore: cfg.syncIgnore ?? ''
+        syncIgnore: cfg.syncIgnore ?? '',
+        syncDeviceSettings: !!cfg.syncDeviceSettings
       })
     );
   }
@@ -160,6 +165,32 @@
         can't push them out. <strong>0 = keep forever</strong> (the default).
       </span>
     </div>
+    {#if deviceSettings.length > 0}
+      <div class="field device-block">
+        <label for="c-devsettings">Device settings</label>
+        <ul class="device-settings">
+          {#each deviceSettings as s}
+            <li class:given-back={s.source === 'save'}>
+              <code>{s.pattern.replace(/^!?\//, '')}</code>
+              <span class="source">
+                {#if s.source === 'database'}game database{:else if s.source === 'detected'}detected
+                  — {s.reason}{:else}syncs again — {s.reason}{/if}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+      <label class="check">
+        <input id="c-devsettings" type="checkbox" bind:checked={cfg.syncDeviceSettings} />
+        Sync these settings between devices too
+      </label>
+      <span class="hint device-hint">
+        These are this game's settings, not its save — named by the game database or found by
+        what they hold — so each device keeps its own (graphics, resolution). They are still in
+        every snapshot. A file that turns out to change along with the save syncs again by
+        itself; to sync one yourself, untick it under “Pick from your save folder” below.
+      </span>
+    {/if}
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
     <div class="save">
@@ -204,6 +235,29 @@
     margin-bottom: 14px;
   }
   .fields .field {
+    margin-bottom: 14px;
+  }
+  .device-settings {
+    margin: 4px 0 6px;
+    padding-left: 18px;
+    color: var(--text-dim, inherit);
+  }
+  .device-settings code {
+    font-size: 0.9em;
+  }
+  .device-settings .source {
+    font-size: 0.82em;
+    color: var(--text-faint);
+    margin-left: 6px;
+  }
+  .device-settings .given-back code {
+    text-decoration: line-through;
+  }
+  .device-block {
+    margin-bottom: 4px !important;
+  }
+  .device-hint {
+    display: block;
     margin-bottom: 14px;
   }
   .hint-warn {

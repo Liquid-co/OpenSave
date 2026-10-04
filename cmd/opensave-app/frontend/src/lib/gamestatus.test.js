@@ -119,6 +119,18 @@ describe('a missing save folder', () => {
     expect(librarySummary(rows)).toEqual({ tone: 'warn', headline: "Hades's save folder is missing" });
     expect(sortRows(rows, 'attention').map((r) => r.game.name)).toEqual(['Hades', 'Celeste']);
   });
+
+  it('on a drive this device does not have is not a warning, and stays out of the headline', () => {
+    const g = game({ id: 'a', name: 'ARK', savePathMissing: true, saveDriveMissing: true });
+    const s = gameStatus(g);
+    expect(s).toMatchObject({ state: 'elsewhere', tone: 'muted', label: 'Not on this device' });
+    const rows = [
+      { game: g, status: s },
+      { game: game({ id: 'c', name: 'Celeste', branches: snaps(minsAgo(5)) }), status: { state: 'synced' } }
+    ];
+    expect(librarySummary(rows).tone).not.toBe('warn');
+    expect(sortRows(rows, 'attention').map((r) => r.game.name)).toEqual(['Celeste', 'ARK']);
+  });
 });
 
 describe('SORTS', () => {

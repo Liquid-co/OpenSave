@@ -176,10 +176,10 @@ func TestCLI_SnapshotAndRollbackRestoresEverything(t *testing.T) {
 	c.mustRun("add", "History Game", dir)
 	c.mustRun("snapshot", "history-game", "-m", "known good")
 
-	// Two: the one tracking took automatically, and the one just asked for.
-	// The manual one is newest, and is the one to roll back to.
+	// One: the one asked for holds the same files as the one tracking took,
+	// and takes its place (snapshot/content.go). It is the one to roll back to.
 	ids := c.snapshotIDs("history-game")
-	if len(ids) != 2 {
+	if len(ids) != 1 {
 		t.Fatalf("expected the initial snapshot plus the manual one, got %v", ids)
 	}
 	snap := ids[0]
@@ -410,6 +410,9 @@ func TestCLI_SnapshotAll(t *testing.T) {
 	c.mustRun("add", "All One", one)
 	c.mustRun("add", "All Two", two)
 	before := len(c.snapshotIDs("all-one")) + len(c.snapshotIDs("all-two"))
+	// Played on: a snapshot of the same files would be the one already there.
+	c.saveDir("all-one", map[string]string{"a.sav": "1, played on"})
+	c.saveDir("all-two", map[string]string{"b.sav": "2, played on"})
 
 	out := c.mustRun("snapshot", "--all", "before", "the", "reinstall")
 	if !strings.Contains(out, "2 game") {
@@ -630,7 +633,9 @@ func TestCLI_SnapshotDeleteAndPrune(t *testing.T) {
 	dir := c.saveDir("pruning", map[string]string{"slot1.sav": "v1"})
 	c.mustRun("add", "Pruning", dir)
 
-	for _, v := range []string{"v1", "v2", "v3"} {
+	// Each a change: a snapshot of the same files as one already there would
+	// be that one (snapshot/content.go).
+	for _, v := range []string{"v2", "v3", "v4"} {
 		c.saveDir("pruning", map[string]string{"slot1.sav": v})
 		c.mustRun("snapshot", "pruning", "-m", v)
 	}
@@ -671,6 +676,7 @@ func TestCLI_UntrackAllRequiresConfirmation(t *testing.T) {
 
 	dir := c.saveDir("guard", map[string]string{"slot1.sav": "keep me"})
 	c.mustRun("add", "Guarded", dir)
+	c.saveDir("guard", map[string]string{"slot1.sav": "keep me, played on"})
 	c.mustRun("snapshot", "guarded")
 
 	c.mustFail("untrack-all")
@@ -694,7 +700,7 @@ func TestCLI_UntrackAllRequiresConfirmation(t *testing.T) {
 	if out := c.mustRun("status"); strings.Contains(out, "Guarded") {
 		t.Errorf("untrack-all --yes did not clear the library:\n%s", out)
 	}
-	if got := c.readSave(dir, "slot1.sav"); got != "keep me" {
+	if got := c.readSave(dir, "slot1.sav"); got != "keep me, played on" {
 		t.Errorf("untrack-all touched the save on disk: %q", got)
 	}
 }

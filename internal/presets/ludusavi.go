@@ -68,6 +68,11 @@ type indexedGame struct {
 	// index built by an older release, which reads as "none" — the field is
 	// additive, so an index on disk from a previous version still loads.
 	Registry []string `json:"r,omitempty"`
+	// Config is where the game keeps its settings and nothing else: entries
+	// the manifest tags "config" and not "save". A device's own graphics
+	// settings among them; inside a tracked save folder they are left out of
+	// syncing (DeviceSettingsPatterns).
+	Config []string `json:"c,omitempty"`
 }
 
 // manifestPaths derives the manifest + index locations from the scanner's
@@ -89,7 +94,7 @@ func (sc *Scanner) manifestPaths() (yamlPath, indexPath string) {
 // reading the file it knows and a newer one builds its own, so a user moving
 // between the two is never handed an index whose shape their code predates.
 // Bump this whenever indexedGame gains or loses a field that a scan depends on.
-const indexFileName = "ludusavi-index-v2.json"
+const indexFileName = "ludusavi-index-v3.json"
 
 // scanLudusavi expands the manifest's save-path templates and returns the
 // locations that actually exist on this machine.
@@ -728,13 +733,17 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 
 	games := make([]indexedGame, 0, len(manifest))
 	for name, mg := range manifest {
-		var paths []string
+		var paths, config []string
 		for tpl, entry := range mg.Files {
+			if entryIsConfigEntry(tpl, entry) {
+				config = append(config, tpl)
+			}
 			if !entryIsSaveEntry(tpl, entry) {
 				continue
 			}
 			paths = append(paths, tpl)
 		}
+		sort.Strings(config)
 		var regKeys []string
 		for key, entry := range mg.Registry {
 			if !registryEntryIsSave(key, entry) {
@@ -763,7 +772,7 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 			continue
 		}
 		sort.Strings(regKeys) // stable index across rebuilds
-		g := indexedGame{Name: name, Paths: paths, Registry: regKeys, SteamID: steamID}
+		g := indexedGame{Name: name, Paths: paths, Registry: regKeys, SteamID: steamID, Config: config}
 		for dir := range mg.InstallDir {
 			g.Installs = append(g.Installs, dir)
 		}
@@ -799,6 +808,34 @@ func registryEntryIsSave(key string, entry manifestFileEntry) bool {
 }
 
 func entryIsSaveEntry(tpl string, entry manifestFileEntry) bool {
+	if len(entry.Tags) > 0 && !hasTag(entry, "save") {
+		return false
+	}
+	return entryResolvable(tpl, entry)
+}
+
+// entryIsConfigEntry keeps manifest file entries that are a game's settings
+// and nothing else: tagged "config" and not "save". An entry carrying both
+// is part of the save, whatever else it holds.
+func entryIsConfigEntry(tpl string, entry manifestFileEntry) bool {
+	if !hasTag(entry, "config") || hasTag(entry, "save") {
+		return false
+	}
+	return entryResolvable(tpl, entry)
+}
+
+func hasTag(entry manifestFileEntry, tag string) bool {
+	for _, t := range entry.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// entryResolvable reports whether a file template can plausibly resolve on
+// a platform this app runs on.
+func entryResolvable(tpl string, entry manifestFileEntry) bool {
 	// Placeholders no supported platform can resolve.
 	if strings.Contains(tpl, "<winDir>") || strings.Contains(tpl, "<dataDrive>") {
 		return false
@@ -810,19 +847,6 @@ func entryIsSaveEntry(tpl string, entry manifestFileEntry) bool {
 		strings.Contains(tpl, "<base>") || strings.Contains(tpl, "<root>")
 	if !resolvable {
 		return false
-	}
-
-	if len(entry.Tags) > 0 {
-		hasSave := false
-		for _, t := range entry.Tags {
-			if t == "save" {
-				hasSave = true
-				break
-			}
-		}
-		if !hasSave {
-			return false
-		}
 	}
 
 	if len(entry.When) == 0 {

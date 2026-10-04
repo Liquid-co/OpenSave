@@ -64,6 +64,10 @@ describe('snapshotKind', () => {
     });
   });
 
+  it('names the checkpoints taken while a game is played', () => {
+    expect(snapshotKind(auto('Checkpoint while playing'))).toMatchObject({ kind: 'session', title: 'Checkpoint while playing' });
+  });
+
   it('says a save changed for the watcher’s own snapshots', () => {
     expect(snapshotKind(auto(''))).toMatchObject({ kind: 'auto', title: 'Save changed' });
     expect(snapshotKind(auto('Auto backup'))).toMatchObject({ kind: 'auto', title: 'Save changed' });

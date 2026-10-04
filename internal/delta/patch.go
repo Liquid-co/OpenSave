@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/opensave/opensave/internal/fsx"
+	"github.com/opensave/opensave/internal/owntouch"
 )
 
 // BlockSource supplies the bytes for one block index, either from the
@@ -77,7 +78,11 @@ func replaceWithRetry(tmpPath, filePath string) error {
 			delay *= 2
 		}
 		clearReadOnlyIfSet(filePath)
+		// Marked before the rename, so the watcher's event finds it already
+		// known as a change OpenSave made (owntouch).
+		owntouch.Mark(filePath)
 		if err = renameFile(tmpPath, filePath); err == nil {
+			owntouch.Settled(filePath)
 			return nil
 		}
 	}
