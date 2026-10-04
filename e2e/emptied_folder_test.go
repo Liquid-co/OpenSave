@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -245,6 +246,47 @@ func TestEmptiedFolder_AnUnconfirmedEmptyFolderIsNotTakenAsDeletions(t *testing.
 	for _, r := range res.Results {
 		if r.Status != "peer_holding" {
 			t.Errorf("the sync says %q, want peer_holding", r.Status)
+		}
+	}
+}
+
+// A save put back is the other device's: every file it holds differently,
+// even one whose copy here looks newer by its date, comes from there, and
+// this device ends on the other's version rather than one of its own that
+// every other device would then be asked to take.
+func TestEmptiedFolder_PutBackTakesTheOtherDevicesSaveAndVersion(t *testing.T) {
+	a, b, gameID := emptiedAndHeld(t, "Emptied Source Of Truth Game")
+
+	// The other device moves on meanwhile: one file changed, and written
+	// with a date older than the copy in the snapshot here.
+	path := filepath.Join(b.SaveDir, "slot2.sav")
+	if err := os.WriteFile(path, []byte("played on since"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	syncBothWays(t, gameID, b, a)
+
+	before := len(b.Daemon.Log.History())
+	a.API(http.MethodPost, "/api/games/"+gameID+"/emptied", map[string]string{"answer": "restore"}, nil)
+	syncBothWays(t, gameID, a, b)
+
+	if got := a.ReadSave("slot2.sav"); got != "played on since" {
+		t.Errorf("put back, slot2.sav is %q: the copy here won over the other device's", got)
+	}
+	if got := b.ReadSave("slot2.sav"); got != "played on since" {
+		t.Errorf("the other device's slot2.sav became %q", got)
+	}
+	va, _ := a.Daemon.Store.GetGameVersion(gameID)
+	vb, _ := b.Daemon.Store.GetGameVersion(gameID)
+	if va.Vector != vb.Vector {
+		t.Errorf("versions differ after the put-back: here %s, there %s", va.Vector, vb.Vector)
+	}
+	for _, e := range b.Daemon.Log.History()[before:] {
+		if strings.Contains(e.Message, "newer version") && strings.Contains(e.Message, "taking") {
+			t.Errorf("the other device took a version from the one put back: %s", e.Message)
 		}
 	}
 }

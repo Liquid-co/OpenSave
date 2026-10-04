@@ -64,6 +64,11 @@ func (d *Daemon) VerifySnapshots(ctx context.Context, gameID string, pace time.D
 				}
 				was := snap.Problem
 				if err := d.Snapshots.Verify(snap); err != nil {
+					if _, gerr := d.Store.GetSnapshot(snap.ID); gerr != nil {
+						// Removed while this ran (a newer snapshot holding
+						// the same files took its place): not damaged, gone.
+						continue
+					}
 					report.Damaged = append(report.Damaged, DamagedSnapshot{
 						GameID: g.ID, GameName: g.Name, SnapshotID: snap.ID, Timestamp: snap.Timestamp, Problem: err.Error(),
 					})

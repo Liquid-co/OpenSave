@@ -54,9 +54,12 @@ func branchHolds(t *testing.T, st branchState, branch, rel string) string {
 	if len(snaps) == 0 {
 		return ""
 	}
-	path, done, err := snapshot.OpenArchive(snaps[0].ZipPath)
+	// The API lists a branch's snapshots oldest first (gamePayload), so the
+	// newest — what a switch puts back — is the last.
+	newest := snaps[len(snaps)-1]
+	path, done, err := snapshot.OpenArchive(newest.ZipPath)
 	if err != nil {
-		t.Fatalf("open %s: %v", snaps[0].ZipPath, err)
+		t.Fatalf("open %s: %v", newest.ZipPath, err)
 	}
 	defer done()
 	zr, err := zip.OpenReader(path)

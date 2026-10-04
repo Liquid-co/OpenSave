@@ -112,7 +112,7 @@ func NewTestDaemon(t *testing.T, name string) *TestDaemon {
 	if err := os.MkdirAll(home, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	d, err := daemon.New(daemon.Options{HomeOverride: home, DisableDiscovery: true})
+	d, err := daemon.New(daemon.Options{HomeOverride: home, DisableDiscovery: true, SyncEveryChange: true})
 	if err != nil {
 		t.Fatalf("daemon.New(%s): %v", name, err)
 	}
@@ -175,6 +175,13 @@ func NewTestDaemon(t *testing.T, name string) *TestDaemon {
 	}
 
 	td := &TestDaemon{T: t, Daemon: d, Server: srv, Addr: addr, Port: port, SaveDir: saveDir}
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, e := range d.Log.History() {
+				t.Logf("[%s] %s %s", name, e.Level, e.Message)
+			}
+		}
+	})
 	t.Cleanup(func() {
 		srv.Stop()
 		d.Stop()

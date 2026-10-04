@@ -98,12 +98,20 @@ func (s *Server) peersPayload() map[string]any {
 			AppVersion    string `json:"appVersion,omitempty"`
 			BuildTimeMs   int64  `json:"buildTimeMs,omitempty"`
 			HasNewerBuild bool   `json:"hasNewerBuild,omitempty"`
+			// NeedsUpdate: its OpenSave keeps no save versions, so this
+			// device takes nothing from it until it is updated.
+			NeedsUpdate bool `json:"needsUpdate,omitempty"`
+			// Link is how fast this device has found its connection to it,
+			// and what kind of address it is reached on: what decides the
+			// order devices are synced in.
+			Link syncengine.LinkStat `json:"link"`
 			// What actually protects traffic with this device. Sent per peer
 			// rather than described once in the interface, because the answer
 			// differs per pairing and the reader cannot work out which case
 			// they are in from a general statement.
 			p2p.PeerProtection
-		}{Peer: p, PeerProtection: s.Daemon.P2P.PeerProtection(p)}
+		}{Peer: p, PeerProtection: s.Daemon.P2P.PeerProtection(p), NeedsUpdate: s.Daemon.P2P.Sync.PeerNeedsUpdate(p.ID),
+			Link: s.Daemon.P2P.Sync.Link(syncengine.Peer{ID: p.ID, Name: p.Name, Address: p.Address, Port: p.Port, IsWan: p.Address == "relay"})}
 		if b, ok := builds[p.ID]; ok {
 			entry.AppVersion = b.AppVersion
 			entry.BuildTimeMs = b.BuildTimeMs
@@ -559,18 +567,29 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		// Whether the art cached for this game is explicit, so the client can
 		// blur it until someone asks to see it. An <img src> cannot read a
 		// response header, so it travels with the game rather than the image.
-		"coverExplicit":  s.CoverIsExplicit(coverKeyFor(g)),
-		"syncIgnore":     g.SyncIgnore,
-		"branches":       branches,
-		"createdAt":      g.CreatedAt,
-		"lastSyncedWith": lastSyncedWith,
+		"coverExplicit": s.CoverIsExplicit(coverKeyFor(g)),
+		"syncIgnore":    g.SyncIgnore,
+		// The files the game database names as this game's settings, left
+		// out of syncing unless syncDeviceSettings (daemon/devicesettings.go).
+		"deviceSettings":     s.Daemon.DeviceSettings(g),
+		"syncDeviceSettings": g.SyncDeviceSettings,
+		"branches":           branches,
+		"createdAt":          g.CreatedAt,
+		"lastSyncedWith":     lastSyncedWith,
 		// The save folder is not there — gone, moved, or on a drive not
 		// plugged in. Nothing is watched or synced for it until it is back.
 		"savePathMissing": daemon.SaveFolderMissing(g.SavePath),
-		"lastPlayedAt":    lastPlayed,
-		"playingSince":    playingSince,
-		"playtimeMs":      play.PlaytimeMs,
-		"playSessions":    play.Sessions,
+		// …and of those, the ones whose whole drive is absent here: the game
+		// lives on another device's D:\ or E:\, which is not a problem to
+		// warn about (daemon.SaveDriveMissing).
+		"saveDriveMissing": daemon.SaveFolderMissing(g.SavePath) && daemon.SaveDriveMissing(g.SavePath),
+		"lastPlayedAt":     lastPlayed,
+		"playingSince":     playingSince,
+		// Changes to it are held back as play though no session of it is seen
+		// (daemon/sessions.go): said, so nothing seems stuck.
+		"holdingChanges": s.Daemon.HoldingChanges(g.ID),
+		"playtimeMs":     play.PlaytimeMs,
+		"playSessions":   play.Sessions,
 		// Whether the game is installed on this device: "found", "not-found",
 		// or "" when there is no telling (daemon.InstallState). A game that is
 		// not here is one nobody plays here, which is why it shows no play.

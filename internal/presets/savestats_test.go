@@ -211,3 +211,17 @@ func TestMeasure_FolderHoldingOnlyAJunctionIsEmpty(t *testing.T) {
 			saves[0].FileCount)
 	}
 }
+
+// A Steam userdata folder holding only Steam's own remotecache.vdf is not a
+// save: measured, it is empty, and so it is never offered as a new game.
+func TestMeasure_OnlyLauncherFilesIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "remotecache.vdf"), []byte("steam"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	saves := []DiscoveredSave{{SavePath: dir}}
+	Measure(saves)
+	if !saves[0].IsEmpty() {
+		t.Errorf("measured %d file(s): a folder of Steam's bookkeeping counts as a save", saves[0].FileCount)
+	}
+}

@@ -85,6 +85,11 @@ type emptiness struct {
 func (x emptiness) back(held map[string][]string) bool {
 	for name, files := range held {
 		for _, f := range files {
+			if delta.NeverSynced(f) {
+				// Recorded by a build that still counted it; never part of
+				// the save, so not something that has to come back.
+				continue
+			}
 			if _, ok := x.present[name][f]; !ok {
 				return false
 			}
@@ -529,4 +534,38 @@ func describeLocations(names []string) string {
 		}
 	}
 	return strings.Join(parts, " and ")
+}
+
+// emptyingUnconfirmed reports a save that holds nothing, or is held back
+// after being emptied, while nobody has said the emptying was meant. That is
+// not a version of the save: named one, it made this device the newest, so a
+// save put back from a snapshot and the other devices came out as this
+// device's own new version, which every other device was then asked to take.
+// Only "delete them there too" (ConfirmHold) makes it one.
+func (e *Engine) emptyingUnconfirmed(gameID string, local delta.Manifest) bool {
+	hold, has, err := e.Store.GetDeletionHold(gameID)
+	if err == nil && has {
+		return hold.State != store.HoldConfirmed
+	}
+	for p := range local.Files {
+		if !delta.NeverSynced(p) {
+			return false
+		}
+	}
+	return len(local.Extra) == 0
+}
+
+// putBackDecision turns a decision taken while a save is being put back
+// (HoldFetching) into fetching only: every file both devices hold but differ
+// on is the other device's, nothing is offered from here, and nothing is
+// deleted over there. A file only this device holds is left where it is.
+func putBackDecision(d Decision, remote delta.Manifest) Decision {
+	for _, p := range d.FilesToPush {
+		if _, ok := remote.Files[p]; ok {
+			d.FilesToPull = append(d.FilesToPull, p)
+		}
+	}
+	d.FilesToPush, d.DirsToPush = nil, nil
+	d.FilesToDeleteOnPeer, d.DirsToDeleteOnPeer = nil, nil
+	return d
 }

@@ -114,24 +114,20 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 	rules := e.rulesFor(gameID)
 	remote := sr.remote
 	unfilteredLocal, unfilteredRemote := local, remote
-	if !rules.Empty() {
-		local = filterManifest(local, rules)
-		remote = filterManifest(remote, rules)
-	}
+	local = filterManifest(local, rules)
+	remote = filterManifest(remote, rules)
 
 	fileList, dirList, err := e.Store.GetSyncStateForRoot(gameID, peer.ID, sr.root.Name)
 	if err != nil {
 		return err
 	}
 	lineageFiles, lineageDirs := toSet(fileList), toSet(dirList)
-	if !rules.Empty() {
-		// Without this an exclusion added to a location that had already
-		// synced reads as "we both had this file and now I do not", and the
-		// deletion travels to the peer — destroying the copy the rule was
-		// written to protect.
-		lineageFiles = filterLineage(lineageFiles, rules)
-		lineageDirs = filterLineage(lineageDirs, rules)
-	}
+	// Without this an exclusion added to a location that had already
+	// synced reads as "we both had this file and now I do not", and the
+	// deletion travels to the peer — destroying the copy the rule was
+	// written to protect.
+	lineageFiles = filterLineage(lineageFiles, rules)
+	lineageDirs = filterLineage(lineageDirs, rules)
 	decision := Compute(local, remote, lineageFiles, lineageDirs)
 
 	if !decision.HasChanges() {
@@ -172,7 +168,7 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 	// adds a rule. If a side's UNFILTERED state still hashes to the base then
 	// that side has not changed, and its filtered hash says the same thing in
 	// today's terms. Same translation the main folder does.
-	if !rules.Empty() && base != "" {
+	if base != "" {
 		switch base {
 		case unfilteredLocal.RootHash(delta.PrimaryRoot):
 			base = local.RootHash(delta.PrimaryRoot)

@@ -133,7 +133,10 @@
             <span class="file-name">
               {#if f.location}<span class="file-loc">{f.location} ›</span>{/if}{f.path}
             </span>
-            <span class="verdict">{f.excluded ? "won't sync" : 'syncs'}</span>
+            <span class="verdict" title={f.reason ?? ''}>
+              {#if !f.excluded}syncs{:else if f.source === 'database'}won't sync · settings (game database){:else if f.source === 'detected'}won't
+                sync · settings (detected){:else}won't sync{/if}
+            </span>
           </label>
         {/each}
       </div>
@@ -141,6 +144,8 @@
         Ticking a file writes the pattern for you, anchored so it can only ever mean that
         one file. Unticking a file caught by a wildcard adds a <code>!</code> exception
         rather than deleting the wildcard.
+        Files marked <em>settings</em> are left out as this game's device settings; unticking
+        one syncs it after all.
         {#if severalFolders}
           A pattern applies to <strong>every one of this game's folders</strong>, so a
           name that appears in two of them is excluded in both.

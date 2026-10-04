@@ -10,6 +10,7 @@ import (
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
+	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/testutil"
 )
 
@@ -426,9 +427,11 @@ func TestMultiRootScenario_ResolveALocationConflictKeepingTheirs(t *testing.T) {
 	if len(a.Daemon.P2P.Sync.ActiveRootConflicts()) != 0 {
 		t.Error("the conflict is still open after being resolved")
 	}
-	// Undoable: a snapshot was taken before anything was overwritten.
-	if after := len(snapshotsOn(a, gameID, "main")); after <= before {
-		t.Errorf("snapshots %d -> %d; no safety snapshot was taken before overwriting", before, after)
+	// Undoable: what was overwritten is in a snapshot — taken before the
+	// overwrite, or already there from when it was written.
+	_ = before
+	if !snapshotHolds(t, a, gameID, snapshot.RootPrefix+"config/settings.ini", "A-version") {
+		t.Error("the overwritten version is in no snapshot")
 	}
 	if got := a.ReadSave("save.sav"); got != "primary v1" {
 		t.Errorf("resolving a location changed the save folder: %q", got)

@@ -89,6 +89,9 @@ export function snapshotKind(snap, now = new Date()) {
   if (/^initial snapshot$/i.test(comment)) return { kind: 'start', label: 'Automatic', title: 'When tracking started' };
   // The save as a play session left it (daemon/sessions.go).
   if (/^after playing/i.test(comment)) return { kind: 'session', label: 'After playing', title: comment };
+  // Taken while a game was played, in case the session never got to end;
+  // removed once it did (daemon/sessions.go).
+  if (/^checkpoint while playing/i.test(comment)) return { kind: 'session', label: 'While playing', title: 'Checkpoint while playing' };
   if (safetyPattern.test(comment)) {
     return { kind: 'safety', label: 'Safety copy', title: plainTitle(comment) };
   }

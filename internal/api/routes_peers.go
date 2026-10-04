@@ -243,13 +243,15 @@ func (s *Server) handleProbePeer(w http.ResponseWriter, r *http.Request) {
 }
 
 // syncReason names why a sync did not happen, for a client to act on rather
-// than parse the message: "paused" (this device paused syncing), "held" (the
+// than parse the message: "paused" (this device paused syncing), "playing" (the game is being played here; it syncs when the session ends), "held" (the
 // game's save was emptied here and waits for an answer), "offline" (no other
 // device answered), or "error" for anything else.
 func syncReason(err error) string {
 	switch {
 	case errors.Is(err, syncengine.ErrPaused):
 		return "paused"
+	case errors.Is(err, syncengine.ErrPlayingHere):
+		return "playing"
 	case errors.Is(err, syncengine.ErrHeld):
 		return "held"
 	case errors.Is(err, p2p.ErrNoPeersOnline):
