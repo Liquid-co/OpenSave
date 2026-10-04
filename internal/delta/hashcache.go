@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -64,11 +65,19 @@ type cacheEntry struct {
 // the old behaviour.
 const (
 	// cacheMinBytes is the floor, and the value a small library gets.
-	cacheMinBytes = 64 << 20
+	//
+	// A budget, not an allocation: the cache only ever holds entries for
+	// files that exist, so a small library never comes near it. It has to
+	// cover the rare library with one enormous save, though — a game that
+	// writes every map chunk as its own file (Project Zomboid: ~240k files,
+	// ~53MB by entryCost) filled a 64MB budget on its own, and the cache then
+	// evicted and re-read that save on every pass, which is the churn it
+	// exists to prevent.
+	cacheMinBytes = 256 << 20
 	// cacheMaxCeiling is the most this will ever hold, however many games are
 	// tracked. A cache is meant to replace repeated reading, not to become
 	// the memory problem it was added to fix.
-	cacheMaxCeiling = 384 << 20
+	cacheMaxCeiling = 512 << 20
 	// cachePerGameBytes is how much the budget grows per tracked game.
 	//
 	// From measurement rather than taste: a game's manifest costs roughly
@@ -77,7 +86,10 @@ const (
 	// library and is not enough for someone tracking 350 games — the cache
 	// sits at its cap and evicts entries it is about to want again, which
 	// quietly reinstates the repeated reading it exists to remove.
-	cachePerGameBytes = 512 << 10
+	//
+	// Doubled alongside the floor so a large library still gets more than a
+	// small one (350 games -> 350MB).
+	cachePerGameBytes = 1 << 20
 )
 
 // cacheMaxBytes is the current budget. Not a constant: it scales with how many
@@ -193,6 +205,12 @@ func FileEntryFor(path string) (FileEntry, error) {
 	return cachedHashFile(path, info)
 }
 
+// FileEntryForInfo is FileEntryFor with the FileInfo a directory walk already
+// has, so a cache hit costs no syscall at all.
+func FileEntryForInfo(path string, info os.FileInfo) (FileEntry, error) {
+	return cachedHashFile(path, info)
+}
+
 func cachedHashFile(path string, info os.FileInfo) (FileEntry, error) {
 	key := cacheKeyFor(path)
 	stamp := cacheStamp{size: info.Size(), mtimeNs: info.ModTime().UnixNano()}
@@ -302,13 +320,10 @@ func evictLocked() {
 	for k, v := range hashCache.entries {
 		all = append(all, aged{k, v.usedAt})
 	}
-	// Partial selection would be faster, but this runs only on overflow and
-	// clarity is worth more here than the microseconds.
-	for i := 1; i < len(all); i++ {
-		for j := i; j > 0 && all[j].at.Before(all[j-1].at); j-- {
-			all[j], all[j-1] = all[j-1], all[j]
-		}
-	}
+	// sort.Slice, not an insertion sort: map iteration order is random, so
+	// insertion sort was quadratic in the entry count — ~10^10 comparisons for
+	// a quarter-million-file save, on every overflow.
+	sort.Slice(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
 	target := cacheMaxBytes * 3 / 4
 	for _, a := range all {
 		if hashCache.bytes <= target {

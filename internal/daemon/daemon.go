@@ -62,6 +62,9 @@ type Daemon struct {
 	// Games whose save folder is not there; see missing.go.
 	missingMu sync.Mutex
 	missing   map[string]bool
+	// relocateChecked is when each missing save folder was last looked for on
+	// another drive (missing.go).
+	relocateChecked map[string]time.Time
 
 	// Play sessions; see sessions.go.
 	sessions sessionState
@@ -230,6 +233,9 @@ func New(opts Options) (*Daemon, error) {
 			return err
 		},
 		OnChanged: func(gameID string) {
+			// A change made here, by the game or the user: a new version of
+			// the save, recorded before anyone is offered it.
+			d.P2P.Sync.NoteLocalChange(gameID)
 			// An emptied save is noticed as it happens, and said on screen,
 			// even with no other device online to hold it back from.
 			_, _ = d.P2P.Sync.CheckHold(gameID, false)

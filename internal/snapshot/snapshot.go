@@ -236,7 +236,14 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 	} else {
 		src = from
 	}
-	skipped, captured, err := ZipRootsCapturing(src, extraRoots, stagingPath)
+	// The game's own save, onto its branch: unchanged files are copied from
+	// the branch's previous snapshot rather than compressed again (reuse.go).
+	var reuse *reuseSource
+	if from == "" {
+		reuse = m.openReuseSource(gameID, branch)
+	}
+	skipped, captured, err := zipRootsCapturing(src, extraRoots, stagingPath, reuse)
+	reuse.Close()
 	if err != nil {
 		os.Remove(stagingPath)
 		return store.Snapshot{}, fmt.Errorf("zip save data: %w", err)

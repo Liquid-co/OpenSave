@@ -172,6 +172,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			if w.engine.Sync.Progress.OnSyncError != nil {
 				w.engine.Sync.Progress.OnSyncError(msg.GameID, ev)
 			}
+			w.engine.Sync.NotePeerPulled(msg.GameID, msg.From)
 		}
 
 	case "request":
@@ -617,9 +618,17 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 		return 500, map[string]string{"error": err.Error()}
 	}
 	w.engine.Sync.NoteServed(game.ID, peerID, manifest) // syncengine/served.go
+	// "versions" says this device keeps save versions, and "version" is its
+	// version of this save (syncengine/version.go). Not "proto": over the
+	// relay that would also claim extra save locations and batched blocks,
+	// which this path does not serve.
 	resp := map[string]any{
 		"gameId": gameID, "activeBranch": game.ActiveBranch, "manifest": manifest,
 		"deletionConfirmed": w.engine.Sync.DeletionConfirmed(game.ID),
+		"versions":          true,
+	}
+	if v := w.engine.Sync.LocalVersion(game, manifest); v != nil {
+		resp["version"] = v
 	}
 	if latest, err := w.engine.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		resp["latestSnapshot"] = syncengine.SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
@@ -678,6 +687,9 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	gameID := route[strings.LastIndex(route, "/")+1:]
 	var body struct {
 		RelPath string `json:"relPath"`
+		// Versioned: the asking device keeps save versions (see the LAN
+		// route, handleDeleteFile).
+		Versioned bool `json:"versioned"`
 	}
 	if err := json.Unmarshal(rawBody, &body); err != nil || body.RelPath == "" {
 		return 400, map[string]string{"error": "relPath is required."}
@@ -685,6 +697,14 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	game, err := w.engine.trackedGameForPeer(gameID)
 	if err != nil {
 		return 404, map[string]string{"error": "Game not found."}
+	}
+	if game.AutoSync && !body.Versioned {
+		from := fromPeerID
+		if p, err := w.engine.Store.GetPeer(fromPeerID); err == nil && p.Name != "" {
+			from = p.Name
+		}
+		w.engine.Sync.RefusedOldBuildDelete(game.Name, from)
+		return 409, map[string]string{"error": syncengine.OldBuildDeleteMessage}
 	}
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "invalid path"}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,6 +50,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Post("/api/games/{gameId}/snapshot", s.handleCreateSnapshot)
 	r.Post("/api/games/{gameId}/rollback", s.handleRollback)
+	r.Post("/api/games/{gameId}/use-everywhere", s.handleUseSaveEverywhere)
 	r.Get("/api/games/{gameId}/save-files", s.handleGameSaveFiles)
 	r.Get("/api/games/{gameId}/snapshot/{snapshotId}/files", s.handleSnapshotFiles)
 	r.Post("/api/games/{gameId}/snapshot/{snapshotId}/restore-file", s.handleRestoreFile)
@@ -635,6 +637,27 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 	s.Daemon.P2P.Sync.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityRestored,
 		Detail: fmt.Sprintf("%s|%s", snap.ID, snap.Timestamp)})
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleUseSaveEverywhere makes this device's save the one every other device
+// takes (syncengine.UseSaveEverywhere), and starts a sync to hand it out. The
+// sync runs in the background: a large save takes a while, and the answer the
+// person needs is that it was accepted. A paused device hands it out when it
+// resumes.
+func (s *Server) handleUseSaveEverywhere(w http.ResponseWriter, r *http.Request) {
+	gameID := chi.URLParam(r, "gameId")
+	vec, err := s.Daemon.P2P.Sync.UseSaveEverywhere(gameID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.Daemon.P2P.GoSync(func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		defer cancel()
+		_, _ = s.Daemon.P2P.SyncGame(ctx, gameID)
+	})
+	s.BroadcastGamesUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"version": vec.String()})
 }
 
 func (s *Server) handleCreateBranch(w http.ResponseWriter, r *http.Request) {

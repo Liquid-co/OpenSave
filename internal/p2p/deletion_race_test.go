@@ -58,7 +58,7 @@ func (a *deviceA) FetchManifest(ctx context.Context, peer syncengine.Peer, gameI
 	if err != nil {
 		return syncengine.ManifestResponse{}, err
 	}
-	return syncengine.ManifestResponse{Manifest: m, ActiveBranch: "main", Proto: syncengine.ProtoMultiRoot}, nil
+	return syncengine.ManifestResponse{Manifest: m, ActiveBranch: "main", Proto: syncengine.ProtoVersions}, nil
 }
 
 func (a *deviceA) FetchBlocks(ctx context.Context, peer syncengine.Peer, ref syncengine.FileRef, blockIndices []int, blockSize int) ([]syncengine.BlockData, error) {
@@ -159,7 +159,7 @@ func writeFile(t *testing.T, path, body string) {
 // deleteRequest is one of A's deletion requests arriving at B's LAN route.
 func (f *raceFixture) deleteRequest(t *testing.T, rel, root string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"relPath": rel, "root": root})
+	body, _ := json.Marshal(map[string]any{"relPath": rel, "root": root, "versioned": true})
 	r := httptest.NewRequest(http.MethodPost, "/api/p2p/delete-file/"+f.gameID, bytes.NewReader(body))
 	r.RemoteAddr = "198.51.100.7:40000" // not a paired device's address: no lineage refresh races the test
 	rc := chi.NewRouteContext()
@@ -169,6 +169,26 @@ func (f *raceFixture) deleteRequest(t *testing.T, rel, root string) {
 	f.e.handleDeleteFile(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("delete request for %s: %d %s", rel, w.Code, w.Body.String())
+	}
+}
+
+// A deletion asked for by an OpenSave that keeps no save versions is refused:
+// its old file comparison reads whatever its copy lacks as deleted.
+func TestADeletionFromAnOldBuildIsRefused(t *testing.T) {
+	f := newRaceFixture(t, false)
+	body, _ := json.Marshal(map[string]any{"relPath": "slot1.sav"})
+	r := httptest.NewRequest(http.MethodPost, "/api/p2p/delete-file/"+f.gameID, bytes.NewReader(body))
+	r.RemoteAddr = "198.51.100.7:40000"
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("gameId", f.gameID)
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rc))
+	w := httptest.NewRecorder()
+	f.e.handleDeleteFile(w, r)
+	if w.Code != http.StatusConflict {
+		t.Errorf("a deletion from an old build: %d %s, want %d", w.Code, w.Body.String(), http.StatusConflict)
+	}
+	if !f.has(f.bDir, "slot1.sav") {
+		t.Error("the file was deleted on an old build's word")
 	}
 }
 
@@ -212,7 +232,7 @@ func TestASyncBetweenTwoRelayedDeletionsIsNotAConflict(t *testing.T) {
 	os.Remove(filepath.Join(f.a.dir, "slot1.sav"))
 	os.Remove(filepath.Join(f.a.dir, "slot2.sav"))
 
-	body, _ := json.Marshal(map[string]string{"relPath": "slot1.sav"})
+	body, _ := json.Marshal(map[string]any{"relPath": "slot1.sav", "versioned": true})
 	if code, out := w.serveDeleteFile("/delete-file/"+f.gameID, body, "node_unknown"); code != 200 {
 		t.Fatalf("relayed delete: %d %v", code, out)
 	}

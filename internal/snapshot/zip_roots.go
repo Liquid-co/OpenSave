@@ -3,6 +3,7 @@ package snapshot
 import (
 	"archive/zip"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,8 +45,14 @@ func ZipRoots(primary string, extra map[string]string, outPath string) (skipped 
 // instead of inferred from a single whole-save hash that nothing reliably
 // kept current.
 func ZipRootsCapturing(primary string, extra map[string]string, outPath string) (skipped []string, captured []store.CapturedFile, err error) {
+	return zipRootsCapturing(primary, extra, outPath, nil)
+}
+
+// zipRootsCapturing is ZipRootsCapturing, copying unchanged files straight
+// out of reuse (the previous snapshot) when it is given. See reuse.go.
+func zipRootsCapturing(primary string, extra map[string]string, outPath string, reuse *reuseSource) (skipped []string, captured []store.CapturedFile, err error) {
 	if len(extra) == 0 {
-		return ZipPathCapturing(primary, outPath)
+		return zipPathCapturing(primary, outPath, reuse)
 	}
 
 	// One archive, written in a single pass.
@@ -69,7 +76,7 @@ func ZipRootsCapturing(primary string, extra map[string]string, outPath string) 
 	defer f.Close()
 	w := newSnapshotWriter(f)
 
-	primarySkipped, primaryFiles, err := archiveInto(w, primary, "", "")
+	primarySkipped, primaryFiles, err := archiveInto(w, primary, "", "", reuse)
 	skipped = append(skipped, primarySkipped...)
 	captured = append(captured, primaryFiles...)
 	if err != nil {
@@ -82,7 +89,7 @@ func ZipRootsCapturing(primary string, extra map[string]string, outPath string) 
 		if strings.TrimSpace(path) == "" {
 			continue
 		}
-		sub, subFiles, subErr := archiveInto(w, path, RootPrefix+name+"/", name)
+		sub, subFiles, subErr := archiveInto(w, path, RootPrefix+name+"/", name, reuse)
 		skipped = append(skipped, sub...)
 		captured = append(captured, subFiles...)
 		if subErr != nil {
@@ -94,14 +101,14 @@ func ZipRootsCapturing(primary string, extra map[string]string, outPath string) 
 }
 
 // archiveInto writes one directory tree into an open zip under prefix.
-func archiveInto(w *zip.Writer, sourcePath, prefix, root string) (skipped []string, captured []store.CapturedFile, err error) {
+func archiveInto(w *zip.Writer, sourcePath, prefix, root string, reuse *reuseSource) (skipped []string, captured []store.CapturedFile, err error) {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !info.IsDir() {
 		name := filepath.Base(sourcePath)
-		hash, addErr := addFileEntry(w, sourcePath, prefix+name)
+		hash, addErr := reuse.addFileEntry(w, sourcePath, prefix+name, info)
 		if addErr != nil {
 			return nil, nil, addErr
 		}
@@ -117,7 +124,7 @@ func archiveInto(w *zip.Writer, sourcePath, prefix, root string) (skipped []stri
 		}
 	}
 
-	walkErr := filepath.Walk(sourcePath, func(path string, walkInfo os.FileInfo, walkErr error) error {
+	walkErr := filepath.WalkDir(sourcePath, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if path != sourcePath {
 				skipped = append(skipped, path)
@@ -133,11 +140,16 @@ func archiveInto(w *zip.Writer, sourcePath, prefix, root string) (skipped []stri
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if walkInfo.IsDir() {
+		if d.IsDir() {
 			_, err := w.CreateHeader(&zip.FileHeader{Name: prefix + rel + "/", Method: zip.Store})
 			return err
 		}
-		hash, addErr := addFileEntry(w, path, prefix+rel)
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			skipped = append(skipped, path)
+			return nil
+		}
+		hash, addErr := reuse.addFileEntry(w, path, prefix+rel, info)
 		if addErr != nil {
 			skipped = append(skipped, path)
 			return nil

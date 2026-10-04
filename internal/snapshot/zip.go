@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,10 @@ func ZipPath(sourcePath, outPath string) (skipped []string, err error) {
 // archived so the caller can record what the snapshot holds. The hashes come
 // free: the bytes pass through a hasher on their way into the archive.
 func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []store.CapturedFile, err error) {
+	return zipPathCapturing(sourcePath, outPath, nil)
+}
+
+func zipPathCapturing(sourcePath, outPath string, reuse *reuseSource) (skipped []string, captured []store.CapturedFile, err error) {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("source path does not exist: %w", err)
@@ -54,7 +59,7 @@ func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []
 
 	if !info.IsDir() {
 		name := filepath.Base(sourcePath)
-		hash, addErr := addFileEntry(w, sourcePath, name)
+		hash, addErr := reuse.addFileEntry(w, sourcePath, name, info)
 		if addErr != nil {
 			return nil, nil, addErr
 		}
@@ -62,7 +67,10 @@ func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []
 	}
 
 	archived := 0
-	walkErr := filepath.Walk(sourcePath, func(path string, walkInfo os.FileInfo, walkErr error) error {
+	// WalkDir, not Walk: Walk's extra Lstat per entry opens every file on
+	// Windows, which on a save of a quarter-million files cost more than the
+	// archiving itself once unchanged files are copied (reuse.go).
+	walkErr := filepath.WalkDir(sourcePath, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			// Unreadable subtree — record it and move on.
 			if path != sourcePath {
@@ -80,14 +88,19 @@ func ZipPathCapturing(sourcePath, outPath string) (skipped []string, captured []
 		}
 		rel = filepath.ToSlash(rel)
 
-		if walkInfo.IsDir() {
+		if d.IsDir() {
 			// Explicit directory entries keep empty dirs restorable.
 			if _, err := w.CreateHeader(&zip.FileHeader{Name: rel + "/", Method: zip.Store}); err != nil {
 				return err
 			}
 			return nil
 		}
-		hash, addErr := addFileEntry(w, path, rel)
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			skipped = append(skipped, path)
+			return nil
+		}
+		hash, addErr := reuse.addFileEntry(w, path, rel, info)
 		if addErr != nil {
 			skipped = append(skipped, path)
 			return nil
