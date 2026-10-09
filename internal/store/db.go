@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -24,6 +25,11 @@ var migrationsFS embed.FS
 // cloudtokens.go).
 type Store struct {
 	db *sqlx.DB
+	// provisioningReadFault is nil in production. Tests set it so a hold
+	// lookup fails while the rest of the database still answers. A failed
+	// hold read must not be treated as "not held".
+	faultMu               sync.Mutex
+	provisioningReadFault error
 }
 
 // Open creates (if needed) and opens the SQLite database at path, applying

@@ -64,6 +64,30 @@ const HeldMessage = "This device is holding this game back: its save files were 
 // ErrHeld is SyncGame declining to sync a game that is held back.
 var ErrHeld = errors.New("its save files were all deleted here; it is not synced until you say whether that was meant")
 
+// ProvisioningMessage is what this device says when a peer asks for a game
+// that is still being configured. It must not contain "not found": that
+// phrase is how the asker decides the peer does not track the game, and a
+// provisioning hold is not an untrack. It is also distinct from HeldMessage,
+// which means the save was emptied.
+const ProvisioningMessage = "This device is still configuring this game and is not sending or receiving its saves yet"
+
+// ErrProvisioning is SyncGame declining to sync a game that is still being
+// configured. It is not ErrHeld: that one is the emptied-save question.
+var ErrProvisioning = errors.New("this game is still being configured and is not synced until that finishes")
+
+// ProvisioningUnreadableMessage is what this device says when it cannot tell
+// whether a game is still being configured. It is not "not found" and it is
+// not permission to send or receive the save.
+const ProvisioningUnreadableMessage = "This device could not read whether this game is still being configured, so it is not sending or receiving its saves"
+
+// ErrProvisioningUnreadable is a failed hold lookup. It must not be treated
+// as "not held".
+var ErrProvisioningUnreadable = errors.New("could not read whether this game is still being configured")
+
+func isProvisioning(err error) bool {
+	return err != nil && strings.Contains(err.Error(), ProvisioningMessage)
+}
+
 // ErrNoHold is an answer to a question nobody asked: the game is not held.
 var ErrNoHold = errors.New("that game is not held back")
 

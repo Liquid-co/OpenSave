@@ -197,6 +197,12 @@ func New(opts Options) (*Daemon, error) {
 		// Counted here, on the caller's goroutine, and only then moved to the
 		// background, so that Stop, once it has seen the snapshot finish,
 		// also sees its upload.
+		// A game still being configured must not publish its snapshot. The
+		// name is gameID__branch__snapID.zip (cloudSnapshotName). Checked
+		// before the pause queue: a resume must not send it either.
+		if id, _, ok := strings.Cut(remoteFileName, "__"); ok && d.provisioningBlocks(id) {
+			return
+		}
 		if d.P2P.Pause.Paused() {
 			d.holdUpload(zipPath, remoteFileName)
 			return
@@ -285,7 +291,7 @@ func (d *Daemon) Start() error {
 				_ = d.Store.UpdateGame(game)
 			}
 		}
-		if !game.AutoSync {
+		if !game.AutoSync || d.provisioningBlocks(game.ID) {
 			continue
 		}
 		if err := d.watchGame(game.ID, game.SavePath); err != nil {
@@ -617,7 +623,7 @@ func (d *Daemon) ResyncWatchers() (started, stopped int) {
 	names := make(map[string]string, len(games))
 	for _, game := range games {
 		names[game.ID] = game.Name
-		if game.AutoSync {
+		if game.AutoSync && !d.provisioningBlocks(game.ID) {
 			want[game.ID] = game.SavePath
 		}
 	}
@@ -682,6 +688,16 @@ func isDuplicateGameID(err error) bool {
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	abs, err := d.ValidateSavePath(game.SavePath)
 	if err != nil {
+		// A retry of a held create names a folder this game already tracks.
+		// That is the same admission, not a second game. Checked here because
+		// the duplicate-path refusal otherwise wins before the hold path runs.
+		if game.ProvisioningHold && game.ID != "" {
+			if existing, findErr := d.Store.GetGame(game.ID); findErr == nil {
+				if reused, reuseErr := d.reuseHeldGame(existing, game.SavePath); reuseErr == nil {
+					return reused, nil
+				}
+			}
+		}
 		return store.Game{}, err
 	}
 	game.SavePath = abs
@@ -714,6 +730,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 			id = fmt.Sprintf("%s-%d", base, n)
 		}
 		game.ID = id
+	}
+
+	// A game still being configured is recorded held, and nothing is said to
+	// a peer until that hold is released. NotifyRetrack and the sync below
+	// are how a new game becomes visible; both have to stay off here.
+	if game.ProvisioningHold {
+		return d.trackProvisioningHold(game)
 	}
 
 	// Explicit (re)tracking overrides any earlier untrack: clear the local
@@ -821,6 +844,159 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		return store.Game{}, err
 	}
 	return created, nil
+}
+
+// trackProvisioningHold records a game that must not sync until released.
+// The hold is committed with the row. No retrack, no watch, no peer sync.
+func (d *Daemon) trackProvisioningHold(game store.Game) (store.Game, error) {
+	if err := refuseSymlinkSave(game.SavePath); err != nil {
+		return store.Game{}, err
+	}
+	if existing, err := d.Store.FindGameBySavePath(game.SavePath); err == nil {
+		if game.ID != "" && existing.ID != game.ID {
+			return store.Game{}, fmt.Errorf("%q already tracks this folder", existing.Name)
+		}
+		return d.reuseHeldGame(existing, game.SavePath)
+	}
+	if game.ID != "" {
+		if existing, err := d.Store.GetGame(game.ID); err == nil {
+			return d.reuseHeldGame(existing, game.SavePath)
+		}
+	}
+	game.AutoSync = false
+	if game.ActiveBranch == "" {
+		game.ActiveBranch = "main"
+	}
+	if err := d.Store.CreateHeldGame(game); err != nil {
+		if isDuplicateGameID(err) {
+			if existing, getErr := d.Store.GetGame(game.ID); getErr == nil {
+				return d.reuseHeldGame(existing, game.SavePath)
+			}
+		}
+		return store.Game{}, err
+	}
+	d.setUpRegistryCapture(game)
+	d.initialSnapshots.Add()
+	go func() {
+		defer d.initialSnapshots.Done()
+		if _, err := d.Snapshots.Create(game.ID, "Initial snapshot", true); err != nil {
+			d.Log.Log("warn", fmt.Sprintf("initial snapshot for %q failed: %v", game.Name, err))
+		}
+		// Deliberately no watch and no SyncGame. Watching would push the
+		// first change, and syncing would publish the game to paired peers.
+		d.Log.Log("info", fmt.Sprintf("tracking %q at %s without syncing; it is still being configured", game.Name, logging.Quote(game.SavePath)))
+	}()
+	created, err := d.Store.GetGame(game.ID)
+	if err != nil {
+		return store.Game{}, err
+	}
+	return created, nil
+}
+
+// reuseHeldGame is a retry of a create that already committed. Same id and
+// same folder returns the existing row. Anything else is a conflict: a live
+// game must not be turned into a hold, and a held game must not be moved.
+func (d *Daemon) reuseHeldGame(existing store.Game, abs string) (store.Game, error) {
+	held, err := d.Store.ProvisioningHeld(existing.ID)
+	if err != nil {
+		return store.Game{}, err
+	}
+	if !held {
+		return store.Game{}, fmt.Errorf("%q already exists", existing.Name)
+	}
+	if !sameSaveLocation(existing.SavePath, abs) {
+		return store.Game{}, fmt.Errorf("%q is already being configured at %q", existing.Name, existing.SavePath)
+	}
+	return existing, nil
+}
+
+func sameSaveLocation(a, b string) bool {
+	if strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) {
+		return true
+	}
+	ai, aerr := os.Stat(a)
+	bi, berr := os.Stat(b)
+	return aerr == nil && berr == nil && os.SameFile(ai, bi)
+}
+
+// refuseSymlinkSave rejects a save location that is itself a symlink.
+// Tracking the link would follow it and sync whatever it points at, including
+// a folder outside the directory the caller named.
+func refuseSymlinkSave(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("save path does not exist: %s", path)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing a symlink as a save location: %s", path)
+	}
+	return nil
+}
+
+// StoreProvisioningHeld reports whether gameID, or an alias of it, is still
+// being configured. A non-nil error means the hold could not be read; that
+// is not the same as false.
+func (d *Daemon) StoreProvisioningHeld(gameID string) (bool, error) {
+	return d.provisioningHeld(gameID)
+}
+
+// RefuseSymlinkSave rejects a save location that is itself a symlink.
+func RefuseSymlinkSave(path string) error {
+	return refuseSymlinkSave(path)
+}
+
+func (d *Daemon) provisioningHeld(gameID string) (bool, error) {
+	if d == nil || d.Store == nil {
+		if gameID == "" {
+			return false, nil
+		}
+		return false, fmt.Errorf("provisioning hold could not be read")
+	}
+	return d.Store.ProvisioningBlocks(gameID)
+}
+
+// provisioningBlocks is true when the game is held or the hold cannot be
+// read. Callers that would otherwise sync, watch, or upload must use this
+// and not a bare false.
+func (d *Daemon) provisioningBlocks(gameID string) bool {
+	held, err := d.provisioningHeld(gameID)
+	if err != nil {
+		if d.Log != nil {
+			d.Log.Log("warn", fmt.Sprintf("treating %s as not ready to sync: provisioning hold could not be read: %v", gameID, err))
+		}
+		return true
+	}
+	return held
+}
+
+// ReleaseProvisioning clears the hold, turns AutoSync on, and starts watching.
+// It does not call SyncGame. Reconcile and a peer coming online will, because
+// AutoSync is on. Use ReleaseProvisioningMode when that must not happen yet.
+func (d *Daemon) ReleaseProvisioning(gameID string) (bool, error) {
+	return d.ReleaseProvisioningMode(gameID, true)
+}
+
+// ReleaseProvisioningMode clears the hold. enableAutoSync false does not
+// watch and does not turn AutoSync on, so reconcile, reconnect and a file
+// change do not sync. An explicit sync still can, and a peer that is still
+// held still refuses. A second call is a no-op and does not change AutoSync.
+func (d *Daemon) ReleaseProvisioningMode(gameID string, enableAutoSync bool) (bool, error) {
+	game, err := d.Store.GetGame(gameID)
+	if err != nil {
+		return false, err
+	}
+	released, err := d.Store.ReleaseProvisioningMode(gameID, enableAutoSync)
+	if err != nil || !released {
+		return released, err
+	}
+	if enableAutoSync {
+		if err := d.watchGame(game.ID, game.SavePath); err != nil &&
+			!errors.Is(err, watcher.ErrStopped) && !errors.Is(err, watcher.ErrSaveFolderMissing) {
+			d.Log.Log("warn", fmt.Sprintf("could not watch %q after release: %v", game.Name, err))
+		}
+	}
+	d.Log.Log("info", fmt.Sprintf("released %q (autoSync=%t); it is not synced by this call", game.Name, enableAutoSync))
+	return true, nil
 }
 
 // validateSavePath rejects save locations that can never be right: paths
@@ -1045,6 +1221,8 @@ func (d *Daemon) UntrackGame(gameID string) error {
 	if game, err := d.Store.GetGame(gameID); err == nil {
 		name, savePath = game.Name, game.SavePath
 	}
+	// Read before the delete: the hold row cascades away with the game.
+	held := d.provisioningBlocks(gameID)
 	if err := d.Store.DeleteGame(gameID); err != nil {
 		return err
 	}
@@ -1064,7 +1242,12 @@ func (d *Daemon) UntrackGame(gameID string) error {
 	// that went missing while untracked as a deletion to propagate.
 	_ = d.Store.ForgetGameSyncState(gameID)
 	d.P2P.ClearPendingResync(gameID)
-	d.P2P.NotifyUntrack(gameID)
+	// A held game was never published. Telling peers to untrack it would
+	// remove a copy that the other device is still configuring, or one it
+	// has already released, because of an abort on this side.
+	if !held {
+		d.P2P.NotifyUntrack(gameID)
+	}
 	return nil
 }
 
@@ -1078,6 +1261,9 @@ func (d *Daemon) UntrackGame(gameID string) error {
 func (d *Daemon) LinkGames(canonicalID, aliasID string) error {
 	if canonicalID == "" || aliasID == "" || canonicalID == aliasID {
 		return fmt.Errorf("invalid link %q -> %q", aliasID, canonicalID)
+	}
+	if d.provisioningBlocks(canonicalID) || d.provisioningBlocks(aliasID) {
+		return fmt.Errorf("a game still being configured cannot be linked")
 	}
 	if _, err := d.Store.GetGame(canonicalID); err != nil {
 		return fmt.Errorf("canonical game %q: %w", canonicalID, err)
@@ -1197,6 +1383,10 @@ func (d *Daemon) UnlinkGame(aliasID string) error {
 // untrackFromPeer mirrors a peer's untrack: remove the game + tombstone it,
 // WITHOUT re-notifying (no loop).
 func (d *Daemon) untrackFromPeer(gameID string) {
+	if d.provisioningBlocks(gameID) {
+		d.Log.Log("info", fmt.Sprintf("ignored a peer untrack of %q while it is still being configured", gameID))
+		return
+	}
 	d.Watcher.Unwatch(gameID)
 	// Remember where THIS device kept the game before the record goes. A
 	// re-track on the peer used to bring the game back by auto-tracking from
@@ -1289,7 +1479,7 @@ func (d *Daemon) watchGame(gameID, savePath string) error {
 // nobody is covering any more.
 func (d *Daemon) RewatchGame(gameID string) {
 	game, err := d.Store.GetGame(gameID)
-	if err != nil || !game.AutoSync {
+	if err != nil || !game.AutoSync || d.provisioningBlocks(gameID) {
 		return
 	}
 	if err := d.watchGame(game.ID, game.SavePath); err != nil {

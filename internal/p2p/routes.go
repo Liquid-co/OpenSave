@@ -354,20 +354,34 @@ type PeerGame struct {
 // would put a device's whole library on the wire continuously to say
 // nothing that changes. This is asked for once, when a human opens the
 // picker.
-func (e *Engine) PeerGameList() []PeerGame {
+func (e *Engine) PeerGameList() ([]PeerGame, error) {
 	games, err := e.Store.ListGames()
 	if err != nil {
-		return []PeerGame{}
+		return nil, err
+	}
+	held, err := e.Store.ProvisioningHeldSet()
+	if err != nil {
+		return nil, err
 	}
 	out := make([]PeerGame, 0, len(games))
 	for _, g := range games {
+		// A game still being configured is not offered for linking. Linking
+		// would publish its id, and the peer would then ask for its saves.
+		if _, skip := held[g.ID]; skip {
+			continue
+		}
 		out = append(out, PeerGame{ID: g.ID, Name: g.Name, SavePath: g.SavePath, AppID: g.AppID})
 	}
-	return out
+	return out, nil
 }
 
 func (e *Engine) handlePeerGameList(w http.ResponseWriter, r *http.Request) {
-	jsonOK(w, e.PeerGameList())
+	list, err := e.PeerGameList()
+	if err != nil {
+		jsonError(w, http.StatusServiceUnavailable, syncengine.ProvisioningUnreadableMessage)
+		return
+	}
+	jsonOK(w, list)
 }
 
 // FetchPeerGames asks a paired peer what it is tracking, over whichever
@@ -678,6 +692,10 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, syncengine.HeldMessage)
 		return
 	}
+	if refuse, status, msg := e.provisioningServeRefusal(game.ID); refuse {
+		jsonError(w, status, msg)
+		return
+	}
 	// Never describe a save a sync here is writing: part-way through, it is a
 	// mixture no device holds, and the asker would judge it as a save that had
 	// moved (syncengine/settle.go). Held still while it is read; a write in
@@ -759,6 +777,10 @@ func (e *Engine) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "Game not found.")
 		return
 	}
+	if refuse, status, msg := e.provisioningServeRefusal(game.ID); refuse {
+		jsonError(w, status, msg)
+		return
+	}
 	base, ok := e.resolveServeRoot(gameID, game, body.Root)
 	if !ok {
 		jsonError(w, http.StatusNotFound, "This device has no save location named "+strconv.Quote(body.Root)+" for that game.")
@@ -801,6 +823,10 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	game, err := e.trackedGameForPeer(gameID)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, "Game not found.")
+		return
+	}
+	if refuse, status, msg := e.provisioningServeRefusal(game.ID); refuse {
+		jsonError(w, status, msg)
 		return
 	}
 	base, ok := e.resolveServeRoot(gameID, game, body.Root)
@@ -962,10 +988,14 @@ func (e *Engine) peerByAddress(ip string) (syncengine.Peer, bool) {
 // newer content for us to pull.
 func (e *Engine) handleSyncTrigger(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
+	if refuse, status, msg := e.provisioningServeRefusal(gameID); refuse {
+		jsonError(w, status, msg)
+		return
+	}
 	e.GoSync(func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
-		if _, err := e.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrHeld) {
+		if _, err := e.SyncGame(ctx, gameID); err != nil && !errors.Is(err, syncengine.ErrHeld) && !errors.Is(err, syncengine.ErrProvisioning) {
 			e.Log("warn", fmt.Sprintf("triggered sync for %s: %v", gameID, err))
 		}
 	})

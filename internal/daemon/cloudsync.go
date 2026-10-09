@@ -534,7 +534,7 @@ func (d *Daemon) CheckCloud() {
 		if !follows && d.neverHeldFiles(game) {
 			follows, state = true, saveUnchanged
 		}
-		if follows && state == saveUnchanged && settings.CloudAutoPull && game.AutoSync {
+		if follows && state == saveUnchanged && settings.CloudAutoPull && game.AutoSync && !d.provisioningBlocks(game.ID) {
 			err := d.pullFromCloud(game, cand.file, cand.head.DeviceName)
 			if err == nil {
 				if d.OnCloudPulled != nil {

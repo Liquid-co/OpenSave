@@ -138,6 +138,42 @@ func daemonRunning() bool {
 // Every command can emit JSON so the CLI is scriptable — the point of a
 // headless client is being driven by something other than a human.
 
+// holdFlag reports whether --hold was passed, and returns the remaining args.
+func holdFlag(args []string) (bool, []string) {
+	return stripFlag(args, "--hold")
+}
+
+// idFlag reports a --id <value> and returns the remaining args.
+func idFlag(args []string) (string, []string, error) {
+	out := make([]string, 0, len(args))
+	id := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--id" {
+			out = append(out, args[i])
+			continue
+		}
+		if i+1 >= len(args) {
+			return "", nil, fmt.Errorf("--id requires a game id")
+		}
+		id = args[i+1]
+		i++
+	}
+	return id, out, nil
+}
+
+func stripFlag(args []string, flag string) (bool, []string) {
+	out := make([]string, 0, len(args))
+	found := false
+	for _, a := range args {
+		if a == flag {
+			found = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return found, out
+}
+
 // jsonFlag reports whether --json was passed, and returns the remaining args.
 func jsonFlag(args []string) (bool, []string) {
 	out := args[:0:0]

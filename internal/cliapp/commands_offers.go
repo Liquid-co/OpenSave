@@ -24,10 +24,13 @@ type offeredGame struct {
 
 const offersUsage = `usage: opensave offers                          games another device syncs, waiting for a folder here
        opensave offers place <gameId> <folder>  track it here, in that folder
+       opensave offers place --hold <gameId> <folder>
+                                            track it held, so it does not sync until released
        opensave offers decline <gameId>         don't — it is not offered again`
 
 func cmdOffers(args []string) int {
 	asJSON, args := jsonFlag(args)
+	hold, args := holdFlag(args)
 	if len(args) == 0 || args[0] == "list" {
 		return listOffers(asJSON)
 	}
@@ -41,7 +44,11 @@ func cmdOffers(args []string) int {
 		if err != nil {
 			return fail(asJSON, err)
 		}
-		raw, err := daemonRequest("POST", "/api/offered-games/"+url.PathEscape(args[1])+"/place", map[string]string{"path": folder})
+		body := map[string]any{"path": folder}
+		if hold {
+			body["provisioningHold"] = true
+		}
+		raw, err := daemonRequest("POST", "/api/offered-games/"+url.PathEscape(args[1])+"/place", body)
 		if err != nil {
 			return fail(asJSON, err)
 		}
@@ -52,7 +59,11 @@ func cmdOffers(args []string) int {
 			Name string `json:"name"`
 		}
 		_ = json.Unmarshal(raw, &game)
-		success("Now tracking %s at %s — it syncs from here on.", bold(orNone(game.Name)), folder)
+		if hold {
+			success("Now tracking %s at %s without syncing — release it when it is configured.", bold(orNone(game.Name)), folder)
+		} else {
+			success("Now tracking %s at %s — it syncs from here on.", bold(orNone(game.Name)), folder)
+		}
 		return 0
 	case "decline":
 		if len(args) < 2 {

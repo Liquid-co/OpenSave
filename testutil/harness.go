@@ -176,10 +176,57 @@ func NewTestDaemon(t *testing.T, name string) *TestDaemon {
 
 	td := &TestDaemon{T: t, Daemon: d, Server: srv, Addr: addr, Port: port, SaveDir: saveDir}
 	t.Cleanup(func() {
-		srv.Stop()
-		d.Stop()
+		td.Stop()
 	})
 	return td
+}
+
+// Stop shuts down whatever daemon this handle currently points at.
+func (td *TestDaemon) Stop() {
+	if td.Server != nil {
+		td.Server.Stop()
+		td.Server = nil
+	}
+	if td.Daemon != nil {
+		td.Daemon.Stop()
+		td.Daemon = nil
+	}
+}
+
+// Restart replaces the process the way an unmanaged `opensave daemon start`
+// does: daemon.New + Start on the same data directory and the same port.
+// In-memory pause does not survive. The persisted store does.
+func (td *TestDaemon) Restart() {
+	td.T.Helper()
+	home := td.Daemon.Paths.HomeDir
+	port := td.Port
+	saveDir := td.SaveDir
+	td.Stop()
+
+	d, err := daemon.New(daemon.Options{HomeOverride: home, DisableDiscovery: true})
+	if err != nil {
+		td.T.Fatalf("restart daemon.New: %v", err)
+	}
+	d.Scanner.ManifestURL = ""
+	d.Scanner.SteamUserdataPaths = []string{}
+	d.Scanner.SteamRoots = []string{}
+	d.Scanner.LocalLowDir = filepath.Join(home, "no-locallow")
+	d.Scanner.ResolveAppName = nil
+	if err := d.Start(); err != nil {
+		d.Stop()
+		td.T.Fatalf("restart daemon.Start: %v", err)
+	}
+	srv := api.New(d)
+	addr, err := srv.Start(port)
+	if err != nil {
+		d.Stop()
+		td.T.Fatalf("restart api.Start: %v", err)
+	}
+	td.Daemon = d
+	td.Server = srv
+	td.Addr = addr
+	td.Port = port
+	td.SaveDir = saveDir
 }
 
 // API performs a JSON request against this daemon's API and decodes the

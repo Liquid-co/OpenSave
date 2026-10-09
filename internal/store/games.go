@@ -23,6 +23,17 @@ func SlugifyGameID(name string) string {
 	return strings.Trim(id, "-")
 }
 
+// ValidExplicitGameID reports whether id is a stable game id a caller may
+// pin while provisioning. It has to be the same slug OpenSave would derive,
+// so a paired device can be given the source's id without accepting a path
+// or an arbitrary string.
+func ValidExplicitGameID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	return id == SlugifyGameID(id)
+}
+
 // ErrNotFound is returned by single-row lookups when no matching row exists.
 var ErrNotFound = errors.New("not found")
 
@@ -73,6 +84,10 @@ type Game struct {
 	// the thing that deletes an excluded config.
 	SyncIgnore string `db:"sync_ignore" json:"syncIgnore"`
 	CreatedAt  string `db:"created_at" json:"createdAt"`
+	// ProvisioningHold asks TrackGame to record a provisioning hold with the
+	// game. It is not a column: the durable flag is game_provisioning_holds,
+	// so SELECT * into this struct stays valid for older and newer builds.
+	ProvisioningHold bool `db:"-" json:"-"`
 }
 
 // CreateGame inserts a new game and its default "main" branch in one

@@ -20,6 +20,9 @@ import (
 // cmdGame edits one game's settings.
 func cmdGame(d *daemon.Daemon, args []string) int {
 	asJSON, args := jsonFlag(args)
+	if len(args) >= 2 && args[1] == "release" {
+		return releaseProvisioning(d, args, asJSON)
+	}
 	if len(args) < 2 || args[1] != "set" {
 		fmt.Fprintln(os.Stderr, gameUsage)
 		return 1
@@ -49,6 +52,13 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 	case "cover-url":
 		game.CoverURL = value
 	case "auto-sync":
+		held, holdErr := d.StoreProvisioningHeld(game.ID)
+		if holdErr != nil {
+			return fail(asJSON, fmt.Errorf("could not read whether this game is still being configured: %w", holdErr))
+		}
+		if held {
+			return fail(asJSON, fmt.Errorf("%s is still being configured; release it before changing auto-sync", game.ID))
+		}
 		game.AutoSync = isTruthy(value)
 	case "max-snapshots":
 		n, err := strconv.Atoi(value)
@@ -80,7 +90,10 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 	// Re-watch so a path or auto-sync change takes effect immediately rather
 	// than at the next restart.
 	d.Watcher.Unwatch(game.ID)
-	if game.AutoSync {
+	held, holdErr := d.StoreProvisioningHeld(game.ID)
+	if holdErr != nil {
+		d.Log.Log("warn", "not watching "+game.ID+": provisioning hold could not be read: "+holdErr.Error())
+	} else if game.AutoSync && !held {
 		if err := d.Watcher.Watch(game.ID, game.SavePath); err != nil {
 			d.Log.Log("warn", "re-watch after config change failed: "+err.Error())
 		}
@@ -93,7 +106,73 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 	return 0
 }
 
+func gameIDFrom(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+func releaseProvisioning(d *daemon.Daemon, args []string, asJSON bool) int {
+	noAuto, rest := stripFlag(args[2:], "--no-autosync")
+	if len(args) < 2 || len(rest) != 0 {
+		fmt.Fprintln(os.Stderr, gameUsage)
+		return 1
+	}
+	gameID := gameIDFrom(args)
+	if gameID == "" {
+		fmt.Fprintln(os.Stderr, gameUsage)
+		return 1
+	}
+	body := map[string]any{}
+	if noAuto {
+		body["autoSync"] = false
+	}
+	// Prefer the running daemon so a default release starts the watch there.
+	// --no-autosync must not: reconcile would otherwise sync the game.
+	if daemonRunning() {
+		raw, err := daemonRequest("POST", "/api/games/"+gameID+"/release-provisioning", body)
+		if err != nil {
+			return fail(asJSON, err)
+		}
+		if asJSON {
+			return emitRawJSON(raw)
+		}
+		if noAuto {
+			success("Released %s without auto-sync. Sync it explicitly, then turn auto-sync on.", bold(gameID))
+		} else {
+			success("Released %s. Reconcile can sync it from here on.", bold(gameID))
+		}
+		return 0
+	}
+	released, err := d.ReleaseProvisioningMode(gameID, !noAuto)
+	if err != nil {
+		return fail(asJSON, err)
+	}
+	if asJSON {
+		// An idempotent repeat changes nothing. Return stored AutoSync,
+		// not the mode requested by this invocation.
+		game, err := d.Store.GetGame(gameID)
+		if err != nil {
+			return fail(asJSON, err)
+		}
+		return emitJSON(map[string]any{"id": gameID, "released": released, "alreadyReleased": !released, "autoSync": game.AutoSync})
+	}
+	if released && noAuto {
+		success("Released %s without auto-sync. Sync it explicitly, then turn auto-sync on.", bold(gameID))
+	} else if released {
+		success("Released %s. Reconcile can sync it from here on.", bold(gameID))
+	} else {
+		success("%s was already released.", bold(gameID))
+	}
+	return 0
+}
+
 const gameUsage = `usage: opensave game <gameId> set <key> <value>
+       opensave game <gameId> release [--no-autosync]
+                                clear a provisioning hold. Without --no-autosync,
+                                reconcile may sync it. With --no-autosync, it stays
+                                quiet until an explicit sync.
 
   name <text>            Display name (also how peers match this game)
   path <dir|file>        Move tracking to a different save location

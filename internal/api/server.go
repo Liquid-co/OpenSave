@@ -514,6 +514,20 @@ func (s *Server) gamesPayload() map[string]any {
 	return out
 }
 
+// provisioningHoldState reports the hold and whether that read failed.
+// A failed read is not an ordinary false: held is true and unknown is true,
+// so a client cannot treat the game as ready.
+func (s *Server) provisioningHoldState(id string) (held, unknown bool) {
+	if s == nil || s.Daemon == nil {
+		return true, true
+	}
+	held, err := s.Daemon.StoreProvisioningHeld(id)
+	if err != nil {
+		return true, true
+	}
+	return held, false
+}
+
 func (s *Server) gamePayload(g store.Game) map[string]any {
 	branchNames, _ := s.Daemon.Store.ListBranches(g.ID)
 	branches := map[string]any{}
@@ -545,17 +559,20 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 	if since := s.Daemon.PlayingSince(g.ID); !since.IsZero() {
 		playingSince = since.UTC().Format(time.RFC3339)
 	}
+	hold, holdUnknown := s.provisioningHoldState(g.ID)
 	return map[string]any{
-		"id":                 g.ID,
-		"name":               g.Name,
-		"savePath":           g.SavePath,
-		"activeBranch":       g.ActiveBranch,
-		"autoSync":           g.AutoSync,
-		"maxSnapshots":       g.MaxSnapshots,
-		"maxManualSnapshots": g.MaxManualSnapshots,
-		"appId":              g.AppID,
-		"exePath":            g.ExePath,
-		"coverUrl":           g.CoverURL,
+		"id":                      g.ID,
+		"name":                    g.Name,
+		"savePath":                g.SavePath,
+		"activeBranch":            g.ActiveBranch,
+		"autoSync":                g.AutoSync,
+		"provisioningHold":        hold,
+		"provisioningHoldUnknown": holdUnknown,
+		"maxSnapshots":            g.MaxSnapshots,
+		"maxManualSnapshots":      g.MaxManualSnapshots,
+		"appId":                   g.AppID,
+		"exePath":                 g.ExePath,
+		"coverUrl":                g.CoverURL,
 		// Whether the art cached for this game is explicit, so the client can
 		// blur it until someone asks to see it. An <img src> cannot read a
 		// response header, so it travels with the game rather than the image.

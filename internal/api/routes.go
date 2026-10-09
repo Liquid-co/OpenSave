@@ -29,6 +29,7 @@ func (s *Server) routes(r chi.Router) {
 
 	r.Get("/api/games", s.handleListGames)
 	r.Post("/api/games", s.handleTrackGame)
+	r.Post("/api/games/{gameId}/release-provisioning", s.handleReleaseProvisioning)
 	r.Get("/api/suggest-name", s.handleSuggestName)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
 
@@ -339,9 +340,16 @@ func (s *Server) handlePruneSnapshots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTrackGame(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name     string `json:"name"`
-		SavePath string `json:"savePath"`
-		AppID    string `json:"appId"`
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		SavePath         string `json:"savePath"`
+		AppID            string `json:"appId"`
+		ProvisioningHold bool   `json:"provisioningHold"`
+		// AutoSync is only consulted when the caller sets it. Omitted keeps
+		// today's behaviour: track, then sync. false is a request to hold the
+		// game, because storing AutoSync off after the fact does not stop a
+		// peer that already knows the id from pulling the save.
+		AutoSync *bool `json:"autoSync"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -351,8 +359,20 @@ func (s *Server) handleTrackGame(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and savePath are required")
 		return
 	}
+	hold := body.ProvisioningHold || (body.AutoSync != nil && !*body.AutoSync)
+	if body.ID != "" && !hold {
+		writeError(w, http.StatusBadRequest, "an explicit game id is only accepted when the game is created held")
+		return
+	}
+	if body.ID != "" && !store.ValidExplicitGameID(body.ID) {
+		writeError(w, http.StatusBadRequest, "game id must be a lowercase slug")
+		return
+	}
 
-	game, err := s.Daemon.TrackGame(store.Game{Name: body.Name, SavePath: body.SavePath, AppID: body.AppID})
+	game, err := s.Daemon.TrackGame(store.Game{
+		ID: body.ID, Name: body.Name, SavePath: body.SavePath, AppID: body.AppID,
+		ProvisioningHold: hold,
+	})
 	if err != nil {
 		// Duplicates (id or path) are conflicts; anything else the daemon
 		// rejects is bad input.
@@ -379,11 +399,22 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	oldAutoSync := game.AutoSync
 	oldIgnore := game.SyncIgnore
 	oldAppID := game.AppID
+	heldBefore, holdErr := s.Daemon.StoreProvisioningHeld(gameID)
+	if holdErr != nil {
+		writeError(w, http.StatusServiceUnavailable, "could not read whether this game is still being configured")
+		return
+	}
 	if err := readJSON(r, &game); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	game.ID = gameID // id is not client-mutable
+	// A hold is not a column on the game. A PATCH that sends autoSync, including
+	// a form that round-trips the whole object, must not clear it and must not
+	// turn the column on while the hold remains. Release is the only unblock.
+	if heldBefore {
+		game.AutoSync = oldAutoSync
+	}
 
 	// A changed save path is validated exactly as a fresh track is. This
 	// decoded straight into the stored game and wrote it back, so a path that
@@ -400,6 +431,12 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		if heldBefore {
+			if err := daemon.RefuseSymlinkSave(abs); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 		}
 		game.SavePath = abs
 	}
@@ -455,10 +492,15 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-watch if the save location or autoSync flag changed.
+	// Re-watch if the save location or autoSync flag changed. A hold still
+	// wins: turning autoSync on in the row must not start a watch that
+	// would sync a game that has not been released.
 	if game.SavePath != oldSavePath || game.AutoSync != oldAutoSync {
 		s.Daemon.Watcher.Unwatch(gameID)
-		if game.AutoSync {
+		held, holdErr := s.Daemon.StoreProvisioningHeld(gameID)
+		if holdErr != nil {
+			s.Daemon.Log.Log("warn", "not watching "+gameID+": provisioning hold could not be read: "+holdErr.Error())
+		} else if game.AutoSync && !held {
 			if err := s.Daemon.Watcher.Watch(gameID, game.SavePath); err != nil {
 				s.Daemon.Log.Log("warn", "re-watch failed: "+err.Error())
 			}

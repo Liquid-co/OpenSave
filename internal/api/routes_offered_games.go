@@ -42,7 +42,9 @@ func (s *Server) handlePlaceOfferedGame(w http.ResponseWriter, r *http.Request) 
 	gameID := chi.URLParam(r, "gameId")
 
 	var body struct {
-		Path string `json:"path"`
+		Path             string `json:"path"`
+		ProvisioningHold bool   `json:"provisioningHold"`
+		AutoSync         *bool  `json:"autoSync"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -58,6 +60,22 @@ func (s *Server) handlePlaceOfferedGame(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	hold := body.ProvisioningHold || (body.AutoSync != nil && !*body.AutoSync)
+	if len(offers) == 0 && hold {
+		// The first place committed and the response was lost. Repeating it
+		// must not 404 into a second attempt that invents another game.
+		if _, err := s.Daemon.Store.GetGame(gameID); err == nil {
+			game, err := s.Daemon.TrackGame(store.Game{
+				ID: gameID, Name: gameID, SavePath: body.Path, ProvisioningHold: true,
+			})
+			if err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, s.gamePayload(game))
+			return
+		}
+	}
 	if len(offers) == 0 {
 		// Either it was placed or declined already, or the peer that offered
 		// it has been unpaired. Not an error worth alarming anyone about.
@@ -66,12 +84,16 @@ func (s *Server) handlePlaceOfferedGame(w http.ResponseWriter, r *http.Request) 
 	}
 	offer := offers[0]
 
+	// autoSync: false is the request from issue #40. It is stored as a
+	// provisioning hold, not as the ordinary AutoSync flag: that flag does
+	// not stop a peer from pulling the save. Omitted keeps today's placement.
 	game, err := s.Daemon.TrackGame(store.Game{
-		ID:       offer.GameID,
-		Name:     offer.Name,
-		SavePath: body.Path,
-		AppID:    offer.AppID,
-		CoverURL: offer.CoverURL,
+		ID:               offer.GameID,
+		Name:             offer.Name,
+		SavePath:         body.Path,
+		AppID:            offer.AppID,
+		CoverURL:         offer.CoverURL,
+		ProvisioningHold: hold,
 	})
 	if err != nil {
 		// Path validation lives in TrackGame and its messages are written for

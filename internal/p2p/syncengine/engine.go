@@ -70,7 +70,9 @@ type Result struct {
 	// peer_missing: the peer does not track this game. peer_awaiting_folder:
 	// the peer knows about it but is waiting for someone to choose a folder.
 	// peer_holding: the peer's save was emptied and it is holding the game
-	// back until told whether that was meant (hold.go). peer_busy: the peer was
+	// back until told whether that was meant (hold.go). peer_provisioning:
+	// the peer is still configuring the game and must not be read as empty.
+	// peer_busy: the peer was
 	// still writing the game for a sync of its own; this one runs again when it
 	// has finished (settle.go).
 	Status    string `json:"status"` // in_sync | updated | updated_bidirectional | deletions_synced | triggered_peer_pull | conflict | peer_missing | peer_awaiting_folder | peer_holding | peer_busy
@@ -228,6 +230,16 @@ func (e *Engine) SyncBusy(gameID string) bool {
 	return e.activeSyncs[gameID] || e.pendingSyncs[gameID] || e.followUps[gameID] > 0
 }
 
+func (e *Engine) provisioningHeld(gameID string) (bool, error) {
+	if e == nil || e.Store == nil {
+		if gameID == "" {
+			return false, nil
+		}
+		return false, fmt.Errorf("provisioning hold could not be read")
+	}
+	return e.Store.ProvisioningBlocks(gameID)
+}
+
 func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer) (map[string]Result, error) {
 	// Every sync this device starts comes through here — a watched change, a
 	// peer coming online, the periodic reconcile, a sync asked for by hand or
@@ -239,6 +251,15 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 	// meant (hold.go).
 	if held, err := e.CheckHold(gameID, false); err == nil && held {
 		return nil, ErrHeld
+	}
+	// A game still being configured does not sync, whichever caller got
+	// here: a watch, a retry, a peer trigger, or a sync asked for by hand.
+	held, holdErr := e.provisioningHeld(gameID)
+	if holdErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrProvisioningUnreadable, holdErr)
+	}
+	if held {
+		return nil, ErrProvisioning
 	}
 	e.mu.Lock()
 	if e.activeSyncs[gameID] {
@@ -335,7 +356,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// its own changes instead of detecting the conflict and asking.
 		switch res.Status {
 		case "conflict", "error":
-		case "peer_missing", "peer_awaiting_folder", "peer_holding":
+		case "peer_missing", "peer_awaiting_folder", "peer_holding", "peer_provisioning":
 			// The two devices talked and finished, which is what the
 			// per-device stamp has always recorded. But nothing of THIS game
 			// moved — the peer does not track it, or is still waiting to be
@@ -429,6 +450,12 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		// whether that was meant; nothing to take from it meanwhile.
 		if isHeld(err) {
 			return Result{Status: "peer_holding", PeerID: peer.ID, PeerName: peer.Name}, nil
+		}
+		// The peer has the game and is still configuring it. Nothing is
+		// taken from it and nothing is sent: an empty answer would be read
+		// as a deleted save.
+		if isProvisioning(err) {
+			return Result{Status: "peer_provisioning", PeerID: peer.ID, PeerName: peer.Name}, nil
 		}
 		if isGameNotFound(err) {
 			return Result{Status: "peer_missing", PeerID: peer.ID, PeerName: peer.Name}, nil

@@ -571,6 +571,20 @@ func loadScanResults(homeDir string) []scanChoice {
 }
 
 func cmdAdd(d *daemon.Daemon, args []string) int {
+	hold, args := holdFlag(args)
+	explicitID, args, err := idFlag(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+	if explicitID != "" && !hold {
+		fmt.Fprintln(os.Stderr, "error: --id is only accepted with --hold")
+		return 1
+	}
+	if explicitID != "" && !store.ValidExplicitGameID(explicitID) {
+		fmt.Fprintln(os.Stderr, "error: --id must be a lowercase slug")
+		return 1
+	}
 	// A single numeric argument means "the nth thing the last scan showed".
 	// Unambiguous against the two-argument form, so a game genuinely called
 	// "3" is still trackable by naming its path.
@@ -587,7 +601,7 @@ func cmdAdd(d *daemon.Daemon, args []string) int {
 				fmt.Fprintln(os.Stderr, "error: nothing in that path says which game it is — give a name: opensave add <name> <path>")
 				return 1
 			}
-			return trackGame(d, name, args[0])
+			return trackGame(d, name, args[0], hold, explicitID)
 		}
 		choices := loadScanResults(d.Paths.HomeDir)
 		if len(choices) == 0 {
@@ -599,31 +613,37 @@ func cmdAdd(d *daemon.Daemon, args []string) int {
 			return 1
 		}
 		pick := choices[n-1]
-		return trackGame(d, pick.Name, pick.SavePath)
+		return trackGame(d, pick.Name, pick.SavePath, hold, explicitID)
 	}
 
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: opensave add <name> <path>\n       opensave add <path>     (named from the path)\n       opensave add <number>   (from the last `opensave scan`)")
+		fmt.Fprintln(os.Stderr, "usage: opensave add <name> <path>\n       opensave add --hold [--id <gameId>] <name> <path>\n       opensave add <path>     (named from the path)\n       opensave add <number>   (from the last `opensave scan`)")
 		return 1
 	}
-	return trackGame(d, args[0], args[1])
+	return trackGame(d, args[0], args[1], hold, explicitID)
 }
 
 // trackGame is the shared tail of both `add` forms, so picking a scan result
 // and typing a path by hand cannot drift apart in what they report.
-func trackGame(d *daemon.Daemon, name, savePath string) int {
+func trackGame(d *daemon.Daemon, name, savePath string, hold bool, explicitID string) int {
 	abs, err := filepath.Abs(savePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
 
-	game, err := d.TrackGame(store.Game{Name: name, SavePath: abs})
+	game, err := d.TrackGame(store.Game{
+		ID: explicitID, Name: name, SavePath: abs, ProvisioningHold: hold,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
-	success("Now tracking %s", bold(game.Name))
+	if hold {
+		success("Now tracking %s without syncing — release it when it is configured", bold(game.Name))
+	} else {
+		success("Now tracking %s", bold(game.Name))
+	}
 	note("id:   " + game.ID)
 	note("path: " + game.SavePath)
 	return 0

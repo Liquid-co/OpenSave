@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/opensave/opensave/internal/cloud"
@@ -60,6 +61,9 @@ func (d *Daemon) retryFailedUploads(inCloud []cloud.CloudFile) {
 	}
 	d.Log.Log("info", "cloud: sending again "+what+" that did not go up earlier")
 	for _, p := range send {
+		if id, _, ok := strings.Cut(p.RemoteName, "__"); ok && d.provisioningBlocks(id) {
+			continue
+		}
 		d.uploads.Add()
 		d.runCloudUpload(p.ZipPath, p.RemoteName, d.Log)
 	}

@@ -530,7 +530,11 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		return 200, map[string]any{"success": true}
 
 	case route == "/games":
-		return 200, w.engine.PeerGameList()
+		list, err := w.engine.PeerGameList()
+		if err != nil {
+			return 503, map[string]string{"error": syncengine.ProvisioningUnreadableMessage}
+		}
+		return 200, list
 
 	case strings.HasPrefix(route, "/manifest/"):
 		return w.serveManifest(route, msg.Body, msg.From)
@@ -555,7 +559,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		w.engine.GoSync(func(ctx context.Context) {
 			syncCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
-			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) && !errors.Is(err, syncengine.ErrHeld) {
+			if _, err := w.engine.SyncGame(syncCtx, gameID); err != nil && !errors.Is(err, syncengine.ErrPaused) && !errors.Is(err, syncengine.ErrHeld) && !errors.Is(err, syncengine.ErrProvisioning) {
 				w.engine.Log("warn", fmt.Sprintf("WAN-triggered sync %s: %v", gameID, err))
 			}
 		})
@@ -603,6 +607,9 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	if w.engine.holdingBack(game) {
 		return 404, map[string]string{"error": syncengine.HeldMessage}
 	}
+	if refuse, status, msg := w.engine.provisioningServeRefusal(game.ID); refuse {
+		return status, map[string]string{"error": msg}
+	}
 	// As on the LAN: a save a sync here is writing is not described
 	// (syncengine/settle.go). Each request runs on its own goroutine, so the
 	// wait does not hold up the relay traffic that finishes the write.
@@ -645,6 +652,9 @@ func (w *WanClient) serveBlocks(route string, rawBody json.RawMessage) (int, any
 	if err != nil {
 		return 404, map[string]string{"error": "Game not found."}
 	}
+	if refuse, status, msg := w.engine.provisioningServeRefusal(game.ID); refuse {
+		return status, map[string]string{"error": msg}
+	}
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "Access denied: path traversal attempt detected."}
 	}
@@ -685,6 +695,9 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	game, err := w.engine.trackedGameForPeer(gameID)
 	if err != nil {
 		return 404, map[string]string{"error": "Game not found."}
+	}
+	if refuse, status, msg := w.engine.provisioningServeRefusal(game.ID); refuse {
+		return status, map[string]string{"error": msg}
 	}
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "invalid path"}
@@ -731,6 +744,9 @@ func (w *WanClient) serveSnapshotDownload(route string) (int, any) {
 	snap, err := w.engine.Store.GetSnapshot(snapshotID)
 	if err != nil {
 		return 404, map[string]string{"error": "Snapshot ZIP file not found."}
+	}
+	if refuse, status, msg := w.engine.provisioningServeRefusal(snap.GameID); refuse {
+		return status, map[string]string{"error": msg}
 	}
 	archive, done, err := snapshot.OpenArchive(snap.ZipPath)
 	if err != nil {
