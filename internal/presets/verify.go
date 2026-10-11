@@ -1,6 +1,7 @@
 package presets
 
 import (
+	"io/fs"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -64,6 +65,31 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 			return false
 		}
 		if tooBroad(target) {
+			continue
+		}
+		// Inside the game's own install folder the program sits beside its
+		// saves, so a folder there is vouched for only as the catalogue names
+		// it, never through a wildcard: "<base>/**/*.sav" stands for save
+		// files, and read as a folder it took in Binaries, Engine, any
+		// subfolder at all, for the peer to write into. And a folder holding
+		// programs is never a save, whatever the catalogue says.
+		if insideAny(installBases, path) {
+			if holdsPrograms(path) {
+				continue
+			}
+			for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
+				for _, tpl := range g.Paths {
+					for _, pattern := range expandTemplate(tpl, vars, installBases, g.SteamID) {
+						if !hasWildcard(pattern) && locationMatches(pattern, target) {
+							return true
+						}
+						if looksLikeFile(pattern) && !hasWildcard(filepath.Dir(pattern)) &&
+							locationMatches(filepath.Dir(pattern), target) {
+							return true
+						}
+					}
+				}
+			}
 			continue
 		}
 		for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
@@ -156,4 +182,51 @@ func foldCase(p string) string {
 		return strings.ToLower(p)
 	}
 	return p
+}
+
+// hasWildcard reports whether a catalogue location holds a wildcard anywhere.
+func hasWildcard(pattern string) bool {
+	return strings.ContainsAny(pattern, "*?[")
+}
+
+// insideAny reports whether p is inside one of the install folders (not the
+// folder itself, which tooBroad already refuses).
+func insideAny(bases []string, p string) bool {
+	for _, b := range bases {
+		if within(b, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// programExts are the files a save folder never needs, and the ones a peer
+// writing into a game's folder could make run.
+var programExts = map[string]bool{
+	".exe": true, ".dll": true, ".so": true, ".dylib": true, ".sys": true,
+	".com": true, ".bat": true, ".cmd": true, ".ps1": true, ".msi": true,
+	".scr": true, ".asi": true,
+}
+
+// holdsPrograms reports whether a folder, or one below it, holds a program or
+// library. Only the first few thousand entries are looked at: a save folder is
+// small, and one too large to look through is not taken on trust either.
+func holdsPrograms(dir string) bool {
+	const limit = 5000
+	seen, found := 0, false
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if seen++; seen > limit {
+			found = true
+			return fs.SkipAll
+		}
+		if !d.IsDir() && programExts[strings.ToLower(filepath.Ext(p))] {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
