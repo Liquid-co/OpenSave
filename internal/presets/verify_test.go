@@ -107,3 +107,55 @@ func TestSteamSaveLocation(t *testing.T) {
 		}
 	}
 }
+
+// A game's install folder holds its program beside its saves. A wildcard that
+// stands for save files must not vouch for any folder there, and nor may a
+// catalogue entry for a folder that holds programs: a peer naming one would be
+// writing into the game's own files.
+func TestCatalogueSaveLocation_InsideTheInstallFolder(t *testing.T) {
+	steamRoot := t.TempDir()
+	install := filepath.Join(steamRoot, "steamapps", "common", "Cat Game")
+	mustMkFile(t, filepath.Join(install, "Binaries", "Win64", "CatGame.exe"))
+	mustMkFile(t, filepath.Join(install, "System", "Core.dll"))
+	mustMkFile(t, filepath.Join(install, "System", "User.ini"))
+	mustMkFile(t, filepath.Join(install, "Saves", "slot1.sav"))
+
+	sc := manifestScanner(t, `
+Cat Game:
+  files:
+    <base>/**/*.sav:
+      tags: [save]
+    <base>/<storeUserId>/Save.sav:
+      tags: [save]
+    <base>/Saves:
+      tags: [save]
+    <base>/Profiles/slot.dat:
+      tags: [save]
+    <base>/System/User.ini:
+      tags: [save]
+  installDir:
+    Cat Game: {}
+  steam:
+    id: 3087650
+`)
+	sc.SteamRoots = []string{steamRoot}
+
+	for why, folder := range map[string]string{
+		"a folder holding the game's program": filepath.Join(install, "Binaries"),
+		"any other folder a wildcard reaches": filepath.Join(install, "Engine"),
+		"a named folder holding a library":    filepath.Join(install, "System"),
+		"the install folder itself":           install,
+	} {
+		if sc.CatalogueSaveLocation("Cat Game", "3087650", folder) {
+			t.Errorf("%s was vouched for as a save: %s", why, folder)
+		}
+	}
+	for why, folder := range map[string]string{
+		"a save folder the catalogue names":  filepath.Join(install, "Saves"),
+		"the folder of a save file it names": filepath.Join(install, "Profiles"),
+	} {
+		if !sc.CatalogueSaveLocation("Cat Game", "3087650", folder) {
+			t.Errorf("%s was not vouched for: %s", why, folder)
+		}
+	}
+}
