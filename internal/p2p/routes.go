@@ -609,8 +609,14 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, 
 	// Steam says the game keeps its saves on this device. Anywhere else it is
 	// offered, and the user picks the folder on this device — unless the
 	// user has let that device choose folders (Devices), as for their own.
-	known := e.KnownSaveLocation != nil && e.KnownSaveLocation(q.Name, q.AppID, localPath)
-	if !known && e.Store.PeerChoosesFolders(chooser) {
+	//
+	// And never at a folder holding programs, whatever vouches for it, a
+	// device trusted to choose folders included: a save that sits beside a
+	// game's executable makes a scan note that folder, and a peer's files
+	// must not be written among the game's own.
+	holdsPrograms := delta.HoldsPrograms(localPath)
+	known := !holdsPrograms && e.KnownSaveLocation != nil && e.KnownSaveLocation(q.Name, q.AppID, localPath)
+	if !known && !holdsPrograms && e.Store.PeerChoosesFolders(chooser) {
 		known = true
 		e.Log("info", fmt.Sprintf("tracking %q at %s, the folder a device you let choose folders named", q.Name, logging.Quote(localPath)))
 	}
