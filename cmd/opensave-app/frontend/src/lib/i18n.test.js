@@ -1,30 +1,39 @@
 import { describe, expect, it } from 'vitest';
 
 import en from '../locales/en.json';
-import zhCN from '../locales/zh-CN.json';
-import { LOCALES, loadLocale, pluralRulesFor, resolveLocale, sanitizeLocale, segments, translate } from './i18n.js';
+import zhHans from '../locales/zh-Hans.json';
+import zhHant from '../locales/zh-Hant.json';
+import { LOCALES, loadLocale, pluralRulesFor, resolveLocale, sanitizeLocale, scriptFor, segments, translate } from './i18n.js';
 
 // The catalogs are flat, dot-keyed objects; a plural value is one value that
 // must expose an "other" form. Comparing top-level keys is enough.
 const keysOf = (catalog) => Object.keys(catalog);
 
+/** Every catalog, as [locale id, catalog]. A new language is one line here
+ *  plus one in LOCALES; the checks below then cover it for free. */
+const CATALOGS = [['en', en], ['zh-Hans', zhHans], ['zh-Hant', zhHant]];
+
 describe('locale catalogs', () => {
   it('declares every catalog id in LOCALES', () => {
-    for (const id of ['en', 'zh-CN']) expect(LOCALES[id], id).toBeTruthy();
+    for (const [id] of CATALOGS) expect(LOCALES[id], id).toBeTruthy();
   });
 
-  it('has no keys in zh-CN that en.json does not have', () => {
+  it('has no key outside en.json in any catalog', () => {
     const enKeys = new Set(keysOf(en));
-    for (const key of keysOf(zhCN)) expect(enKeys.has(key), `extra key: ${key}`).toBe(true);
+    for (const [name, catalog] of CATALOGS) {
+      for (const key of keysOf(catalog)) expect(enKeys.has(key), `${name}: extra key: ${key}`).toBe(true);
+    }
   });
 
-  it('has a zh-CN value for every key in en.json', () => {
-    const zhKeys = new Set(keysOf(zhCN));
-    for (const key of keysOf(en)) expect(zhKeys.has(key), `missing key: ${key}`).toBe(true);
+  it('has a value for every key in en.json, in every catalog', () => {
+    for (const [name, catalog] of CATALOGS) {
+      const keys = new Set(keysOf(catalog));
+      for (const key of keysOf(en)) expect(keys.has(key), `${name}: missing key: ${key}`).toBe(true);
+    }
   });
 
   it('keeps every value non-empty, and plurals with an "other" form', () => {
-    for (const [catalog, name] of [[en, 'en'], [zhCN, 'zh-CN']]) {
+    for (const [name, catalog] of CATALOGS) {
       for (const [key, v] of Object.entries(catalog)) {
         if (v !== null && typeof v === 'object') {
           expect(typeof v.other, `${name}:${key} plural needs "other"`).toBe('string');
@@ -74,22 +83,39 @@ describe('segments', () => {
 });
 
 describe('locale choice', () => {
-  it('rejects unknown locale ids', () => {
+  it('rejects unknown locale ids, and region tags that are not languages', () => {
     expect(sanitizeLocale('fr')).toBe(null);
-    expect(sanitizeLocale('zh-CN')).toBe('zh-CN');
+    expect(sanitizeLocale('zh-CN')).toBe(null);
+    expect(sanitizeLocale('zh-TW')).toBe(null);
+    expect(sanitizeLocale('zh-Hans')).toBe('zh-Hans');
+    expect(sanitizeLocale('zh-Hant')).toBe('zh-Hant');
     expect(sanitizeLocale('system')).toBe('system');
   });
 
   it("reports 'system' when the user has never picked one", () => {
     expect(loadLocale({ getItem: () => null })).toBe('system');
-    expect(loadLocale({ getItem: () => 'zh-CN' })).toBe('zh-CN');
+    expect(loadLocale({ getItem: () => 'zh-Hant' })).toBe('zh-Hant');
   });
 
   it('resolves system against the OS language, keeps explicit picks', () => {
-    expect(resolveLocale('system', 'zh-CN')).toBe('zh-CN');
+    expect(resolveLocale('system', 'zh-CN')).toBe('zh-Hans');
+    expect(resolveLocale('system', 'zh-TW')).toBe('zh-Hant');
     expect(resolveLocale('system', 'en-US')).toBe('en');
     expect(resolveLocale('system', '')).toBe('en');
-    expect(resolveLocale('zh-CN', 'en-US')).toBe('zh-CN');
+    expect(resolveLocale('zh-Hant', 'en-US')).toBe('zh-Hant');
+  });
+
+  it('reads the Chinese script out of an OS language tag', () => {
+    expect(scriptFor('zh-CN')).toBe('zh-Hans');
+    expect(scriptFor('zh-SG')).toBe('zh-Hans');
+    expect(scriptFor('zh-Hans-CN')).toBe('zh-Hans');
+    expect(scriptFor('zh')).toBe('zh-Hans');
+    expect(scriptFor('zh-TW')).toBe('zh-Hant');
+    expect(scriptFor('zh-HK')).toBe('zh-Hant');
+    expect(scriptFor('zh-MO')).toBe('zh-Hant');
+    expect(scriptFor('zh-Hant-HK')).toBe('zh-Hant');
+    expect(scriptFor('en-US')).toBe(null);
+    expect(scriptFor('')).toBe(null);
   });
 
   it('survives storage that refuses to read', () => {
