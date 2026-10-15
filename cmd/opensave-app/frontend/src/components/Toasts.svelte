@@ -1,5 +1,7 @@
 <script>
   import { toasts, dismissToast } from '../lib/stores.js';
+  // `t` is a toast in the loop below, so the store comes in under its own name.
+  import { t as i18n } from '../lib/i18n.js';
   import X from 'lucide-svelte/icons/x';
   import { flip } from 'svelte/animate';
   import { gated, slideAway } from '../lib/motion.js';
@@ -19,7 +21,7 @@
       <span class="message">{t.message}</span>
       {#if t.action}
         <button class="btn small" on:click={() => act(t)}>{t.action.label}</button>
-        <button class="btn small ghost icon" aria-label="Dismiss" title="Dismiss" on:click={() => dismissToast(t.id)}><X size={14} /></button>
+        <button class="btn small ghost icon" aria-label={$i18n('common.dismiss')} title={$i18n('common.dismiss')} on:click={() => dismissToast(t.id)}><X size={14} /></button>
       {/if}
     </div>
   {/each}

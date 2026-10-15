@@ -12,6 +12,7 @@
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
   import { paletteOpen } from '../lib/shortcuts.js';
+  import { t } from '../lib/i18n.js';
 
   const modKey = /Mac/i.test(globalThis.navigator?.platform ?? '') ? '⌘' : 'Ctrl';
 
@@ -44,9 +45,6 @@
   $: if ($wsConnected) connectedOnce = true;
   $: lost = connectedOnce && !$wsConnected;
   $: onlinePeers = Object.values($peers).filter((p) => p.status === 'online').length;
-  $: statusText = running.length
-    ? `Syncing ${running.length} game${running.length > 1 ? 's' : ''}…`
-    : 'No syncs in progress';
 </script>
 
 {#if $showAbout}
@@ -62,38 +60,38 @@
 <footer>
   <div class="left">
     {#if lost}
-      <span class="offline" title="The app has lost touch with its background service and is reconnecting">Reconnecting…</span>
+      <span class="offline" title={$t('statusBar.reconnectingTitle')}>{$t('statusBar.reconnecting')}</span>
     {:else if $syncPause.paused}
       <span class="paused" title="Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken.">
         Syncing paused · {pauseShort($syncPause, now)}
       </span>
-      <button class="bar-btn" on:click={resumeSync} title="Resume syncing and catch up"><Play size={11} />Resume</button>
+      <button class="bar-btn" on:click={resumeSync} title={$t('statusBar.resumeTitle')}><Play size={11} />{$t('statusBar.resume')}</button>
     {:else}
-      <span>{statusText}</span>
+      {#if running.length}<span>{$t('statusBar.syncing', { n: running.length })}</span>{:else}<span>{$t('statusBar.noSyncs')}</span>{/if}
       {#if running.length && running[0][1].percentage != null}
         <span class="pct">{running[0][1].percentage}%</span>
       {/if}
-      <button class="bar-btn icon" on:click={pauseMenu} title="Pause syncing" aria-label="Pause syncing"><Pause size={11} /></button>
+      <button class="bar-btn icon" on:click={pauseMenu} title={$t('statusBar.pause')} aria-label={$t('statusBar.pause')}><Pause size={11} /></button>
     {/if}
   </div>
   <div class="right">
     {#if $wanRoom?.connected}
       <span class="wan">relay: {$wanRoom.roomCode}</span>
     {/if}
-    <span>{onlinePeers} {onlinePeers === 1 ? 'device' : 'devices'} online</span>
+    <span>{$t('statusBar.devicesOnline', { n: onlinePeers })}</span>
     <button
       class="bar-btn"
       class:on={transfersOpen}
       on:click={() => (transfersOpen = !transfersOpen)}
-      title="What is moving between your devices"
+      title={$t('statusBar.transfersHint')}
       aria-expanded={transfersOpen}
     >
-      <ArrowDownUp size={11} />Transfers{#if running.length}<span class="count">{running.length}</span>{/if}
+      <ArrowDownUp size={11} />{$t('transfers.title')}{#if running.length}<span class="count">{running.length}</span>{/if}
     </button>
-    <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title="Jump to a game, a page or an action">
+    <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title={$t('statusBar.paletteHint')}>
       <kbd>{modKey} K</kbd>
     </button>
-    <button class="ver" on:click={() => showAbout.set(true)} title="About OpenSave">OpenSave v{version}</button>
+    <button class="ver" on:click={() => showAbout.set(true)} title={$t('statusBar.aboutTitle')}>OpenSave v{version}</button>
   </div>
 </footer>
 
