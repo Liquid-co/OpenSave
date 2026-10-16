@@ -188,7 +188,7 @@
   "home.welcome.title": "Welcome to OpenSave",
   "home.welcome.trackManually": "Track a folder manually",
   "home.trackGame": "Track game",
-  "home.trackGameTitle": "Find a game by name, or choose its program or save folder",
+  "home.trackGameHint": "Find a game by name, or choose its program or save folder",
   "home.addGame.recognisedAs": "Recognised as \"{name}\" — its cover art comes from the game database.",
   "home.findGame.title": "Track a game from the game database",
   "home.findGame.findByName": "Find by name",
