@@ -1,4 +1,6 @@
 <script>
+  import { t } from '../../lib/i18n.js';
+
   // The shape of a page while its data is on the way, in place of the word
   // "Loading": the eye settles on where things will be, and nothing jumps
   // when they arrive.
@@ -9,7 +11,7 @@
   export let count = 3;
 </script>
 
-<div class="skel {kind}" aria-busy="true" aria-label="Loading">
+<div class="skel {kind}" aria-busy="true" aria-label={$t('common.loading')}>
   {#if kind === 'tiles'}
     <div class="skeleton bar" style="width: 100%; height: 64px; margin-bottom: 22px; border-radius: var(--radius-lg)"></div>
     <div class="grid">

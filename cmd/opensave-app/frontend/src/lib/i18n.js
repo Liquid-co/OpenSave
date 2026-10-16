@@ -14,14 +14,20 @@
 import { writable, derived } from 'svelte/store';
 
 import en from '../locales/en.json';
-import zhCN from '../locales/zh-CN.json';
+import zhHans from '../locales/zh-Hans.json';
+import zhHant from '../locales/zh-Hant.json';
 
 export const SYSTEM_LOCALE = 'system';
 
-/** The languages offered besides the system default. */
-export const LOCALES = { en: 'English', 'zh-CN': '简体中文' };
+/** The languages offered besides the system default.
+ *
+ *  Chinese is split by script, not by region: which characters a reader wants
+ *  is not the same question as where they are, so `zh-CN` / `zh-TW` / `zh-HK`
+ *  and the rest are not offered as separate languages. Each region maps onto
+ *  one of the two scripts here instead. */
+export const LOCALES = { en: 'English', 'zh-Hans': '简体中文', 'zh-Hant': '繁體中文' };
 
-const CATALOGS = { en, 'zh-CN': zhCN };
+const CATALOGS = { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant };
 const FALLBACK = 'en';
 const KEY = 'opensave.locale';
 
@@ -49,10 +55,25 @@ export function saveLocale(l, storage = globalThis.localStorage) {
   }
 }
 
+/** Regions whose Chinese is written with traditional characters. Every other
+ *  Chinese region — and a bare 'zh' — is read as simplified. */
+const TRADITIONAL_REGIONS = ['tw', 'hk', 'mo'];
+
+/** The Chinese script an OS/browser language tag is written in, or null when
+ *  the tag is not Chinese. A tag that already names its script wins over the
+ *  region guess. */
+export function scriptFor(language) {
+  const tag = (language ?? '').toLowerCase();
+  if (!tag.startsWith('zh')) return null;
+  if (tag.startsWith('zh-hant')) return 'zh-Hant';
+  if (tag.startsWith('zh-hans')) return 'zh-Hans';
+  return TRADITIONAL_REGIONS.includes(tag.split('-')[1]) ? 'zh-Hant' : 'zh-Hans';
+}
+
 /** 'system' settled against the OS language, or the explicit pick itself. */
 export function resolveLocale(l, language = globalThis.navigator?.language) {
   if (l && l !== SYSTEM_LOCALE) return l;
-  return (language ?? '').toLowerCase().startsWith('zh') ? 'zh-CN' : FALLBACK;
+  return scriptFor(language) ?? FALLBACK;
 }
 
 /** The chosen language. Setting it persists immediately ('system' unpersists). */

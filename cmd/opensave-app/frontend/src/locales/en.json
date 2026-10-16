@@ -188,7 +188,7 @@
   "home.welcome.title": "Welcome to OpenSave",
   "home.welcome.trackManually": "Track a folder manually",
   "home.trackGame": "Track game",
-  "home.trackGameTitle": "Find a game by name, or choose its program or save folder",
+  "home.trackGameHint": "Find a game by name, or choose its program or save folder",
   "home.addGame.recognisedAs": "Recognised as \"{name}\" — its cover art comes from the game database.",
   "home.findGame.title": "Track a game from the game database",
   "home.findGame.findByName": "Find by name",
@@ -211,5 +211,32 @@
   "home.findGame.pickAnother": "← Pick another game",
   "home.findGame.already": "Already tracked here as \"{tracked}\". Tracking it again would sync the same files twice; link that entry to {name} instead, so it gets the game database’s name, App ID and cover art.",
   "home.findGame.link": "Link \"{tracked}\" to {name}",
-  "home.findGame.linked": "\"{tracked}\" is now {name}"
+  "home.findGame.linked": "\"{tracked}\" is now {name}",
+  "common.close": "Close",
+  "common.dismiss": "Dismiss",
+  "common.loading": "Loading",
+  "titleBar.minimise": "Minimise",
+  "titleBar.maximise": "Maximise",
+  "statusBar.reconnecting": "Reconnecting…",
+  "statusBar.reconnectingTitle": "The app has lost touch with its background service and is reconnecting",
+  "statusBar.noSyncs": "No syncs in progress",
+  "statusBar.syncing": {
+    "one": "Syncing {n} game…",
+    "other": "Syncing {n} games…"
+  },
+  "statusBar.devicesOnline": {
+    "one": "{n} device online",
+    "other": "{n} devices online"
+  },
+  "statusBar.resume": "Resume",
+  "statusBar.resumeTitle": "Resume syncing and catch up",
+  "statusBar.pause": "Pause syncing",
+  "statusBar.transfersHint": "What is moving between your devices",
+  "statusBar.paletteHint": "Jump to a game, a page or an action",
+  "statusBar.aboutTitle": "About OpenSave",
+  "transfers.title": "Transfers",
+  "transfers.empty": "Nothing has moved between your devices since OpenSave started.",
+  "transfers.now": "Now",
+  "transfers.recently": "Recently",
+  "transfers.readError": "Couldn't read transfers: {error}"
 }

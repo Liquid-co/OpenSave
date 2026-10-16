@@ -112,7 +112,7 @@
     </button>
     <button class="btn" on:click={syncAll} disabled={$gameList.length === 0 || $syncPause.paused} title={$syncPause.paused ? $t('home.syncPaused') : ''}><RefreshCw size={15} />{$t('home.syncAll')}</button>
     <PauseButton />
-    <button class="btn" on:click={() => (showTrackGame = true)} title={$t('home.trackGameTitle')}><Gamepad2 size={16} />{$t('home.trackGame')}</button>
+    <button class="btn" on:click={() => (showTrackGame = true)} title={$t('home.trackGameHint')}><Gamepad2 size={16} />{$t('home.trackGame')}</button>
     <button class="btn" on:click={trackFolder} title={$t('home.trackFolderTitle')}><FolderPlus size={16} />{$t('home.trackFolder')}</button>
   </div>
 </div>
