@@ -92,3 +92,16 @@ func TestAReportSentAgainIsRecordedOnce(t *testing.T) {
 		t.Errorf("recorded %d times in all, want 4: another report, and two without an ID", n)
 	}
 }
+
+// The "agreed" report carries state as "sync-complete" does: a device that
+// misses it keeps a base a round behind. It is sent again until answered.
+func TestTheAgreedReportCarriesState(t *testing.T) {
+	for _, ev := range []string{"sync-complete", "in-sync", "agreed"} {
+		if !carriesState(ev) {
+			t.Errorf("%q is sent once, like a progress report", ev)
+		}
+	}
+	if carriesState("sync-progress") {
+		t.Error("a progress report is sent again")
+	}
+}

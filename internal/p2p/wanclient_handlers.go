@@ -152,6 +152,17 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 				_ = json.Unmarshal(msg.Data, &raw)
 				w.engine.peerFinishedPulling(msg.GameID, sp, raw)
 			}
+		case "agreed":
+			// The peer pulled from us over the relay and now holds exactly
+			// this state; handled as on the LAN.
+			var payload struct {
+				ManifestHash string `json:"manifestHash"`
+			}
+			_ = json.Unmarshal(msg.Data, &payload)
+			if peer, err := w.engine.Store.GetPeer(msg.From); err == nil {
+				sp := syncengine.Peer{ID: peer.ID, Name: peer.Name, Address: "relay", Port: peer.Port, IsWan: true}
+				w.engine.Sync.NotePeerHolds(w.engine.localGameID(msg.GameID), sp, payload.ManifestHash)
+			}
 		case "in-sync":
 			// Peer verified both sides match: confirm on our side (hash
 			// re-check) before recording lineage + last-synced.

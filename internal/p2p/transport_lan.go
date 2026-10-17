@@ -130,7 +130,7 @@ const stateReportTries = 4
 // carriesState says whether a report tells the other device something it
 // records — what both devices now hold — rather than how a sync is going.
 func carriesState(eventType string) bool {
-	return eventType == "sync-complete" || eventType == "in-sync"
+	return eventType == "sync-complete" || eventType == "in-sync" || eventType == "agreed"
 }
 
 // withReportID is the report's data with an ID of its own added, the same for
