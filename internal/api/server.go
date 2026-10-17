@@ -391,7 +391,13 @@ func (s *Server) Stop() {
 var allowedBrowserOrigins = map[string]bool{
 	"http://wails.localhost": true, // Windows: WebView2 cannot use a custom scheme
 	"wails://wails":          true, // macOS and Linux
-	"http://localhost:34115": true, // `wails dev`
+	// `wails dev`: in a browser, and in the dev build's own window, which on
+	// Windows names itself wails.localhost on the dev server's port. Without
+	// the second, the dev window was refused every request and showed
+	// "OpenSave failed to start" over a daemon that was running. Both name
+	// this machine only, and exist only while someone runs `wails dev`.
+	"http://localhost:34115":       true,
+	"http://wails.localhost:34115": true,
 }
 
 // corsLocalhost handles browser cross-origin rules for the API.
