@@ -37,7 +37,11 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 
 	switch key {
 	case "name":
-		game.Name = value
+		name, err := store.CleanGameName(value)
+		if err != nil {
+			return fail(asJSON, err)
+		}
+		game.Name = name
 	case "app-id":
 		game.AppID = value
 	case "exe-path":
@@ -79,10 +83,12 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 	}
 	// Re-watch so a path or auto-sync change takes effect immediately rather
 	// than at the next restart.
-	d.Watcher.Unwatch(game.ID)
-	if game.AutoSync {
-		if err := d.Watcher.Watch(game.ID, game.SavePath); err != nil {
-			d.Log.Log("warn", "re-watch after config change failed: "+err.Error())
+	if d.Watcher != nil {
+		d.Watcher.Unwatch(game.ID)
+		if game.AutoSync {
+			if err := d.Watcher.Watch(game.ID, game.SavePath); err != nil {
+				d.Log.Log("warn", "re-watch after config change failed: "+err.Error())
+			}
 		}
 	}
 
@@ -95,7 +101,9 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 
 const gameUsage = `usage: opensave game <gameId> set <key> <value>
 
-  name <text>            Display name (also how peers match this game)
+  name <text>            What this device calls the game (also: opensave rename);
+                         other devices keep their own name, and sync goes by
+                         the game's ID, which never changes
   path <dir|file>        Move tracking to a different save location
   app-id <steam-id>      Steam App ID, used for cover art and cross-device matching
   exe-path <file>        Program to launch the game with, before Steam
@@ -105,6 +113,26 @@ const gameUsage = `usage: opensave game <gameId> set <key> <value>
   max-manual-snapshots <n>
                          Snapshots you took yourself, kept per branch
                          (0 = keep forever, the default)`
+
+const renameUsage = `usage: opensave rename <gameId> <new name>
+
+  Changes what this device calls a game. Its ID stays, so syncing, snapshots
+  and cloud backups carry on as before, and other devices keep their own name.`
+
+// cmdRename is `opensave game <id> set name <name>` said directly: the words
+// after the game are the new name, so it needs no quotes.
+func cmdRename(d *daemon.Daemon, args []string) int {
+	asJSON, args := jsonFlag(args)
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, renameUsage)
+		return 1
+	}
+	rest := []string{args[0], "set", "name", strings.Join(args[1:], " ")}
+	if asJSON {
+		rest = append(rest, "--json")
+	}
+	return cmdGame(d, rest)
+}
 
 func isTruthy(s string) bool {
 	switch strings.ToLower(s) {

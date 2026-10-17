@@ -55,7 +55,7 @@
   <div class="empty"><h3>Game not found</h3></div>
 {:else}
   {#key params.gameId}
-    <GameHeader {game} {runner} />
+    <GameHeader {game} {runner} renameRequest={params.rename} />
 
     <div class="pill-tabs tabs" use:slidingIndicator={{ inset: 10 }}>
       {#each tabs as t (t.id)}

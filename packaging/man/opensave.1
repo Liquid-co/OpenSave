@@ -321,6 +321,13 @@ pre\-releases and such a build would otherwise report itself up to date until
 the final release overtook it. The stable release is still offered as soon as
 it is the newer of the two, so neither direction is a one\-way door.
 .TP
+.BI "rename " "gameId new name"
+Change what this device calls a game. The words after the game ID are the new
+name, so it needs no quotes. The game's ID stays as it was, so syncing,
+snapshots and cloud backups carry on under it, and other devices keep their
+own name for it. The same as
+.BI "game " "gameId" " set name " "new name" .
+.TP
 .BI "game " "gameId set key value"
 Change one game's settings. Keys:
 .BR name ,

@@ -10,6 +10,7 @@ import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
 import Trash2 from 'lucide-svelte/icons/trash-2';
 import Star from 'lucide-svelte/icons/star';
 import Tags from 'lucide-svelte/icons/tags';
+import Pencil from 'lucide-svelte/icons/pencil';
 import { get } from 'svelte/store';
 import { gameMenuItems, runGameAction } from './gameactions.js';
 import { collections, isFavourite } from './collections.js';
@@ -64,6 +65,7 @@ const gameIcons = {
   open: ArrowUpRight,
   favourite: Star,
   collections: Tags,
+  rename: Pencil,
   sync: RefreshCw,
   snapshot: Camera,
   launch: Play,

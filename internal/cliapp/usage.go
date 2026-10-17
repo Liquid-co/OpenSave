@@ -30,6 +30,7 @@ var commandGroups = []commandGroup{
 		{"remove <gameId>", "Stop tracking a game"},
 		{"untrack-all --yes", "Stop tracking everything (keeps snapshots)"},
 		{"game <gameId> set <key> <value>", "Per-game settings (path, app-id, auto-sync…)"},
+		{"rename <gameId> <new name>", "Change what this device calls a game; its ID and sync stay as they are"},
 		{"launch <gameId>", "Start the game"},
 		{"wrap <gameId> -- <command>", "Run a game: newest save first, a snapshot and sync after"},
 		{"sessions [<gameId>]", "When games were played here, and for how long"},

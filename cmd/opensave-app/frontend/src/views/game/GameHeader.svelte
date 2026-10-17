@@ -9,7 +9,7 @@
   import { api, native, gameCover } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
-  import { canLaunch } from '../../lib/gameactions.js';
+  import { canLaunch, cleanGameName, renameGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
   import Spinner from '../../components/ui/Spinner.svelte';
   import { restoreProgressText } from '../../lib/restoreprogress.js';
   import { t } from '../../lib/i18n.js';
@@ -26,7 +26,44 @@
   export let game;
   /** The page's shared runner (see lib/runner.js). */
   export let runner;
+  /** Set (to a new value each time) when "Rename…" was chosen in a menu or
+   *  Ctrl+K: the name opens for editing. */
+  export let renameRequest = undefined;
   const { busy, run } = runner;
+
+  // Renaming, in place: the name becomes a field. Enter keeps it, Esc puts the
+  // old one back. The ID stays, so nothing about syncing changes.
+  let editName = false;
+  let nameDraft = '';
+  let nameSaving = false;
+  $: nameProblem = editName ? cleanGameName(nameDraft).error : undefined;
+  $: if (renameRequest) startRename();
+
+  function startRename() {
+    nameDraft = game.name;
+    editName = true;
+  }
+  async function saveName() {
+    if (nameProblem || nameSaving) return;
+    nameSaving = true;
+    const ok = await renameGame(game, nameDraft);
+    nameSaving = false;
+    if (ok) editName = false;
+  }
+  function nameKeys(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation(); // Esc here cancels the edit, not the page
+      editName = false;
+    }
+  }
+  function focusSelect(el) {
+    el.focus();
+    el.select();
+  }
 
   $: activity = $syncActivity[game.id];
 
@@ -119,7 +156,30 @@
   {/if}
   <div class="title-block">
     <h2 class="page-title title-row">
-      {game.name}
+      {#if editName}
+        <input
+          class="name-input"
+          class:invalid={!!nameProblem}
+          bind:value={nameDraft}
+          maxlength={MAX_GAME_NAME + 20}
+          aria-label="Game name"
+          aria-invalid={!!nameProblem}
+          use:focusSelect
+          on:keydown={nameKeys}
+        />
+        <button class="btn small primary" disabled={!!nameProblem || nameSaving} on:click={saveName}>Save</button>
+        <button class="btn small" on:click={() => (editName = false)}>Cancel</button>
+      {:else}
+        {game.name}
+        <button
+          class="btn small ghost icon rename"
+          title="Rename (only on this device; syncing is unaffected)"
+          aria-label="Rename"
+          on:click={startRename}
+        >
+          <Pencil size={14} />
+        </button>
+      {/if}
       <button
         class="btn small ghost icon star"
         class:on={isFavourite($collections, game.id)}
@@ -131,6 +191,11 @@
         <Star size={16} />
       </button>
     </h2>
+    {#if editName}
+      <div class="sub name-hint" class:problem={!!nameProblem} role={nameProblem ? 'alert' : undefined}>
+        {nameProblem ?? 'Only on this device. Your other devices keep their own name, and syncing carries on as before.'}
+      </div>
+    {/if}
     <div class="sub">
       branch <strong>{game.activeBranch}</strong>
       {#if activity?.state === 'running'}
@@ -263,8 +328,22 @@
     align-items: center;
     gap: 6px;
   }
-  .star {
+  .star,
+  .rename {
     color: var(--text-faint);
+  }
+  .name-input {
+    font: inherit;
+    min-width: 0;
+    flex: 1;
+    max-width: 32em;
+    padding: 2px 8px;
+  }
+  .name-input.invalid {
+    border-color: var(--danger);
+  }
+  .name-hint.problem {
+    color: var(--danger);
   }
   .star.on {
     color: var(--warn);

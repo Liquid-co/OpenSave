@@ -386,11 +386,25 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	oldAutoSync := game.AutoSync
 	oldIgnore := game.SyncIgnore
 	oldAppID := game.AppID
+	oldName := game.Name
 	if err := readJSON(r, &game); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	game.ID = gameID // id is not client-mutable
+
+	// A rename is checked as the app checks it: an empty name, or one with a
+	// line break pasted into it, was stored as sent. The ID above stays, so
+	// sync, snapshots and cloud copies carry on under it; the name is only
+	// what this device calls the game.
+	if game.Name != oldName {
+		name, err := store.CleanGameName(game.Name)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		game.Name = name
+	}
 
 	// A changed save path is validated exactly as a fresh track is. This
 	// decoded straight into the stored game and wrote it back, so a path that
@@ -461,6 +475,9 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())
 		return
+	}
+	if game.Name != oldName {
+		s.Daemon.Log.Log("info", fmt.Sprintf("renamed %q to %q on this device", oldName, game.Name))
 	}
 
 	// Re-watch if the save location or autoSync flag changed.

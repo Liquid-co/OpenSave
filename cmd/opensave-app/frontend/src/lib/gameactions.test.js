@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canLaunch, gameMenuItems, latestSnapshot } from './gameactions.js';
+import { canLaunch, cleanGameName, gameMenuItems, latestSnapshot, MAX_GAME_NAME } from './gameactions.js';
 
 const game = (extra = {}) => ({
   id: 'g1',
@@ -56,5 +56,23 @@ describe('gameMenuItems', () => {
     const items = gameMenuItems(game());
     expect(items.at(-1)).toMatchObject({ id: 'untrack', danger: true });
     expect(items.at(-2)).toBe(null);
+  });
+});
+
+describe('renaming', () => {
+  it('is offered in every game menu', () => {
+    expect(ids(gameMenuItems(game()))).toContain('rename');
+  });
+
+  it('keeps a typed name trimmed', () => {
+    expect(cleanGameName('  Hades II  ')).toEqual({ name: 'Hades II' });
+    expect(cleanGameName('ゼルダの伝説')).toEqual({ name: 'ゼルダの伝説' });
+    expect(cleanGameName('é'.repeat(MAX_GAME_NAME))).toEqual({ name: 'é'.repeat(MAX_GAME_NAME) });
+  });
+
+  it('refuses a name the daemon would refuse', () => {
+    for (const bad of ['', '   ', 'a'.repeat(MAX_GAME_NAME + 1), 'Hades\nII', 'Hades\tII', 'Hades\u0000']) {
+      expect(cleanGameName(bad).error, JSON.stringify(bad)).toBeTruthy();
+    }
   });
 });

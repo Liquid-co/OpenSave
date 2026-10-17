@@ -76,7 +76,8 @@
       { label: `Sync ${g.name}`, kind: 'Action', weight: -1, run: () => runGameAction('sync', g) },
       { label: `Snapshot ${g.name}`, kind: 'Action', weight: -1, keywords: ['backup', 'save'], run: () => runGameAction('snapshot', g) },
       ...(canLaunch(g) ? [{ label: `Launch ${g.name}`, kind: 'Action', weight: -1, keywords: ['play', 'start'], run: () => runGameAction('launch', g) }] : []),
-      { label: `Open ${g.name} save folder`, kind: 'Action', weight: -1, keywords: ['explorer', 'files'], run: () => runGameAction('folder', g) }
+      { label: `Open ${g.name} save folder`, kind: 'Action', weight: -1, keywords: ['explorer', 'files'], run: () => runGameAction('folder', g) },
+      { label: `Rename ${g.name}`, kind: 'Action', weight: -1, keywords: ['name', 'title'], run: () => runGameAction('rename', g) }
     ]),
     // Snapshots with words of their own — a note, or a comment someone typed
     // — found by those words: "boss" finds "Before the final boss".

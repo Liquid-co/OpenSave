@@ -193,6 +193,8 @@ func Run(args []string) int {
 		return cmdConfig(d, rest)
 	case "game":
 		return withWatchReload(cmdGame(d, rest))
+	case "rename":
+		return withWatchReload(cmdRename(d, rest))
 	case "scanpath":
 		return cmdScanPath(d, rest)
 	case "untrack-all":

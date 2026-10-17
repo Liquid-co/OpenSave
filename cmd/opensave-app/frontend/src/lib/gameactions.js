@@ -40,6 +40,7 @@ export function gameMenuItems(game, { now = new Date(), favourite = false } = {}
     { id: 'open', label: 'Open' },
     { id: 'favourite', label: favourite ? 'Remove from Favourites' : 'Add to Favourites' },
     { id: 'collections', label: 'Collections…' },
+    { id: 'rename', label: 'Rename…' },
     null,
     { id: 'sync', label: 'Sync now' },
     { id: 'snapshot', label: 'Snapshot now' },
@@ -88,6 +89,47 @@ export async function runGameAction(id, game) {
       return toggleFavourite(get(collections), game);
     case 'collections':
       return collectionsDialog.set(game);
+    case 'rename':
+      // On the game's page, where its name is: `rename` opens the name for
+      // editing there (GameHeader). A new value each time, so asking twice
+      // for the same game opens it again.
+      return navigate('game', { gameId: game.id, rename: Date.now() });
+  }
+}
+
+/** The longest name a game can have, in characters (store.MaxGameNameLength). */
+export const MAX_GAME_NAME = 120;
+
+/** A typed game name as it would be kept — trimmed — or why it cannot be:
+ *  {name} or {error}. The same rules as the daemon's store.CleanGameName, so
+ *  the field can say so before anything is sent. Pure, so tested. */
+export function cleanGameName(raw) {
+  const name = String(raw ?? '').trim();
+  if (!name) return { error: "A game's name cannot be empty." };
+  const length = [...name].length;
+  if (length > MAX_GAME_NAME) return { error: `A game's name can be at most ${MAX_GAME_NAME} characters (this one is ${length}).` };
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) return { error: "A game's name cannot contain line breaks." };
+  return { name };
+}
+
+/** Renames a game on this device. Its ID stays, so sync, snapshots and cloud
+ *  copies carry on under it; other devices keep their own name for it.
+ *  Resolves to whether it was renamed. */
+export async function renameGame(game, raw) {
+  const { name, error } = cleanGameName(raw);
+  if (error) {
+    toast(error, 'error');
+    return false;
+  }
+  if (name === game.name) return true;
+  try {
+    await api.patch(`/api/games/${game.id}`, { name });
+    toast(`Renamed to ${name}`, 'success');
+    return true;
+  } catch (e) {
+    toast(e.message, 'error');
+    return false;
   }
 }
 
