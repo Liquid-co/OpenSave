@@ -3,6 +3,7 @@
   import { askConfirm } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
   import { savePathChange } from '../../lib/savepath.js';
+  import { t } from '../../lib/i18n.js';
   import AppIdField from './AppIdField.svelte';
   import SyncIgnoreEditor from './SyncIgnoreEditor.svelte';
   import SaveLocations from './SaveLocations.svelte';
@@ -25,8 +26,12 @@
     autoSync: game.autoSync ?? true,
     maxSnapshots: game.maxSnapshots ?? 5,
     maxManualSnapshots: game.maxManualSnapshots ?? 0,
-    syncIgnore: game.syncIgnore ?? ''
+    syncIgnore: game.syncIgnore ?? '',
+    syncDeviceSettings: game.syncDeviceSettings ?? false
   };
+  // The files the game database names as this game's settings rather than its
+  // save (graphics, resolution): left out of syncing unless asked for.
+  $: deviceSettings = game.deviceSettings ?? [];
   let locations = [];
 
   // Cover preview: a custom URL wins, else the proxied Steam art for the App
@@ -76,7 +81,8 @@
         autoSync: cfg.autoSync,
         maxSnapshots: Number(cfg.maxSnapshots),
         maxManualSnapshots: Number(cfg.maxManualSnapshots),
-        syncIgnore: cfg.syncIgnore ?? ''
+        syncIgnore: cfg.syncIgnore ?? '',
+        syncDeviceSettings: !!cfg.syncDeviceSettings
       })
     );
   }
@@ -160,6 +166,21 @@
         can't push them out. <strong>0 = keep forever</strong> (the default).
       </span>
     </div>
+    {#if deviceSettings.length > 0}
+      <div class="field device-block">
+        <label for="c-devsettings">{$t('game.config.deviceSettings')}</label>
+        <ul class="device-settings">
+          {#each deviceSettings as p}
+            <li><code>{p.replace(/^\//, '')}</code></li>
+          {/each}
+        </ul>
+      </div>
+      <label class="check">
+        <input id="c-devsettings" type="checkbox" bind:checked={cfg.syncDeviceSettings} />
+        {$t('game.config.syncDeviceSettings')}
+      </label>
+      <span class="hint device-hint">{$t('game.config.deviceSettingsHint')}</span>
+    {/if}
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
     <div class="save">
@@ -204,6 +225,21 @@
     margin-bottom: 14px;
   }
   .fields .field {
+    margin-bottom: 14px;
+  }
+  .device-settings {
+    margin: 4px 0 6px;
+    padding-left: 18px;
+    color: var(--text-dim, inherit);
+  }
+  .device-settings code {
+    font-size: 0.9em;
+  }
+  .device-block {
+    margin-bottom: 4px !important;
+  }
+  .device-hint {
+    display: block;
     margin-bottom: 14px;
   }
   .hint-warn {

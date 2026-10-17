@@ -2,6 +2,7 @@
   "settings.language": "Language",
   "settings.systemDefault": "System default",
   "common.cancel": "Cancel",
+  "common.open": "Open",
   "common.nowTracking": "Now tracking \"{name}\"",
   "home.addGame.adding": "Adding…",
   "home.addGame.changeFolder": "Change folder…",
@@ -222,5 +223,13 @@
   "restoreProgress.aboutMinutes": {
     "one": "about a minute",
     "other": "about {n} minutes"
-  }
+  },
+  "snapshots.incomplete": "\"{name}\": automatic snapshots keep missing {files}, which the game holds open. Until those can be read, usually once the game is closed, its changes are not backed up or synced.",
+  "snapshots.incomplete.more": {
+    "one": " and one more file",
+    "other": " and {n} more files"
+  },
+  "game.config.deviceSettings": "Device settings",
+  "game.config.syncDeviceSettings": "Sync these settings between devices too",
+  "game.config.deviceSettingsHint": "The game database lists these as this game's settings, not its save, so each device keeps its own (graphics, resolution). They are still in every snapshot."
 }

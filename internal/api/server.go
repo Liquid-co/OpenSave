@@ -70,6 +70,9 @@ func New(d *daemon.Daemon) *Server {
 	// Newly installed games the background scan found.
 	d.OnNewGames = func(games []daemon.NewGame) { s.Hub.Broadcast("new-games", games) }
 
+	// A game whose automatic snapshots keep missing files it holds open.
+	d.OnSnapshotsIncomplete = func(p daemon.SnapshotsIncomplete) { s.Hub.Broadcast("snapshots-incomplete", p) }
+
 	// Syncing paused or resumed — from here, the CLI, the tray, or a timer.
 	d.P2P.Pause.OnChange(func(st syncpause.Status) { s.Hub.Broadcast("sync-pause", st) })
 	return s
@@ -559,11 +562,15 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		// Whether the art cached for this game is explicit, so the client can
 		// blur it until someone asks to see it. An <img src> cannot read a
 		// response header, so it travels with the game rather than the image.
-		"coverExplicit":  s.CoverIsExplicit(coverKeyFor(g)),
-		"syncIgnore":     g.SyncIgnore,
-		"branches":       branches,
-		"createdAt":      g.CreatedAt,
-		"lastSyncedWith": lastSyncedWith,
+		"coverExplicit": s.CoverIsExplicit(coverKeyFor(g)),
+		"syncIgnore":    g.SyncIgnore,
+		// The files the game database names as this game's settings, left
+		// out of syncing unless syncDeviceSettings (daemon/devicesettings.go).
+		"deviceSettings":     s.Daemon.DeviceSettings(g),
+		"syncDeviceSettings": g.SyncDeviceSettings,
+		"branches":           branches,
+		"createdAt":          g.CreatedAt,
+		"lastSyncedWith":     lastSyncedWith,
 		// The save folder is not there — gone, moved, or on a drive not
 		// plugged in. Nothing is watched or synced for it until it is back.
 		"savePathMissing": daemon.SaveFolderMissing(g.SavePath),

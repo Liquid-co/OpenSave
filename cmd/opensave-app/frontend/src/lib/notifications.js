@@ -142,6 +142,16 @@ export function arrivalNote(ev, games) {
   return { title: game.name, body: `Got ${plural(ev.files || 1, 'file')} from ${ev.device}`, game };
 }
 
+/** A game whose automatic snapshots keep missing files it holds open
+ *  (daemon/autosnapshot.go), in the words of the catalog: `t` is the
+ *  translate function, `$t` in a component. */
+export function incompleteSnapshotsMessage(data, t) {
+  const names = data?.files ?? [];
+  const more = Math.max((data?.count ?? names.length) - names.length, 0);
+  const files = names.join(', ') + (more ? t('snapshots.incomplete.more', { n: more }) : '');
+  return t('snapshots.incomplete', { name: data?.gameName ?? '', files });
+}
+
 /** New games found, as the desktop shows them. */
 export function newGamesNote(found) {
   if (!found?.length) return null;

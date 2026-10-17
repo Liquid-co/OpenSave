@@ -127,6 +127,8 @@ type Engine struct {
 	// on this device right now (settle.go).
 	settleMu sync.Mutex
 	gates    map[string]*saveGate
+	// writtenAt is when a sync last stopped writing each game (BeingWritten).
+	writtenAt map[string]time.Time
 	// servedMu guards served: the save states this device recently handed
 	// each peer, per game (served.go).
 	servedMu sync.Mutex
@@ -150,6 +152,11 @@ type Engine struct {
 	// rootConflicts holds divergences in a game's EXTRA save locations, keyed
 	// by game and location so several can wait on a decision at once.
 	rootConflicts map[string]*RootConflict
+
+	// DeviceSettingsFor returns the exclusion patterns for a game's device
+	// settings (presets/devicesettings.go), set by the daemon; nil leaves
+	// them syncing. See IgnoreText.
+	DeviceSettingsFor func(store.Game) []string
 }
 
 // New creates an Engine.

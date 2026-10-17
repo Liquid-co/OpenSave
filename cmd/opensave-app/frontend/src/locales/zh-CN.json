@@ -2,6 +2,7 @@
   "settings.language": "语言",
   "settings.systemDefault": "跟随系统",
   "common.cancel": "取消",
+  "common.open": "打开",
   "common.nowTracking": "已开始跟踪“{name}”",
   "home.addGame.adding": "添加中…",
   "home.addGame.changeFolder": "更换文件夹…",
@@ -198,5 +199,10 @@
   "restoreProgress.line": "{phase} — {percent}%（{done}/{total}）",
   "restoreProgress.lineWithTimeLeft": "{phase} — {percent}%（{done}/{total}），还剩{left}",
   "restoreProgress.underAMinute": "不到一分钟",
-  "restoreProgress.aboutMinutes": "约 {n} 分钟"
+  "restoreProgress.aboutMinutes": "约 {n} 分钟",
+  "snapshots.incomplete": "“{name}”：自动快照一直缺少游戏正在占用的 {files}。在这些文件可以读取之前（通常是游戏关闭后），它的更改不会被备份或同步。",
+  "snapshots.incomplete.more": " 等另外 {n} 个文件",
+  "game.config.deviceSettings": "设备设置",
+  "game.config.syncDeviceSettings": "也在设备之间同步这些设置",
+  "game.config.deviceSettingsHint": "游戏数据库将这些文件列为该游戏的设置而非存档，因此每台设备保留各自的设置（画质、分辨率）。它们仍包含在每个快照中。"
 }

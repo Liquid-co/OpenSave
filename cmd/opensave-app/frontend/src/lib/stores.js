@@ -1,8 +1,9 @@
 // Central app state, fed by the daemon's init dump + live WS updates.
 import { writable, derived, get } from 'svelte/store';
 import { notifyPrefs } from './notifyprefs.js';
-import { arrivalMessage, arrivalNote, newGamesNote } from './notifications.js';
+import { arrivalMessage, arrivalNote, incompleteSnapshotsMessage, newGamesNote } from './notifications.js';
 import { toDesktop } from './notify.js';
+import { t } from './i18n.js';
 
 // When each game's arrival was last said (lib/notifications.js).
 const arrivalShown = {};
@@ -185,6 +186,12 @@ export function applyMessage(msg) {
     }
     case 'cloud-offers':
       cloudOffers.set(data ?? []);
+      break;
+    case 'snapshots-incomplete':
+      // Sent once per run of discarded automatic snapshots, so no rate limit.
+      toast(incompleteSnapshotsMessage(data, get(t)), 'error', {
+        action: { label: get(t)('common.open'), run: () => navigate('game', { gameId: data.gameId }) }
+      });
       break;
     case 'cloud-pulled':
       // Taken without asking, because it carried on from the save this

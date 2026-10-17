@@ -95,6 +95,11 @@ func zipPathCapturing(sourcePath, outPath string, reuse *reuseSource) (skipped [
 			}
 			return nil
 		}
+		// OpenSave's own temporary file for a file being pulled: never part
+		// of the save, and gone by the time it is read.
+		if strings.HasSuffix(rel, delta.TmpSuffix) {
+			return nil
+		}
 		info, infoErr := d.Info()
 		if infoErr != nil {
 			skipped = append(skipped, path)
@@ -126,8 +131,13 @@ func zipPathCapturing(sourcePath, outPath string, reuse *reuseSource) (skipped [
 // It costs nothing to produce here. The bytes are already streaming through
 // this function on their way into the archive, so hashing them is a second
 // writer on the same copy rather than a second pass over the disk.
+//
+// openForArchive is fsx.OpenShared; a test replaces it to have a file the
+// game holds open, on any system.
+var openForArchive = fsx.OpenShared
+
 func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
-	f, err := fsx.OpenShared(filePath)
+	f, err := openForArchive(filePath)
 	if err != nil {
 		return "", err
 	}

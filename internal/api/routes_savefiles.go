@@ -60,10 +60,11 @@ func (s *Server) handleGameSaveFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	text := game.SyncIgnore
 	if raw, ok := r.URL.Query()["rules"]; ok {
-		text = raw[0] // present-but-empty means "no rules", not "use the saved ones"
+		game.SyncIgnore = raw[0] // present-but-empty means "no rules", not "use the saved ones"
 	}
+	// With the game's device settings, which are left out the same way.
+	text := s.Daemon.IgnoreText(game)
 	rules := ignore.Parse(text)
 
 	roots := []struct{ name, path string }{{"", game.SavePath}}

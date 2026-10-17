@@ -723,7 +723,7 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 			if err == nil && mode == "overwrite" {
 				// A backup file may come from another device: this one's
 				// excluded files stay its own (Manager.RestoreKeeping).
-				_, err = s.Daemon.Snapshots.RestoreKeeping(gameID, snapID, ignore.Parse(local.SyncIgnore))
+				_, err = s.Daemon.Snapshots.RestoreKeeping(gameID, snapID, ignore.Parse(s.Daemon.IgnoreText(local)))
 				res.Path = local.SavePath
 				res.Action = "restored"
 			} else if err == nil {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { arrivalMessage, badgeCount, happened, loadSeenAt, saveSeenAt, waitingOnYou, ARRIVAL_QUIET_MS } from './notifications.js';
+import { arrivalMessage, badgeCount, happened, incompleteSnapshotsMessage, loadSeenAt, saveSeenAt, waitingOnYou, ARRIVAL_QUIET_MS } from './notifications.js';
+import { translate } from './i18n.js';
+import en from '../locales/en.json';
 
 const games = {
   hades: { id: 'hades', name: 'Hades', branches: { main: { snapshots: [{ id: 's1', problem: 'damaged' }] } } },
@@ -69,5 +71,22 @@ describe('a missing save folder found on another drive', () => {
     const r = w.find((x) => x.id.startsWith('relocate:'));
     expect(r?.title).toContain('E:\SteamLibrary\ARK');
     expect(r?.go).toEqual({ view: 'game', params: { gameId: 'ark' } });
+  });
+});
+
+describe('incompleteSnapshotsMessage', () => {
+  const t = (key, params) => translate(en, key, params, new Intl.PluralRules('en'));
+
+  it('names the game and the files it holds open', () => {
+    expect(incompleteSnapshotsMessage({ gameName: 'Hades', files: ['save.lock'], count: 1 }, t)).toBe(
+      '"Hades": automatic snapshots keep missing save.lock, which the game holds open. Until those can be read, usually once the game is closed, its changes are not backed up or synced.'
+    );
+  });
+
+  it('says how many more there are than it names', () => {
+    const one = incompleteSnapshotsMessage({ gameName: 'Hades', files: ['a', 'b', 'c'], count: 4 }, t);
+    expect(one).toContain('missing a, b, c and one more file, which');
+    const more = incompleteSnapshotsMessage({ gameName: 'Hades', files: ['a', 'b', 'c'], count: 9 }, t);
+    expect(more).toContain('missing a, b, c and 6 more files, which');
   });
 });
