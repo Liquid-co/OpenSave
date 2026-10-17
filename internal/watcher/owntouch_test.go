@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,6 +101,35 @@ func TestOwnNewFolders_AreNotSnapshotted(t *testing.T) {
 	}
 	if !waitFor(t, 10*time.Second, func() bool { return col.snapshotCount() >= 1 }) {
 		t.Fatal("a folder the game created was not snapshotted")
+	}
+}
+
+// While a sync is writing the game, the watcher looks at what changed only
+// once it has finished — never at a save half-way between two states — and a
+// change of the game's is still snapshotted then.
+func TestWhileASyncWrites_TheWatcherWaits(t *testing.T) {
+	saveDir := t.TempDir()
+	col := newCollector()
+	var writing atomic.Bool
+	cb := col.callbacks()
+	cb.SyncWriting = func(string) bool { return writing.Load() }
+	cb.SyncWritingNow = cb.SyncWriting
+	eng := New(cb)
+	defer eng.Stop()
+	if err := eng.Watch("game1", saveDir); err != nil {
+		t.Fatal(err)
+	}
+	writing.Store(true)
+	if err := os.WriteFile(filepath.Join(saveDir, "slot1.sav"), []byte("played"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Second)
+	if n := col.snapshotCount(); n != 0 {
+		t.Fatalf("%d snapshot(s) while a sync was writing the game", n)
+	}
+	writing.Store(false)
+	if !waitFor(t, 10*time.Second, func() bool { return col.snapshotCount() >= 1 }) {
+		t.Fatal("the game's change was not snapshotted once the sync had finished")
 	}
 }
 

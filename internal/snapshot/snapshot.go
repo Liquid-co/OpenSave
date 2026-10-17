@@ -41,6 +41,19 @@ import (
 // before starting one.
 type UploadHook func(zipPath, remoteFileName string)
 
+// IncompleteError is an automatic snapshot discarded because files of the
+// save could not be read — in use by the game, or changing while it was
+// archived (CreateAutomatic).
+type IncompleteError struct {
+	Game    string
+	Skipped []string
+}
+
+func (e *IncompleteError) Error() string {
+	return fmt.Sprintf("snapshot of %q discarded: %d file(s) could not be read (e.g. %s) — taken again at the next chance",
+		e.Game, len(e.Skipped), e.Skipped[0])
+}
+
 // Manager performs snapshot/branch operations against the store and
 // filesystem.
 type Manager struct {
@@ -145,6 +158,25 @@ func (m *Manager) Create(gameID, comment string, isSystemAuto bool) (store.Snaps
 	return m.createOnBranch(gameID, game.ActiveBranch, comment, isSystemAuto, true)
 }
 
+// CreateAutomatic is the snapshot the watcher takes when a save has changed.
+//
+// It is the one snapshot not kept when it could not read every file of the
+// save (IncompleteError): it would stand in the history as a save that never
+// existed and, counted against retention, push out a complete one. Nothing is
+// lost by not keeping it: the watcher leaves the change unrecorded and takes
+// it again at its next pass. Every other snapshot is kept as it was, missing
+// files and all, with a warning: one taken by hand, and above all the copy
+// kept before a sync, a restore or a conflict replaces the save — refusing
+// that would stop the replacing, quietly, for as long as a game holds a file
+// open.
+func (m *Manager) CreateAutomatic(gameID string) (store.Snapshot, error) {
+	game, err := m.Store.GetGame(gameID)
+	if err != nil {
+		return store.Snapshot{}, err
+	}
+	return m.createOnBranchFrom(gameID, game.ActiveBranch, "", "", true, true, true)
+}
+
 // CreateBeforeReplacing keeps a copy of a save that is about to be replaced —
 // by a restore, a sync, the other side of a conflict, a branch switch.
 //
@@ -169,7 +201,7 @@ func (m *Manager) CreateBeforeReplacing(gameID, comment string) (store.Snapshot,
 // current reports whether the snapshot is of the save as it now stands and
 // will go on standing, as opposed to a copy kept before replacing it.
 func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto, current bool) (store.Snapshot, error) {
-	return m.createOnBranchFrom(gameID, branch, "", comment, isSystemAuto, current)
+	return m.createOnBranchFrom(gameID, branch, "", comment, isSystemAuto, current, false)
 }
 
 // CreateOnBranchFrom snapshots a folder that is not the game's save onto one
@@ -185,12 +217,13 @@ func (m *Manager) CreateOnBranchFrom(gameID, branch, dir, comment string) (store
 	if dir == "" {
 		return store.Snapshot{}, errors.New("no folder to snapshot")
 	}
-	return m.createOnBranchFrom(gameID, branch, dir, comment, true, false)
+	return m.createOnBranchFrom(gameID, branch, dir, comment, true, false, false)
 }
 
 // createOnBranchFrom is createOnBranch with the folder to archive given: ""
-// for the game's own save locations, as always.
-func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSystemAuto, current bool) (store.Snapshot, error) {
+// for the game's own save locations, as always. discardIncomplete is for
+// CreateAutomatic alone.
+func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSystemAuto, current, discardIncomplete bool) (store.Snapshot, error) {
 	m.inFlight.Add()
 	defer m.inFlight.Done()
 
@@ -253,9 +286,15 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 		return store.Snapshot{}, fmt.Errorf("zip save data: %w", err)
 	}
 	defer os.Remove(stagingPath) // no-op once renamed
-	if len(skipped) > 0 && m.Log != nil {
-		sample := skipped[0]
-		m.Log("warn", fmt.Sprintf("snapshot of %q skipped %d unreadable file(s), e.g. %s", game.Name, len(skipped), sample))
+	// An automatic snapshot missing files is not kept, and any other is (see
+	// CreateAutomatic).
+	if len(skipped) > 0 {
+		if discardIncomplete {
+			return store.Snapshot{}, &IncompleteError{Game: game.Name, Skipped: skipped}
+		}
+		if m.Log != nil {
+			m.Log("warn", fmt.Sprintf("snapshot of %q skipped %d unreadable file(s), e.g. %s", game.Name, len(skipped), skipped[0]))
+		}
 	}
 
 	if comment == "" {

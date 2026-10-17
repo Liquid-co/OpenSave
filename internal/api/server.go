@@ -70,6 +70,9 @@ func New(d *daemon.Daemon) *Server {
 	// Newly installed games the background scan found.
 	d.OnNewGames = func(games []daemon.NewGame) { s.Hub.Broadcast("new-games", games) }
 
+	// A game whose automatic snapshots keep missing files it holds open.
+	d.OnSnapshotsIncomplete = func(p daemon.SnapshotsIncomplete) { s.Hub.Broadcast("snapshots-incomplete", p) }
+
 	// Syncing paused or resumed — from here, the CLI, the tray, or a timer.
 	d.P2P.Pause.OnChange(func(st syncpause.Status) { s.Hub.Broadcast("sync-pause", st) })
 	return s

@@ -127,6 +127,8 @@ type Engine struct {
 	// on this device right now (settle.go).
 	settleMu sync.Mutex
 	gates    map[string]*saveGate
+	// writtenAt is when a sync last stopped writing each game (BeingWritten).
+	writtenAt map[string]time.Time
 	// servedMu guards served: the save states this device recently handed
 	// each peer, per game (served.go).
 	servedMu sync.Mutex

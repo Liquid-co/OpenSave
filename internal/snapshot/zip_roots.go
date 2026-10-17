@@ -144,6 +144,10 @@ func archiveInto(w *zip.Writer, sourcePath, prefix, root string, reuse *reuseSou
 			_, err := w.CreateHeader(&zip.FileHeader{Name: prefix + rel + "/", Method: zip.Store})
 			return err
 		}
+		// OpenSave's own temporary file for a file being pulled (zip.go).
+		if strings.HasSuffix(rel, delta.TmpSuffix) {
+			return nil
+		}
 		info, infoErr := d.Info()
 		if infoErr != nil {
 			skipped = append(skipped, path)

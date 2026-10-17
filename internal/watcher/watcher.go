@@ -114,11 +114,34 @@ type Callbacks struct {
 	SetLastManifestHash func(gameID, hash string) error
 	// CreateSnapshot takes the auto-snapshot. Retried on failure.
 	CreateSnapshot func(gameID string) error
+	// SnapshotGaveUp is told when a pass gave up on its auto-snapshot after
+	// every retry, with the last error; the change is taken again at the next
+	// pass. May be nil.
+	SnapshotGaveUp func(gameID string, err error)
 	// OnChanged fires after a successful auto-snapshot (the daemon uses it
 	// to kick off P2P sync). Optional-in-behavior: may be nil.
 	OnChanged func(gameID string)
 	// Log receives human-readable watcher activity. May be nil.
 	Log func(level, msg string)
+	// SyncWriting reports whether a sync on this device is writing the game
+	// now, or was a moment ago: a burst the watcher cannot attribute — an
+	// overflow of file events — is then taken for the sync's. May be nil.
+	SyncWriting func(gameID string) bool
+	// SyncWritingNow reports whether a sync is writing the game at this
+	// moment: the watcher looks at the burst once it has finished. May be nil.
+	SyncWritingNow func(gameID string) bool
+}
+
+// syncWriting reports whether a sync is or was just writing a game
+// (Callbacks.SyncWriting).
+func (e *Engine) syncWriting(gameID string) bool {
+	return e.cb.SyncWriting != nil && e.cb.SyncWriting(gameID)
+}
+
+// syncWritingNow reports whether a sync is writing a game at this moment
+// (Callbacks.SyncWritingNow).
+func (e *Engine) syncWritingNow(gameID string) bool {
+	return e.cb.SyncWritingNow != nil && e.cb.SyncWritingNow(gameID)
 }
 
 // Engine owns one watch goroutine per tracked game.
@@ -771,7 +794,16 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 				// directory and allocates no second buffer for one it already
 				// has.
 				gw.rewatch.Store(true)
-				gw.otherEvents = true // the missed events could be anyone's
+				// The missed events could be anyone's — unless a sync is
+				// writing this game, which is what overflows the queue: a
+				// pull of a save of many files does, again and again, and
+				// each was taken for the game saving, an automatic snapshot
+				// of a half-pulled save every few seconds.
+				if e.syncWriting(gw.gameID) {
+					gw.ownEvents = true
+				} else {
+					gw.otherEvents = true
+				}
 			} else {
 				e.log("warn", fmt.Sprintf("watching %q: %v", gw.gameID, err))
 				continue
@@ -781,6 +813,12 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 		case <-debounceC:
 			debounce = nil
 			debounceC = nil
+			// A sync still writing this game: look at the burst once it has
+			// finished, not at a save half-way between two states.
+			if e.syncWritingNow(gw.gameID) {
+				resetDebounce()
+				continue
+			}
 			// Re-register, so a folder that went unwatched is watched from
 			// here on, and read the tree below, so it is found now. Doing only
 			// one of those leaves it correct today and silent tomorrow.
@@ -928,6 +966,9 @@ func (e *Engine) handleChangeFrom(ctx context.Context, gw *gameWatch, ownOnly bo
 	}
 	if err != nil {
 		e.log("error", fmt.Sprintf("auto-snapshot permanently failed for %q: %v", gw.gameID, err))
+		if e.cb.SnapshotGaveUp != nil {
+			e.cb.SnapshotGaveUp(gw.gameID, err)
+		}
 		return
 	}
 

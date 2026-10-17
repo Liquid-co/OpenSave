@@ -90,6 +90,11 @@ type Daemon struct {
 	// newgames.go.
 	OnNewGames func([]NewGame)
 	newGames   newGameState
+
+	// OnSnapshotsIncomplete is told when a game's automatic snapshots keep
+	// coming out incomplete, once per run of them. See autosnapshot.go.
+	OnSnapshotsIncomplete func(SnapshotsIncomplete)
+	incomplete            incompleteAutoSnapshots
 	// scanMu runs one save scan at a time. See ScanForSaves.
 	scanMu sync.Mutex
 
@@ -240,8 +245,18 @@ func New(opts Options) (*Daemon, error) {
 		},
 		SetLastManifestHash: s.SetLastManifestHash,
 		CreateSnapshot: func(gameID string) error {
-			_, err := snaps.Create(gameID, "", true)
+			_, err := snaps.CreateAutomatic(gameID)
+			if err == nil {
+				d.autoSnapshotTaken(gameID)
+			}
 			return err
+		},
+		SnapshotGaveUp: d.autoSnapshotGaveUp,
+		SyncWriting: func(gameID string) bool {
+			return d.P2P != nil && d.P2P.Sync != nil && d.P2P.Sync.BeingWritten(gameID)
+		},
+		SyncWritingNow: func(gameID string) bool {
+			return d.P2P != nil && d.P2P.Sync != nil && d.P2P.Sync.WritingNow(gameID)
 		},
 		OnChanged: func(gameID string) {
 			// An emptied save is noticed as it happens, and said on screen,
