@@ -154,6 +154,20 @@ func (t *routingTransport) FetchBlocks(ctx context.Context, peer syncengine.Peer
 	return t.pick(peer).FetchBlocks(ctx, peer, ref, blockIndices, blockSize)
 }
 
+// FetchFileBatch batches over the LAN only. Relay messages are sealed and
+// size-limited per client (see BatchIndices), so the relay keeps pulling file
+// by file.
+func (t *routingTransport) FetchFileBatch(ctx context.Context, peer syncengine.Peer, gameID, root string, files []syncengine.FileBlocksRequest) ([]syncengine.FileBlocks, error) {
+	if peer.Wan() {
+		return nil, syncengine.ErrBatchUnsupported
+	}
+	b, ok := t.lan.(syncengine.BatchFetcher)
+	if !ok {
+		return nil, syncengine.ErrBatchUnsupported
+	}
+	return b.FetchFileBatch(ctx, peer, gameID, root, files)
+}
+
 func (t *routingTransport) DeleteRemote(ctx context.Context, peer syncengine.Peer, ref syncengine.FileRef) error {
 	return t.pick(peer).DeleteRemote(ctx, peer, ref)
 }

@@ -37,6 +37,23 @@ type lanTransport struct {
 
 var lanClient = &http.Client{Timeout: 30 * time.Second}
 
+// lanBulkClient is for the two requests whose size grows with the save: a
+// manifest, and a batch of files. Thirty seconds was fine for a few hundred
+// files and not for a few hundred thousand over a VPN; the manifest then never
+// arrived, every sync of that game failed, and the devices never converged.
+// The sync's own context still bounds it (perPeerSyncTimeout), and the
+// transport still gives up on a peer that does not answer at all.
+var lanBulkClient = &http.Client{
+	Timeout: 10 * time.Minute,
+	Transport: func() http.RoundTripper {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		// Headers arrive once the peer has built its manifest, which for a big
+		// save not hashed recently takes a while — but not this long.
+		t.ResponseHeaderTimeout = 3 * time.Minute
+		return t
+	}(),
+}
+
 func peerURL(peer syncengine.Peer, route string) string {
 	return fmt.Sprintf("http://%s:%d/api/p2p%s", peer.Address, peer.Port, route)
 }
@@ -56,9 +73,17 @@ func (t *lanTransport) FetchManifest(ctx context.Context, peer syncengine.Peer, 
 	if q.CoverURL != "" {
 		params.Set("coverUrl", q.CoverURL)
 	}
+	if q.IfHash != "" {
+		params.Set("ifHash", q.IfHash)
+	}
 
 	var resp syncengine.ManifestResponse
-	err := t.getJSON(ctx, peer, peerURL(peer, "/manifest/"+gameID)+"?"+params.Encode(), &resp)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, peerURL(peer, "/manifest/"+gameID)+"?"+params.Encode(), nil)
+	if err != nil {
+		return resp, err
+	}
+	t.sign(req, peer, nil)
+	err = doJSONWith(lanBulkClient, req, &resp)
 	return resp, err
 }
 
@@ -76,6 +101,38 @@ func (t *lanTransport) FetchBlocks(ctx context.Context, peer syncengine.Peer, re
 		return nil, err
 	}
 	return decodeBlocks(resp.Blocks)
+}
+
+// FetchFileBatch fetches the blocks of many files in one request. Only asked
+// of a peer that advertised syncengine.ProtoBatchFiles.
+func (t *lanTransport) FetchFileBatch(ctx context.Context, peer syncengine.Peer, gameID, root string, files []syncengine.FileBlocksRequest) ([]syncengine.FileBlocks, error) {
+	var resp struct {
+		Files []syncengine.FileBlocks `json:"files"`
+	}
+	raw, err := json.Marshal(map[string]any{"root": root, "files": files})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(peer, "/files/"+gameID), bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	t.sign(req, peer, raw)
+	if err := doJSONWith(lanBulkClient, req, &resp); err != nil {
+		return nil, err
+	}
+	for i := range resp.Files {
+		if resp.Files[i].Error != "" {
+			continue
+		}
+		blocks, err := decodeBlocks(resp.Files[i].Blocks)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", resp.Files[i].RelPath, err)
+		}
+		resp.Files[i].Blocks = blocks
+	}
+	return resp.Files, nil
 }
 
 func (t *lanTransport) DeleteRemote(ctx context.Context, peer syncengine.Peer, ref syncengine.FileRef) error {
@@ -282,7 +339,11 @@ func (t *lanTransport) sign(req *http.Request, peer syncengine.Peer, body []byte
 }
 
 func doJSON(req *http.Request, out any) error {
-	resp, err := lanClient.Do(req)
+	return doJSONWith(lanClient, req, out)
+}
+
+func doJSONWith(client *http.Client, req *http.Request, out any) error {
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
