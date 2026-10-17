@@ -195,9 +195,11 @@ func TestBranchFollow_FetchesTheOtherDevicesSaveNotDeletesIt(t *testing.T) {
 	a, b, gameID := pairAndTrack(t, "Follow", map[string]string{"slot1.sav": "main-save", "profile.sav": "main-profile"})
 	time.Sleep(syncSettleWindow)
 
-	// A starts a fresh run on a new branch. Its own syncs are kept quiet, so
-	// B is the one that syncs first and follows.
-	a.API(http.MethodPost, "/api/settings", map[string]any{"syncOnWatch": false}, nil)
+	// A starts a fresh run on a new branch. Whichever device syncs first, B
+	// follows: A's own syncs ask B to, rather than follow B back to the
+	// branch A left (GitHub #85). They used to be kept quiet here so that B
+	// would sync first, and A's once-a-minute sync still beat it once on a
+	// slow runner.
 	a.API(http.MethodPost, "/api/games/"+gameID+"/branch", map[string]any{"name": "new-game-plus", "copyCurrentSave": false}, nil)
 	a.API(http.MethodPost, "/api/games/"+gameID+"/branch/switch", map[string]any{"name": "new-game-plus"}, nil)
 	a.WriteSave("slot1.sav", "ngplus-save")

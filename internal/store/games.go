@@ -272,6 +272,11 @@ func (s *Store) ForgetGameSyncState(gameID string) error {
 	if _, err := tx.Exec(`DELETE FROM game_root_sync_state WHERE game_id = ?`, gameID); err != nil {
 		return fmt.Errorf("forget root sync state for %s: %w", gameID, err)
 	}
+	// And any choice the peers had not acted on yet (peer_notes.go): it was
+	// about a save this device no longer tracks.
+	if _, err := tx.Exec(`DELETE FROM peer_notes WHERE game_id = ?`, gameID); err != nil {
+		return fmt.Errorf("forget peer notes for %s: %w", gameID, err)
+	}
 	return tx.Commit()
 }
 

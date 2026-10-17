@@ -998,7 +998,7 @@ func cmdCheckout(d *daemon.Daemon, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: opensave checkout <gameId> <name>")
 		return 1
 	}
-	if err := d.Snapshots.SwitchBranch(args[0], args[1]); err != nil {
+	if err := d.SwitchBranch(args[0], args[1]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}

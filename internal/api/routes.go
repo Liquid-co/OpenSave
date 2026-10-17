@@ -679,7 +679,7 @@ func (s *Server) handleSwitchBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Daemon.Snapshots.SwitchBranch(gameID, body.Name); err != nil {
+	if err := s.Daemon.SwitchBranch(gameID, body.Name); err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())
 		return
 	}

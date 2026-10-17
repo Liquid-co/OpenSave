@@ -10,6 +10,7 @@ import (
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/owntouch"
 	"github.com/opensave/opensave/internal/snapshot"
+	"github.com/opensave/opensave/internal/store"
 )
 
 // ResolveConflict applies the user's chosen resolution to an active
@@ -44,6 +45,12 @@ func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution
 		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep LOCAL — our version becomes the shared state", gameID))
 		if err := e.markResolvedLocal(ctx, gameID, peer); err != nil {
 			return "", err
+		}
+		// Until the peer has taken it, its save is still the one declined
+		// here, and this device's next sync must not take that back
+		// (choices.go, GitHub #81).
+		if conflict.remoteHash != "" {
+			_ = e.Store.SetPeerNote(gameID, peer.ID, store.NoteDeclined, conflict.remoteHash)
 		}
 		e.clearConflict(gameID)
 		e.Transport.TriggerPeerPull(peer, gameID)

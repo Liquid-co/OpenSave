@@ -198,6 +198,12 @@ func (s *Store) PrunePeersAtAddress(address string, port int, keepID string) ([]
 		return nil, fmt.Errorf("prune stale peer root sync state: %w", err)
 	}
 	if _, err := s.db.Exec(
+		`DELETE FROM peer_notes WHERE peer_id IN
+		   (SELECT id FROM peers WHERE address = ? AND port = ? AND id != ?)`,
+		address, port, keepID); err != nil {
+		return nil, fmt.Errorf("prune stale peer notes: %w", err)
+	}
+	if _, err := s.db.Exec(
 		`DELETE FROM peers WHERE address = ? AND port = ? AND id != ?`,
 		address, port, keepID); err != nil {
 		return nil, fmt.Errorf("prune stale peers at %s:%d: %w", address, port, err)
@@ -218,6 +224,11 @@ func (s *Store) UnpairPeer(id string) error {
 	}
 	if _, err := tx.Exec(`DELETE FROM game_root_sync_state WHERE peer_id = ?`, id); err != nil {
 		return fmt.Errorf("delete root sync state for peer %s: %w", id, err)
+	}
+	// Choices that peer was to act on (peer_notes.go): there is no peer left
+	// to act on them.
+	if _, err := tx.Exec(`DELETE FROM peer_notes WHERE peer_id = ?`, id); err != nil {
+		return fmt.Errorf("delete notes for peer %s: %w", id, err)
 	}
 	// Offers this device never answered. An offer is a request to place a
 	// game so it can sync with the device that asked; once that device is

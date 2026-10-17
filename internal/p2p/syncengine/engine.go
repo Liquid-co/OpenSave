@@ -35,6 +35,9 @@ type Conflict struct {
 	OnlyLocalTotal  int `json:"onlyLocalTotal"`
 	OnlyRemoteTotal int `json:"onlyRemoteTotal"`
 	ChangedTotal    int `json:"changedTotal"`
+	// remoteHash is the peer's save as the conflict found it: what "Keep
+	// mine" declines (choices.go).
+	remoteHash string
 }
 
 // SideStats summarises one side's save state for the conflict UI.
@@ -480,6 +483,18 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	releaseAligned := func() {}
 	defer func() { releaseAligned() }()
 	aligned := false
+	// Unless this device was switched away from the peer's branch by hand and
+	// the peer hasn't followed yet: then it is asked to follow (choices.go).
+	if remoteData.ActiveBranch != "" && game.ActiveBranch != remoteData.ActiveBranch &&
+		e.notFollowedYet(gameID, peer, remoteData.ActiveBranch) {
+		e.Log("info", fmt.Sprintf("%s is still on the branch %q was switched away from — asking it to follow %q",
+			peer.Name, game.Name, game.ActiveBranch))
+		e.Transport.TriggerPeerPull(peer, gameID)
+		return Result{Status: "triggered_peer_pull", Direction: "push", PeerID: peer.ID, PeerName: peer.Name}, nil
+	}
+	if remoteData.ActiveBranch == game.ActiveBranch {
+		e.notFollowedYet(gameID, peer, remoteData.ActiveBranch) // followed: the note goes
+	}
 	if remoteData.ActiveBranch != "" && game.ActiveBranch != remoteData.ActiveBranch {
 		e.Log("warn", fmt.Sprintf("branch mismatch on %q: local %q vs remote %q — switching local",
 			game.Name, game.ActiveBranch, remoteData.ActiveBranch))
@@ -534,6 +549,17 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		return Result{Status: "conflict", PeerID: peer.ID, PeerName: peer.Name}, nil
 	}
 	e.mu.Unlock()
+
+	// The peer still holds the version "Keep mine" declined here: not a
+	// change to take, but a choice it hasn't acted on yet (choices.go). It is
+	// asked again; this device takes nothing from it meanwhile. Before the
+	// repairs below, which would read the peer's save as agreed or changed.
+	if e.stillDeclined(gameID, peer, localManifest.ManifestHash(), remoteData.Manifest.ManifestHash()) {
+		e.Log("info", fmt.Sprintf("%s still holds the version of %q declined with \"Keep mine\" — asking it again to take this device's",
+			peer.Name, game.Name))
+		e.Transport.TriggerPeerPull(peer, gameID)
+		return Result{Status: "triggered_peer_pull", Direction: "push", PeerID: peer.ID, PeerName: peer.Name}, nil
+	}
 
 	// 4. Conflict detection (lineage + skew-tolerant mtimes).
 	lastSyncMs := e.lastSyncTimeMs(peer.ID)
@@ -1360,6 +1386,7 @@ func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.
 		DiffFiles:      diffs,
 		DiffTotal:      total,
 		OnlyLocalTotal: counts["only-local"], OnlyRemoteTotal: counts["only-remote"], ChangedTotal: counts["changed"],
+		remoteHash: remoteData.Manifest.ManifestHash(),
 	}
 	e.mu.Unlock()
 
