@@ -222,5 +222,12 @@
   "restoreProgress.aboutMinutes": {
     "one": "about a minute",
     "other": "about {n} minutes"
-  }
+  },
+  "devices.linkLan": "home network",
+  "devices.linkVpn": "VPN (e.g. Tailscale)",
+  "devices.linkRelay": "internet relay",
+  "devices.linkInternet": "internet",
+  "devices.linkUnmeasured": "{kind} · speed not measured yet",
+  "devices.linkMeasured": "{kind} · {rate} (measured {when})",
+  "devices.linkTitle": "Saves go to the fastest connections first, and a device that is behind takes the newer save from the fastest device that has it."
 }

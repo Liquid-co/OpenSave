@@ -150,6 +150,13 @@ type Engine struct {
 	// rootConflicts holds divergences in a game's EXTRA save locations, keyed
 	// by game and location so several can wait on a decision at once.
 	rootConflicts map[string]*RootConflict
+
+	// linkMu guards links, the measured connection to each peer, and
+	// pullWaits, syncs waiting for a close peer to finish taking a save
+	// (linkspeed.go).
+	linkMu    sync.Mutex
+	links     map[string]store.PeerLink
+	pullWaits map[string]chan struct{}
 }
 
 // New creates an Engine.
@@ -321,13 +328,32 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 
 	results := map[string]Result{}
 	busy := false
-	for _, peer := range onlinePeers {
+	// Fastest connections first (linkspeed.go): a device that is behind takes
+	// the newer save from the closest device holding it, and a newer save
+	// here reaches the close devices before the slow ones.
+	onlinePeers = e.OrderBySpeed(onlinePeers)
+	for i, peer := range onlinePeers {
 		// Hard per-peer cap: a wedged transport must never hold
 		// activeSyncs forever (which would silently block every future
 		// sync of this game until an app restart).
 		peerCtx, cancel := context.WithTimeout(ctx, perPeerSyncTimeout)
 		res, err := e.SyncWithPeer(peerCtx, gameID, peer)
 		cancel()
+		// A close device asked to take this save is given the time to, before
+		// a much slower one is asked: it gets it at full speed, and the slow
+		// one can then take it from whichever device is nearest to it.
+		if err == nil && res.Status == "triggered_peer_pull" && e.waitsForClose(onlinePeers, i) {
+			var size int64
+			if game, gerr := e.Store.GetGame(gameID); gerr == nil {
+				if m, merr := e.ReadManifest(ctx, gameID, game.SavePath); merr == nil {
+					for _, f := range m.Files {
+						size += f.Size
+					}
+				}
+			}
+			e.Log("info", fmt.Sprintf("waiting for %s (close by) to take %s before the slower devices", peer.Name, gameID))
+			e.waitForPull(ctx, gameID, peer, size)
+		}
 		if err == nil && res.Status == "peer_busy" {
 			// Nothing was compared, so nothing is stamped, and it is not a
 			// failure: the peer was writing this game for a sync of its own.
@@ -424,15 +450,34 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	if err != nil {
 		return Result{}, err
 	}
-	e.Log("info", fmt.Sprintf("syncing %q with %q (%s)", game.Name, peer.Name,
-		map[bool]string{true: "WAN relay", false: "direct LAN"}[peer.Wan()]))
-
-	// 1. Fetch remote manifest + branch info.
 	isFile, _ := delta.ResolveLocalSaveFilePath(game.SavePath)
-	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
+	query := ManifestQuery{
 		Name: game.Name, SavePath: game.SavePath, IsFile: isFile,
 		AppID: game.AppID, CoverURL: game.CoverURL,
-	})
+	}
+
+	// 0. Nothing changed on either side since they last agreed: say so and
+	// stop, without moving either manifest. Quietly, too — this is the
+	// answer for nearly every game on every periodic pass.
+	res, done, prefetched := e.quickInSync(ctx, gameID, game, peer, query)
+	if done {
+		return res, nil
+	}
+
+	// Said once there is something to do (after the in-sync check below),
+	// not here: a line per game per peer per periodic pass, most of them
+	// followed by "already in sync", rotated everything else out of the log
+	// within hours.
+	syncingLine := fmt.Sprintf("syncing %q with %q (%s)", game.Name, peer.Name,
+		map[bool]string{true: "WAN relay", false: "direct LAN"}[peer.Wan()])
+
+	// 1. Fetch remote manifest + branch info.
+	var remoteData ManifestResponse
+	if prefetched != nil {
+		remoteData = *prefetched
+	} else {
+		remoteData, err = e.Transport.FetchManifest(ctx, peer, gameID, query)
+	}
 	if err != nil {
 		// The peer simply isn't tracking this game (they untracked it, or
 		// never had it). That's a stable state, not a transient network
@@ -708,7 +753,6 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	}
 
 	if !decision.HasChanges() {
-		e.Log("success", fmt.Sprintf("%q already in sync with %q", game.Name, peer.Name))
 		e.persistLineage(gameID, peer.ID, localManifest, remoteData.Manifest)
 		// Both sides verifiably identical: this is a convergence point.
 		_ = e.Store.SetAgreedHash(gameID, peer.ID, localManifest.ManifestHash())
@@ -727,8 +771,25 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		// are read through the gate — so the branch hold goes first.
 		releaseAligned()
 		e.syncExtraRoots(ctx, gameID, game, peer, remoteData)
+		// Share the peer's latest history entry here too. A pull does this;
+		// a sync that found both sides already identical used to skip it,
+		// so a game whose saves were identical everywhere from the start
+		// (Steam Cloud, a copied folder) showed a snapshot on the device
+		// that tracked it and none on any other. The local files ARE the
+		// peer's at this point, so the mirror describes the same content.
+		// Once per peer snapshot: recordMirrorSnapshot skips an id it has.
+		// And only where this device keeps no snapshot of this save yet
+		// (keepsCurrentSave): nothing came from the peer in this pass.
+		//
+		// Last, after the other locations have synced: it zips every location,
+		// and taking that time before them delayed their sync for nothing.
+		if remoteData.LatestSnapshot != nil && len(localManifest.Files) > 0 && !e.keepsCurrentSave(gameID, game, localManifest) {
+			e.recordMirrorSnapshot(gameID, game, peer, *remoteData.LatestSnapshot,
+				fmt.Sprintf("Synced from peer: %s (%s)", peer.Name, remoteData.LatestSnapshot.Comment))
+		}
 		return Result{Status: "in_sync", Direction: "none"}, nil
 	}
+	e.Log("info", syncingLine)
 
 	if emptiedUnconfirmed(remoteData.Manifest.Files, decision, remoteData.DeletionConfirmed) {
 		e.Log("info", fmt.Sprintf("%q holds none of %q's save files now, and has not confirmed deleting them — keeping this device's copies",
@@ -1618,6 +1679,24 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 
 	tracker := newProgressTracker(totalBytes)
 	throttle := e.throttleFor(peer.Wan())
+	// What this transfer says about the connection (linkspeed.go): every
+	// measureWindow while it runs — a pull of a large save takes an hour over a
+	// slow link, and one measurement at its end left the link unmeasured all
+	// that time — and what is left when it ends, however it ends: a pull cut
+	// off half-way still moved what it moved.
+	const measureWindow = 30 * time.Second
+	var measureMu sync.Mutex
+	measuredAt, measuredBytes := time.Now(), int64(0)
+	measure := func(final bool) {
+		moved, _, _ := tracker.stats()
+		measureMu.Lock()
+		defer measureMu.Unlock()
+		if d := time.Since(measuredAt); final || d >= measureWindow {
+			e.noteLinkRate(peer, moved-measuredBytes, d)
+			measuredAt, measuredBytes = time.Now(), moved
+		}
+	}
+	defer measure(true)
 
 	// Progress reporter shared by the per-file loop and the block-group
 	// loop inside each file. Without in-file reporting, a single large
@@ -1634,6 +1713,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 		lastReport = time.Now()
 		reportMu.Unlock()
+		measure(false)
 
 		bytesPulled, speed, pct := tracker.stats()
 		ev := ProgressEvent{PeerName: peer.Name, BytesTransferred: bytesPulled, TotalBytes: totalBytes, SpeedBytesPerSec: speed, Percentage: pct}
@@ -1656,6 +1736,11 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// can record the lineage from confirmed fact rather than rediscovering it
 	// with a manifest round trip. See the sync-complete event below.
 	var pulled []string
+	// Small files are collected here and fetched many to a request once the
+	// per-file checks below have passed; see pullBatched.
+	batcher, canBatch := e.Transport.(BatchFetcher)
+	canBatch = canBatch && !peer.Wan() && remoteData.Proto >= ProtoBatchFiles
+	var batched []batchJob
 	for _, relPath := range filesToPull {
 		if !delta.IsSafePath(root.Path, relPath) {
 			return fmt.Errorf("path traversal attempt on pulled file %s", relPath)
@@ -1703,6 +1788,10 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		if isFile, _ := delta.ResolveLocalSaveFilePath(root.Path); isFile {
 			localFilePath = root.Path // single-file save mode
 		}
+		if canBatch && len(indices) > 0 && changedBytes(remoteFile, indices) <= batchFileMaxBytes {
+			batched = append(batched, batchJob{relPath: relPath, localPath: localFilePath, remote: remoteFile, indices: indices})
+			continue
+		}
 		if err := e.pullFile(ctx, peer, FileRef{GameID: gameID, Root: root.Name, RelPath: relPath}, localFilePath,
 			remoteFile, indices, throttle, tracker, reportProgress); err != nil {
 			return err
@@ -1720,6 +1809,13 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 
 		// File-boundary progress reporting (always fires).
 		reportProgress(true)
+	}
+	if len(batched) > 0 {
+		done, err := e.pullBatched(ctx, batcher, peer, gameID, root.Name, batched, throttle, tracker, reportProgress)
+		pulled = append(pulled, done...)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Said once, plainly, at the end. A sync that quietly leaves files behind
@@ -1919,6 +2015,23 @@ func fetchWithRetry(ctx context.Context, t Transport, peer Peer, ref FileRef,
 		}
 	}
 	return nil, lastErr
+}
+
+// keepsCurrentSave reports whether this device already has a snapshot of its
+// save as it stands: the content recorded with its last snapshot (the
+// watcher's baseline) is the content now. A sync that found both sides
+// identical then has nothing to add to the history. Mirroring the peer's
+// latest snapshot anyway made a second copy of a save already kept, named
+// as synced from a peer that sent nothing — whenever the peer's latest
+// snapshot happened to be newer, even its first one of an empty folder
+// (TestLauncherFile_SteamRewritingRemotecacheIsNoSaveChange, which then
+// failed or passed by which device had tracked the game a few milliseconds
+// later).
+func (e *Engine) keepsCurrentSave(gameID string, game store.Game, local delta.Manifest) bool {
+	if g, err := e.Store.GetGame(gameID); err == nil {
+		game = g
+	}
+	return game.LastManifestHash != "" && game.LastManifestHash == e.contentHashOf(gameID, local, game.SavePath)
 }
 
 // recordMirrorSnapshot zips the (just-updated) local save under the peer's
