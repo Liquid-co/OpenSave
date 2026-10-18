@@ -236,9 +236,8 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		return nil
 
 	case "keep-remote":
-		// Fetch and validate the intended named location BEFORE touching the
-		// agreed base, lineage or conflict. A failed/cancelled fetch leaves the
-		// previous decision and recovery evidence intact.
+		// Validate the selected peer and named root before touching local data
+		// or its conflict/lineage records.
 		remoteData, fetchErr := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
 			Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL,
 		})
@@ -251,56 +250,15 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		if remoteData.Proto < ProtoMultiRoot {
 			return fmt.Errorf("peer does not support named save locations")
 		}
-		remoteRoot, has := remoteData.Manifest.Extra[root]
-		if !has {
+		if _, has := remoteData.Manifest.Extra[root]; !has {
 			return fmt.Errorf("the peer no longer has a %q save location", root)
 		}
-		sr := sharedRoot{
-			root:   syncRoot{Name: root, Path: path},
-			remote: delta.Manifest{Files: remoteRoot.Files, Dirs: remoteRoot.Dirs},
-		}
 
-		// The subsequent sync must classify this as a fresh adoption, not
-		// re-raise the divergence. Save the old metadata so a failed apply can
-		// restore the decision boundary instead of silently losing lineage.
-		oldBase := e.Store.GetAgreedHashForRoot(gameID, peerID, root)
-		oldFiles, oldDirs, err := e.Store.GetSyncStateForRoot(gameID, peerID, root)
-		if err != nil {
-			return err
-		}
-		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, ""); err != nil {
-			return err
-		}
-		if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, nil, nil); err != nil {
-			if restoreErr := e.Store.SetAgreedHashForRoot(gameID, peerID, root, oldBase); restoreErr != nil {
-				return fmt.Errorf("reset lineage: %w (restore agreed base: %v)", err, restoreErr)
-			}
-			return err
-		}
-		e.clearRootConflict(gameID, root)
-		if err := e.syncOneRoot(ctx, gameID, game, peer, sr, remoteData); err != nil {
-			// An apply can fail after starting work. Retain the conflict to
-			// prevent an unattended retry over uncertain partial results, and
-			// report any metadata-rollback error instead of hiding it.
-			e.mu.Lock()
-			if e.rootConflicts == nil {
-				e.rootConflicts = make(map[string]*RootConflict)
-			}
-			e.rootConflicts[rootConflictKey(gameID, root)] = conflict
-			e.mu.Unlock()
-			if e.Progress.OnConflict != nil {
-				e.Progress.OnConflict(gameID)
-			}
-			baseErr := e.Store.SetAgreedHashForRoot(gameID, peerID, root, oldBase)
-			lineageErr := e.Store.SetSyncStateForRoot(gameID, peerID, root, oldFiles, oldDirs)
-			if baseErr != nil || lineageErr != nil {
-				return fmt.Errorf("adopting peer location: %w (restore base: %v; restore lineage: %v)", err, baseErr, lineageErr)
-			}
-			return fmt.Errorf("adopting peer location: %w", err)
-		}
-		e.Log("info", fmt.Sprintf("the %q save location of %q resolved: adopting %s's version",
-			root, game.Name, peer.Name))
-		return nil
+		// Re-entering the ordinary sync planner after clearing the agreed
+		// base uses local mtimes and can push local data to the chosen peer.
+		// Explicit keep-remote must instead apply and verify the peer's copy.
+		return e.adoptPeerRoot(ctx, gameID, game, peer,
+			syncRoot{Name: root, Path: path}, rootLocal, remoteData)
 	}
 	return fmt.Errorf("unknown resolution %q", resolution)
 }
