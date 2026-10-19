@@ -1542,7 +1542,7 @@ func (e *Engine) createPulledDirs(gameID string, game store.Game, dirsToPull []s
 	e.createPulledDirsIn(gameID, primaryRootOf(game), dirsToPull)
 }
 
-func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []string) {
+func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []string, intent ...pullIntent) {
 	defer e.Writing(gameID)() // settle.go
 	dirs := append([]string{}, dirsToPull...)
 	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) < len(dirs[j]) }) // parents first
@@ -1551,9 +1551,32 @@ func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []s
 			continue
 		}
 		full := filepath.Join(root.Path, filepath.FromSlash(relDir))
+		if adoptingRemote(intent) {
+			full = delta.LocalNameFor(root.Path, relDir)
+		}
 		owntouch.Mark(full)
 		_ = os.MkdirAll(full, 0o777)
 	}
+}
+
+// pullIntent selects how one pull treats recorded deletions and success
+// reporting. The zero value is ordinary bidirectional sync.
+type pullIntent int
+
+const (
+	// pullOrdinary is every sync except an explicit keep-remote adoption.
+	pullOrdinary pullIntent = iota
+	// pullAdoptRemote restores the selected peer's bytes even when this
+	// device recorded those bytes as deleted, and does not tell the peer the
+	// pull succeeded. The caller reports success only after the location
+	// matches that peer version. One intent, not a general success-event flag:
+	// the deletion override is part of adoption and must not be reusable as
+	// "just delay the event".
+	pullAdoptRemote
+)
+
+func adoptingRemote(intent []pullIntent) bool {
+	return len(intent) > 0 && intent[0] == pullAdoptRemote
 }
 
 // pullFiles downloads and patches every file in filesToPull with bounded
@@ -1564,7 +1587,7 @@ func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []s
 // decision belongs to the location — keeping them separate is what stops a
 // second location's files being written relative to the primary save path.
 func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game store.Game, root syncRoot,
-	localManifest delta.Manifest, remoteData ManifestResponse, filesToPull []string) (retErr error) {
+	localManifest delta.Manifest, remoteData ManifestResponse, filesToPull []string, intent ...pullIntent) (retErr error) {
 
 	// This one is load-bearing, unlike the invalidations on the snapshot
 	// paths. Every pulled file is written and then stamped with the PEER'S
@@ -1601,6 +1624,9 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	for _, dir := range remoteData.Manifest.Dirs {
 		if delta.IsSafePath(root.Path, dir) {
 			full := filepath.Join(root.Path, filepath.FromSlash(dir))
+			if adoptingRemote(intent) {
+				full = delta.LocalNameFor(root.Path, dir)
+			}
 			if _, err := os.Stat(full); err != nil {
 				owntouch.Mark(full)
 				_ = os.MkdirAll(full, 0o777)
@@ -1715,7 +1741,10 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		// peer's copy differs from what was deleted they have edited it since,
 		// and that is a genuine new version to take rather than an echo of the
 		// deletion.
-		if rec, recorded := deletedNow[relPath]; recorded && rec.Hash == remoteData.Manifest.Files[relPath].Hash {
+		// Explicit keep-remote restores the selected peer copy, including a file
+		// this device recorded deleting. Ordinary sync must still refuse that.
+		if rec, recorded := deletedNow[relPath]; !adoptingRemote(intent) &&
+			recorded && rec.Hash == remoteData.Manifest.Files[relPath].Hash {
 			e.Log("info", fmt.Sprintf(
 				"not restoring %q: it was deleted here while this sync was running", relPath))
 			continue
@@ -1785,19 +1814,21 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// It used to learn them by re-fetching our whole manifest and re-walking
 	// its own disk, which under load is exactly when the window is widest.
 	// We already know what we wrote, so we say so.
-	e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
-		"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
-		// Which save location they were written into. The paths are relative
-		// to it, and recorded against the main save folder they name files
-		// that are not there. Empty for the main folder; older versions leave
-		// it out, which reads the same.
-		"root": root.Name,
-	})
+	if !adoptingRemote(intent) {
+		e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
+			"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
+			// Which save location they were written into. The paths are relative
+			// to it, and recorded against the main save folder they name files
+			// that are not there. Empty for the main folder; older versions leave
+			// it out, which reads the same.
+			"root": root.Name,
+		})
+	}
 	if len(pulled) > 0 {
 		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityReceived, Device: peer.Name,
 			Files: len(pulled), Bytes: totalBytes, Detail: locationDetail(root.Name)})
 	}
-	if e.Progress.OnSyncComplete != nil {
+	if !adoptingRemote(intent) && e.Progress.OnSyncComplete != nil {
 		e.Progress.OnSyncComplete(gameID, ProgressEvent{PeerName: peer.Name, Direction: "download"})
 	}
 	return nil

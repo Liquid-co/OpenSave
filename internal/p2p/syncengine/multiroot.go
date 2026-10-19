@@ -225,6 +225,15 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 		return nil
 	}
 
+	// Like the primary save, an additional location must never overwrite or
+	// delete existing bytes until their previous version is recoverable.
+	// New files with no existing local copy need no safety snapshot.
+	if atRisk := filesAtRisk(local, decision); len(atRisk) > 0 {
+		if err := e.requireRootSafety(gameID, sr.root.Name, "replace local files during sync", local, atRisk); err != nil {
+			return fmt.Errorf("%d local file(s) at risk: %w", len(atRisk), err)
+		}
+	}
+
 	e.handOverEmptying(gameID, peer, local.Files, &decision)
 
 	// Held across the whole apply, as for the main folder: from the first

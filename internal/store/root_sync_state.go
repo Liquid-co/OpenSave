@@ -210,3 +210,46 @@ func (s *Store) ClearAgreedHashesForGame(gameID string) error {
 	}
 	return tx.Commit()
 }
+
+// SetResolvedRootSyncState atomically records verified remote-root adoption.
+// Agreement and lineage cannot be half committed after a process interruption.
+func (s *Store) SetResolvedRootSyncState(gameID, peerID, root, agreed string, files, dirs []string) error {
+	if root == "" {
+		return fmt.Errorf("remote-root resolution requires a named location")
+	}
+	if files == nil {
+		files = []string{}
+	}
+	if dirs == nil {
+		dirs = []string{}
+	}
+	f, err := json.Marshal(files)
+	if err != nil {
+		return err
+	}
+	d, err := json.Marshal(dirs)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.Exec(`
+		INSERT INTO game_root_sync_state
+		  (game_id, peer_id, root, agreed_hash, pushed_hash, last_synced_files, last_synced_dirs)
+		SELECT ?, ?, ?, ?, '', ?, ? WHERE `+gameIsTracked+`
+		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET
+		  agreed_hash = excluded.agreed_hash,
+		  pushed_hash = '',
+		  last_synced_files = excluded.last_synced_files,
+		  last_synced_dirs = excluded.last_synced_dirs`,
+		gameID, peerID, root, agreed, string(f), string(d), gameID)
+	if err != nil {
+		return fmt.Errorf("persist resolved root %s/%s/%s: %w", gameID, peerID, root, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("game %q is no longer tracked", gameID)
+	}
+	return nil
+}
