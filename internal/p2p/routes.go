@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +49,7 @@ func (e *Engine) RegisterRoutes(r chi.Router) {
 			r.Use(e.refuseWhilePaused)
 			r.Get("/api/p2p/manifest/{gameId}", e.handleManifest)
 			r.Post("/api/p2p/blocks/{gameId}", e.handleBlocks)
+			r.Post("/api/p2p/files/{gameId}", e.handleFileBatch)
 			r.Post("/api/p2p/delete-file/{gameId}", e.handleDeleteFile)
 			r.Get("/api/sync/trigger/{gameId}", e.handleSyncTrigger)
 		})
@@ -732,7 +735,19 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	if latest, err := e.Snapshots.LatestSnapshot(gameID, ""); err == nil {
 		resp.LatestSnapshot = &syncengine.SnapshotInfo{ID: latest.ID, Timestamp: latest.Timestamp, Comment: latest.Comment}
 	}
-	jsonOK(w, resp)
+	// The asker already holds the state both devices last agreed on and says
+	// so; if this device still holds it too, "unchanged" is the whole answer.
+	// For a save of a quarter-million files the full manifest is tens of MB
+	// of JSON, and the minute-long reconcile used to fetch it from every peer
+	// every minute to learn that nothing had changed. Single-location games
+	// only: extra locations carry their own bases (see RootHash).
+	if ifHash := r.URL.Query().Get("ifHash"); ifHash != "" && len(manifest.Extra) == 0 &&
+		manifest.ManifestHash() == ifHash {
+		resp.Manifest = delta.Manifest{}
+		resp.Unchanged = true
+		resp.ManifestHash = ifHash
+	}
+	jsonOKCompressed(w, r, resp)
 }
 
 // holdForServing holds the game's save still for a manifest to be served from
@@ -793,6 +808,100 @@ func (e *Engine) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOK(w, map[string]any{"blocks": encodeBlocks(blocks, wantsGzip(body.Encodings))})
+}
+
+// Bounds on one batch request, so a peer cannot make this device read and
+// hold an unbounded amount in a single response. The requester stays well
+// under them (syncengine.batchMaxFiles / batchMaxBytes).
+const (
+	fileBatchMaxFiles = 1024
+	fileBatchMaxBytes = 16 << 20
+)
+
+// handleFileBatch serves the blocks of many files of one save location in a
+// single response: handleBlocks for a list. One round trip per file was what
+// made a save of many small files take hours; see syncengine.ProtoBatchFiles.
+//
+// A file that cannot be read is reported in its own entry rather than failing
+// the batch, so the requester can say which one it was.
+func (e *Engine) handleFileBatch(w http.ResponseWriter, r *http.Request) {
+	gameID := chi.URLParam(r, "gameId")
+	var body struct {
+		Root      string                         `json:"root"`
+		Files     []syncengine.FileBlocksRequest `json:"files"`
+		Encodings []string                       `json:"encodings"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Files) == 0 {
+		jsonError(w, http.StatusBadRequest, "files are required")
+		return
+	}
+	if len(body.Files) > fileBatchMaxFiles {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("at most %d files per batch", fileBatchMaxFiles))
+		return
+	}
+	game, err := e.trackedGameForPeer(gameID)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, "Game not found.")
+		return
+	}
+	base, ok := e.resolveServeRoot(gameID, game, body.Root)
+	if !ok {
+		jsonError(w, http.StatusNotFound, "This device has no save location named "+strconv.Quote(body.Root)+" for that game.")
+		return
+	}
+	singleFile, _ := delta.ResolveLocalSaveFilePath(base)
+
+	// What the answer will hold: each file's requested blocks at its block
+	// size, but never more than the file itself. Counting every block at full
+	// size took 256 files of 4 KB for 16 MB — the whole limit — and refused
+	// any batch of small files with a few larger ones among them, which failed
+	// whole pulls of saves made of many small files.
+	var requested int64
+	for _, f := range body.Files {
+		bs := f.BlockSize
+		if bs <= 0 {
+			bs = 64 * 1024
+		}
+		n := int64(len(f.BlockIndices)) * int64(bs)
+		if f.RelPath != "" && delta.IsSafePath(base, f.RelPath) {
+			p := delta.LocalNameFor(base, f.RelPath)
+			if singleFile {
+				p = base
+			}
+			if info, err := os.Stat(p); err == nil && info.Size() < n {
+				n = info.Size()
+			}
+		}
+		requested += n
+	}
+	if requested > fileBatchMaxBytes {
+		jsonError(w, http.StatusBadRequest, "batch too large")
+		return
+	}
+	gz := wantsGzip(body.Encodings)
+
+	out := make([]syncengine.FileBlocks, 0, len(body.Files))
+	for _, f := range body.Files {
+		entry := syncengine.FileBlocks{RelPath: f.RelPath}
+		if f.RelPath == "" || !delta.IsSafePath(base, f.RelPath) {
+			entry.Error = "invalid path"
+			out = append(out, entry)
+			continue
+		}
+		// Resolved, not joined — see handleBlocks.
+		fullPath := delta.LocalNameFor(base, f.RelPath)
+		if singleFile {
+			fullPath = base
+		}
+		blocks, err := delta.ReadBlocks(fullPath, f.BlockIndices, f.BlockSize)
+		if err != nil {
+			entry.Error = "read blocks failed: " + err.Error()
+		} else {
+			entry.Blocks = encodeBlocks(blocks, gz)
+		}
+		out = append(out, entry)
+	}
+	jsonOK(w, map[string]any{"files": out})
 }
 
 func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -1003,6 +1112,32 @@ func progressEventFromMap(data map[string]any) syncengine.ProgressEvent {
 	return ev
 }
 
+// jsonOKCompressed is jsonOK, gzipped when the asker accepts it.
+//
+// For manifests. A save of a few hundred thousand files makes a manifest of
+// tens of MB of JSON, which over a VPN did not arrive inside a peer's request
+// timeout — so the peer never learned what this device holds, every sync of
+// that game failed, and the two devices never converged. Manifest JSON (paths
+// and hex hashes) compresses several times over. Go's HTTP client asks for
+// gzip and unpacks it on its own unless told not to, so every version of
+// OpenSave reads these, including ones that predate this.
+func jsonOKCompressed(w http.ResponseWriter, r *http.Request, v any) {
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		jsonOK(w, v)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Add("Vary", "Accept-Encoding")
+	w.WriteHeader(http.StatusOK)
+	zw, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	if err != nil {
+		return
+	}
+	_ = json.NewEncoder(zw).Encode(v)
+	_ = zw.Close()
+}
+
 func jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1043,7 +1178,7 @@ func (e *Engine) resolveServeRoot(gameID string, game store.Game, root string) (
 // argument — the read still happens concurrently.
 var servedProto atomic.Int64
 
-func init() { servedProto.Store(syncengine.ProtoMultiRoot) }
+func init() { servedProto.Store(syncengine.ProtoBatchFiles) }
 
 // ServedProto reports the protocol revision advertised to peers.
 func ServedProto() int { return int(servedProto.Load()) }
