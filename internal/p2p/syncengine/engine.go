@@ -938,6 +938,15 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	case !decision.HasPush() &&
 		len(decision.FilesToDeleteOnPeer) == 0 && len(decision.DirsToDeleteOnPeer) == 0:
 		_ = e.Store.SetAgreedHash(gameID, peer.ID, remoteData.Manifest.ManifestHash())
+		// And the peer is told, so it can record the same agreement at once
+		// (NotePeerHolds) rather than only by fetching this side's save again
+		// later — by which time this side may have edited it, and the
+		// agreement was never recorded there: its next sync then read both
+		// sides as changed, a conflict over edits made one after the other.
+		// A peer that predates this ignores the report.
+		e.Transport.ReportSyncEvent(peer, gameID, "agreed", map[string]any{
+			"manifestHash": remoteData.Manifest.ManifestHash(),
+		})
 	case handedOver != "":
 		// What the peer was actually offered, from step 9.
 		_ = e.Store.SetPushedHash(gameID, peer.ID, handedOver)
@@ -2154,4 +2163,17 @@ func (e *Engine) recordedDeletions(gameID, root string) map[string]DeletedRecord
 		out[path] = DeletedRecord{Hash: r.Hash, DeletedAtMs: r.DeletedAtMs}
 	}
 	return out
+}
+
+// NotePeerHolds records a peer's report that, having pulled from this device,
+// it now holds exactly hash. When that is the state this device handed over
+// (the push record), both held it, so it is the agreed base — recorded now,
+// not only once a later look at the peer's save finds it unchanged, which a
+// peer that has already edited again never is. Anything else is ignored: the
+// base only ever moves to a state both sides are known to have held.
+func (e *Engine) NotePeerHolds(gameID string, peer Peer, hash string) {
+	if hash == "" || hash != e.Store.GetPushedHash(gameID, peer.ID) {
+		return
+	}
+	_ = e.Store.SetAgreedHash(gameID, peer.ID, hash)
 }

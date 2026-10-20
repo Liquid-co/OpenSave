@@ -942,6 +942,18 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		return
+	case "agreed":
+		// The peer pulled from us and now holds exactly this state.
+		// Answered first, as above: it carries state, and is sent again
+		// until answered (carriesState).
+		hash, _ := body.Data["manifestHash"].(string)
+		answerNow(w)
+		e.reports.once(body.Data, func() {
+			if peer, ok := e.peerByAddress(clientIP(r)); ok {
+				e.Sync.NotePeerHolds(e.localGameID(gameID), peer, hash)
+			}
+		})
+		return
 	case "in-sync":
 		// The peer verified both sides hold identical content; confirm on
 		// our side (hash re-check) before recording lineage + last-synced.
