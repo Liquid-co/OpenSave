@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/store"
 )
 
 // Divergence in an extra save location.
@@ -92,6 +93,51 @@ func (e *Engine) hasRootConflict(gameID, root string) bool {
 	return ok
 }
 
+// riskCapturedInSnapshot proves the exact pre-replacement bytes are present
+// in the new snapshot's durable file inventory. Other files that the game
+// holds open need not block a change that will not touch those files.
+func riskCapturedInSnapshot(captured []store.CapturedFile, root string, before delta.Manifest, atRisk []string) error {
+	hashes := make(map[string]string, len(captured))
+	for _, file := range captured {
+		if file.Root == root {
+			// Snapshot walks record the on-disk spelling. Manifest keys are NFC.
+			// Without this, a macOS NFD name proves nothing and extra-root
+			// replacement of that file is refused forever.
+			hashes[delta.NormalizeRelPath(file.Path)] = file.Hash
+		}
+	}
+	for _, path := range atRisk {
+		file, ok := before.Files[path]
+		if !ok || file.Hash == "" || hashes[path] != file.Hash {
+			return fmt.Errorf("no matching captured version of %q in the %q save location", path, root)
+		}
+	}
+	return nil
+}
+
+// requireRootSafety is shared by ordinary extra-root sync and explicit
+// conflict resolution. A successful ZIP creation alone is insufficient:
+// OpenSave can omit an unrelated locked file and still create a partial ZIP.
+// What must be proved is every local file this operation will replace.
+func (e *Engine) requireRootSafety(gameID, root, action string, before delta.Manifest, atRisk []string) error {
+	comment := fmt.Sprintf("Before %s for the %q save location", action, root)
+	snap, err := e.Snapshots.CreateBeforeReplacing(gameID, comment)
+	if err != nil {
+		return fmt.Errorf("refusing to %s for the %q save location: safety snapshot failed: %w", action, root, err)
+	}
+	if len(atRisk) == 0 {
+		return nil
+	}
+	captured, err := e.Store.SnapshotFiles(snap.ID)
+	if err != nil {
+		return fmt.Errorf("refusing to %s for the %q save location: cannot verify safety snapshot files: %w", action, root, err)
+	}
+	if err := riskCapturedInSnapshot(captured, root, before, atRisk); err != nil {
+		return fmt.Errorf("refusing to %s: incomplete safety snapshot: %w", action, err)
+	}
+	return nil
+}
+
 // ResolveRootConflict applies the user's choice to one save location.
 //
 // Only this device's copy of that one folder is ever touched. As with the
@@ -124,34 +170,65 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		return fmt.Errorf("this device no longer has a folder for the %q location", root)
 	}
 
-	comment := fmt.Sprintf("Before resolving the %q save location with %s", root, peer.Name)
-	if _, err := e.Snapshots.CreateBeforeReplacing(gameID, comment); err != nil {
-		e.Log("warn", fmt.Sprintf("safety snapshot before resolving a location failed: %v", err))
+	if resolution != "keep-local" && resolution != "keep-remote" {
+		return fmt.Errorf("unknown resolution %q", resolution)
+	}
+
+	// A failed protective capture is a hard stop, not a warning. In particular,
+	// neither the conflict nor its agreed hash/lineage may be cleared.
+	// Capture and prove the bytes currently in the location, including those
+	// that would be discarded when choosing the peer's version.
+	rootLocal, err := e.ReadManifest(ctx, gameID, path)
+	if err != nil {
+		return err
+	}
+	atRisk := make([]string, 0, len(rootLocal.Files))
+	for file := range rootLocal.Files {
+		atRisk = append(atRisk, file)
+	}
+	if err := e.requireRootSafety(gameID, root, "resolve the conflict with "+peer.Name, rootLocal, atRisk); err != nil {
+		return err
 	}
 
 	switch resolution {
 	case "keep-local":
-		// Our copy becomes the shared state: record it as the agreed base so
-		// this exact divergence cannot re-prompt, then ask the peer to pull.
-		local, buildErr := e.ReadManifest(ctx, gameID, path)
-		if buildErr != nil {
-			return buildErr
-		}
-		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, local.RootHash(delta.PrimaryRoot)); err != nil {
+		// Establish the peer's current named-root view before writing either
+		// the agreed base or lineage. Losing the peer here must not erase
+		// the conflict, and must not manufacture an empty shared history.
+		local, err := e.ReadManifest(ctx, gameID, path)
+		if err != nil {
 			return err
 		}
-		// Shared only what the peer verifiably holds too — see
-		// markResolvedLocal for what recording the whole local copy as shared
-		// did once the peer's pull did not finish.
-		var files, dirs []string
-		if remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
+		remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
 			Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL,
-		}); err == nil {
-			if remoteRoot, has := remoteData.Manifest.Extra[root]; has {
-				files, dirs = IntersectLineage(local, delta.Manifest{Files: remoteRoot.Files, Dirs: remoteRoot.Dirs})
-			}
+		})
+		if isSettling(err) {
+			return fmt.Errorf("%s is still finishing a sync of this game — try again in a moment", peer.Name)
 		}
-		_ = e.Store.SetSyncStateForRoot(gameID, peerID, root, files, dirs)
+		if err != nil {
+			return fmt.Errorf("fetch the peer's copy: %w", err)
+		}
+		if remoteData.Proto < ProtoMultiRoot {
+			return fmt.Errorf("peer does not support named save locations")
+		}
+		remoteRoot, has := remoteData.Manifest.Extra[root]
+		if !has {
+			return fmt.Errorf("the peer no longer has a %q save location", root)
+		}
+		files, dirs := IntersectLineage(local, delta.Manifest{Files: remoteRoot.Files, Dirs: remoteRoot.Dirs})
+		oldFiles, oldDirs, err := e.Store.GetSyncStateForRoot(gameID, peerID, root)
+		if err != nil {
+			return err
+		}
+		if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, files, dirs); err != nil {
+			return err
+		}
+		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, local.RootHash(delta.PrimaryRoot)); err != nil {
+			if restoreErr := e.Store.SetSyncStateForRoot(gameID, peerID, root, oldFiles, oldDirs); restoreErr != nil {
+				return fmt.Errorf("set agreed base: %w (restore lineage: %v)", err, restoreErr)
+			}
+			return err
+		}
 		e.clearRootConflict(gameID, root)
 		e.Transport.TriggerPeerPull(peer, gameID)
 		e.Log("info", fmt.Sprintf("the %q save location of %q resolved: this device's version becomes the shared one",
@@ -159,16 +236,9 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		return nil
 
 	case "keep-remote":
-		// Adopt the peer's copy of this folder. The lineage is cleared first
-		// so the pull that follows is judged as a fresh start rather than
-		// against the base the two just disagreed about — leaving it would
-		// re-detect the same divergence and refuse to move.
-		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, ""); err != nil {
-			return err
-		}
-		_ = e.Store.SetSyncStateForRoot(gameID, peerID, root, nil, nil)
-		e.clearRootConflict(gameID, root)
-
+		// Fetch and validate the intended named location BEFORE touching the
+		// agreed base, lineage or conflict. A failed/cancelled fetch leaves the
+		// previous decision and recovery evidence intact.
 		remoteData, fetchErr := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
 			Name: game.Name, SavePath: game.SavePath, AppID: game.AppID, CoverURL: game.CoverURL,
 		})
@@ -178,6 +248,9 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 		if fetchErr != nil {
 			return fmt.Errorf("fetch the peer's copy: %w", fetchErr)
 		}
+		if remoteData.Proto < ProtoMultiRoot {
+			return fmt.Errorf("peer does not support named save locations")
+		}
 		remoteRoot, has := remoteData.Manifest.Extra[root]
 		if !has {
 			return fmt.Errorf("the peer no longer has a %q save location", root)
@@ -186,9 +259,48 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 			root:   syncRoot{Name: root, Path: path},
 			remote: delta.Manifest{Files: remoteRoot.Files, Dirs: remoteRoot.Dirs},
 		}
+
+		// The subsequent sync must classify this as a fresh adoption, not
+		// re-raise the divergence. Save the old metadata so a failed apply can
+		// restore the decision boundary instead of silently losing lineage.
+		oldBase := e.Store.GetAgreedHashForRoot(gameID, peerID, root)
+		oldFiles, oldDirs, err := e.Store.GetSyncStateForRoot(gameID, peerID, root)
+		if err != nil {
+			return err
+		}
+		if err := e.Store.SetAgreedHashForRoot(gameID, peerID, root, ""); err != nil {
+			return err
+		}
+		if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, nil, nil); err != nil {
+			if restoreErr := e.Store.SetAgreedHashForRoot(gameID, peerID, root, oldBase); restoreErr != nil {
+				return fmt.Errorf("reset lineage: %w (restore agreed base: %v)", err, restoreErr)
+			}
+			return err
+		}
+		e.clearRootConflict(gameID, root)
+		if err := e.syncOneRoot(ctx, gameID, game, peer, sr, remoteData); err != nil {
+			// An apply can fail after starting work. Retain the conflict to
+			// prevent an unattended retry over uncertain partial results, and
+			// report any metadata-rollback error instead of hiding it.
+			e.mu.Lock()
+			if e.rootConflicts == nil {
+				e.rootConflicts = make(map[string]*RootConflict)
+			}
+			e.rootConflicts[rootConflictKey(gameID, root)] = conflict
+			e.mu.Unlock()
+			if e.Progress.OnConflict != nil {
+				e.Progress.OnConflict(gameID)
+			}
+			baseErr := e.Store.SetAgreedHashForRoot(gameID, peerID, root, oldBase)
+			lineageErr := e.Store.SetSyncStateForRoot(gameID, peerID, root, oldFiles, oldDirs)
+			if baseErr != nil || lineageErr != nil {
+				return fmt.Errorf("adopting peer location: %w (restore base: %v; restore lineage: %v)", err, baseErr, lineageErr)
+			}
+			return fmt.Errorf("adopting peer location: %w", err)
+		}
 		e.Log("info", fmt.Sprintf("the %q save location of %q resolved: adopting %s's version",
 			root, game.Name, peer.Name))
-		return e.syncOneRoot(ctx, gameID, game, peer, sr, remoteData)
+		return nil
 	}
 	return fmt.Errorf("unknown resolution %q", resolution)
 }
