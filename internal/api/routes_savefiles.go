@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/opensave/opensave/internal/daemon"
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
 )
@@ -38,6 +39,11 @@ type saveFile struct {
 	MtimeMs   int64  `json:"mtimeMs"`
 	// Excluded reports whether the current rules stop this file syncing.
 	Excluded bool `json:"excluded"`
+	// Why: "rule" (the game's own exclusion list), "database" (the game
+	// database names it as the game's settings) or "detected" (found to be
+	// its settings by what it holds). Empty when it syncs.
+	Source string `json:"source,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // saveFileListCap bounds the response. A save folder with more files than
@@ -67,6 +73,25 @@ func (s *Server) handleGameSaveFiles(w http.ResponseWriter, r *http.Request) {
 	// With the game's device settings, which are left out the same way.
 	text := s.Daemon.IgnoreText(game)
 	rules := ignore.Parse(text)
+	ownRules := ignore.Parse(game.SyncIgnore)
+	var settings []daemon.DeviceSetting
+	if !game.SyncDeviceSettings {
+		settings = s.Daemon.DeviceSettings(game)
+	}
+	// which says what excludes a file the rules exclude: the game's own
+	// rules first, as they apply last; then the last device-settings entry
+	// that names it.
+	which := func(path string) (string, string) {
+		if !ownRules.Empty() && ownRules.Match(path) {
+			return "rule", ""
+		}
+		for i := len(settings) - 1; i >= 0; i-- {
+			if settings[i].Source != "save" && ignore.Parse(settings[i].Pattern).Match(path) {
+				return settings[i].Source, settings[i].Reason
+			}
+		}
+		return "rule", ""
+	}
 
 	roots := []struct{ name, path string }{{"", game.SavePath}}
 	if extra, rootsErr := s.Daemon.Store.ListGameRoots(gameID); rootsErr == nil {
@@ -96,6 +121,11 @@ func (s *Server) handleGameSaveFiles(w http.ResponseWriter, r *http.Request) {
 		for _, f := range files {
 			f.Location = root.name
 			f.Excluded = rules.Match(f.Path)
+			if f.Excluded && root.name == "" {
+				f.Source, f.Reason = which(f.Path)
+			} else if f.Excluded {
+				f.Source = "rule"
+			}
 			out = append(out, f)
 		}
 	}

@@ -132,3 +132,13 @@ func (s *Store) SnapshotRootFiles(snapshotID, root string) (map[string]string, e
 	}
 	return files, nil
 }
+
+// AllSnapshotsOfGame lists every snapshot of a game, on every branch, oldest
+// first.
+func (s *Store) AllSnapshotsOfGame(gameID string) ([]Snapshot, error) {
+	var out []Snapshot
+	if err := s.db.Select(&out, `SELECT * FROM snapshots WHERE game_id = ? ORDER BY timestamp`, gameID); err != nil {
+		return nil, fmt.Errorf("list snapshots of %s: %w", gameID, err)
+	}
+	return out, nil
+}

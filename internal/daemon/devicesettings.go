@@ -23,29 +23,93 @@ import (
 // is what the next start reads.
 
 type devSettingsCache struct {
-	loaded   bool
-	db       *presets.DeviceSettings
+	loaded bool
+	db     *presets.DeviceSettings
+	// patterns: the game database's, by game name, App ID and folder.
 	patterns map[string][]string
+	// verdicts: what was found here (detectsettings.go), by game ID.
+	verdicts map[string][]store.SettingsFile
 }
 
-func (d *Daemon) deviceSettingsFor(game store.Game) []string {
+// devDB returns the game database for device settings, read when first
+// needed. Called with devMu held. Not waiting for an index due a rebuild
+// (DeviceSettingsNoWait): this runs while the daemon starts.
+func (d *Daemon) devDBLocked() *presets.DeviceSettings {
+	if !d.dev.loaded {
+		d.dev.db = d.Scanner.DeviceSettingsNoWait()
+		d.dev.loaded = true
+	}
+	if d.dev.patterns == nil {
+		d.dev.patterns = map[string][]string{}
+	}
+	if d.dev.verdicts == nil {
+		d.dev.verdicts = map[string][]store.SettingsFile{}
+	}
+	return d.dev.db
+}
+
+// DeviceSetting is one entry of a game's device settings, for the window.
+type DeviceSetting struct {
+	Pattern string `json:"pattern"`
+	// Source: "database" (the game database names it), "detected" (found by
+	// what it holds), or "save" (shown to change with the save, so it syncs
+	// whatever named it).
+	Source string `json:"source"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// deviceSettingsList is every entry, in the order they apply: the game
+// database's, what was detected here, then what was shown to be a save —
+// as "!" lines, which bring a file back whatever named it before.
+func (d *Daemon) deviceSettingsList(game store.Game) []DeviceSetting {
 	if d.Scanner == nil {
 		return nil
 	}
 	key := game.Name + "\x00" + game.AppID + "\x00" + game.SavePath
 	d.devMu.Lock()
 	defer d.devMu.Unlock()
-	if !d.dev.loaded {
-		d.dev.db = d.Scanner.DeviceSettingsNoWait()
-		d.dev.patterns = map[string][]string{}
-		d.dev.loaded = true
+	db := d.devDBLocked()
+	pats, ok := d.dev.patterns[key]
+	if !ok {
+		pats = db.Patterns(game.Name, game.AppID, []string{game.SavePath})
+		d.dev.patterns[key] = pats
 	}
-	if p, ok := d.dev.patterns[key]; ok {
-		return p
+	verdicts, ok := d.dev.verdicts[game.ID]
+	if !ok {
+		verdicts, _ = d.Store.SettingsFiles(game.ID)
+		d.dev.verdicts[game.ID] = verdicts
 	}
-	p := d.dev.db.Patterns(game.Name, game.AppID, []string{game.SavePath})
-	d.dev.patterns[key] = p
-	return p
+	var out []DeviceSetting
+	for _, p := range pats {
+		out = append(out, DeviceSetting{Pattern: p, Source: "database"})
+	}
+	for _, v := range verdicts {
+		if v.Verdict == store.VerdictSettings {
+			out = append(out, DeviceSetting{Pattern: "/" + v.Path, Source: "detected", Reason: v.Reason})
+		}
+	}
+	for _, v := range verdicts {
+		if v.Verdict == store.VerdictSave {
+			out = append(out, DeviceSetting{Pattern: "!/" + v.Path, Source: "save", Reason: v.Reason})
+		}
+	}
+	return out
+}
+
+func (d *Daemon) deviceSettingsFor(game store.Game) []string {
+	list := d.deviceSettingsList(game)
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		out = append(out, s.Pattern)
+	}
+	return out
+}
+
+// forgetVerdicts drops a game's cached verdicts after they changed.
+func (d *Daemon) forgetVerdicts(gameID string) {
+	d.devMu.Lock()
+	delete(d.dev.verdicts, gameID)
+	d.devMu.Unlock()
 }
 
 // IgnoreText is the exclusion list a game is synced under (see
@@ -57,10 +121,10 @@ func (d *Daemon) IgnoreText(game store.Game) string {
 	return d.P2P.Sync.IgnoreText(game)
 }
 
-// DeviceSettings returns the patterns for a game's device settings, whether
-// or not it is set to sync them — what the window lists.
-func (d *Daemon) DeviceSettings(game store.Game) []string {
-	return d.deviceSettingsFor(game)
+// DeviceSettings returns a game's device settings, whether or not it is set
+// to sync them — what the window lists.
+func (d *Daemon) DeviceSettings(game store.Game) []DeviceSetting {
+	return d.deviceSettingsList(game)
 }
 
 // adoptExclusionView carries a game's last-snapshot hash over to what the game

@@ -170,8 +170,13 @@
       <div class="field device-block">
         <label for="c-devsettings">{$t('game.config.deviceSettings')}</label>
         <ul class="device-settings">
-          {#each deviceSettings as p}
-            <li><code>{p.replace(/^\//, '')}</code></li>
+          {#each deviceSettings as s}
+            <li class:given-back={s.source === 'save'}>
+              <code>{s.pattern.replace(/^!?\//, '')}</code>
+              <span class="source">
+                {#if s.source === 'database'}{$t('game.config.sourceDatabase')}{:else if s.source === 'detected'}{$t('game.config.sourceDetected', { reason: s.reason })}{:else}{$t('game.config.sourceSave', { reason: s.reason })}{/if}
+              </span>
+            </li>
           {/each}
         </ul>
       </div>
@@ -180,6 +185,7 @@
         {$t('game.config.syncDeviceSettings')}
       </label>
       <span class="hint device-hint">{$t('game.config.deviceSettingsHint')}</span>
+      <span class="hint device-hint">{$t('game.config.deviceSettingsDetectedHint')}</span>
     {/if}
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
@@ -234,6 +240,14 @@
   }
   .device-settings code {
     font-size: 0.9em;
+  }
+  .device-settings .source {
+    font-size: 0.82em;
+    color: var(--text-faint);
+    margin-left: 6px;
+  }
+  .device-settings .given-back code {
+    text-decoration: line-through;
   }
   .device-block {
     margin-bottom: 4px !important;
