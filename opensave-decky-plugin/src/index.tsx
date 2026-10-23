@@ -3,6 +3,7 @@ import {
   DropdownItem,
   PanelSection,
   PanelSectionRow,
+  Router,
   ToggleField,
   staticClasses,
 } from "@decky/ui";
@@ -721,6 +722,37 @@ async function syncBeforeStart(game: Game): Promise<SyncResult> {
   return Promise.race([sync, timeout]);
 }
 
+// The play sessions this plugin began, by App ID, kept in localStorage: a
+// session begun from here is only ended from here, and a reload of the plugin
+// while a game runs would otherwise forget it and miss its stop.
+const OPEN_SESSIONS_KEY = "opensave:openSessions";
+
+function loadOpenSessions(): Map<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPEN_SESSIONS_KEY) ?? "{}");
+    return new Map(Object.entries(raw).filter(([, v]) => typeof v === "string") as [string, string][]);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveOpenSessions(sessions: Map<string, string>) {
+  try {
+    localStorage.setItem(OPEN_SESSIONS_KEY, JSON.stringify(Object.fromEntries(sessions)));
+  } catch {
+    /* storage refused: the sessions are still ended while the plugin runs */
+  }
+}
+
+/** The App IDs of the games Steam is running now. */
+function runningAppIds(): Set<string> {
+  try {
+    return new Set((Router.RunningApps ?? []).map((app) => String(app.appid)));
+  } catch {
+    return new Set();
+  }
+}
+
 function registerLifecycleHooks(): () => void {
   // SteamClient is a global declared by @decky/ui, but Game Mode is the only
   // place it exists — guard so a desktop/dev context degrades quietly.
@@ -734,8 +766,27 @@ function registerLifecycleHooks(): () => void {
   const relaunching = new Set<string>();
   const synced = new Set<string>();
   // Games whose start the daemon was told of, by App ID, so it is told of
-  // their stop too: a session begun from here only ends when it is.
-  const inSession = new Map<string, string>();
+  // their stop too: a session begun from here only ends when it is, and the
+  // game's save is held back from syncing until then. Kept across a reload
+  // of the plugin (openSessions), which would otherwise miss the stop.
+  const inSession = loadOpenSessions();
+  const remember = () => saveOpenSessions(inSession);
+
+  // A game whose stop was missed — the plugin reloaded, or Steam restarted,
+  // while it ran — is not running now: its session is ended. One still
+  // running keeps its session, and its stop ends it as usual.
+  void (async () => {
+    if (inSession.size === 0) return;
+    const running = runningAppIds();
+    for (const [appId, gameId] of [...inSession]) {
+      if (running.has(appId)) continue;
+      const res = await markSession(gameId, "end");
+      if (res.success) {
+        inSession.delete(appId);
+        remember();
+      }
+    }
+  })().catch((e) => console.error("[OpenSave] ending sessions left open", e));
 
   void refreshTracked();
   const refresher = setInterval(refreshTracked, 60_000);
@@ -805,6 +856,7 @@ function registerLifecycleHooks(): () => void {
     if (!match.found || !match.game) return;
     const game = match.game;
     inSession.set(appId, game.id);
+    remember();
     void markSession(game.id, "start");
     if (alreadySynced) return;
     // Not held (the hold is off, or Steam would not let it): the save syncs
@@ -820,10 +872,13 @@ function registerLifecycleHooks(): () => void {
 
   const onStopped = async (appId: string) => {
     const gameId = inSession.get(appId);
-    inSession.delete(appId);
     // Ended even with syncing around gameplay switched off since it began.
-    // Ending it takes the "After playing" snapshot and syncs it.
-    if (gameId) await markSession(gameId, "end");
+    // Ending it takes the "After playing" snapshot and syncs it. Forgotten
+    // only once the daemon has it: otherwise the next load ends it.
+    if (gameId && (await markSession(gameId, "end")).success) {
+      inSession.delete(appId);
+      remember();
+    }
     if (!autoSyncEnabled() || inFlight.has(appId)) return;
     if (!(await getDaemonStatus()).running) return;
     const match = await findGameByAppId(appId);
