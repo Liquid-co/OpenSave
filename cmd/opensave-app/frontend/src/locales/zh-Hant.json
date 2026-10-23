@@ -225,5 +225,12 @@
   "transfers.empty": "自 OpenSave 啟動以來，裝置之間還沒有傳輸過任何內容。",
   "transfers.now": "進行中",
   "transfers.recently": "最近",
-  "transfers.readError": "無法讀取傳輸記錄：{error}"
+  "transfers.readError": "無法讀取傳輸記錄：{error}",
+  "devices.linkLan": "家用網路",
+  "devices.linkVpn": "VPN（如 Tailscale）",
+  "devices.linkRelay": "網際網路中繼",
+  "devices.linkInternet": "網際網路",
+  "devices.linkUnmeasured": "{kind} · 尚未測速",
+  "devices.linkMeasured": "{kind} · {rate}（測於 {when}）",
+  "devices.linkTitle": "存檔會優先透過最快的連線傳送；落後的裝置會從擁有較新存檔的裝置中最快的那臺取得。"
 }

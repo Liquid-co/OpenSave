@@ -9,6 +9,7 @@
   import Globe from 'lucide-svelte/icons/globe';
   import Network from 'lucide-svelte/icons/network';
   import Download from 'lucide-svelte/icons/download';
+  import { t } from '../lib/i18n.js';
 
   export let params = {};
 
@@ -76,6 +77,16 @@
   };
 
   const fmtTime = (t) => (t ? new Date(t).toLocaleString() : 'never');
+
+  // How this device reaches the peer, and how fast it has found that to be.
+  // linkLabel is given $t, so the line follows a change of language.
+  const linkKinds = { lan: 'devices.linkLan', vpn: 'devices.linkVpn', relay: 'devices.linkRelay', internet: 'devices.linkInternet' };
+  const fmtRate = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : Math.max(1, Math.round(b / 1024)) + ' KB/s');
+  function linkLabel(link, tr) {
+    const kind = linkKinds[link.kind] ? tr(linkKinds[link.kind]) : link.kind;
+    if (!link.bytesPerSec) return tr('devices.linkUnmeasured', { kind });
+    return tr('devices.linkMeasured', { kind, rate: fmtRate(link.bytesPerSec), when: fmtTime(link.measuredMs) });
+  }
 </script>
 
 <div class="head">
@@ -105,6 +116,11 @@
             · last synced {fmtTime(peer.lastSynced)}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
           </div>
+          {#if peer.link}
+            <div class="peer-meta" title={$t('devices.linkTitle')}>
+              {linkLabel(peer.link, $t)}
+            </div>
+          {/if}
           <!-- Per device, next to how it is reached, because that is the
                context the answer depends on. -->
           <div class="peer-protection">

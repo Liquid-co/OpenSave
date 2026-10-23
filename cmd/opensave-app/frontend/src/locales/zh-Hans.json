@@ -225,5 +225,12 @@
   "transfers.empty": "自 OpenSave 启动以来，设备之间还没有传输过任何内容。",
   "transfers.now": "进行中",
   "transfers.recently": "最近",
-  "transfers.readError": "无法读取传输记录：{error}"
+  "transfers.readError": "无法读取传输记录：{error}",
+  "devices.linkLan": "家庭网络",
+  "devices.linkVpn": "VPN（如 Tailscale）",
+  "devices.linkRelay": "互联网中继",
+  "devices.linkInternet": "互联网",
+  "devices.linkUnmeasured": "{kind} · 尚未测速",
+  "devices.linkMeasured": "{kind} · {rate}（测于 {when}）",
+  "devices.linkTitle": "存档会优先通过最快的连接发送；落后的设备会从拥有较新存档的设备中最快的那台获取。"
 }

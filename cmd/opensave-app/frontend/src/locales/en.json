@@ -258,5 +258,12 @@
   "transfers.empty": "Nothing has moved between your devices since OpenSave started.",
   "transfers.now": "Now",
   "transfers.recently": "Recently",
-  "transfers.readError": "Couldn't read transfers: {error}"
+  "transfers.readError": "Couldn't read transfers: {error}",
+  "devices.linkLan": "home network",
+  "devices.linkVpn": "VPN (e.g. Tailscale)",
+  "devices.linkRelay": "internet relay",
+  "devices.linkInternet": "internet",
+  "devices.linkUnmeasured": "{kind} · speed not measured yet",
+  "devices.linkMeasured": "{kind} · {rate} (measured {when})",
+  "devices.linkTitle": "Saves go to the fastest connections first, and a device that is behind takes the newer save from the fastest device that has it."
 }
