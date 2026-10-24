@@ -42,6 +42,12 @@ type sessionState struct {
 	list func() ([]sessions.Proc, error)
 
 	mu sync.Mutex
+	// cpu: each process's processor time at the last poll, and when it last
+	// used any (activeProcesses).
+	cpu map[int]procSeen
+	// checkpoint is when each playing game last had a snapshot taken while
+	// it was played (holdSnapshotWhilePlaying).
+	checkpoint map[string]time.Time
 	// startHash is each playing game's save as it was when play began, to
 	// tell afterwards whether the session changed it.
 	startHash map[string]string
@@ -89,6 +95,7 @@ func (d *Daemon) PollSessions() {
 	if err != nil {
 		return
 	}
+	procs = d.activeProcesses(procs)
 	running := sessions.Running(procs, targets)
 	d.notePrograms(procs, targets, learn, running)
 	d.sessions.tracker.Poll(running, time.Now())
@@ -365,6 +372,7 @@ func (d *Daemon) sessionEnded(gameID string, started, ended time.Time) {
 	d.sessions.mu.Lock()
 	startHash := d.sessions.startHash[gameID]
 	delete(d.sessions.startHash, gameID)
+	delete(d.sessions.checkpoint, gameID)
 	seen := d.sessions.seen[gameID]
 	delete(d.sessions.seen, gameID)
 	d.sessions.mu.Unlock()
@@ -454,4 +462,98 @@ func (d *Daemon) endOpenSessions() {
 			_ = d.Store.AddPlaySession(id, since.UnixMilli(), now.UnixMilli())
 		}
 	}
+}
+
+// checkpointEvery is how often a game being played gets a snapshot of its
+// save: one per autosave pushed the snapshots worth keeping out, and none
+// until the session ends leaves nothing behind a crash.
+const checkpointEvery = 30 * time.Minute
+
+// holdSnapshotWhilePlaying tells the watcher not to snapshot a change to a
+// game being played, unless checkpointEvery has passed since play began or
+// since the last checkpoint. The session's end keeps the save as it was left
+// (sessionEnded).
+func (d *Daemon) holdSnapshotWhilePlaying(gameID string) bool {
+	since := d.PlayingSince(gameID)
+	if since.IsZero() {
+		return false
+	}
+	d.sessions.mu.Lock()
+	defer d.sessions.mu.Unlock()
+	if d.sessions.checkpoint == nil {
+		d.sessions.checkpoint = map[string]time.Time{}
+	}
+	now := time.Now()
+	if !checkpointDue(since, d.sessions.checkpoint[gameID], now) {
+		return true
+	}
+	d.sessions.checkpoint[gameID] = now
+	return false
+}
+
+// checkpointDue says whether checkpointEvery has passed since play began, or
+// since the last checkpoint when there was one.
+func checkpointDue(since, last, now time.Time) bool {
+	if last.Before(since) {
+		last = since
+	}
+	return now.Sub(last) >= checkpointEvery
+}
+
+// activeProcesses leaves out the processes doing nothing. A game leaves one
+// behind when it closes or is killed — a crash handler, a stub of the same
+// name — and it kept a session open for as long as it lingered: fifteen
+// minutes after one game had closed. While a session is open the game's save
+// is held back from syncing (syncengine/playing.go), so this is what lets it
+// go once the game is gone.
+func (d *Daemon) activeProcesses(procs []sessions.Proc) []sessions.Proc {
+	return d.activeProcessesAt(procs, time.Now())
+}
+
+// procSeen is a process's processor time at the last poll, and when it was
+// last seen using any.
+type procSeen struct {
+	cpu  time.Duration
+	busy time.Time
+}
+
+// idleFor is how long a process may use no processor time at all before it
+// is no longer the game, however much memory it holds: what a killed game
+// leaves behind can keep its memory. A game being played uses some all the
+// time — a paused one still draws its menu.
+const idleFor = time.Minute
+
+// busyCPU is the processor time between two polls that counts as using any.
+const busyCPU = 20 * time.Millisecond
+
+func (d *Daemon) activeProcessesAt(procs []sessions.Proc, now time.Time) []sessions.Proc {
+	d.sessions.mu.Lock()
+	defer d.sessions.mu.Unlock()
+	prev := d.sessions.cpu
+	next := make(map[int]procSeen, len(procs))
+	out := procs[:0:0]
+	for _, p := range procs {
+		before, seen := prev[p.PID]
+		if sessions.Idle(p, before.cpu, seen) {
+			if p.Measured {
+				next[p.PID] = procSeen{cpu: p.CPU, busy: before.busy}
+			}
+			continue
+		}
+		if !p.Measured {
+			out = append(out, p) // cannot be told: counted
+			continue
+		}
+		s := procSeen{cpu: p.CPU, busy: before.busy}
+		if !seen || p.CPU-before.cpu >= busyCPU {
+			s.busy = now // new, or working
+		}
+		next[p.PID] = s
+		if now.Sub(s.busy) > idleFor {
+			continue // holding memory, doing nothing
+		}
+		out = append(out, p)
+	}
+	d.sessions.cpu = next
+	return out
 }

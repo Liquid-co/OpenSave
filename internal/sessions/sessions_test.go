@@ -105,3 +105,26 @@ func TestListFindsThisProcess(t *testing.T) {
 		t.Errorf("this process (%d, %s) was not found among %d: %v", os.Getpid(), self, len(procs), running)
 	}
 }
+
+func TestIdle(t *testing.T) {
+	stub := Proc{PID: 1, Exe: `G:\Games\Crimson Desert\bin64\CrimsonDesert.exe`, Measured: true, Memory: 900 << 10, CPU: 2 * time.Second}
+	if !Idle(stub, 2*time.Second, true) {
+		t.Error("a lingering stub counts as the game")
+	}
+	if !Idle(stub, 0, false) {
+		t.Error("a stub seen for the first time counts as the game")
+	}
+	busy := stub
+	busy.CPU = 3 * time.Second
+	if Idle(busy, 2*time.Second, true) {
+		t.Error("a small process using the processor is called idle")
+	}
+	game := stub
+	game.Memory = 3 << 30
+	if Idle(game, 2*time.Second, true) {
+		t.Error("a game holding gigabytes is called idle while paused")
+	}
+	if Idle(Proc{PID: 2, Exe: `G:\Games\Other\game.exe`}, 0, false) {
+		t.Error("a process that could not be measured is called idle")
+	}
+}

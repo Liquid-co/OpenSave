@@ -193,3 +193,103 @@ func TestSpokenLength(t *testing.T) {
 		}
 	}
 }
+
+// While a game is played, a change to its save is snapshotted once per
+// checkpointEvery, not at every autosave; and it is not synced either way.
+func TestSessionHoldsSnapshotsAndSyncWhilePlaying(t *testing.T) {
+	d := newTestDaemon(t)
+	g, _ := sessionGame(t, d, "autosaving")
+	if d.holdSnapshotWhilePlaying(g.ID) {
+		t.Fatal("held while nothing is being played")
+	}
+	d.sessions.list = func() ([]sessions.Proc, error) { return []sessions.Proc{{PID: 7, Exe: g.ExePath}}, nil }
+	d.PollSessions()
+	if d.PlayingSince(g.ID).IsZero() {
+		t.Fatal("setup: not playing")
+	}
+	if !d.holdSnapshotWhilePlaying(g.ID) {
+		t.Error("an autosave right after the game started was snapshotted")
+	}
+	if !d.P2P.Sync.PlayingHere(g.ID) {
+		t.Error("the sync engine does not know the game is being played")
+	}
+	// Checkpoints: half an hour after play began, then half an hour after
+	// the last one.
+	start := time.Now()
+	for _, c := range []struct {
+		last  time.Time
+		after time.Duration
+		want  bool
+	}{
+		{time.Time{}, 10 * time.Minute, false},
+		{time.Time{}, checkpointEvery, true},
+		{start.Add(40 * time.Minute), 50 * time.Minute, false},
+		{start.Add(40 * time.Minute), 70 * time.Minute, true},
+	} {
+		if got := checkpointDue(start, c.last, start.Add(c.after)); got != c.want {
+			t.Errorf("checkpoint due %v after start (last %v) = %v, want %v", c.after, c.last, got, c.want)
+		}
+	}
+}
+
+// A process doing nothing does not keep a session open, and with it the
+// game's save held back from syncing.
+func TestSessionEndsWhenOnlyAStubIsLeft(t *testing.T) {
+	d := newTestDaemon(t)
+	g, _ := sessionGame(t, d, "stub")
+	running := sessions.Proc{PID: 9, Exe: g.ExePath, Measured: true, Memory: 2 << 30, CPU: time.Second}
+	d.sessions.list = func() ([]sessions.Proc, error) { return []sessions.Proc{running}, nil }
+	d.PollSessions()
+	if d.PlayingSince(g.ID).IsZero() {
+		t.Fatal("setup: the game was not seen running")
+	}
+	// The game closed; a stub of the same program lingers, doing nothing.
+	stub := sessions.Proc{PID: 9, Exe: g.ExePath, Measured: true, Memory: 800 << 10, CPU: time.Second}
+	d.sessions.list = func() ([]sessions.Proc, error) { return []sessions.Proc{stub}, nil }
+	d.PollSessions()
+	since := d.PlayingSince(g.ID)
+	d.sessions.tracker.Finish(g.ID, since.Add(time.Hour)) // past the grace the tracker allows
+	d.PollSessions()
+	if !d.PlayingSince(g.ID).IsZero() {
+		t.Fatal("a lingering stub keeps the session open")
+	}
+	if d.holdSnapshotWhilePlaying(g.ID) {
+		t.Error("a change after the session ended was held")
+	}
+}
+
+// What a killed game leaves behind can keep its memory; it is no longer the
+// game once it has used no processor time for a minute. One still working —
+// a paused game draws its menu — stays.
+func TestActiveProcesses_HoldingMemoryDoingNothing(t *testing.T) {
+	d := newTestDaemon(t)
+	t0 := time.Now()
+	left := func(cpu time.Duration) sessions.Proc {
+		return sessions.Proc{PID: 1, Exe: `G:\Games\Crimson Desert\bin64\CrimsonDesert.exe`, Measured: true, Memory: 2 << 30, CPU: cpu}
+	}
+	playing := func(cpu time.Duration) sessions.Proc {
+		return sessions.Proc{PID: 2, Exe: `G:\Games\Other\game.exe`, Measured: true, Memory: 2 << 30, CPU: cpu}
+	}
+	count := func(ps []sessions.Proc) map[int]bool {
+		m := map[int]bool{}
+		for _, p := range ps {
+			m[p.PID] = true
+		}
+		return m
+	}
+	got := count(d.activeProcessesAt([]sessions.Proc{left(5 * time.Second), playing(time.Second)}, t0))
+	if !got[1] || !got[2] {
+		t.Fatalf("first seen: %v, want both", got)
+	}
+	got = count(d.activeProcessesAt([]sessions.Proc{left(5 * time.Second), playing(2 * time.Second)}, t0.Add(30*time.Second)))
+	if !got[1] || !got[2] {
+		t.Errorf("half a minute in: %v, want both", got)
+	}
+	got = count(d.activeProcessesAt([]sessions.Proc{left(5 * time.Second), playing(3 * time.Second)}, t0.Add(70*time.Second)))
+	if got[1] {
+		t.Error("a process doing nothing for over a minute still counts as the game")
+	}
+	if !got[2] {
+		t.Error("a game using the processor was dropped")
+	}
+}
