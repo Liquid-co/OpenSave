@@ -142,6 +142,10 @@ type Engine struct {
 	loopMu    sync.Mutex
 	triggered map[string]time.Time
 	pushBacks map[string]pushBack
+	// unwritableMu guards unwritable: per game whose save folder refused a
+	// pull, until when pulls into it wait (unwritable.go).
+	unwritableMu sync.Mutex
+	unwritable   map[string]time.Time
 
 	mu           sync.Mutex
 	activeSyncs  map[string]bool
@@ -346,6 +350,11 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 			busy = true
 			continue
 		}
+		if errors.Is(err, errSaveUnwritable) {
+			// Said once when it was found (unwritable.go); waiting meanwhile.
+			results[peer.ID] = Result{Status: "unwritable", PeerID: peer.ID, PeerName: peer.Name}
+			continue
+		}
 		if errors.Is(err, ErrPeerPaused) {
 			e.Log("info", fmt.Sprintf("%s has paused syncing; %s will sync with it when it resumes", peer.Name, gameID))
 			results[peer.ID] = Result{Status: "peer_paused", PeerID: peer.ID, PeerName: peer.Name}
@@ -362,7 +371,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// divergence from the NEXT sync, causing the peer to silently overwrite
 		// its own changes instead of detecting the conflict and asking.
 		switch res.Status {
-		case "conflict", "error":
+		case "conflict", "error", "unwritable":
 		case "peer_missing", "peer_awaiting_folder", "peer_holding":
 			// The two devices talked and finished, which is what the
 			// per-device stamp has always recorded. But nothing of THIS game
@@ -1587,6 +1596,12 @@ func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []s
 func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game store.Game, root syncRoot,
 	localManifest delta.Manifest, remoteData ManifestResponse, filesToPull []string) (retErr error) {
 
+	// A folder that refused the last pull is left alone for a while
+	// (unwritable.go).
+	if until, waiting := e.unwritableUntil(gameID); waiting {
+		return fmt.Errorf("%w (trying again at %s)", errSaveUnwritable, until.Format("15:04"))
+	}
+
 	// This one is load-bearing, unlike the invalidations on the snapshot
 	// paths. Every pulled file is written and then stamped with the PEER'S
 	// modification time (see the Chtimes below), which can be OLDER than what
@@ -1760,7 +1775,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 		if err := e.pullFile(ctx, peer, FileRef{GameID: gameID, Root: root.Name, RelPath: relPath}, localFilePath,
 			remoteFile, indices, throttle, tracker, reportProgress); err != nil {
-			return err
+			return e.noteUnwritable(gameID, game.Name, root.Path, err)
 		}
 		if remoteFile.MtimeMs > 0 {
 			mtime := time.UnixMilli(int64(remoteFile.MtimeMs))
