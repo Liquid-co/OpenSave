@@ -1,0 +1,192 @@
+package presets
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// What a device vouches for, for a game arriving from a peer: the folder the
+// catalogue gives that game here, even before it exists — and nothing else.
+
+const verifyManifest = `
+Hollow Game:
+  files:
+    <winAppData>/MoonStudio/HollowGame:
+      tags: [save]
+      when:
+        - os: windows
+  steam:
+    id: 4242
+File Game:
+  files:
+    <winAppData>/FileStudio/FileGame/*.sav:
+      tags: [save]
+      when:
+        - os: windows
+Loose Game:
+  files:
+    <winDocuments>/*.loose:
+      tags: [save]
+      when:
+        - os: windows
+`
+
+func verifyScanner(t *testing.T) (*Scanner, string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	appdata := filepath.Join(home, "AppData", "Roaming")
+	t.Setenv("APPDATA", appdata)
+	sc := manifestScanner(t, verifyManifest)
+	sc.SteamRoots = []string{}
+	sc.SteamUserdataPaths = []string{}
+	return sc, appdata
+}
+
+func TestCatalogueSaveLocation_TheGamesOwnFolderEvenBeforeItExists(t *testing.T) {
+	sc, appdata := verifyScanner(t)
+	folder := filepath.Join(appdata, "MoonStudio", "HollowGame") // not created
+
+	if !sc.CatalogueSaveLocation("Hollow Game", "", folder) {
+		t.Error("the game's catalogue folder was not vouched for by name")
+	}
+	if !sc.CatalogueSaveLocation("Some Other Name", "4242", folder) {
+		t.Error("the game's catalogue folder was not vouched for by Steam app ID")
+	}
+	if !sc.CatalogueSaveLocation("Hollow Game (HollowGame)", "", folder) {
+		t.Error("a scan's \"Name (folder)\" name was not recognised")
+	}
+	// A save file template: the folder the files are in.
+	if !sc.CatalogueSaveLocation("File Game", "", filepath.Join(appdata, "FileStudio", "FileGame")) {
+		t.Error("the folder of a save-file template was not vouched for")
+	}
+}
+
+func TestCatalogueSaveLocation_NothingElse(t *testing.T) {
+	sc, appdata := verifyScanner(t)
+	home := filepath.Dir(filepath.Dir(appdata))
+
+	refused := map[string]struct{ name, appID, path string }{
+		"another game's folder":       {"File Game", "", filepath.Join(appdata, "MoonStudio", "HollowGame")},
+		"the studio folder above it":  {"Hollow Game", "", filepath.Join(appdata, "MoonStudio")},
+		"a sibling of it":             {"Hollow Game", "", filepath.Join(appdata, "MoonStudio", "Other")},
+		"a game not in the catalogue": {"No Such Game", "", filepath.Join(appdata, "MoonStudio", "HollowGame")},
+		"the wrong app id":            {"Hollow Game", "9999", filepath.Join(appdata, "MoonStudio", "HollowGame")},
+		"a whole Documents folder":    {"Loose Game", "", filepath.Join(home, "Documents")},
+		"application data itself":     {"Hollow Game", "", appdata},
+		"no path":                     {"Hollow Game", "", ""},
+	}
+	for why, c := range refused {
+		if sc.CatalogueSaveLocation(c.name, c.appID, c.path) {
+			t.Errorf("%s: %q was vouched for as %q's save folder", why, c.path, c.name)
+		}
+	}
+}
+
+func TestSteamSaveLocation(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "Steam", "userdata")
+	if err := os.MkdirAll(filepath.Join(root, "123456"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	sc := &Scanner{GOOS: "windows", SteamUserdataPaths: []string{root}}
+
+	if !sc.SteamSaveLocation("588650", filepath.Join(root, "123456", "588650", "remote")) {
+		t.Error("Steam's own save folder for the game was not vouched for")
+	}
+	for why, c := range map[string]struct{ appID, path string }{
+		"another game's":       {"588650", filepath.Join(root, "123456", "570", "remote")},
+		"Steam's own settings": {"7", filepath.Join(root, "123456", "7", "remote")},
+		"the user folder":      {"588650", filepath.Join(root, "123456")},
+		"outside Steam":        {"588650", filepath.Join(t.TempDir(), "123456", "588650")},
+		"not an app id":        {"abc", filepath.Join(root, "123456", "abc")},
+	} {
+		if sc.SteamSaveLocation(c.appID, c.path) {
+			t.Errorf("%s folder %q was vouched for", why, c.path)
+		}
+	}
+}
+
+// A game's install folder holds its program beside its saves. A wildcard that
+// stands for save files must not vouch for any folder there, and nor may a
+// catalogue entry for a folder that holds programs: a peer naming one would be
+// writing into the game's own files.
+func TestCatalogueSaveLocation_InsideTheInstallFolder(t *testing.T) {
+	steamRoot := t.TempDir()
+	install := filepath.Join(steamRoot, "steamapps", "common", "Cat Game")
+	mustMkFile(t, filepath.Join(install, "Binaries", "Win64", "CatGame.exe"))
+	mustMkFile(t, filepath.Join(install, "System", "Core.dll"))
+	mustMkFile(t, filepath.Join(install, "System", "User.ini"))
+	mustMkFile(t, filepath.Join(install, "Saves", "slot1.sav"))
+
+	sc := manifestScanner(t, `
+Cat Game:
+  files:
+    <base>/**/*.sav:
+      tags: [save]
+    <base>/<storeUserId>/Save.sav:
+      tags: [save]
+    <base>/Saves:
+      tags: [save]
+    <base>/Profiles/slot.dat:
+      tags: [save]
+    <base>/System/User.ini:
+      tags: [save]
+  installDir:
+    Cat Game: {}
+  steam:
+    id: 3087650
+`)
+	sc.SteamRoots = []string{steamRoot}
+
+	for why, folder := range map[string]string{
+		"a folder holding the game's program": filepath.Join(install, "Binaries"),
+		"any other folder a wildcard reaches": filepath.Join(install, "Engine"),
+		"a named folder holding a library":    filepath.Join(install, "System"),
+		"the install folder itself":           install,
+	} {
+		if sc.CatalogueSaveLocation("Cat Game", "3087650", folder) {
+			t.Errorf("%s was vouched for as a save: %s", why, folder)
+		}
+	}
+	for why, folder := range map[string]string{
+		"a save folder the catalogue names":  filepath.Join(install, "Saves"),
+		"the folder of a save file it names": filepath.Join(install, "Profiles"),
+	} {
+		if !sc.CatalogueSaveLocation("Cat Game", "3087650", folder) {
+			t.Errorf("%s was not vouched for: %s", why, folder)
+		}
+	}
+}
+
+// A paired device waits on this answer and gives up after thirty seconds, so
+// a catalogue rebuild under way — about that long for the full catalogue —
+// is waited on only briefly, and the index on disk answers.
+func TestCatalogueSaveLocation_WaitsOnlyBrieflyForARebuild(t *testing.T) {
+	sc, appdata := verifyScanner(t)
+	folder := filepath.Join(appdata, "MoonStudio", "HollowGame")
+	if !sc.CatalogueSaveLocation("Hollow Game", "", folder) {
+		t.Fatal("setup: not vouched for with the index built")
+	}
+	// A newer catalogue arrives, and its index is being built.
+	yamlPath, _ := sc.manifestPaths()
+	newer := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(yamlPath, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+	rebuildInFlight.Store(true) // a rebuild that does not end
+	defer rebuildInFlight.Store(false)
+
+	start := time.Now()
+	ok := sc.CatalogueSaveLocation("Hollow Game", "", folder)
+	if took := time.Since(start); took > catalogueWait+3*time.Second {
+		t.Errorf("the check waited %v on a rebuild", took)
+	} else if took < catalogueWait/2 {
+		t.Errorf("the check did not wait for the rebuild at all (%v)", took)
+	}
+	if !ok {
+		t.Error("the index on disk did not answer while a rebuild ran")
+	}
+}

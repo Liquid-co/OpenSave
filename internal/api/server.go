@@ -98,6 +98,10 @@ func (s *Server) peersPayload() map[string]any {
 		// "update from this device" when a peer runs a newer build.
 		entry := struct {
 			store.Peer
+			// Whether this device may choose the folders of games it syncs
+			// here (Devices; migration 0044).
+			ChoosesFolders bool `json:"choosesFolders"`
+
 			AppVersion    string `json:"appVersion,omitempty"`
 			BuildTimeMs   int64  `json:"buildTimeMs,omitempty"`
 			HasNewerBuild bool   `json:"hasNewerBuild,omitempty"`
@@ -112,6 +116,7 @@ func (s *Server) peersPayload() map[string]any {
 			entry.BuildTimeMs = b.BuildTimeMs
 			entry.HasNewerBuild = version.NewerThanLocal(b.AppVersion, b.BuildTimeMs)
 		}
+		entry.ChoosesFolders = s.Daemon.Store.PeerChoosesFolders(p.ID)
 		peerMap[p.ID] = entry
 	}
 	discovered := []any{}

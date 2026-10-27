@@ -240,6 +240,10 @@ func (s *Store) UnpairPeer(id string) error {
 	if _, err := tx.Exec(`DELETE FROM offered_games WHERE peer_id = ?`, id); err != nil {
 		return fmt.Errorf("delete offered games for peer %s: %w", id, err)
 	}
+	// Trust goes with the pairing: paired again, a device starts over.
+	if _, err := tx.Exec(`DELETE FROM peer_folder_trust WHERE peer_id = ?`, id); err != nil {
+		return fmt.Errorf("delete folder trust for peer %s: %w", id, err)
+	}
 	res, err := tx.Exec(`DELETE FROM peers WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete peer %s: %w", id, err)

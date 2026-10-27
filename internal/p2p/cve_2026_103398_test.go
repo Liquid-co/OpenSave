@@ -1,17 +1,21 @@
 package p2p
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -109,12 +113,12 @@ func TestCVE_2026_103398_AKnownSaveFolderStillAutoTracks(t *testing.T) {
 		t.Fatal(err)
 	}
 	same := func(a, b string) bool { return strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) }
-	c.engine.KnownSaveLocation = func(p string) bool { return same(p, save) }
+	c.engine.KnownSaveLocation = func(_, _, p string) bool { return same(p, save) }
 	peerPath := `C:\Users\alice\AppData\LocalLow\Team Cherry\Hollow Knight`
 
 	// The tracking step itself: serving the manifest needs a whole sync
 	// engine, which this fixture does not build.
-	g, err := c.engine.ensureManifestGame("hollow-knight", manifestGameQuery{Name: "Hollow Knight", SavePath: peerPath}, c.peer.ID)
+	g, err := c.engine.ensureManifestGame("hollow-knight", manifestGameQuery{Name: "Hollow Knight", SavePath: peerPath}, c.peer.ID, c.peer.ID)
 	if err != nil {
 		t.Fatalf("a known save folder was refused: %v", err)
 	}
@@ -157,3 +161,130 @@ func TestCVE_2026_103398_UnsignedRelayRequestFromAKeylessPairingIsRefused(t *tes
 }
 
 var _ = store.Peer{}
+
+// A device the user lets choose folders — their own — has its game tracked at
+// the folder it names, as before 2.4.1; any other device's is offered.
+func TestADeviceLetChooseFoldersHasItsFolderTracked(t *testing.T) {
+	c := newCVEFixture(t)
+	// The folder the other PC names, and where it lands here: under this
+	// device's home, translated as it always was.
+	q := manifestGameQuery{Name: "Homebrew Game", SavePath: `C:\Users\alice\My Custom Saves`}
+	custom := filepath.Join(c.home, "My Custom Saves")
+
+	if _, err := c.engine.ensureManifestGame("homebrew-game", q, c.peer.ID, c.peer.ID); err == nil {
+		t.Fatal("an unvouched folder was tracked for a device not let choose folders")
+	}
+	if err := c.store.SetPeerChoosesFolders(c.peer.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	g, err := c.engine.ensureManifestGame("homebrew-game", q, c.peer.ID, c.peer.ID)
+	if err != nil {
+		t.Fatalf("the trusted device's folder was refused: %v", err)
+	}
+	if !strings.EqualFold(filepath.Clean(g.SavePath), filepath.Clean(custom)) {
+		t.Errorf("tracked at %s, want the folder it named %s", g.SavePath, custom)
+	}
+	// It was offered on the first attempt; tracked now, the offer is gone.
+	if offered, _ := c.store.ListOfferedGames(); len(offered) != 0 {
+		t.Errorf("the offer outlived the game being tracked: %+v", offered)
+	}
+}
+
+// Trust is the device's that proved itself, never whoever asks: another
+// paired device is not trusted because one is.
+func TestTrustIsPerDevice(t *testing.T) {
+	c := newCVEFixture(t)
+	if err := c.store.UpsertPeer(store.Peer{ID: "peer-other", Name: "Other", Address: "192.0.2.99"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.store.SetPeerChoosesFolders("peer-other", true); err != nil {
+		t.Fatal(err)
+	}
+	q := manifestGameQuery{Name: "Homebrew Game", SavePath: filepath.Join(t.TempDir(), "x")}
+	if _, err := c.engine.ensureManifestGame("homebrew-game", q, c.peer.ID, c.peer.ID); err == nil {
+		t.Fatal("one device's trust let another choose a folder")
+	}
+	if _, err := c.engine.ensureManifestGame("homebrew-game", q, "", ""); err == nil {
+		t.Fatal("a request from no device was trusted")
+	}
+}
+
+// An offer answers itself once this device can vouch for the folder: the game
+// is tracked on the peer's next attempt and the offer disappears.
+func TestAnOfferClearsOnceTheFolderIsKnown(t *testing.T) {
+	c := newCVEFixture(t)
+	folder := filepath.Join(t.TempDir(), "Hollow Knight")
+	known := false
+	c.engine.KnownSaveLocation = func(_, _, p string) bool { return known }
+	offers := 0
+	c.engine.OnGameOffered = func() { offers++ }
+	q := manifestGameQuery{Name: "Hollow Knight", SavePath: folder}
+
+	if _, err := c.engine.ensureManifestGame("hollow-knight", q, c.peer.ID, c.peer.ID); err == nil {
+		t.Fatal("tracked before the folder was known")
+	}
+	if offers != 1 {
+		t.Errorf("the offer asked for %d scans, want 1", offers)
+	}
+	known = true // the scan found it
+	if _, err := c.engine.ensureManifestGame("hollow-knight", q, c.peer.ID, c.peer.ID); err != nil {
+		t.Fatalf("not tracked once known: %v", err)
+	}
+	if offered, _ := c.store.ListOfferedGames(); len(offered) != 0 {
+		t.Errorf("the offer is still shown for a game now syncing: %+v", offered)
+	}
+}
+
+// Trust follows the device the signature proved, not the one the request is
+// attributed to: a request whose sender was only inferred, from an address,
+// may not choose a folder even when that address belongs to a trusted device.
+func TestTrustNeedsTheProvenDevice(t *testing.T) {
+	c := newCVEFixture(t)
+	if err := c.store.SetPeerChoosesFolders(c.peer.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	q := manifestGameQuery{Name: "Homebrew Game", SavePath: `C:\Users\alice\Homebrew`}
+	if _, err := c.engine.ensureManifestGame("homebrew-game", q, c.peer.ID, ""); err == nil {
+		t.Fatal("a folder was trusted for a request no signature proved")
+	}
+}
+
+// A folder this device cannot vouch for is offered, and said so once: the
+// other device asks at every sync, and the log was one warning every few
+// seconds for as long as the offer stood.
+func TestAnOfferIsLoggedOnce(t *testing.T) {
+	c := newCVEFixture(t)
+	var warned int
+	c.engine.Log = func(level, msg string) {
+		if strings.Contains(msg, "offered on Home instead") {
+			warned++
+		}
+	}
+	// Three syncs from the other device, each a request of its own: signed
+	// afresh, as a device signs every request (askManifest reuses a nonce).
+	local, err := c.store.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		q := url.Values{"name": {"Totally A Game"}, "savePath": {c.secret}}
+		req := httptest.NewRequest(http.MethodGet, "/api/p2p/manifest/offered-once?"+q.Encode(), nil)
+		nonce, at := fmt.Sprintf("offer-nonce-%d", i), time.Now().UnixMilli()
+		req.Header.Set(lanAuthPeerHeader, c.peer.ID)
+		req.Header.Set(lanAuthNonceHeader, nonce)
+		req.Header.Set(lanAuthTimeHeader, strconv.FormatInt(at, 10))
+		req.Header.Set(lanAuthHeader, e2ee.RequestMAC(c.authKey, c.peer.ID, local.NodeID, req.URL.RequestURI(), http.MethodGet, nil, nonce, at))
+		req.RemoteAddr = "192.0.2.10:40000"
+		rec := httptest.NewRecorder()
+		c.router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("request %d: %d %s, want the 404 an offer answers", i, rec.Code, rec.Body.String())
+		}
+	}
+	if warned != 1 {
+		t.Errorf("the offer was logged %d times over three requests, want once", warned)
+	}
+	if offered, _ := c.store.ListOfferedGames(); len(offered) != 1 {
+		t.Errorf("offers: %+v, want the one", offered)
+	}
+}

@@ -14,6 +14,7 @@ var topLevelCommands = commandNames()
 
 var subCommands = map[string][]string{
 	"pair":       {"requests", "approve", "reject"},
+	"peers":      {"games", "trust"},
 	"relay":      {"status", "join", "leave"},
 	"resolve":    {"keep-both", "keep-local", "keep-remote"},
 	"daemon":     {"start", "status", "stop"},
