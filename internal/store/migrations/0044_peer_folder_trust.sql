@@ -6,8 +6,9 @@
 -- (CVE-2026-103398).
 --
 -- A table of its own rather than a column on peers, so an older version,
--- which reads peers rows strictly, still opens the database.
-CREATE TABLE peer_folder_trust (
+-- which reads peers rows strictly, still opens the database. IF NOT EXISTS:
+-- dev builds made it as 0038_peer_folder_trust.
+CREATE TABLE IF NOT EXISTS peer_folder_trust (
     peer_id  TEXT PRIMARY KEY,
     since_ms INTEGER NOT NULL
 );
