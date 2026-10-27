@@ -797,7 +797,11 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	// Nor a folder inside another game's, or holding one: the same files
 	// would be watched, snapshotted and synced twice, under two games that
 	// each think them theirs.
-	if other, ok := d.overlappingGame(abs); ok {
+	other, overlapping, checkErr := d.overlappingGame(abs)
+	if checkErr != nil {
+		return store.Game{}, checkErr
+	}
+	if overlapping {
 		return store.Game{}, fmt.Errorf("%q already tracks %s, which this folder is inside or holds — track one or the other", other.Name, other.SavePath)
 	}
 
@@ -810,6 +814,8 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	if derivedID {
 		if existing, err := d.Store.FindGameBySavePath(abs); err == nil {
 			return store.Game{}, fmt.Errorf("this folder is already tracked (as %q)", existing.Name)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return store.Game{}, fmt.Errorf("inspect game for existing save path: %w", err)
 		}
 		base := store.SlugifyGameID(game.Name)
 		// A Switch game is tracked under its title id rather than its name:
@@ -824,20 +830,18 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		id := base
 		for n := 2; ; n++ {
 			if _, err := d.Store.GetGame(id); err != nil {
-				break // free
+				if !errors.Is(err, store.ErrNotFound) {
+					return store.Game{}, fmt.Errorf("inspect candidate game id %q: %w", id, err)
+				}
+				break // confirmed not found
 			}
 			id = fmt.Sprintf("%s-%d", base, n)
 		}
 		game.ID = id
 	}
 
-	// Explicit (re)tracking overrides any earlier untrack: clear the local
-	// tombstone, and tell peers to clear theirs too so a peer that mirrored
-	// an earlier untrack will accept this game again (otherwise its
-	// tombstone would block the sync-on-track below).
-	_ = d.Store.ClearUntrackedTombstone(game.ID)
-	d.P2P.NotifyRetrack(game.ID)
-
+	// Never clear tombstones or notify peers until the ownership decision
+	// has committed. Rejected or ambiguous writes must have no effects.
 	game.AutoSync = true
 	if game.ActiveBranch == "" {
 		game.ActiveBranch = "main"
@@ -879,6 +883,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		}
 		return store.Game{}, err
 	}
+
+	// Only a committed native game may clear prior untrack state or be
+	// announced to peers. A failed insert leaves existing owners untouched.
+	if err := d.Store.ClearUntrackedTombstone(game.ID); err != nil {
+		return store.Game{}, fmt.Errorf("game created but tombstone clearance failed; inspect native state: %w", err)
+	}
+	d.P2P.NotifyRetrack(game.ID)
 
 	// Some games keep their saves in the registry — 430 in the manifest, and
 	// for 303 of them it is the only place a save exists. Set up before the
@@ -979,7 +990,10 @@ func (d *Daemon) ValidateSavePath(rawPath string) (string, error) {
 	norm := strings.ToLower(abs)
 	absInfo, absStatErr := os.Stat(abs)
 	games, err := d.Store.ListGames()
-	if err == nil {
+	if err != nil {
+		return "", fmt.Errorf("inspect tracked save-path ownership: %w", err)
+	}
+	{
 		for _, g := range games {
 			if strings.ToLower(filepath.Clean(g.SavePath)) == norm {
 				return "", fmt.Errorf("%q already tracks this folder", g.Name)
