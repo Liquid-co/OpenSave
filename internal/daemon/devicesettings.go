@@ -13,8 +13,9 @@ import (
 //
 // Worked out once per run and kept: the database is read when first needed,
 // and a game's answer only changes when its name, App ID or folder does —
-// which makes it a different key here. A database update takes effect at the
-// next start, where adoptExclusionView carries every recorded hash over.
+// which makes it a different key here. A database update is read again once
+// it is indexed (refreshDeviceSettings), and adoptExclusionView carries every
+// recorded hash over, as at start.
 //
 // First needed while the daemon starts, before the window can open, so it does
 // not wait for the database to be rebuilt: that parses the whole manifest,
