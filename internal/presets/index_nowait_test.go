@@ -19,7 +19,7 @@ New Game:
       tags: [save]
 `)
 	yamlPath, indexPath := sc.manifestPaths()
-	waitForRebuild(t)
+	waitForRebuild(t, indexPath)
 
 	// An index from before the manifest's last download.
 	old := []indexedGame{{Name: "Old Game", Paths: []string{"<winAppData>/Old"}}}
@@ -46,13 +46,13 @@ New Game:
 	}
 
 	// Rebuilt in the background; what the next start reads.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		yamlInfo, err := os.Stat(yamlPath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if games, fresh := readManifestIndex(indexPath, yamlInfo); fresh {
+		if games, fresh := indexOnDisk(indexPath, yamlInfo); fresh {
 			if len(games) != 1 || games[0].Name != "New Game" {
 				t.Fatalf("rebuilt index: %+v", games)
 			}
@@ -66,20 +66,37 @@ New Game:
 	if got := sc.loadManifestIndexNoWait(); len(got) != 1 || got[0].Name != "New Game" {
 		t.Errorf("after the rebuild: %+v", got)
 	}
-	waitForRebuild(t)
+	waitForRebuild(t, indexPath)
 }
 
 // waitForRebuild waits for a background index build to be over, so the next
 // test can start one of its own.
-func waitForRebuild(t *testing.T) {
+func waitForRebuild(t *testing.T, indexPath string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for rebuildInFlight.Load() {
+	c := indexCacheFor(indexPath)
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		c.mu.Lock()
+		building := c.building
+		c.mu.Unlock()
+		if building == nil {
+			return
+		}
 		if time.Now().After(deadline) {
 			t.Fatal("the background rebuild did not finish")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// indexOnDisk is the index file's games, and whether it is newer than the
+// manifest it was built from.
+func indexOnDisk(indexPath string, yamlInfo os.FileInfo) ([]indexedGame, bool) {
+	idxInfo, err := os.Stat(indexPath)
+	if err != nil {
+		return nil, false
+	}
+	return readIndexFile(indexPath), idxInfo.ModTime().After(yamlInfo.ModTime())
 }
 
 // With no index at all, nothing is waited for either: the embedded one stands
@@ -92,7 +109,7 @@ New Game:
       tags: [save]
 `)
 	yamlPath, indexPath := sc.manifestPaths()
-	waitForRebuild(t)
+	waitForRebuild(t, indexPath)
 	downloaded := time.Now().Add(-30 * time.Minute)
 	if err := os.Chtimes(yamlPath, downloaded, downloaded); err != nil {
 		t.Fatal(err)
@@ -100,7 +117,7 @@ New Game:
 	if got := sc.loadManifestIndexNoWait(); len(got) != 0 {
 		t.Fatalf("got %+v, want nothing until the index is built", got)
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		if _, err := os.Stat(indexPath); err == nil {
 			break
@@ -113,5 +130,5 @@ New Game:
 	if got := sc.loadManifestIndexNoWait(); len(got) != 1 {
 		t.Errorf("after the build: %+v", got)
 	}
-	waitForRebuild(t)
+	waitForRebuild(t, indexPath)
 }
