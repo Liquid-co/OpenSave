@@ -615,9 +615,13 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, 
 		e.Log("info", fmt.Sprintf("tracking %q at %s, the folder a device you let choose folders named", q.Name, logging.Quote(localPath)))
 	}
 	if !known {
-		e.Log("warn", fmt.Sprintf(
-			"a paired device asked to sync %q at %s, which this device does not know as a save folder — "+
-				"it is offered on Home instead, for you to place", q.Name, logging.Quote(localPath)))
+		// Said once, when the offer is new: the other device asks again at
+		// every sync, every few seconds, for as long as the offer stands.
+		if !e.alreadyOffered(gameID, peerID) {
+			e.Log("warn", fmt.Sprintf(
+				"a paired device asked to sync %q at %s, which this device does not know as a save folder — "+
+					"it is offered on Home instead, for you to place", q.Name, logging.Quote(localPath)))
+		}
 		return e.offerGame(gameID, peerID, q)
 	}
 
@@ -665,6 +669,21 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, 
 // this device, and tells the peer this device is waiting rather than that the
 // game does not exist: the same answer, which the peer cannot see past, is
 // given for a game deliberately untracked.
+// alreadyOffered reports whether this device already offers the game as one
+// that device syncs.
+func (e *Engine) alreadyOffered(gameID, peerID string) bool {
+	offers, err := e.Store.OfferedGame(gameID)
+	if err != nil {
+		return false
+	}
+	for _, o := range offers {
+		if o.PeerID == peerID {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Game, error) {
 	if err := e.Store.RecordOfferedGame(store.OfferedGame{
 		GameID: gameID, PeerID: peerID, Name: q.Name,
