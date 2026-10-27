@@ -100,13 +100,14 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 		for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
 			for _, tpl := range g.Paths {
 				for _, pattern := range expandTemplate(tpl, vars, installBases, g.SteamID) {
-					if locationMatches(pattern, target) {
+					if !wholeFolderWildcard(pattern) && locationMatches(pattern, target) {
 						return true
 					}
 					// A template naming the save file: its folder is the
 					// location, as a scan takes it (statOrGlob), unless that
 					// folder is too broad to track.
-					if looksLikeFile(pattern) && locationMatches(filepath.Dir(pattern), target) {
+					if looksLikeFile(pattern) && !wholeFolderWildcard(filepath.Dir(pattern)) &&
+						locationMatches(filepath.Dir(pattern), target) {
 						return true
 					}
 				}
@@ -187,6 +188,21 @@ func foldCase(p string) string {
 		return strings.ToLower(p)
 	}
 	return p
+}
+
+// wholeFolderWildcard reports whether a catalogue location has a folder named
+// by wildcards alone ("*", "**", "?*"): one that stands for any folder at all.
+// Such a location vouches for nothing. The catalogue is downloaded, and one
+// entry of "<winAppData>/*" would vouch for every folder in application data,
+// Microsoft's included, for a peer to write into (CVE-2026-103398). A wildcard
+// with a name around it, "JustADream*", still names the game's own folder.
+func wholeFolderWildcard(pattern string) bool {
+	for _, el := range strings.FieldsFunc(pattern, func(r rune) bool { return r == '/' || r == filepath.Separator }) {
+		if strings.Trim(el, "*?") == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // hasWildcard reports whether a catalogue location holds a wildcard anywhere.

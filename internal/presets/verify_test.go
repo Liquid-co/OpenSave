@@ -159,3 +159,47 @@ Cat Game:
 		}
 	}
 }
+
+// A catalogue location whose folder is a bare wildcard stands for any folder
+// at all, and vouches for none: "<winAppData>/*" would otherwise vouch for
+// every folder in application data, Microsoft's included. A wildcard with a
+// name around it still names the game's own folder.
+func TestCatalogueSaveLocation_ABareWildcardVouchesForNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	appdata := filepath.Join(home, "AppData", "Roaming")
+	t.Setenv("APPDATA", appdata)
+	sc := manifestScanner(t, `
+Anything Game:
+  files:
+    <winAppData>/*:
+      tags: [save]
+      when:
+        - os: windows
+    <winAppData>/*/settings.sav:
+      tags: [save]
+      when:
+        - os: windows
+Prefix Game:
+  files:
+    <winAppData>/com.prefix.game*:
+      tags: [save]
+      when:
+        - os: windows
+`)
+	sc.SteamRoots = []string{}
+	sc.SteamUserdataPaths = []string{}
+
+	for _, folder := range []string{
+		filepath.Join(appdata, "Microsoft"),
+		filepath.Join(appdata, "Microsoft", "Windows"),
+	} {
+		if sc.CatalogueSaveLocation("Anything Game", "", folder) {
+			t.Errorf("%q was vouched for through a bare wildcard", folder)
+		}
+	}
+	if !sc.CatalogueSaveLocation("Prefix Game", "", filepath.Join(appdata, "com.prefix.game.beta")) {
+		t.Error("a wildcard with the game's name around it no longer vouches for its folder")
+	}
+}
