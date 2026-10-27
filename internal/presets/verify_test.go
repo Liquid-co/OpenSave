@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // What a device vouches for, for a game arriving from a peer: the folder the
@@ -157,5 +158,27 @@ Cat Game:
 		if !sc.CatalogueSaveLocation("Cat Game", "3087650", folder) {
 			t.Errorf("%s was not vouched for: %s", why, folder)
 		}
+	}
+}
+
+// A paired device waits on this answer and gives up after thirty seconds, so
+// a catalogue rebuild under way — about that long for the full catalogue —
+// is waited on only briefly, and the index on disk answers.
+func TestCatalogueSaveLocation_WaitsOnlyBrieflyForARebuild(t *testing.T) {
+	sc, appdata := verifyScanner(t)
+	folder := filepath.Join(appdata, "MoonStudio", "HollowGame")
+	if !sc.CatalogueSaveLocation("Hollow Game", "", folder) {
+		t.Fatal("setup: not vouched for with the index built")
+	}
+	rebuildInFlight.Store(true) // a rebuild that does not end
+	defer rebuildInFlight.Store(false)
+
+	start := time.Now()
+	ok := sc.CatalogueSaveLocation("Hollow Game", "", folder)
+	if took := time.Since(start); took > catalogueWait+3*time.Second {
+		t.Errorf("the check waited %v on a rebuild", took)
+	}
+	if !ok {
+		t.Error("the index on disk did not answer while a rebuild ran")
 	}
 }

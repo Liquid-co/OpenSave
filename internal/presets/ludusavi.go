@@ -692,6 +692,31 @@ func (sc *Scanner) loadManifestIndexNoWait() []indexedGame {
 // rebuildInFlight guards against overlapping background index builds.
 var rebuildInFlight atomic.Bool
 
+// loadManifestIndexWithin is loadManifestIndexNoWait that gives a rebuild —
+// under way, or started by it — up to wait to finish: long enough for a small
+// catalogue, while a caller someone is waiting on (a paired device asking
+// about a game gives up after thirty seconds) never waits out the full one,
+// which takes about that long.
+func (sc *Scanner) loadManifestIndexWithin(wait time.Duration) []indexedGame {
+	games := sc.loadManifestIndexNoWait()
+	if !rebuildInFlight.Load() {
+		return games
+	}
+	for deadline := time.Now().Add(wait); rebuildInFlight.Load() && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rebuildInFlight.Load() {
+		return games
+	}
+	yamlPath, indexPath := sc.manifestPaths()
+	if yamlInfo, err := os.Stat(yamlPath); err == nil {
+		if fresh, ok := readManifestIndex(indexPath, yamlInfo); ok && len(fresh) > 0 {
+			return fresh
+		}
+	}
+	return games
+}
+
 // readManifestIndex reads the index on disk, and says whether it is newer
 // than the manifest it was built from. Nil when there is none or it does not
 // parse.
