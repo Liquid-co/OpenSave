@@ -81,6 +81,8 @@ type Daemon struct {
 	// Device settings; see devicesettings.go.
 	devMu sync.Mutex
 	dev   devSettingsCache
+	// devGen: the game database generation last read for them.
+	devGen uint64
 
 	// OnCloudOffers receives the saves from other devices' cloud backups
 	// that are waiting for an answer, whenever that list changes, and
@@ -399,6 +401,7 @@ func (d *Daemon) Start() error {
 				return
 			case <-ticker.C:
 				d.ResyncWatchers()
+				d.refreshDeviceSettings()
 			}
 		}
 	})

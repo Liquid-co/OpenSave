@@ -711,11 +711,22 @@ func readManifestIndex(indexPath string, yamlInfo os.FileInfo) (games []indexedG
 func rebuildManifestIndex(yamlPath, indexPath string) []indexedGame {
 	games := buildManifestIndex(yamlPath)
 	if len(games) > 0 {
-		if raw, err := json.Marshal(games); err == nil {
-			_ = writeFileAtomic(indexPath, raw)
+		if raw, err := json.Marshal(games); err == nil && writeFileAtomic(indexPath, raw) == nil {
+			catalogueGen.Add(1)
 		}
 	}
 	return games
+}
+
+// catalogueGen counts the indexes this process has put in place: rebuilt, or
+// built with a download.
+var catalogueGen atomic.Uint64
+
+// CatalogueGeneration moves each time a new index of the game database is put
+// in place. Whatever read the database once and kept what it found compares
+// it to know when to read it again.
+func CatalogueGeneration() uint64 {
+	return catalogueGen.Load()
 }
 
 // refreshInFlight guards against overlapping background downloads.
@@ -790,6 +801,7 @@ func (sc *Scanner) downloadManifest(yamlPath string) {
 	}
 	_ = os.Remove(yamlPath)
 	_ = os.Rename(tmp, yamlPath)
+	catalogueGen.Add(1)
 }
 
 // buildManifestIndex parses the manifest YAML and keeps only what a
