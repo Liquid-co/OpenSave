@@ -698,23 +698,40 @@ var rebuildInFlight atomic.Bool
 // about a game gives up after thirty seconds) never waits out the full one,
 // which takes about that long.
 func (sc *Scanner) loadManifestIndexWithin(wait time.Duration) []indexedGame {
+	yamlPath, indexPath := sc.manifestPaths()
+	stale := indexStale(yamlPath, indexPath)
 	games := sc.loadManifestIndexNoWait()
-	if !rebuildInFlight.Load() {
+	if !stale {
 		return games
 	}
+	// The rebuild runs by now, or has already ended: a small catalogue can be
+	// built before this line is reached. So it is not asked whether one is
+	// running, only waited for while it is, and the index read after - as it
+	// is: built within the same clock tick as its manifest, it is not dated
+	// after it.
 	for deadline := time.Now().Add(wait); rebuildInFlight.Load() && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if rebuildInFlight.Load() {
 		return games
 	}
-	yamlPath, indexPath := sc.manifestPaths()
 	if yamlInfo, err := os.Stat(yamlPath); err == nil {
-		if fresh, ok := readManifestIndex(indexPath, yamlInfo); ok && len(fresh) > 0 {
-			return fresh
+		if built, _ := readManifestIndex(indexPath, yamlInfo); len(built) > 0 {
+			return built
 		}
 	}
 	return games
+}
+
+// indexStale reports whether there is a manifest whose index is missing or
+// older than it: one loadManifestIndexNoWait will rebuild.
+func indexStale(yamlPath, indexPath string) bool {
+	yamlInfo, err := os.Stat(yamlPath)
+	if err != nil {
+		return false
+	}
+	idxInfo, err := os.Stat(indexPath)
+	return err != nil || !idxInfo.ModTime().After(yamlInfo.ModTime())
 }
 
 // readManifestIndex reads the index on disk, and says whether it is newer

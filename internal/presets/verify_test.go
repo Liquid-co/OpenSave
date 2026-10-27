@@ -170,6 +170,12 @@ func TestCatalogueSaveLocation_WaitsOnlyBrieflyForARebuild(t *testing.T) {
 	if !sc.CatalogueSaveLocation("Hollow Game", "", folder) {
 		t.Fatal("setup: not vouched for with the index built")
 	}
+	// A newer catalogue arrives, and its index is being built.
+	yamlPath, _ := sc.manifestPaths()
+	newer := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(yamlPath, newer, newer); err != nil {
+		t.Fatal(err)
+	}
 	rebuildInFlight.Store(true) // a rebuild that does not end
 	defer rebuildInFlight.Store(false)
 
@@ -177,6 +183,8 @@ func TestCatalogueSaveLocation_WaitsOnlyBrieflyForARebuild(t *testing.T) {
 	ok := sc.CatalogueSaveLocation("Hollow Game", "", folder)
 	if took := time.Since(start); took > catalogueWait+3*time.Second {
 		t.Errorf("the check waited %v on a rebuild", took)
+	} else if took < catalogueWait/2 {
+		t.Errorf("the check did not wait for the rebuild at all (%v)", took)
 	}
 	if !ok {
 		t.Error("the index on disk did not answer while a rebuild ran")
