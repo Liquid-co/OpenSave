@@ -390,5 +390,12 @@
   "game.config.deviceSettingsHint": "The game database lists these as this game's settings, not its save, so each device keeps its own (graphics, resolution). They are still in every snapshot.",
   "notifications.clearAll": "Clear all",
   "notifications.clearAllTitle": "Take these out of the bell. Activity still has them.",
-  "palette.renameGame": "Rename {game}"
+  "palette.renameGame": "Rename {game}",
+  "devices.linkLan": "home network",
+  "devices.linkVpn": "VPN (e.g. Tailscale)",
+  "devices.linkRelay": "internet relay",
+  "devices.linkInternet": "internet",
+  "devices.linkUnmeasured": "{kind} · speed not measured yet",
+  "devices.linkMeasured": "{kind} · {rate} (measured {when})",
+  "devices.linkTitle": "Saves go to the fastest connections first, and a device that is behind takes the newer save from the fastest device that has it."
 }

@@ -342,5 +342,12 @@
   "game.config.deviceSettingsHint": "遊戲資料庫將這些檔案列為該遊戲的設定而非存檔，因此每臺裝置保留各自的設定（畫質、解析度）。它們仍包含在每個快照中。",
   "notifications.clearAll": "清除全部",
   "notifications.clearAllTitle": "將這些從鈴鐺移除，活動頁仍保留",
-  "palette.renameGame": "重新命名 {game}"
+  "palette.renameGame": "重新命名 {game}",
+  "devices.linkLan": "家用網路",
+  "devices.linkVpn": "VPN（如 Tailscale）",
+  "devices.linkRelay": "網際網路中繼",
+  "devices.linkInternet": "網際網路",
+  "devices.linkUnmeasured": "{kind} · 尚未測速",
+  "devices.linkMeasured": "{kind} · {rate}（測於 {when}）",
+  "devices.linkTitle": "存檔會優先透過最快的連線傳送；落後的裝置會從擁有較新存檔的裝置中最快的那臺取得。"
 }
