@@ -31,6 +31,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/fsx"
 	"github.com/opensave/opensave/internal/ignore"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/owntouch"
@@ -1129,7 +1130,10 @@ func (e *Engine) registerFolders(ctx context.Context, gw *gameWatch) {
 // looked up once per check, only when there are subfolders to look up. A
 // burst of Writes to one folder is one check (queueCheck).
 func (e *Engine) checkFolders(ctx context.Context, gw *gameWatch, dir string) bool {
-	entries, err := os.ReadDir(dir)
+	// Listed so that it can still be removed meanwhile: the Write that brought
+	// this here may be a restore, or the game, emptying the folder
+	// (fsx.ReadDirShared).
+	entries, err := fsx.ReadDirShared(dir)
 	if err != nil {
 		return false // gone again, or unreadable: its own events will tell
 	}
