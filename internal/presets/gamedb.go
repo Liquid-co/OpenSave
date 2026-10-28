@@ -149,6 +149,20 @@ func (ds *GameDB) IdentifyProgram(exe string) (GameMatch, bool) {
 // location in the game database is this folder, or holds it, or is held by it
 // (a folder picked one level too high).
 func (ds *GameDB) IdentifyFolder(folder string) (GameMatch, bool) {
+	return ds.identifyFolder(folder, 0)
+}
+
+// IdentifyFolderStrictly is IdentifyFolder for naming a game nobody asked
+// about: a folder holding the save location only counts when that is at most
+// one folder further down ("Duckov" holding "DuckovSaves"), never a folder
+// like Documents that holds many games'.
+func (ds *GameDB) IdentifyFolderStrictly(folder string) (GameMatch, bool) {
+	return ds.identifyFolder(folder, 1)
+}
+
+// identifyFolder: maxDepth limits how far below the folder a save location
+// held by it may be, 0 for no limit.
+func (ds *GameDB) identifyFolder(folder string, maxDepth int) (GameMatch, bool) {
 	if ds == nil || folder == "" {
 		return GameMatch{}, false
 	}
@@ -179,7 +193,15 @@ func (ds *GameDB) IdentifyFolder(folder string) (GameMatch, bool) {
 					case under(expanded, folder):
 						score = 2 // a folder inside the save location
 					case under(folder, expanded):
-						score = 1 // the save location inside the folder picked
+						// The save location inside the folder picked, counted
+						// to the folder a file location is in.
+						rel, _ := relativeUnder(folder, expanded)
+						if path.Ext(path.Base(rel)) != "" {
+							rel = path.Dir(rel)
+						}
+						if maxDepth == 0 || strings.Count(rel, "/") < maxDepth {
+							score = 1
+						}
 					}
 					if score > bestScore || (score == bestScore && score > 0 && better(g, best)) {
 						best, bestScore = g, score

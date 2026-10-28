@@ -48,6 +48,8 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/games/{gameId}/link", s.handleLinkGame)
 	r.Get("/api/games/{gameId}/roots", s.handleListGameRoots)
 	r.Post("/api/games/{gameId}/roots", s.handleAddGameRoot)
+	r.Post("/api/games/{gameId}/suggested-settings", s.handleDecideSuggestedSettings)
+	r.Post("/api/games/{gameId}/gamedb-link", s.handleAnswerGameDBLink)
 	r.Delete("/api/games/{gameId}/roots/{root}", s.handleRemoveGameRoot)
 	r.Delete("/api/games/{gameId}/alias/{aliasId}", s.handleUnlinkGame)
 

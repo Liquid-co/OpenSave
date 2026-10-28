@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,4 +89,88 @@ func (d *Daemon) markTracked(m *presets.GameMatch) {
 			return
 		}
 	}
+}
+
+// A game tracked without an App ID — a folder tracked by hand, or found by
+// the scan under a name of its own making ("Pal (Epic/Unreal Save)") — has no
+// cover art, launching, session detection or device settings. When its folder
+// plainly is one game's in the game database, that is suggested on the game's
+// page, and the App ID is set only when the user confirms it: through the
+// App ID the database's settings files are left out of syncing, and a wrong
+// guess would leave out files of the save without anyone knowing.
+
+func gameDBMark(gameID string) string { return "gamedb:" + gameID }
+
+func gameDBSuggestionMark(gameID string) string { return "gamedb-suggestion:" + gameID }
+
+// GameDBSuggestion is the game in the game database a game tracked without an
+// App ID looks like, waiting for the user's answer.
+type GameDBSuggestion struct {
+	AppID string `json:"appId"`
+	Name  string `json:"name"`
+}
+
+// suggestGameDatabaseLink asks the game database about a game tracked without
+// an App ID, strictly (IdentifyFolderStrictly), and records what it says as a
+// suggestion. Once per game and folder (a mark): an answer is not asked for
+// again, nor an App ID someone took away suggested again.
+func (d *Daemon) suggestGameDatabaseLink(game store.Game) {
+	if game.AppID != "" || game.SavePath == "" {
+		return
+	}
+	if d.Store.Mark(gameDBMark(game.ID)) == game.SavePath {
+		return
+	}
+	_ = d.Store.SetMark(gameDBMark(game.ID), game.SavePath)
+	m, ok := d.gameDB().IdentifyFolderStrictly(game.SavePath)
+	if !ok || m.AppID == "" {
+		return
+	}
+	if d.Store.SetMark(gameDBSuggestionMark(game.ID), m.AppID+"\n"+m.Name) != nil {
+		return
+	}
+	d.Log.Log("info", fmt.Sprintf("%q looks like %s in the game database — link it from the game's configuration tab for its cover art, settings and seeing it played", game.Name, m.Name))
+	if d.OnGameChanged != nil {
+		d.OnGameChanged(game.ID)
+	}
+}
+
+// SuggestedGameDBLink is the suggestion waiting for a game, if any.
+func (d *Daemon) SuggestedGameDBLink(game store.Game) *GameDBSuggestion {
+	if game.AppID != "" {
+		return nil
+	}
+	appID, name, ok := strings.Cut(d.Store.Mark(gameDBSuggestionMark(game.ID)), "\n")
+	if !ok || appID == "" {
+		return nil
+	}
+	return &GameDBSuggestion{AppID: appID, Name: name}
+}
+
+// ErrNoGameDBSuggestion is an answer for a game with no suggestion waiting.
+var ErrNoGameDBSuggestion = errors.New("no game database link is suggested for this game")
+
+// AnswerGameDBLink records the user's answer to a game's suggestion: accept
+// gives the game the App ID, and cover art if it had none — its name stays
+// the user's — and its device settings follow; otherwise the suggestion goes,
+// and is not made again for this folder.
+func (d *Daemon) AnswerGameDBLink(game store.Game, accept bool) error {
+	s := d.SuggestedGameDBLink(game)
+	if s == nil {
+		return ErrNoGameDBSuggestion
+	}
+	_ = d.Store.SetMark(gameDBSuggestionMark(game.ID), "")
+	if !accept {
+		return nil
+	}
+	game.AppID = s.AppID
+	if game.CoverURL == "" {
+		game.CoverURL = SteamCoverURL(s.AppID)
+	}
+	if err := d.Store.UpdateGame(game); err != nil {
+		return err
+	}
+	d.Log.Log("info", fmt.Sprintf("%q is linked to %s in the game database: cover art, its settings and seeing it played come from there", game.Name, s.Name))
+	d.exclusionsChanged(game)
+	return nil
 }
