@@ -34,6 +34,12 @@ type Proc struct {
 	Exe string
 	// Args is the command line, where the system says (Linux).
 	Args []string
+	// Measured says CPU was read (Windows): the processor time the program has
+	// used so far. A game being played uses some all the time; what a game
+	// leaves behind when it closes — a crash handler, a stub of the same name —
+	// uses none (daemon.activeProcesses).
+	Measured bool
+	CPU      time.Duration
 	// SteamAppID is the Steam app the process was started for, where Steam
 	// tagged it (Linux: SteamAppId in the environment, or AppId=… on the
 	// command line of Steam's launcher).
@@ -252,3 +258,40 @@ func (t *Tracker) Finish(gameID string, at time.Time) {
 // List returns the processes running now. Where the system cannot say, it
 // returns none and an error, and nothing is ever seen playing.
 func List() ([]Proc, error) { return listProcesses() }
+
+// GameCPU is the processor time a game's running processes have used so far,
+// summed, and whether every one of them could be measured.
+type GameCPU struct {
+	CPU      time.Duration
+	Measured bool
+}
+
+// CPUOf sums, for each target with a process running, the processor time its
+// processes have used, matched as Running matches them.
+func CPUOf(procs []Proc, targets []Target) map[string]GameCPU {
+	out := map[string]GameCPU{}
+	for _, t := range targets {
+		for _, p := range procs {
+			if !matches(p, t) {
+				continue
+			}
+			g, seen := out[t.GameID]
+			if !seen {
+				g.Measured = true
+			}
+			g.CPU += p.CPU
+			g.Measured = g.Measured && p.Measured
+			out[t.GameID] = g
+		}
+	}
+	return out
+}
+
+// Marked reports whether a game's session was begun from outside (Begin) —
+// the Deck plugin, `opensave wrap` — and so ends only when told.
+func (t *Tracker) Marked(gameID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s, ok := t.playing[gameID]
+	return ok && s.marked
+}

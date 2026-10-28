@@ -617,6 +617,9 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	if w.engine.holdingBack(game) {
 		return 404, map[string]string{"error": syncengine.HeldMessage}
 	}
+	if w.engine.Sync.PlayingHere(game.ID) {
+		return 503, map[string]string{"error": syncengine.PlayingMessage}
+	}
 	// As on the LAN: a save a sync here is writing is not described
 	// (syncengine/settle.go). Each request runs on its own goroutine, so the
 	// wait does not hold up the relay traffic that finishes the write.
@@ -702,6 +705,9 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	game, err := w.engine.trackedGameForPeer(gameID)
 	if err != nil {
 		return 404, map[string]string{"error": "Game not found."}
+	}
+	if w.engine.Sync.PlayingHere(game.ID) {
+		return 503, map[string]string{"error": syncengine.PlayingMessage}
 	}
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "invalid path"}

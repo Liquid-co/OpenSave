@@ -191,6 +191,9 @@ func New(opts Options) (*Daemon, error) {
 
 	// A game's device settings are left out of syncing (devicesettings.go).
 	d.P2P.Sync.DeviceSettingsFor = d.deviceSettingsFor
+	// A game being played here is synced when its session ends
+	// (syncengine/playing.go).
+	d.P2P.Sync.Playing = func(gameID string) bool { return !d.PlayingSince(gameID).IsZero() }
 
 	// A restore or a branch switch rewrites a save folder; nothing syncing it
 	// may read it half-way (syncengine/settle.go).
@@ -282,6 +285,7 @@ func New(opts Options) (*Daemon, error) {
 		SyncWritingNow: func(gameID string) bool {
 			return d.P2P != nil && d.P2P.Sync != nil && d.P2P.Sync.WritingNow(gameID)
 		},
+		HoldSnapshot: d.holdSnapshotWhilePlaying,
 		OnChanged: func(gameID string) {
 			// An emptied save is noticed as it happens, and said on screen,
 			// even with no other device online to hold it back from.

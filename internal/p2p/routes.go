@@ -707,6 +707,11 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, syncengine.HeldMessage)
 		return
 	}
+	// Being played here: synced when the session ends (syncengine/playing.go).
+	if e.Sync.PlayingHere(game.ID) {
+		jsonError(w, http.StatusServiceUnavailable, syncengine.PlayingMessage)
+		return
+	}
 	// Never describe a save a sync here is writing: part-way through, it is a
 	// mixture no device holds, and the asker would judge it as a save that had
 	// moved (syncengine/settle.go). Held still while it is read; a write in
@@ -833,6 +838,10 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	game, err := e.trackedGameForPeer(gameID)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, "Game not found.")
+		return
+	}
+	if e.Sync.PlayingHere(game.ID) {
+		jsonError(w, http.StatusServiceUnavailable, syncengine.PlayingMessage)
 		return
 	}
 	base, ok := e.resolveServeRoot(gameID, game, body.Root)
