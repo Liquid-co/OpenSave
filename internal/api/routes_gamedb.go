@@ -24,3 +24,9 @@ func (s *Server) handleGameDBIdentify(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"found": true, "game": m})
 }
+
+// GET /api/gamedb/running — the games the game database knows with a program
+// running now.
+func (s *Server) handleGameDBRunning(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"games": s.Daemon.RunningGames()})
+}

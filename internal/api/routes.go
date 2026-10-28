@@ -33,6 +33,7 @@ func (s *Server) routes(r chi.Router) {
 	// The game database, for tracking a game by hand (daemon/gamedb.go).
 	r.Get("/api/gamedb/search", s.handleGameDBSearch)
 	r.Get("/api/gamedb/identify", s.handleGameDBIdentify)
+	r.Get("/api/gamedb/running", s.handleGameDBRunning)
 	r.Get("/api/suggest-name", s.handleSuggestName)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
 

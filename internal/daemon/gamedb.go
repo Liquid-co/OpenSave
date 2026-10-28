@@ -3,6 +3,7 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/opensave/opensave/internal/presets"
@@ -87,4 +88,47 @@ func (d *Daemon) markTracked(m *presets.GameMatch) {
 			return
 		}
 	}
+}
+
+// RunningGame is a game the game database knows with a program of it running
+// now: what "Track game" offers first, since the game being played is the one
+// most often tracked.
+type RunningGame struct {
+	presets.GameMatch
+	// Exe is the program seen running, tracked as the game's program.
+	Exe string `json:"exe"`
+}
+
+// RunningGames lists the games the game database knows that have a program
+// running now, by where the program is installed (GameDB.IdentifyProgram);
+// once per game, by name. Programs of the system itself are not looked at.
+func (d *Daemon) RunningGames() []RunningGame {
+	if d.sessions.list == nil {
+		return nil
+	}
+	procs, err := d.sessions.list()
+	if err != nil {
+		return nil
+	}
+	db := d.gameDB()
+	winDir := strings.ToLower(os.Getenv("WINDIR"))
+	seen := map[string]bool{}
+	out := []RunningGame{}
+	for _, p := range procs {
+		if p.Exe == "" {
+			continue
+		}
+		if winDir != "" && strings.HasPrefix(strings.ToLower(p.Exe), winDir+string(filepath.Separator)) {
+			continue
+		}
+		m, ok := db.IdentifyProgram(p.Exe)
+		if !ok || seen[m.Name] {
+			continue
+		}
+		seen[m.Name] = true
+		d.markTracked(&m)
+		out = append(out, RunningGame{GameMatch: m, Exe: p.Exe})
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
 }
