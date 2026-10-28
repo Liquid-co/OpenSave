@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,6 +26,7 @@ func (s *Server) peerRoutes(r chi.Router) {
 	r.Delete("/api/peers/{peerId}", s.handleDeletePeer)
 	r.Post("/api/peers/probe", s.handleProbePeer)
 	r.Get("/api/peers/{peerId}/games", s.handlePeerGames)
+	r.Post("/api/peers/{peerId}/choose-folders", s.handlePeerChoosesFolders)
 
 	r.Post("/api/games/sync-all", s.handleSyncAll)
 	r.Post("/api/games/{gameId}/sync", s.handleSyncGame)
@@ -358,4 +360,32 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+// handlePeerChoosesFolders lets a paired device choose the folders of games it
+// syncs to this one, or stops it: {"allowed": true|false}. Off, a game from
+// that device is tracked by itself only at a folder this one can vouch for as
+// its save, and offered otherwise (CVE-2026-103398).
+func (s *Server) handlePeerChoosesFolders(w http.ResponseWriter, r *http.Request) {
+	peerID := chi.URLParam(r, "peerId")
+	var body struct {
+		Allowed *bool `json:"allowed"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Allowed == nil {
+		writeError(w, http.StatusBadRequest, `send {"allowed": true} or {"allowed": false}`)
+		return
+	}
+	if err := s.Daemon.Store.SetPeerChoosesFolders(peerID, *body.Allowed); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if peer, err := s.Daemon.Store.GetPeer(peerID); err == nil {
+		if *body.Allowed {
+			s.Daemon.Log.Log("info", fmt.Sprintf("%q may now choose the folders of games it syncs here", peer.Name))
+		} else {
+			s.Daemon.Log.Log("info", fmt.Sprintf("%q no longer chooses folders here: games it syncs are tracked only at known save folders", peer.Name))
+		}
+	}
+	s.BroadcastPeersUpdate()
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "choosesFolders": *body.Allowed})
 }

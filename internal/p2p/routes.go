@@ -496,7 +496,9 @@ func (e *Engine) backfillCover(game store.Game, q manifestGameQuery) store.Game 
 // peerID identifies the device asking. It is only needed when this device is
 // set to ask before tracking, to record who is waiting; empty is tolerated
 // (an unidentified caller simply produces an offer with no named device).
-func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID string) (store.Game, error) {
+// chooser is the device a signature proved made the request, or "": the only
+// one whose naming of a folder may be trusted (Devices, migration 0038).
+func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, chooser string) (store.Game, error) {
 	if game, err := e.Store.GetGame(gameID); err == nil {
 		return e.backfillCover(game, q), nil
 	}
@@ -602,10 +604,17 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 	// drives and system folders.
 	//
 	// So a game arriving from a peer is tracked by itself only where this
-	// device's own scanner recognises a save folder: one it found and noted,
-	// or one inside an emulator's own save folder here. Anywhere else, it is
-	// offered, and the user picks the folder on this device.
-	if e.KnownSaveLocation == nil || !e.KnownSaveLocation(localPath) {
+	// device can vouch for the folder as that game's save: one its scan
+	// noted, an emulator's save folder here, or where the save catalogue or
+	// Steam says the game keeps its saves on this device. Anywhere else it is
+	// offered, and the user picks the folder on this device — unless the
+	// user has let that device choose folders (Devices), as for their own.
+	known := e.KnownSaveLocation != nil && e.KnownSaveLocation(q.Name, q.AppID, localPath)
+	if !known && e.Store.PeerChoosesFolders(chooser) {
+		known = true
+		e.Log("info", fmt.Sprintf("tracking %q at %s, the folder a device you let choose folders named", q.Name, logging.Quote(localPath)))
+	}
+	if !known {
 		e.Log("warn", fmt.Sprintf(
 			"a paired device asked to sync %q at %s, which this device does not know as a save folder — "+
 				"it is offered on Home instead, for you to place", q.Name, logging.Quote(localPath)))
@@ -640,6 +649,11 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 		_ = os.MkdirAll(localPath, 0o777)
 	}
 	e.Log("info", fmt.Sprintf("auto-tracked %q at %s from peer manifest request", q.Name, logging.Quote(localPath)))
+	// Offered before, while its folder was not yet known here: it is tracked
+	// now, so the offer is answered.
+	if err := e.Store.ClearOfferedGame(game.ID); err != nil {
+		e.Log("warn", fmt.Sprintf("could not clear the offer for %q: %v", q.Name, err))
+	}
 	if e.OnAutoTracked != nil {
 		e.OnAutoTracked(game)
 	}
@@ -659,6 +673,9 @@ func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Ga
 		e.Log("warn", fmt.Sprintf("could not record %q as an offered game: %v", q.Name, err))
 	} else {
 		e.notifyGamesUpdate()
+		if e.OnGameOffered != nil {
+			e.OnGameOffered()
+		}
 	}
 	return store.Game{}, fmt.Errorf("%s: %q", syncengine.AwaitingFolderMessage, q.Name)
 }
@@ -669,12 +686,19 @@ func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Ga
 func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
 
-	var askingPeer string
-	if peer, ok := e.peerByAddress(clientIP(r)); ok {
-		askingPeer = peer.ID
+	// Which device asked: what was served to it is recorded, and an offer
+	// names it. The address stands in for a caller that does not sign, as it
+	// always has. Only the device the signature proved, though, may be trusted
+	// to choose a folder (ensureManifestGame's chooser).
+	provenPeer := lanPeerID(r)
+	askingPeer := provenPeer
+	if askingPeer == "" {
+		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			askingPeer = peer.ID
+		}
 	}
 	query := manifestQueryFromURL(r.URL.Query())
-	game, err := e.ensureManifestGame(gameID, query, askingPeer)
+	game, err := e.ensureManifestGame(gameID, query, askingPeer, provenPeer)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return

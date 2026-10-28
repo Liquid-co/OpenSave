@@ -621,6 +621,9 @@ func cmdPeers(args []string) int {
 	if len(rest) > 0 && rest[0] == "games" {
 		return cmdPeerGames(args[1:])
 	}
+	if len(rest) > 0 && rest[0] == "trust" {
+		return cmdPeerTrust(args[1:])
+	}
 
 	raw, err := daemonRequest("GET", "/api/peers", nil)
 	if err != nil {
@@ -1067,3 +1070,34 @@ const relayUsage = `usage:
   opensave relay status        Show the current relay room
   opensave relay join <code>   Join a relay room (same code on every device)
   opensave relay leave         Leave the current room`
+
+// cmdPeerTrust lets a paired device choose the folders of games it syncs to
+// this one, or stops it — the Devices page's "Trust it to choose folders".
+// Off, such a game is tracked by itself only at a folder this device
+// recognises as its save, and waits on Home otherwise.
+func cmdPeerTrust(args []string) int {
+	asJSON, args := jsonFlag(args)
+	if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
+		fmt.Fprintln(os.Stderr,
+			"usage: opensave peers trust <peerId> on|off\n"+
+				"  on:  games that device syncs here go in the folder it names, even one\n"+
+				"       this device doesn't recognise as a save. Only for your own devices.\n"+
+				"  off: such games wait for you to choose a folder (`opensave offers`).\n"+
+				"  Device ids come from `opensave peers`.")
+		return 1
+	}
+	allowed := args[1] == "on"
+	raw, err := daemonRequest("POST", "/api/peers/"+url.PathEscape(args[0])+"/choose-folders", map[string]any{"allowed": allowed})
+	if err != nil {
+		return fail(asJSON, err)
+	}
+	if asJSON {
+		return emitRawJSON(raw)
+	}
+	if allowed {
+		fmt.Println(okText(sym("✓", "ok")) + " that device now chooses the folders of games it syncs here")
+	} else {
+		fmt.Println(okText(sym("✓", "ok")) + " that device no longer chooses folders here")
+	}
+	return 0
+}
