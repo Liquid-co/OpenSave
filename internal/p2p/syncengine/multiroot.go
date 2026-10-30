@@ -217,6 +217,8 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 		Manifest:     remote,
 		ActiveBranch: remoteData.ActiveBranch,
 		Proto:        remoteData.Proto,
+		// pullFiles echoes this. Dropping it skips named-root immediate ack.
+		RootMappedMs: remoteData.RootMappedMs,
 	}
 
 	if emptiedUnconfirmed(remote.Files, decision, remoteData.DeletionConfirmed) {
@@ -290,7 +292,16 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 }
 
 func (e *Engine) persistRootLineage(gameID, peerID, root string, local, remote delta.Manifest) {
-	files, dirs := IntersectLineage(local, remote)
+	files, dirs := e.rootLineagePaths(gameID, peerID, root, local, remote)
+	if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, files, dirs); err != nil {
+		e.Log("warn", fmt.Sprintf("persist lineage for the %q location failed: %v", root, err))
+	}
+}
+
+// rootLineagePaths keeps pending deletions and ignore rules consistent across
+// ordinary syncs and asynchronous refreshes, without writing stale state.
+func (e *Engine) rootLineagePaths(gameID, peerID, root string, local, remote delta.Manifest) (files, dirs []string) {
+	files, dirs = IntersectLineage(local, remote)
 	// As persistLineage does for the main folder: a path both held before
 	// that one side holds no longer is a deletion in flight, and its record is
 	// what lets the next sync send it on rather than fetch the file back. The
@@ -306,9 +317,7 @@ func (e *Engine) persistRootLineage(gameID, peerID, root string, local, remote d
 	rules := e.rulesFor(gameID)
 	files = filterPathList(files, rules)
 	dirs = filterPathList(dirs, rules)
-	if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, files, dirs); err != nil {
-		e.Log("warn", fmt.Sprintf("persist lineage for the %q location failed: %v", root, err))
-	}
+	return files, dirs
 }
 
 // contentHashOf is the "has anything about this game changed" value, spanning
