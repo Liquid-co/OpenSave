@@ -789,6 +789,19 @@ func isDuplicateGameID(err error) bool {
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
+	return d.trackGameAdmitted(game, nil)
+}
+
+// TrackImportedGame reuses native tracking while retaining the cross-process
+// ownership admission acquired before the backup was extracted.
+func (d *Daemon) TrackImportedGame(game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
+	if admission == nil {
+		return store.Game{}, fmt.Errorf("missing import admission")
+	}
+	return d.trackGameAdmitted(game, admission)
+}
+
+func (d *Daemon) trackGameAdmitted(game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
 	abs, err := d.ValidateSavePath(game.SavePath)
 	if err != nil {
 		return store.Game{}, err
@@ -864,7 +877,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		game.CoverURL = SteamCoverURL(game.AppID)
 	}
 
-	if err := d.Store.CreateGame(game); err != nil {
+	var createErr error
+	if admission != nil {
+		createErr = d.Store.CreateGameAdmitted(game, admission)
+	} else {
+		createErr = d.Store.CreateGame(game)
+	}
+	if err := createErr; err != nil {
 		// The id was free a moment ago. If it is taken now, a paired device
 		// that syncs this same game reached us in between and auto-tracked
 		// it — the two sides create the game concurrently when both people
