@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/opensave/opensave/internal/config"
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // Commands that touch peers, pairing or syncing need the *running* daemon:
@@ -44,6 +45,55 @@ func daemonBaseURL() (string, error) {
 		}
 	}
 	return "http://127.0.0.1:8383", nil
+}
+
+// daemonPublished reports whether a daemon has published its address.
+// An absent file is not proof that no daemon exists. A published daemon that does not answer
+// is fail-closed: the CLI must not write the database beside a live pull.
+func daemonPublished() bool {
+	paths, err := config.Resolve()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(paths.HomeDir, "daemon.addr"))
+	return err == nil
+}
+
+func useRunningDaemon() (bool, error) {
+	if !daemonPublished() {
+		// Older daemons and interrupted startup may listen without an
+		// address file. Do not silently write SQLite beside such a daemon.
+		probe, err := net.DialTimeout("tcp", "127.0.0.1:8383", 200*time.Millisecond)
+		if err != nil {
+			return false, nil
+		}
+		probe.Close()
+	}
+	if _, err := daemonRequest("GET", "/api/games", nil); err != nil {
+		// An advertised or listening daemon that cannot answer is NOT
+		// evidence that offline direct Store mutation is safe.
+		return false, err
+	}
+	return true, nil
+}
+
+// withOfflineRootAdmission prevents a CLI process from rewriting root mappings
+// beside a live daemon when its daemon.addr file is missing or stale. Hold the
+// lease through the Store write so server startup cannot interleave.
+func withOfflineRootAdmission(write func() error) error {
+	paths, err := config.Resolve()
+	if err != nil {
+		return err
+	}
+	unlock, ok, err := fsx.TryLock(filepath.Join(paths.HomeDir, "daemon-presence.lock"))
+	if err != nil {
+		return fmt.Errorf("check daemon ownership: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("cannot change root: a running OpenSave daemon owns this home; restore daemon.addr or use its API")
+	}
+	defer unlock()
+	return write()
 }
 
 // daemonRequest calls the running daemon. The error text is deliberately
