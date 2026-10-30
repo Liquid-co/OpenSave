@@ -71,6 +71,9 @@ func isSettling(err error) bool {
 // saveGate is one game's readers and writers.
 type saveGate struct {
 	writers, waitingWriters, readers int
+	// topology excludes writers, readers and new sync admissions while a
+	// root mapping is changed; the reservation survives the Store commit.
+	topology bool
 	// changed is closed, and replaced, whenever any count falls: the moment a
 	// waiter's condition may have come true.
 	changed chan struct{}
@@ -93,7 +96,7 @@ func (e *Engine) gateLocked(gameID string) *saveGate {
 func (e *Engine) wakeLocked(gameID string, g *saveGate) {
 	close(g.changed)
 	g.changed = make(chan struct{})
-	if g.writers == 0 && g.waitingWriters == 0 && g.readers == 0 {
+	if g.writers == 0 && g.waitingWriters == 0 && g.readers == 0 && !g.topology {
 		delete(e.gates, gameID)
 	}
 }
@@ -105,6 +108,13 @@ func (e *Engine) wakeLocked(gameID string, g *saveGate) {
 func (e *Engine) Writing(gameID string) (done func()) {
 	e.settleMu.Lock()
 	g := e.gateLocked(gameID)
+	for g.topology {
+		ch := g.changed
+		e.settleMu.Unlock()
+		<-ch
+		e.settleMu.Lock()
+		g = e.gateLocked(gameID)
+	}
 	if g.writers == 0 {
 		// Readers are short — a walk of the folder — so this waits for them
 		// without a deadline. New ones queue behind it meanwhile.
@@ -177,7 +187,7 @@ func (e *Engine) Reading(ctx context.Context, gameID string) (done func(), err e
 	e.settleMu.Lock()
 	for {
 		g := e.gateLocked(gameID)
-		if g.writers == 0 && g.waitingWriters == 0 {
+		if g.writers == 0 && g.waitingWriters == 0 && !g.topology {
 			g.readers++
 			break
 		}
@@ -214,7 +224,7 @@ func (e *Engine) Reading(ctx context.Context, gameID string) (done func(), err e
 func (e *Engine) TryReading(gameID string) (done func(), ok bool) {
 	e.settleMu.Lock()
 	g := e.gateLocked(gameID)
-	if g.writers > 0 || g.waitingWriters > 0 {
+	if g.writers > 0 || g.waitingWriters > 0 || g.topology {
 		e.settleMu.Unlock()
 		return func() {}, false
 	}
@@ -252,3 +262,69 @@ func (e *Engine) ReadManifest(ctx context.Context, gameID, path string) (delta.M
 // out on the next ordinary sync, and a device that never finishes cannot keep
 // this one asking forever.
 const maxBusyFollowUps = 12
+
+// TryTopologyMutation reserves a game's root mapping against already-running
+// or queued sync passes and against new readers/writers until release. It is
+// nonblocking: a busy game must leave its mapping unchanged.
+//
+// Both mutexes are acquired before inspecting activity, so the decision and
+// reservation are atomic with SyncGame admission and Writing/Reading gates.
+// Lock order is always mu then settleMu.
+func (e *Engine) TryTopologyMutation(gameID string) (done func(), ok bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.activeSyncs[gameID] || e.pendingSyncs[gameID] || e.followUps[gameID] > 0 || e.topologyMutations[gameID] {
+		return nil, false
+	}
+	e.settleMu.Lock()
+	g := e.gateLocked(gameID)
+	if g.writers > 0 || g.waitingWriters > 0 || g.readers > 0 || g.topology {
+		e.settleMu.Unlock()
+		return nil, false
+	}
+	g.topology = true
+	if e.topologyMutations == nil {
+		e.topologyMutations = make(map[string]bool)
+	}
+	e.topologyMutations[gameID] = true
+	e.settleMu.Unlock()
+
+	var released bool
+	return func() {
+		e.mu.Lock()
+		if released {
+			e.mu.Unlock()
+			return
+		}
+		released = true
+		e.settleMu.Lock()
+		g := e.gateLocked(gameID)
+		g.topology = false
+		delete(e.topologyMutations, gameID)
+		e.wakeLocked(gameID, g)
+		e.settleMu.Unlock()
+		rerun := e.pendingSyncs[gameID]
+		delete(e.pendingSyncs, gameID)
+		if rerun {
+			if e.followUps == nil {
+				e.followUps = map[string]int{}
+			}
+			e.followUps[gameID]++
+		}
+		e.mu.Unlock()
+		if rerun {
+			e.launchQueuedSync(gameID, nil)
+		}
+	}, true
+}
+
+// IsWriting reports whether any native writer currently holds this game's
+// save locations. Root topology mutations (AddRoot / RemoveRoot) must refuse
+// while true so an in-flight pull cannot write into a path that has already
+// been unmapped.
+func (e *Engine) IsWriting(gameID string) bool {
+	e.settleMu.Lock()
+	defer e.settleMu.Unlock()
+	g := e.gates[gameID]
+	return g != nil && g.writers > 0
+}
