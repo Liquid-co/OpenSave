@@ -3,6 +3,7 @@ package cliapp
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -74,12 +75,30 @@ func cmdGame(d *daemon.Daemon, args []string) int {
 			return fail(asJSON, err)
 		}
 		game.SavePath = abs
+		if running, runErr := useRunningDaemon(); runErr != nil {
+			return fail(asJSON, runErr)
+		} else if running {
+			if _, err := daemonRequest("PATCH", "/api/games/"+url.PathEscape(gameID), game); err != nil {
+				return fail(asJSON, err)
+			}
+			if asJSON {
+				return emitJSON(map[string]any{"game": game.ID, "set": key, "value": value})
+			}
+			success("%s %s = %s", bold(game.Name), faint(key), accent(value))
+			return 0
+		}
 	default:
 		return fail(asJSON, fmt.Errorf("unknown setting %q\n\n%s", key, gameUsage))
 	}
 
-	if err := d.Store.UpdateGame(game); err != nil {
-		return fail(asJSON, err)
+	var updateErr error
+	if key == "path" {
+		updateErr = withOfflineRootAdmission(func() error { return d.Store.UpdateGame(game) })
+	} else {
+		updateErr = d.Store.UpdateGame(game)
+	}
+	if updateErr != nil {
+		return fail(asJSON, updateErr)
 	}
 	// Re-watch so a path or auto-sync change takes effect immediately rather
 	// than at the next restart.
