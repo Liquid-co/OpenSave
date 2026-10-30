@@ -48,7 +48,9 @@ func (d *Daemon) setUpRegistryCapture(game store.Game) {
 			"could not prepare the registry location for %q: %v", game.Name, err))
 		return
 	}
-	if err := d.Store.AddGameRoot(game.ID, winreg.LocationName, dir); err != nil {
+	if err := d.withRootTopology(game.ID, func() error {
+		return d.Store.AddGameRoot(game.ID, winreg.LocationName, dir)
+	}); err != nil {
 		d.Log.Log("warn", fmt.Sprintf(
 			"could not add the registry save location for %q: %v", game.Name, err))
 		return
