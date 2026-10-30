@@ -482,6 +482,14 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		game.LastManifestHash = s.Daemon.LastSnapshotHashUnder(game, oldIgnore)
 	}
 
+	if game.SavePath != oldSavePath {
+		done, ok := s.tryRootTopology(gameID)
+		if !ok {
+			writeError(w, http.StatusConflict, "cannot move a save location while native work is active or admission is unavailable")
+			return
+		}
+		defer done()
+	}
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
 		writeError(w, notFoundToStatus(err), err.Error())
 		return
