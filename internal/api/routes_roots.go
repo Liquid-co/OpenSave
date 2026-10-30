@@ -69,6 +69,14 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 		}
 		path = abs
 	}
+	// A root that is currently being written by an in-flight transfer must
+	// not be remapped out from under that transfer (issue #60).
+	done, ok := s.tryRootTopology(gameID)
+	if !ok {
+		writeError(w, http.StatusConflict, "cannot change root while native work is active or admission is unavailable")
+		return
+	}
+	defer done()
 	// Rejections here are the overlap and naming rules, which are the user's
 	// to hear about rather than a server fault: "that folder is already
 	// covered by the main save" is a sentence, not a 500.
@@ -92,6 +100,14 @@ func (s *Server) handleRemoveGameRoot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid location name")
 		return
 	}
+	// Refuse while any transfer still holds a captured path for this game
+	// (issue #60). The mapping must stay until the last write finishes.
+	done, ok := s.tryRootTopology(gameID)
+	if !ok {
+		writeError(w, http.StatusConflict, "cannot remove root while native work is active or admission is unavailable")
+		return
+	}
+	defer done()
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
 	if err := s.Daemon.Store.RemoveGameRoot(gameID, name); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -103,4 +119,13 @@ func (s *Server) handleRemoveGameRoot(w http.ResponseWriter, r *http.Request) {
 	s.Daemon.RewatchGame(gameID)
 	s.BroadcastGamesUpdate()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// tryRootTopology acquires native admission for the entire root mutation,
+// not merely a snapshot of whether a writer happened to be active.
+func (s *Server) tryRootTopology(gameID string) (func(), bool) {
+	if s.Daemon == nil || s.Daemon.P2P == nil || s.Daemon.P2P.Sync == nil {
+		return nil, false
+	}
+	return s.Daemon.P2P.Sync.TryTopologyMutation(gameID)
 }
