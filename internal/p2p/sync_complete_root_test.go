@@ -142,6 +142,11 @@ func TestAPulledReportNamesItsLocation(t *testing.T) {
 		if root, _ := r.data["root"].(string); root != "config" {
 			t.Errorf("the report of the pull into config names location %q", root)
 		}
+		if got, ok := r.data["mappedMs"].(int64); !ok || got != 7 {
+			if f, ok := r.data["mappedMs"].(float64); !ok || int64(f) != 7 {
+				t.Errorf("config pull did not echo receiver generation: %#v", r.data["mappedMs"])
+			}
+		}
 		return
 	}
 	t.Fatalf("B never reported finishing the pull: %v", f.a.reports)
@@ -174,8 +179,45 @@ func TestAPulledReportWithoutOrWithAnUnknownLocation(t *testing.T) {
 	if err := f.s.UpdateGame(game); err != nil {
 		t.Fatal(err)
 	}
-	f.reportOverLAN(t, map[string]any{"pulledFiles": []string{"settings.ini", "d.cfg"}, "root": "config"})
+	generation, err := f.s.GameRootsMappedSince(f.gameID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.reportOverLAN(t, map[string]any{"pulledFiles": []string{"settings.ini", "d.cfg"}, "root": "config", "mappedMs": float64(generation["config"])})
 	if got := f.lineage(t, "config"); slices.Contains(got, "settings.ini") || !slices.Contains(got, "d.cfg") {
-		t.Errorf("config record = %v; want d.cfg and not the excluded settings.ini", got)
+		t.Errorf("confirmed config lineage = %v; want d.cfg, without excluded settings.ini", got)
+	}
+}
+
+// A signed report for an old root name must not attach its files to a new
+// mapping with the same name, even when no manifest refresh has completed.
+func TestDelayedNamedRootReportCannotPopulateReaddedRoot(t *testing.T) {
+	for name, report := range map[string]func(*raceFixture, *testing.T, map[string]any){
+		"LAN":   (*raceFixture).reportOverLAN,
+		"relay": (*raceFixture).reportOverRelay,
+	} {
+		t.Run(name, func(t *testing.T) {
+			refreshInLine(t, false)
+			f := newRaceFixture(t, true)
+			writeFile(t, filepath.Join(f.extraB, "old-config.bin"), "OLD")
+			if err := f.s.RemoveGameRoot(f.gameID, "config"); err != nil {
+				t.Fatal(err)
+			}
+			newPath := filepath.Join(t.TempDir(), "readded-config")
+			if err := f.s.AddGameRoot(f.gameID, "config", newPath); err != nil {
+				t.Fatal(err)
+			}
+			report(f, t, map[string]any{
+				"root":        "config",
+				"pulledFiles": []string{"old-config.bin"},
+				"mappedMs":    float64(1), // Legacy, local-only token is not authority.
+			})
+			if got := f.lineage(t, "config"); slices.Contains(got, "old-config.bin") {
+				t.Fatalf("old report contaminated re-added root lineage: %v", got)
+			}
+			if !f.has(f.extraB, "old-config.bin") {
+				t.Fatal("root remapping or stale event unexpectedly changed old physical files")
+			}
+		})
 	}
 }
