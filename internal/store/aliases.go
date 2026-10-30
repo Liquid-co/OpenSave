@@ -118,6 +118,11 @@ func (s *Store) ResolveGameAlias(aliasID string) (string, bool) {
 // lock for the whole thing, so an alias committed by anyone else is either
 // visible to the check or blocked until the insert is done.
 func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) {
+	done, err := s.claimLock()
+	if err != nil {
+		return "", err
+	}
+	defer done()
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return "", err
