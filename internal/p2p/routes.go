@@ -749,7 +749,13 @@ func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	// beyond the primary one, so it is safe to send a root name in a block or
 	// delete request. A peer that predates this answers without it and is
 	// only ever asked about the primary location.
+	rootGenerations, generationErr := e.Store.GameRootsMappedSince(gameID)
+	if generationErr != nil {
+		jsonError(w, http.StatusInternalServerError, "cannot read root mapping generation")
+		return
+	}
 	resp := syncengine.ManifestResponse{
+		RootMappedMs:      rootGenerations,
 		Manifest:          manifest,
 		ActiveBranch:      game.ActiveBranch,
 		Proto:             ServedProto(),
@@ -1106,7 +1112,18 @@ func (e *Engine) peerFinishedPulling(gameID string, peer syncengine.Peer, data m
 	// that did not say, and means the main save folder, as it always has.
 	took := stringsFromEventData(data, "pulledFiles")
 	root, _ := data["root"].(string)
-	e.Sync.AddConfirmedLineageForRoot(gameID, peer.ID, root, took)
+	if root != delta.PrimaryRoot {
+		reported, ok := data["mappedMs"].(float64)
+		generations, err := e.Store.GameRootsMappedSince(gameID)
+		current, mapped := generations[root]
+		if err != nil || !ok || !mapped || current == 0 || int64(reported) != current {
+			refreshAfterPull(e, gameID, peer)
+			return
+		}
+		e.Sync.AddConfirmedLineageForMappedRoot(gameID, peer.ID, root, current, took)
+	} else {
+		e.Sync.AddConfirmedLineageForRoot(gameID, peer.ID, root, took)
+	}
 	if len(took) > 0 {
 		e.Sync.RecordActivity(store.ActivityEvent{GameID: e.localGameID(gameID), Kind: store.ActivitySent, Device: peer.Name, Files: len(took)})
 	}
