@@ -1,11 +1,13 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/opensave/opensave/internal/store"
 )
 
 // A game's extra save locations: the folders beyond its main one that belong
@@ -74,7 +76,11 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 	// covered by the main save" is a sentence, not a 500.
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
 	if err := s.Daemon.Store.AddGameRoot(gameID, body.Name, path); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		if errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	s.Daemon.LocationsChanged(gameID, oldRoots)

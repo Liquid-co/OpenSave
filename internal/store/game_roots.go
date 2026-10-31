@@ -222,7 +222,15 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 	// A different folder from the one it had, or its first: from now on is
 	// when this folder's contents began (migration 0037). The same folder
 	// saved again is not a new one.
-	if strings.TrimSpace(path) != "" && normalizeLocationPath(path) != normalizeLocationPath(before) {
+	// Compare the previous mapping using identities prepared before the
+	// transaction. An unprepared concurrent remap must fail closed.
+	beforeSame := false
+	if strings.TrimSpace(path) != "" && strings.TrimSpace(before) != "" {
+		previous, ok := prepared.values[before]
+		if !ok { return ErrOwnershipClaimsChanged }
+		beforeSame = prepared.values[path].text == previous.text
+	}
+	if strings.TrimSpace(path) != "" && !beforeSame {
 		if _, err := tx.Exec(`
 			INSERT INTO game_root_mapped (game_id, name, mapped_ms) VALUES (?, ?, ?)
 			ON CONFLICT(game_id, name) DO UPDATE SET mapped_ms = excluded.mapped_ms`,
