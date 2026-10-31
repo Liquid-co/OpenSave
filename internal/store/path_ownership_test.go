@@ -297,6 +297,74 @@ func TestPreparedOwnershipDoesNotHoldSQLiteDuringFilesystemResolution(t *testing
 	}
 }
 
+// TestPreparedOwnershipDoesNotBlockUnrelatedSQLiteWriter guards the specific
+// single-connection SQLite starvation reported by the upstream maintainer:
+// an inaccessible save directory must not hold an ownership transaction open
+// while an unrelated metadata write is ready to commit.
+func TestPreparedOwnershipDoesNotBlockUnrelatedSQLiteWriter(t *testing.T) {
+	s := openTestStore(t)
+	owned := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("existing", owned)); err != nil {
+		t.Fatal(err)
+	}
+	candidate := t.TempDir()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	preparedDone := make(chan error, 1)
+	go func() {
+		_, err := s.prepareNativePathsFor(candidate, func(path string) preparedNativePath {
+			select {
+			case <-entered:
+			default:
+				close(entered)
+			}
+			<-release // Simulates an offline or unresponsive save filesystem.
+			return prepareNativePath(path)
+		})
+		preparedDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ownership preparation never reached the filesystem")
+	}
+
+	// This actual SQL UPDATE must finish while path preparation is paused.
+	// The single-connection Store makes this a sensitive regression for an
+	// ownership transaction being opened before filesystem resolution.
+	writerDone := make(chan error, 1)
+	go func() {
+		_, err := s.db.Exec("UPDATE games SET name = ? WHERE id = ?", "updated-while-blocked", "existing")
+		writerDone <- err
+	}()
+	select {
+	case err := <-writerDone:
+		if err != nil {
+			t.Fatalf("independent SQLite writer failed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("independent SQLite writer was blocked by slow filesystem preparation")
+	}
+	got, err := s.GetGame("existing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "updated-while-blocked" {
+		t.Fatalf("independent writer did not commit: %q", got.Name)
+	}
+	close(release)
+	if err := <-preparedDone; err != nil {
+		t.Fatalf("filesystem preparation after writer: %v", err)
+	}
+}
+
 func TestPreparedOwnershipRejectsNewClaimAfterPreflight(t *testing.T) {
 	s := openTestStore(t)
 	choice := t.TempDir()
