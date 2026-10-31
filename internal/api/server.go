@@ -21,7 +21,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	cloudsvc "github.com/opensave/opensave/internal/cloud"
 	"github.com/opensave/opensave/internal/daemon"
-	"github.com/opensave/opensave/internal/fsx"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/p2p"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
@@ -38,7 +37,6 @@ type Server struct {
 
 	httpServer     *http.Server
 	listener       net.Listener
-	presenceUnlock func()
 	// instance marks every response from this process (instanceHeader), so
 	// Start can tell whether 127.0.0.1 at its port is really answered by it.
 	instance string
@@ -236,15 +234,6 @@ func (s *Server) Start(port int) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
-	unlock, available, lockErr := fsx.TryLock(filepath.Join(s.Daemon.Paths.HomeDir, "daemon-presence.lock"))
-	if lockErr != nil || !available {
-		ln.Close()
-		if lockErr != nil {
-			return "", fmt.Errorf("daemon presence lock: %w", lockErr)
-		}
-		return "", fmt.Errorf("another OpenSave daemon owns this home")
-	}
-	s.presenceUnlock = unlock
 	s.listener = ln
 	s.httpServer = &http.Server{Handler: r}
 
@@ -255,8 +244,6 @@ func (s *Server) Start(port int) (string, error) {
 	}()
 	if err := s.answersLoopback(ln.Addr()); err != nil {
 		_ = s.httpServer.Close()
-		s.presenceUnlock()
-		s.presenceUnlock = nil
 		s.httpServer, s.listener = nil, nil
 		s.Daemon.Log.Log("warn", err.Error())
 		return "", err
@@ -385,10 +372,6 @@ func (s *Server) Stop() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = s.httpServer.Shutdown(ctx)
-	}
-	if s.presenceUnlock != nil {
-		s.presenceUnlock()
-		s.presenceUnlock = nil
 	}
 }
 
