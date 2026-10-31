@@ -35,8 +35,9 @@ type Server struct {
 	Daemon *daemon.Daemon
 	Hub    *Hub
 
-	httpServer *http.Server
-	listener   net.Listener
+	httpServer     *http.Server
+	listener       net.Listener
+	topologyWaitFor time.Duration // test-injectable admission limit; defaults to 30s
 	// instance marks every response from this process (instanceHeader), so
 	// Start can tell whether 127.0.0.1 at its port is really answered by it.
 	instance string

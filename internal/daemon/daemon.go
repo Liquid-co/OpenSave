@@ -799,6 +799,21 @@ func isDuplicateGameID(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: games.id")
 }
 
+// withRootTopology holds this process's mapping reservation across a path write.
+// A second process cannot see the reservation; the CLI must use the running
+// daemon's HTTP API instead of opening its own store.
+func (d *Daemon) withRootTopology(gameID string, fn func() error) error {
+	if d.P2P == nil || d.P2P.Sync == nil {
+		return fmt.Errorf("root topology admission unavailable")
+	}
+	done, ok := d.P2P.Sync.TryTopologyMutation(gameID)
+	if !ok {
+		return fmt.Errorf("cannot change save locations while a sync is active")
+	}
+	defer done()
+	return fn()
+}
+
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
@@ -1251,7 +1266,9 @@ func (d *Daemon) LinkGames(canonicalID, aliasID string) error {
 				}
 				var addErr error
 				if root.Mapped() {
-					addErr = d.Store.AddGameRoot(canonicalID, root.Name, root.Path)
+					addErr = d.withRootTopology(canonicalID, func() error {
+						return d.Store.AddGameRoot(canonicalID, root.Name, root.Path)
+					})
 				} else {
 					addErr = d.Store.NoteGameRoot(canonicalID, root.Name)
 				}
