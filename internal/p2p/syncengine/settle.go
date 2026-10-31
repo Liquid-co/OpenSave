@@ -332,7 +332,8 @@ func (e *Engine) WaitTopologyMutation(ctx context.Context, gameID string, interv
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() { <-timer.C }
+			// Private timer: do not drain an already-consumed channel.
+			timer.Stop()
 			return nil, ctx.Err()
 		case <-timer.C:
 		}
