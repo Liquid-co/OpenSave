@@ -182,7 +182,9 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 	if strings.TrimSpace(path) != "" {
 		var err error
 		prepared, err = s.prepareNativePaths(path)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 	}
 	tx, err := s.db.Beginx()
 	if err != nil {
@@ -197,7 +199,9 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 			return fmt.Errorf("read primary game root before mapping: %w", err)
 		}
 		primaryOverlap, err := prepared.shares(primary, path)
-		if err != nil { return fmt.Errorf("inspect changed primary root: %w", err) }
+		if err != nil {
+			return fmt.Errorf("inspect changed primary root: %w", err)
+		}
 		if primaryOverlap {
 			return fmt.Errorf("%w: named root overlaps primary %q", ErrGamePathOwned, primary)
 		}
@@ -227,7 +231,9 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 	beforeSame := false
 	if strings.TrimSpace(path) != "" && strings.TrimSpace(before) != "" {
 		previous, ok := prepared.values[before]
-		if !ok { return ErrOwnershipClaimsChanged }
+		if !ok {
+			return ErrOwnershipClaimsChanged
+		}
 		beforeSame = prepared.values[path].text == previous.text
 	}
 	if strings.TrimSpace(path) != "" && !beforeSame {

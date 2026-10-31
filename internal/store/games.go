@@ -166,14 +166,18 @@ func (s *Store) UpdateGame(g Game) error {
 	// relocation detected inside the transaction must fail closed instead.
 	var observedPath string
 	if err := s.db.Get(&observedPath, "SELECT save_path FROM games WHERE id = ?", g.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) { return ErrNotFound }
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("inspect game path before update %s: %w", g.ID, err)
 	}
 	var prepared *preparedNativePaths
 	var err error
 	if observedPath != g.SavePath {
 		prepared, err = s.prepareNativePaths(g.SavePath)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 	}
 	tx, err := s.db.Beginx()
 	if err != nil {
@@ -189,7 +193,9 @@ func (s *Store) UpdateGame(g Game) error {
 		return fmt.Errorf("read existing game path %s: %w", g.ID, err)
 	}
 	if oldPath != g.SavePath {
-		if prepared == nil { return ErrOwnershipClaimsChanged }
+		if prepared == nil {
+			return ErrOwnershipClaimsChanged
+		}
 		if err := checkGamePathOwnershipTx(tx, prepared, g.ID); err != nil {
 			return err
 		}

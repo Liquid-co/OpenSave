@@ -119,7 +119,9 @@ func (s *Store) ResolveGameAlias(aliasID string) (string, bool) {
 // visible to the check or blocked until the insert is done.
 func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) {
 	prepared, err := s.prepareNativePaths(g.SavePath)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return "", err
