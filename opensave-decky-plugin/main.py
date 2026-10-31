@@ -330,6 +330,22 @@ class Plugin:
             decky.logger.error(f"resolve_conflict({game_id}, {resolution}) failed: {e}")
             return {"success": False, "error": str(e)}
 
+    async def mark_session(self, game_id: str, state: str) -> dict:
+        """Tell the daemon a game started ("start") or stopped ("end").
+
+        Steam says exactly when a game runs; the daemon otherwise has to spot
+        it among running programs every ten seconds, which under Proton it
+        may not. Ending a session takes the "After playing" snapshot and syncs
+        it before answering."""
+        if state not in ("start", "end"):
+            return {"success": False, "error": f"unknown state {state}"}
+        try:
+            _request(f"/api/games/{game_id}/session", method="POST", body={"state": state}, timeout=120)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.warning(f"mark_session({game_id}, {state}) failed: {e}")
+            return {"success": False, "error": str(e)}
+
     async def find_game_by_appid(self, app_id: str) -> dict:
         """Map a Steam AppID to a tracked game, for the lifecycle hooks."""
         games = await self.get_games()
