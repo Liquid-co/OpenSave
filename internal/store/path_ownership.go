@@ -74,17 +74,104 @@ func canonicalExistingAncestor(path string) (string, bool) {
 	}
 }
 
-// checkGamePathOwnershipTx is the authoritative decision for a new/relocated
-// game primary or named root. It MUST run on the same SQLite transaction as
-// the write. All native writers using it observe the same serialized SQLite
-// ownership decision; a competing writer/SQLITE_BUSY must fail, not retry on
-// an old preflight verdict.
-//
-// A valid game can own multiple disjoint paths. The excluded owner is checked
-// separately by the caller when adding or moving one of its named roots.
-func checkGamePathOwnershipTx(tx *sqlx.Tx, path, exceptGameID string) error {
+
+// ErrOwnershipClaimsChanged means a claim appeared after path resolution.
+// It is safe to retry the entire operation, but never to commit using stale
+// preflight path identities.
+var ErrOwnershipClaimsChanged = errors.New("save-location ownership changed during validation; retry")
+
+// preparedNativePath contains only in-memory comparison data. Filesystem I/O
+// (including ancestor symlink resolution and Stat) happens before Beginx.
+type preparedNativePath struct {
+	text string
+	canonical string
+	hasCanonical bool
+	info os.FileInfo
+}
+
+type preparedNativePaths struct {
+	target string
+	values map[string]preparedNativePath
+}
+
+func prepareNativePath(path string) preparedNativePath {
+	p := preparedNativePath{text: normalizeLocationPath(path)}
 	if strings.TrimSpace(path) == "" {
-		return nil // peer-created game can start without a mapped local folder
+		return p
+	}
+	if resolved, ok := canonicalExistingAncestor(path); ok {
+		p.canonical = normalizeLocationPath(resolved)
+		p.hasCanonical = true
+	}
+	if info, err := os.Stat(path); err == nil {
+		p.info = info
+	}
+	return p
+}
+
+// prepareNativePathsFor intentionally does not hold a transaction or a
+// database connection while resolving paths. The resolver argument allows a
+// deterministic blocked-filesystem test without a package-global hook.
+func (s *Store) prepareNativePathsFor(candidate string, resolver func(string) preparedNativePath) (*preparedNativePaths, error) {
+	p := &preparedNativePaths{target: candidate, values: make(map[string]preparedNativePath)}
+	if strings.TrimSpace(candidate) == "" {
+		return p, nil
+	}
+	var paths []string
+	if err := s.db.Select(&paths, `
+		SELECT save_path AS path FROM games WHERE TRIM(save_path) <> ''
+		UNION SELECT path FROM game_roots WHERE TRIM(path) <> ''`); err != nil {
+		return nil, fmt.Errorf("prepare tracked save locations: %w", err)
+	}
+	paths = append(paths, candidate)
+	for _, path := range paths {
+		if _, present := p.values[path]; !present {
+			p.values[path] = resolver(path)
+		}
+	}
+	return p, nil
+}
+
+func (s *Store) prepareNativePaths(candidate string) (*preparedNativePaths, error) {
+	return s.prepareNativePathsFor(candidate, prepareNativePath)
+}
+
+func preparedPathOverlaps(a, b string) bool {
+	return a != "" && b != "" && (a == b || pathContains(a,b) || pathContains(b,a))
+}
+
+// shares compares solely precomputed data. Never call EvalSymlinks, Stat,
+// os.Getwd or path resolution functions while a SQLite transaction is open.
+func (p *preparedNativePaths) shares(a, b string) (bool, error) {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false, nil
+	}
+	pa, okA := p.values[a]
+	pb, okB := p.values[b]
+	if !okA || !okB {
+		return false, ErrOwnershipClaimsChanged
+	}
+	if preparedPathOverlaps(pa.text, pb.text) {
+		return true, nil
+	}
+	if pa.hasCanonical && pb.hasCanonical && preparedPathOverlaps(pa.canonical, pb.canonical) {
+		return true, nil
+	}
+	return pa.info != nil && pb.info != nil && os.SameFile(pa.info, pb.info), nil
+}
+
+// checkGamePathOwnershipTx is the final authoritative ownership check. It
+// reads current claims inside the SAME SQLite transaction as the write but
+// compares only paths resolved outside the transaction. A newly introduced
+// raw path is not allowed to escape the check: it fails closed for a fresh
+// preflight instead of being resolved while holding the database.
+func checkGamePathOwnershipTx(tx *sqlx.Tx, prepared *preparedNativePaths, exceptGameID string) error {
+	if prepared == nil {
+		return ErrOwnershipClaimsChanged
+	}
+	path := prepared.target
+	if strings.TrimSpace(path) == "" {
+		return nil
 	}
 	var claims []nativePathClaim
 	err := tx.Select(&claims, `
@@ -99,7 +186,11 @@ func checkGamePathOwnershipTx(tx *sqlx.Tx, path, exceptGameID string) error {
 		return fmt.Errorf("inspect native save-location owners: %w", err)
 	}
 	for _, claim := range claims {
-		if pathsShareFiles(path, claim.Path) {
+		overlap, err := prepared.shares(path, claim.Path)
+		if err != nil {
+			return fmt.Errorf("inspect changed save-location owner: %w", err)
+		}
+		if overlap {
 			return fmt.Errorf("%w: %q already owns %q (requested %q)",
 				ErrGamePathOwned, claim.Name, claim.Path, path)
 		}
@@ -107,9 +198,14 @@ func checkGamePathOwnershipTx(tx *sqlx.Tx, path, exceptGameID string) error {
 	return nil
 }
 
-// checkGameLocalRootsTx rejects a new primary/root path overlapping another
-// mapped location of the SAME game. excludeRoot is the root being remapped.
-func checkGameLocalRootsTx(tx *sqlx.Tx, gameID, path, excludeRoot string) error {
+// checkGameLocalRootsTx checks same-game roots using the same resolved
+// identities. The authoritative SQL claims are still read inside the writer
+// transaction; any claim not prepared before it fails closed.
+func checkGameLocalRootsTx(tx *sqlx.Tx, prepared *preparedNativePaths, gameID, excludeRoot string) error {
+	if prepared == nil {
+		return ErrOwnershipClaimsChanged
+	}
+	path := prepared.target
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -118,12 +214,16 @@ func checkGameLocalRootsTx(tx *sqlx.Tx, gameID, path, excludeRoot string) error 
 		Path string `db:"path"`
 	}
 	if err := tx.Select(&roots, `SELECT name, path FROM game_roots
-		 WHERE game_id = ? AND name <> ? AND TRIM(path) <> ''`,
+		WHERE game_id = ? AND name <> ? AND TRIM(path) <> ''`,
 		gameID, excludeRoot); err != nil {
 		return fmt.Errorf("inspect existing named roots: %w", err)
 	}
 	for _, root := range roots {
-		if pathsShareFiles(path, root.Path) {
+		overlap, err := prepared.shares(path, root.Path)
+		if err != nil {
+			return fmt.Errorf("inspect changed named root: %w", err)
+		}
+		if overlap {
 			return fmt.Errorf("%w: %q already maps named root %q at %q",
 				ErrGamePathOwned, gameID, root.Name, root.Path)
 		}

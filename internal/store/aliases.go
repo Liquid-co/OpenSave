@@ -118,6 +118,8 @@ func (s *Store) ResolveGameAlias(aliasID string) (string, bool) {
 // lock for the whole thing, so an alias committed by anyone else is either
 // visible to the check or blocked until the insert is done.
 func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) {
+	prepared, err := s.prepareNativePaths(g.SavePath)
+	if err != nil { return "", err }
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return "", err
@@ -141,7 +143,7 @@ func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) 
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("look up game before creation: %w", err)
 	}
-	if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+	if err := checkGamePathOwnershipTx(tx, prepared, g.ID); err != nil {
 		return "", err
 	}
 
