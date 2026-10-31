@@ -47,44 +47,12 @@ func readIn(dir, rel string) string {
 	return string(b)
 }
 
-// addRoot attaches an extra save location through the real API.
-//
-// A newly paired game may still have an accepted initial sync reading or
-// writing its original root. Native topology admission must return 409 rather
-// than remap a path underneath that work. A user can retry once that native
-// work drains; this helper exercises exactly that public retry contract.
+// addRoot attaches an extra save location through the API, the way the app
+// will.
 func addRoot(t *testing.T, td *testutil.TestDaemon, gameID, name, path string) {
 	t.Helper()
-	endpoint := "/api/games/" + gameID + "/roots"
-	payload := map[string]string{"name": name, "path": path}
-	deadline := time.Now().Add(45 * time.Second)
-	for attempts := 1; ; attempts++ {
-		status := td.APIStatus(http.MethodPost, endpoint, payload, nil)
-		switch status {
-		case http.StatusOK:
-			return
-		case http.StatusConflict:
-			// A refused request must not silently apply the requested mapping.
-			// Peer-learned, unmapped named roots are permitted to appear while
-			// the initial sync is still running.
-			var roots []struct {
-				Name string `json:"name"`
-				Path string `json:"path"`
-			}
-			td.API(http.MethodGet, endpoint, nil, &roots)
-			for _, root := range roots {
-				if root.Name == name && root.Path == path {
-					t.Fatalf("AddRoot returned 409 but applied the requested mapping %q -> %q", name, path)
-				}
-			}
-		default:
-			t.Fatalf("AddRoot %q returned HTTP %d: %s", name, status, td.LastError())
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("AddRoot %q remained busy after %d attempts (45s); native work did not drain", name, attempts)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	td.API(http.MethodPost, "/api/games/"+gameID+"/roots",
+		map[string]string{"name": name, "path": path}, nil)
 }
 
 // Two devices, one game, two folders each. A file written to the second
