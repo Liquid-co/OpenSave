@@ -434,6 +434,13 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		}
 		game.SavePath = abs
 	}
+	// A combined path+exclusion change would rebase agreement from a new
+	// path before admission. Refuse rather than claim old lineage for new
+	// save bytes; a safe combined transition needs a separate explicit design.
+	if game.SavePath != oldSavePath && s.Daemon.IgnoreText(game) != oldIgnore {
+		writeError(w, http.StatusConflict, "Change save location and sync exclusions separately.")
+		return
+	}
 	// Cover art: a user-set custom URL is always kept. An empty cover, or
 	// a previously auto-generated Steam cover, is (re)derived from the
 	// AppID — so changing the AppID refreshes the art.
@@ -483,11 +490,8 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if game.SavePath != oldSavePath {
-		done, ok := s.tryRootTopology(gameID)
-		if !ok {
-			writeError(w, http.StatusConflict, "cannot move a save location while native work is active or admission is unavailable")
-			return
-		}
+		done, ok := s.acquireRootTopology(w, r, gameID)
+		if !ok { return }
 		defer done()
 	}
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
