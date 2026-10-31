@@ -183,6 +183,23 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if strings.TrimSpace(path) != "" {
+		// The earlier user-friendly checks are advisory only. Every path
+		// owner (primary or named) is rechecked in the writer transaction.
+		var primary string
+		if err := tx.Get(&primary, `SELECT save_path FROM games WHERE id = ?`, gameID); err != nil {
+			return fmt.Errorf("read primary game root before mapping: %w", err)
+		}
+		if pathsShareFiles(primary, path) {
+			return fmt.Errorf("%w: named root overlaps primary %q", ErrGamePathOwned, primary)
+		}
+		if err := checkGameLocalRootsTx(tx, gameID, path, n); err != nil {
+			return err
+		}
+		if err := checkGamePathOwnershipTx(tx, path, gameID); err != nil {
+			return err
+		}
+	}
 	var before string
 	if err := tx.Get(&before, `SELECT path FROM game_roots WHERE game_id = ? AND name = ?`, gameID, n); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("add game root: %w", err)

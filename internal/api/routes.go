@@ -307,7 +307,12 @@ func (s *Server) applyCloudPatch(patch *cloudSyncPatch) error {
 }
 
 func (s *Server) handleListGames(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.gamesPayload())
+	games, err := s.Daemon.Store.ListGames()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "native game inventory unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.gamesPayloadFrom(games))
 }
 
 // handlePruneSnapshots cleans up old snapshots across all games and every
@@ -374,7 +379,9 @@ func (s *Server) handleTrackGame(w http.ResponseWriter, r *http.Request) {
 		// Duplicates (id or path) are conflicts; anything else the daemon
 		// rejects is bad input.
 		status := http.StatusBadRequest
-		if strings.Contains(err.Error(), "already track") || strings.Contains(err.Error(), "already exists") {
+		if errors.Is(err, store.ErrGamePathOwned) ||
+			strings.Contains(err.Error(), "already track") ||
+			strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
 		}
 		writeError(w, status, err.Error())

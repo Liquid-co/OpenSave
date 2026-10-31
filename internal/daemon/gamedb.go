@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,17 +58,17 @@ func (d *Daemon) IdentifyGame(path string) (presets.GameMatch, bool) {
 // overlappingGame is the tracked game whose folder holds path, or is inside
 // it, if there is one. The very same folder is not counted: TrackGame says
 // so in its own words.
-func (d *Daemon) overlappingGame(path string) (store.Game, bool) {
+func (d *Daemon) overlappingGame(path string) (store.Game, bool, error) {
 	games, err := d.Store.ListGames()
 	if err != nil {
-		return store.Game{}, false
+		return store.Game{}, false, fmt.Errorf("inspect native tracked paths: %w", err)
 	}
 	for _, g := range games {
 		if g.SavePath != "" && store.PathsNest(path, g.SavePath) {
-			return g, true
+			return g, true, nil
 		}
 	}
-	return store.Game{}, false
+	return store.Game{}, false, nil
 }
 
 // markTracked fills in which tracked game, if any, a match already is.
