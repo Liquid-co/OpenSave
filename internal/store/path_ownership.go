@@ -74,7 +74,6 @@ func canonicalExistingAncestor(path string) (string, bool) {
 	}
 }
 
-
 // ErrOwnershipClaimsChanged means a claim appeared after path resolution.
 // It is safe to retry the entire operation, but never to commit using stale
 // preflight path identities.

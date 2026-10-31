@@ -243,7 +243,6 @@ func TestNativeOwnershipMissingLeafUnderPhysicalAlias(t *testing.T) {
 	}
 }
 
-
 func TestPreparedOwnershipDoesNotHoldSQLiteDuringFilesystemResolution(t *testing.T) {
 	s := openTestStore(t)
 	owned := t.TempDir()
@@ -252,11 +251,21 @@ func TestPreparedOwnershipDoesNotHoldSQLiteDuringFilesystemResolution(t *testing
 	}
 	started := make(chan struct{})
 	unblock := make(chan struct{})
-	defer func() { select { case <-unblock: default: close(unblock) } }()
+	defer func() {
+		select {
+		case <-unblock:
+		default:
+			close(unblock)
+		}
+	}()
 	result := make(chan error, 1)
 	go func() {
 		_, err := s.prepareNativePathsFor(t.TempDir(), func(path string) preparedNativePath {
-			select { case <-started: default: close(started) }
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
 			<-unblock // Simulates an unresponsive NAS or unplugged disk.
 			return prepareNativePath(path)
 		})
