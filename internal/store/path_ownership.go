@@ -83,10 +83,10 @@ var ErrOwnershipClaimsChanged = errors.New("save-location ownership changed duri
 // preparedNativePath contains only in-memory comparison data. Filesystem I/O
 // (including ancestor symlink resolution and Stat) happens before Beginx.
 type preparedNativePath struct {
-	text string
-	canonical string
+	text         string
+	canonical    string
 	hasCanonical bool
-	info os.FileInfo
+	info         os.FileInfo
 }
 
 type preparedNativePaths struct {
@@ -137,7 +137,7 @@ func (s *Store) prepareNativePaths(candidate string) (*preparedNativePaths, erro
 }
 
 func preparedPathOverlaps(a, b string) bool {
-	return a != "" && b != "" && (a == b || pathContains(a,b) || pathContains(b,a))
+	return a != "" && b != "" && (a == b || pathContains(a, b) || pathContains(b, a))
 }
 
 // shares compares solely precomputed data. Never call EvalSymlinks, Stat,

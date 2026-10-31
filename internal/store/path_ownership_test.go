@@ -276,24 +276,34 @@ func TestPreparedOwnershipDoesNotHoldSQLiteDuringFilesystemResolution(t *testing
 	}()
 	select {
 	case err := <-queryDone:
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("filesystem resolution monopolised the SQLite connection")
 	}
 	close(unblock)
-	if err := <-result; err != nil { t.Fatal(err) }
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPreparedOwnershipRejectsNewClaimAfterPreflight(t *testing.T) {
 	s := openTestStore(t)
 	choice := t.TempDir()
 	prepared, err := s.prepareNativePaths(choice)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	// A competing transaction commits after the file identities were read.
 	newClaim := t.TempDir()
-	if err := s.CreateGame(ownedTestGame("late-owner", newClaim)); err != nil { t.Fatal(err) }
+	if err := s.CreateGame(ownedTestGame("late-owner", newClaim)); err != nil {
+		t.Fatal(err)
+	}
 	tx, err := s.db.Beginx()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tx.Rollback()
 	if err := checkGamePathOwnershipTx(tx, prepared, "incoming"); !errors.Is(err, ErrOwnershipClaimsChanged) {
 		t.Fatalf("unprepared new claim accepted after preflight: %v", err)
@@ -303,14 +313,22 @@ func TestPreparedOwnershipRejectsNewClaimAfterPreflight(t *testing.T) {
 func TestPreparedOwnershipRejectsChangedRootAfterPreflight(t *testing.T) {
 	s := openTestStore(t)
 	primary := t.TempDir()
-	if err := s.CreateGame(ownedTestGame("main-game", primary)); err != nil { t.Fatal(err) }
+	if err := s.CreateGame(ownedTestGame("main-game", primary)); err != nil {
+		t.Fatal(err)
+	}
 	candidate := t.TempDir()
 	prepared, err := s.prepareNativePaths(candidate)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	newRoot := t.TempDir()
-	if err := s.AddGameRoot("main-game", "config", newRoot); err != nil { t.Fatal(err) }
+	if err := s.AddGameRoot("main-game", "config", newRoot); err != nil {
+		t.Fatal(err)
+	}
 	tx, err := s.db.Beginx()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tx.Rollback()
 	if err := checkGameLocalRootsTx(tx, prepared, "main-game", ""); !errors.Is(err, ErrOwnershipClaimsChanged) {
 		t.Fatalf("unprepared same-game root accepted: %v", err)
@@ -320,13 +338,21 @@ func TestPreparedOwnershipRejectsChangedRootAfterPreflight(t *testing.T) {
 func TestPreparedOwnershipRetainsCrossGameAndPhysicalAliasExclusion(t *testing.T) {
 	s := openTestStore(t)
 	owned := t.TempDir()
-	if err := s.CreateGame(ownedTestGame("owner", owned)); err != nil { t.Fatal(err) }
+	if err := s.CreateGame(ownedTestGame("owner", owned)); err != nil {
+		t.Fatal(err)
+	}
 	alias := filepath.Join(t.TempDir(), "alias")
-	if err := os.Symlink(owned, alias); err != nil { t.Skipf("symlink unavailable: %v", err) }
+	if err := os.Symlink(owned, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
 	prepared, err := s.prepareNativePaths(filepath.Join(alias, "new-leaf"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	tx, err := s.db.Beginx()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tx.Rollback()
 	if err := checkGamePathOwnershipTx(tx, prepared, "incoming"); !errors.Is(err, ErrGamePathOwned) {
 		t.Fatalf("prepared physical alias escaped ownership: %v", err)
