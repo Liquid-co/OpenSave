@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Root API mutations must observe native admission for the duration of the
 // Store write, not merely sample an active-writer count.
 func TestRootTopologyRefusesActiveNativeWriter(t *testing.T) {
 	ts := startTestServer(t)
+	ts.server.topologyWaitFor = 25 * time.Millisecond
 	id := trackProbeGame(t, ts)
 	dir := filepath.Join(t.TempDir(), "config")
 	if err := os.MkdirAll(dir, 0700); err != nil {
