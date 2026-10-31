@@ -171,6 +171,10 @@ type Engine struct {
 	// answer was said already this session (playing.go).
 	playingMu   sync.Mutex
 	playingSaid map[string]bool
+	// ObserveSettings is told what another device holds of a game, as its
+	// manifest arrives, to watch how the files left out as the game's
+	// settings change (daemon/detectsettings.go). Set by the daemon.
+	ObserveSettings func(game store.Game, peerID string, remote delta.Manifest)
 }
 
 // New creates an Engine.
@@ -572,6 +576,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 	// would propagate a deletion of the very file being protected.
 	ignoreRules := e.rulesFor(gameID)
 	unfilteredLocal, unfilteredRemote := localManifest, remoteData.Manifest
+	// How the files left out as the game's settings change on the other
+	// device (daemon/detectsettings.go).
+	if e.ObserveSettings != nil && len(unfilteredRemote.Files) > 0 {
+		e.ObserveSettings(game, peer.ID, unfilteredRemote)
+	}
 	// Filtered always, not only with rules: launcher files (delta.NeverSynced)
 	// are left out the same way.
 	localManifest = filterManifest(localManifest, ignoreRules)

@@ -10,8 +10,10 @@ import (
 )
 
 // listProcesses walks the process table and asks each process for its full
-// program path and how much processor time it has used. A process this user may not look at (a service, another
-// user's) is skipped: no game of theirs is one of ours.
+// program path and how much processor time it has used. A process whose path
+// cannot be read is listed by its file name alone (Proc.Name): a game
+// protected against tampering keeps its path from everyone, and matching by
+// name within its install folder's programs is still exact enough.
 func listProcesses() ([]Proc, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -30,6 +32,10 @@ func listProcesses() ([]Proc, error) {
 		if pid := entry.ProcessID; pid > 4 {
 			if p, ok := inspect(pid, buf); ok {
 				out = append(out, p)
+			} else if name := windows.UTF16ToString(entry.ExeFile[:]); name != "" {
+				// Its path is not ours to read: a game protected against
+				// tampering, run elevated, or another user's. Known by name.
+				out = append(out, Proc{PID: int(pid), Name: name})
 			}
 		}
 		if err := windows.Process32Next(snap, &entry); err != nil {

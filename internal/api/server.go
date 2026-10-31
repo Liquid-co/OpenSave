@@ -569,7 +569,10 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		"syncIgnore":    g.SyncIgnore,
 		// The files the game database names as this game's settings, left
 		// out of syncing unless syncDeviceSettings (daemon/devicesettings.go).
-		"deviceSettings":     s.Daemon.DeviceSettings(g),
+		"deviceSettings": s.Daemon.DeviceSettings(g),
+		// Found by what they hold, and waiting to be confirmed; they keep
+		// syncing meanwhile (daemon.SuggestedSettings).
+		"suggestedSettings":  s.Daemon.SuggestedSettings(g),
 		"syncDeviceSettings": g.SyncDeviceSettings,
 		"branches":           branches,
 		"createdAt":          g.CreatedAt,

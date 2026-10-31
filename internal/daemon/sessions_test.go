@@ -199,9 +199,6 @@ func TestSpokenLength(t *testing.T) {
 func TestSessionHoldsSnapshotsAndSyncWhilePlaying(t *testing.T) {
 	d := newTestDaemon(t)
 	g, _ := sessionGame(t, d, "autosaving")
-	if d.holdSnapshotWhilePlaying(g.ID) {
-		t.Fatal("held while nothing is being played")
-	}
 	d.sessions.list = func() ([]sessions.Proc, error) { return []sessions.Proc{{PID: 7, Exe: g.ExePath}}, nil }
 	d.PollSessions()
 	if d.PlayingSince(g.ID).IsZero() {
@@ -376,5 +373,85 @@ func TestQuietSession_ASessionBegunFromOutsideIsNotEnded(t *testing.T) {
 	}
 	if d.PlayingSince(g.ID).IsZero() {
 		t.Error("a session begun by the Deck plugin was ended as quiet")
+	}
+}
+
+// A game whose program is not seen: a change is held, not synced, and kept
+// once the save has stayed unchanged for firstChangeWait; a second soon after
+// makes it a stretch, which ends after quietAfter unchanged.
+func TestActivityWithoutASessionIsHandledAsPlay(t *testing.T) {
+	d := newTestDaemon(t)
+	g, dir := sessionGame(t, d, "unseen")
+	if !d.holdSnapshotWhilePlaying(g.ID) {
+		t.Fatal("a single change was not held")
+	}
+	d.sessions.mu.Lock()
+	if q := d.sessions.active[g.ID].quietFor(); q != firstChangeWait {
+		t.Errorf("a single change waits %v, want %v", q, firstChangeWait)
+	}
+	d.sessions.mu.Unlock()
+	if !d.holdSnapshotWhilePlaying(g.ID) {
+		t.Fatal("a second change soon after was not held")
+	}
+	d.sessions.mu.Lock()
+	if q := d.sessions.active[g.ID].quietFor(); q != quietAfter {
+		t.Errorf("a stretch waits %v, want %v", q, quietAfter)
+	}
+	d.sessions.mu.Unlock()
+	if !d.changingNow(g.ID) || !d.P2P.Sync.PlayingHere(g.ID) {
+		t.Fatal("a game changing its save is not handled as being played")
+	}
+	before := len(snapComments(t, d, g.ID))
+	if err := os.WriteFile(filepath.Join(dir, "slot1.sav"), []byte("left like this"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	// Quiet for longer than quietAfter.
+	d.sessions.mu.Lock()
+	d.sessions.active[g.ID].last = time.Now().Add(-quietAfter - time.Second)
+	d.sessions.mu.Unlock()
+	d.activityQuiet(g.ID)
+	if d.changingNow(g.ID) || d.P2P.Sync.PlayingHere(g.ID) {
+		t.Error("still handled as being played after the save went quiet")
+	}
+	if got := snapComments(t, d, g.ID); len(got) != before+1 {
+		t.Errorf("snapshots %q: want one more, keeping the save as it was left", got)
+	}
+}
+
+// The names a game's install folder is recognised by: never a generic folder,
+// and the game's own name only when it could hardly be another folder's.
+func TestInstallFolderNames(t *testing.T) {
+	d := newTestDaemon(t)
+	for name, want := range map[string]bool{"Crimson Desert": true, "Rust": false, "Games": false, "Satisfactory": true} {
+		got := d.installFolderNames(store.Game{ID: name, Name: name})
+		if (len(got) > 0) != want {
+			t.Errorf("%q: folder names %v, want some = %v", name, got, want)
+		}
+	}
+}
+
+// A game whose sessions this device sees is not held while it is closed: a
+// change then is not play, and is sent at once. Nor is one just after a
+// session's end, the game writing as it closes. Only a game whose program is
+// not seen is held as a stretch.
+func TestActivity_ARecognisedGameIsNotHeldWhileClosed(t *testing.T) {
+	d := newTestDaemon(t)
+	g, _ := sessionGame(t, d, "recognised")
+	start := time.Now()
+	d.sessions.tracker.Begin(g.ID, start)
+	d.sessions.tracker.Finish(g.ID, start.Add(40*time.Minute))
+	if d.holdSnapshotWhilePlaying(g.ID) || d.changingNow(g.ID) {
+		t.Error("a change just after the session's end was held")
+	}
+	st, _ := d.Store.PlayStatsFor(g.ID)
+	if st.Sessions == 0 {
+		t.Skip("the session was too short to be recorded here")
+	}
+	d.sessions.mu.Lock()
+	d.sessions.endedAt[g.ID] = start.Add(-time.Hour) // long ago
+	d.sessions.mu.Unlock()
+	if d.holdSnapshotWhilePlaying(g.ID) || d.changingNow(g.ID) {
+		t.Error("a change to a recognised game, closed, was held as play")
 	}
 }
