@@ -50,6 +50,10 @@ type ManifestResponse struct {
 	// proto is what stops that.
 	Proto int `json:"proto,omitempty"`
 
+	// RootMappedMs is the serving device's root generation. A pulling peer
+	// must echo this value; device-local timestamps are not comparable.
+	RootMappedMs map[string]int64 `json:"rootMappedMs,omitempty"`
+
 	// DeletionConfirmed says a save location that is empty on the responder
 	// was emptied on purpose: someone there answered "delete them on the
 	// other devices too", or the emptying came from a device where someone

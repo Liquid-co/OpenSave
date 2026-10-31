@@ -1161,6 +1161,16 @@ func (e *Engine) AddConfirmedLineage(gameID, peerID string, files []string) {
 // A location this device does not have is ignored rather than recorded
 // against the main folder, which is the mistake this exists to stop.
 func (e *Engine) AddConfirmedLineageForRoot(gameID, peerID, root string, files []string) {
+	e.addConfirmedLineageForRoot(gameID, peerID, root, 0, files)
+}
+
+// AddConfirmedLineageForMappedRoot binds fast-path acknowledgement to the
+// recipient's current root incarnation, including the SQLite write.
+func (e *Engine) AddConfirmedLineageForMappedRoot(gameID, peerID, root string, mappedMs int64, files []string) {
+	e.addConfirmedLineageForRoot(gameID, peerID, root, mappedMs, files)
+}
+
+func (e *Engine) addConfirmedLineageForRoot(gameID, peerID, root string, mappedMs int64, files []string) {
 	if len(files) == 0 {
 		return
 	}
@@ -1194,8 +1204,14 @@ func (e *Engine) AddConfirmedLineageForRoot(gameID, peerID, root string, files [
 	// excluded file as shared, then as deleted, and propagate that.
 	merged = filterPathList(merged, e.rulesFor(gameID))
 	sort.Strings(merged)
-	if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, merged, existingDirs); err != nil {
-		e.Log("warn", fmt.Sprintf("recording confirmed lineage failed: %v", err))
+	if mappedMs > 0 {
+		if _, err := e.Store.SetSyncStateForRootIfMapped(gameID, peerID, root, mappedMs, merged, existingDirs); err != nil {
+			e.Log("warn", fmt.Sprintf("recording confirmed lineage failed: %v", err))
+		}
+	} else if root == delta.PrimaryRoot {
+		if err := e.Store.SetSyncStateForRoot(gameID, peerID, root, merged, existingDirs); err != nil {
+			e.Log("warn", fmt.Sprintf("recording confirmed lineage failed: %v", err))
+		}
 	}
 }
 
@@ -1327,6 +1343,13 @@ func (e *Engine) RefreshLineage(ctx context.Context, gameID string, peer Peer) {
 		return
 	}
 	isFile, _ := delta.ResolveLocalSaveFilePath(game.SavePath)
+	// Capture the LOCAL root generations before the remote manifest request.
+	// A root remapped during that asynchronous request must not inherit its
+	// predecessor's lineage or agreed hash.
+	rootGenerations, err := e.Store.GameRootsMappedSince(gameID)
+	if err != nil {
+		return
+	}
 	remoteData, err := e.Transport.FetchManifest(ctx, peer, gameID, ManifestQuery{
 		Name: game.Name, SavePath: game.SavePath, IsFile: isFile,
 		AppID: game.AppID, CoverURL: game.CoverURL,
@@ -1341,7 +1364,7 @@ func (e *Engine) RefreshLineage(ctx context.Context, gameID string, peer Peer) {
 		return
 	}
 	e.persistLineage(gameID, peer.ID, local, remoteData.Manifest)
-	rootsAgree := e.refreshRootLineage(ctx, gameID, remoteData, peer)
+	rootsAgree := e.refreshRootLineage(ctx, gameID, remoteData, peer, rootGenerations)
 	// Peer finished pulling: if both sides now hash identically, that's a
 	// verified convergence — ratchet the merge-base. It is also the moment
 	// the sync this side started actually finished, on both sides, checked
@@ -1385,7 +1408,7 @@ func (e *Engine) notifySyncConfirmed(gameID string) {
 //
 // It reports whether every shared location holds the same on both sides; one
 // that could not be read does not count as agreeing.
-func (e *Engine) refreshRootLineage(ctx context.Context, gameID string, remoteData ManifestResponse, peer Peer) bool {
+func (e *Engine) refreshRootLineage(ctx context.Context, gameID string, remoteData ManifestResponse, peer Peer, expected map[string]int64) bool {
 	agree := true
 	for _, sr := range e.sharedRoots(gameID, remoteData) {
 		local, err := e.ReadManifest(ctx, gameID, sr.root.Path)
@@ -1393,17 +1416,29 @@ func (e *Engine) refreshRootLineage(ctx context.Context, gameID string, remoteDa
 			agree = false
 			continue
 		}
-		e.persistRootLineage(gameID, peer.ID, sr.root.Name, local, sr.remote)
+		// Missing in the snapshot is either an unmapped root or a legacy root
+		// without a timestamp. The conditional Store write distinguishes these
+		// atomically using the current root row and generation (zero for legacy).
+		version := expected[sr.root.Name]
+		files, dirs := e.rootLineagePaths(gameID, peer.ID, sr.root.Name, local, sr.remote)
+		hash := ""
 		if local.RootHash(delta.PrimaryRoot) == sr.remote.RootHash(delta.PrimaryRoot) {
-			_ = e.Store.SetAgreedHashForRoot(gameID, peer.ID, sr.root.Name,
-				local.RootHash(delta.PrimaryRoot))
+			hash = local.RootHash(delta.PrimaryRoot)
 		} else {
+			agree = false
+		}
+		committed, err := e.Store.CommitRefreshedRootLineage(gameID, peer.ID, sr.root.Name, version, files, dirs, hash)
+		if err != nil {
+			e.Log("warn", fmt.Sprintf("refresh lineage for the %q location failed: %v", sr.root.Name, err))
+			agree = false
+		} else if !committed {
+			// Root removed/re-added (or remapped) while this asynchronous
+			// request was in flight: the old manifests cannot authorize lineage.
 			agree = false
 		}
 	}
 	return agree
 }
-
 func (e *Engine) registerConflict(gameID string, peer Peer, localManifest delta.Manifest, remoteData ManifestResponse) {
 	e.mu.Lock()
 	_, already := e.activeConflicts[gameID]
@@ -1869,14 +1904,20 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// its own disk, which under load is exactly when the window is widest.
 	// We already know what we wrote, so we say so.
 	if !adoptingRemote(intent) {
-		e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
+		report := map[string]any{
 			"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
 			// Which save location they were written into. The paths are relative
 			// to it, and recorded against the main save folder they name files
 			// that are not there. Empty for the main folder; older versions leave
 			// it out, which reads the same.
 			"root": root.Name,
-		})
+		}
+		if root.Name != delta.PrimaryRoot {
+			if generation := remoteData.RootMappedMs[root.Name]; generation != 0 {
+				report["mappedMs"] = generation
+			}
+		}
+		e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", report)
 	}
 	if len(pulled) > 0 {
 		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityReceived, Device: peer.Name,

@@ -58,7 +58,11 @@ func (a *deviceA) FetchManifest(ctx context.Context, peer syncengine.Peer, gameI
 	if err != nil {
 		return syncengine.ManifestResponse{}, err
 	}
-	return syncengine.ManifestResponse{Manifest: m, ActiveBranch: "main", Proto: syncengine.ProtoMultiRoot}, nil
+	resp := syncengine.ManifestResponse{Manifest: m, ActiveBranch: "main", Proto: syncengine.ProtoMultiRoot}
+	if len(a.extra) > 0 {
+		resp.RootMappedMs = map[string]int64{"config": 7}
+	}
+	return resp, nil
 }
 
 func (a *deviceA) FetchBlocks(ctx context.Context, peer syncengine.Peer, ref syncengine.FileRef, blockIndices []int, blockSize int) ([]syncengine.BlockData, error) {

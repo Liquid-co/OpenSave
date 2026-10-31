@@ -157,6 +157,97 @@ func (s *Store) SetSyncStateForRoot(gameID, peerID, root string, files, dirs []s
 	return nil
 }
 
+// SetSyncStateForRootIfMapped records immediate lineage only if this root
+// still has the mapping generation that the serving peer advertised. One
+// SQLite statement binds the generation check and the write atomically.
+func (s *Store) SetSyncStateForRootIfMapped(gameID, peerID, root string, mappedMs int64, files, dirs []string) (bool, error) {
+	if root == "" || mappedMs <= 0 {
+		return false, nil
+	}
+	if files == nil {
+		files = []string{}
+	}
+	if dirs == nil {
+		dirs = []string{}
+	}
+	filesJSON, err := json.Marshal(files)
+	if err != nil {
+		return false, err
+	}
+	dirsJSON, err := json.Marshal(dirs)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.db.Exec(`
+		INSERT INTO game_root_sync_state (game_id, peer_id, root, last_synced_files, last_synced_dirs)
+		SELECT ?, ?, ?, ?, ?
+		WHERE `+gameIsTracked+` AND EXISTS (SELECT 1 FROM game_root_mapped m
+			JOIN game_roots r ON r.game_id = m.game_id AND r.name = m.name
+			WHERE m.game_id = ? AND m.name = ? AND m.mapped_ms = ? AND r.path != '')
+		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET
+			last_synced_files = excluded.last_synced_files,
+			last_synced_dirs = excluded.last_synced_dirs`,
+		gameID, peerID, root, string(filesJSON), string(dirsJSON), gameID, gameID, root, mappedMs)
+	if err != nil {
+		return false, fmt.Errorf("write confirmed root lineage: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// CommitRefreshedRootLineage persists an asynchronous comparison only while
+// the named root still belongs to the SAME local mapping generation observed
+// before the remote manifest request. A zero generation means an older mapped
+// root predating mapping timestamps, not a newly re-added root.
+func (s *Store) CommitRefreshedRootLineage(gameID, peerID, root string, mappedMs int64, files, dirs []string, agreedHash string) (bool, error) {
+	if root == "" {
+		return false, nil
+	}
+	if files == nil {
+		files = []string{}
+	}
+	if dirs == nil {
+		dirs = []string{}
+	}
+	filesJSON, err := json.Marshal(files)
+	if err != nil {
+		return false, err
+	}
+	dirsJSON, err := json.Marshal(dirs)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.db.Exec(`
+		INSERT INTO game_root_sync_state
+		(game_id, peer_id, root, last_synced_files, last_synced_dirs, agreed_hash)
+		SELECT ?, ?, ?, ?, ?, ?
+		WHERE `+gameIsTracked+` AND EXISTS (
+			SELECT 1 FROM game_roots r
+			LEFT JOIN game_root_mapped m ON m.game_id = r.game_id AND m.name = r.name
+			WHERE r.game_id = ? AND r.name = ? AND r.path != ''
+				AND COALESCE(m.mapped_ms, 0) = ?)
+		ON CONFLICT(game_id, peer_id, root) DO UPDATE SET
+			last_synced_files = excluded.last_synced_files,
+			last_synced_dirs = excluded.last_synced_dirs,
+			agreed_hash = CASE WHEN excluded.agreed_hash != ''
+				THEN excluded.agreed_hash ELSE game_root_sync_state.agreed_hash END,
+			pushed_hash = CASE WHEN excluded.agreed_hash != ''
+				THEN '' ELSE game_root_sync_state.pushed_hash END`,
+		gameID, peerID, root, string(filesJSON), string(dirsJSON), agreedHash,
+		gameID, gameID, root, mappedMs)
+	if err != nil {
+		return false, fmt.Errorf("refresh named-root lineage: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // ClearAgreedHashesForGame forgets every peer's merge base for a game, in
 // both the primary and per-location tables.
 //

@@ -198,10 +198,18 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 	// when this folder's contents began (migration 0037). The same folder
 	// saved again is not a new one.
 	if strings.TrimSpace(path) != "" && normalizeLocationPath(path) != normalizeLocationPath(before) {
+		var prior int64
+		if err := tx.Get(&prior, `SELECT mapped_ms FROM game_root_mapped WHERE game_id = ? AND name = ?`, gameID, n); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("read root generation: %w", err)
+		}
+		now := time.Now().UnixMilli()
+		if now <= prior {
+			now = prior + 1
+		}
 		if _, err := tx.Exec(`
 			INSERT INTO game_root_mapped (game_id, name, mapped_ms) VALUES (?, ?, ?)
 			ON CONFLICT(game_id, name) DO UPDATE SET mapped_ms = excluded.mapped_ms`,
-			gameID, n, time.Now().UnixMilli()); err != nil {
+			gameID, n, now); err != nil {
 			return fmt.Errorf("add game root: %w", err)
 		}
 	}
@@ -217,7 +225,9 @@ func (s *Store) GameRootsMappedSince(gameID string) (map[string]int64, error) {
 		Name     string `db:"name"`
 		MappedMs int64  `db:"mapped_ms"`
 	}
-	if err := s.db.Select(&rows, `SELECT name, mapped_ms FROM game_root_mapped WHERE game_id = ?`, gameID); err != nil {
+	if err := s.db.Select(&rows, `SELECT m.name, m.mapped_ms FROM game_root_mapped m
+		JOIN game_roots r ON r.game_id = m.game_id AND r.name = m.name
+		WHERE m.game_id = ? AND r.path != ''`, gameID); err != nil {
 		return nil, fmt.Errorf("game roots mapped since: %w", err)
 	}
 	out := make(map[string]int64, len(rows))
@@ -247,9 +257,8 @@ func (s *Store) RemoveGameRoot(gameID, name string) error {
 	if _, err := tx.Exec(`DELETE FROM game_root_sync_state WHERE game_id = ? AND root = ?`, gameID, n); err != nil {
 		return fmt.Errorf("remove game root lineage: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM game_root_mapped WHERE game_id = ? AND name = ?`, gameID, n); err != nil {
-		return fmt.Errorf("remove game root: %w", err)
-	}
+	// Preserve the generation tombstone, even if a new mapping is added
+	// within the same millisecond, to reject late reports for the old one.
 	return tx.Commit()
 }
 
