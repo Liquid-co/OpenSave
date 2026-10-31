@@ -82,6 +82,15 @@ type Game struct {
 // CreateGame inserts a new game and its default "main" branch in one
 // transaction.
 func (s *Store) CreateGame(g Game) error {
+	done, err := s.claimLock()
+	if err != nil {
+		return err
+	}
+	defer done()
+	return s.createGameWithoutClaimLock(g)
+}
+
+func (s *Store) createGameWithoutClaimLock(g Game) error {
 	if g.ActiveBranch == "" {
 		g.ActiveBranch = "main"
 	}
@@ -94,6 +103,13 @@ func (s *Store) CreateGame(g Game) error {
 		return err
 	}
 	defer tx.Rollback()
+
+	// Run the ownership decision on the SAME transaction as the insert.
+	// Preflight validation in the daemon is useful for messaging but cannot
+	// authorize a write once another native writer changes the database.
+	if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+		return err
+	}
 
 	_, err = tx.NamedExec(`
 		INSERT INTO games (id, name, save_path, active_branch, auto_sync, max_snapshots, max_manual_snapshots, app_id, exe_path, cover_url)
@@ -151,7 +167,33 @@ func (s *Store) ListGames() ([]Game, error) {
 // update — id, save_path are updatable too since the UI allows relocating
 // a tracked save folder).
 func (s *Store) UpdateGame(g Game) error {
-	res, err := s.db.NamedExec(`
+	done, err := s.claimLock()
+	if err != nil {
+		return err
+	}
+	defer done()
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("begin update game %s: %w", g.ID, err)
+	}
+	defer tx.Rollback()
+
+	var oldPath string
+	if err := tx.Get(&oldPath, `SELECT save_path FROM games WHERE id = ?`, g.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("read existing game path %s: %w", g.ID, err)
+	}
+	if oldPath != g.SavePath {
+		if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+			return err
+		}
+		if err := checkGameLocalRootsTx(tx, g.ID, g.SavePath, ""); err != nil {
+			return err
+		}
+	}
+	res, err := tx.NamedExec(`
 		UPDATE games SET
 			name = :name,
 			save_path = :save_path,
@@ -169,7 +211,10 @@ func (s *Store) UpdateGame(g Game) error {
 	if err != nil {
 		return fmt.Errorf("update game %s: %w", g.ID, err)
 	}
-	return checkRowAffected(res)
+	if err := checkRowAffected(res); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetLastManifestHash records the manifest hash captured at auto-snapshot

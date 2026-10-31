@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/opensave/opensave/internal/ignore"
 	"io"
@@ -768,27 +769,83 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 		}
 		res.Path = target
 
+		// Admission lasts from native ownership inspection through extraction
+		// and game registration. A preflight-only check would race AddRoot.
+		admission, admissionErr := s.Daemon.Store.BeginImportPath(target, g.ID)
+		if admissionErr != nil {
+			os.Remove(tmpPath)
+			res.Action, res.Error = "skipped", "save location is owned or busy: "+admissionErr.Error()
+			results = append(results, s.logImportResult(res))
+			continue
+		}
+
 		// Never overwrite untracked content without a copy: zip whatever
 		// is there now into the safety folder first, and skip the restore
 		// entirely if that safety copy cannot be written.
-		if pathHasContent(target) {
-			safetyDir := filepath.Join(settings.BackupsDir, "_import-safety")
-			safetyPath := filepath.Join(safetyDir, fmt.Sprintf("%s-%d.zip", sanitizeFilename(g.ID), baseMs))
-			if err := os.MkdirAll(safetyDir, 0o777); err == nil {
-				safetyRoots, safetyErr := s.Daemon.Store.GameRootPaths(g.ID)
-				if safetyErr != nil {
-					safetyRoots = nil
-				}
-				_, err = snapshot.ZipRoots(target, safetyRoots, safetyPath)
-			}
-			if err != nil {
+		content, contentErr := pathHasContent(target)
+		if contentErr != nil {
+			admission.Release()
+			os.Remove(tmpPath)
+			res.Action, res.Error = "skipped", "cannot safely inspect restore destination: "+contentErr.Error()
+			results = append(results, s.logImportResult(res))
+			continue
+		}
+		// An empty destination has no safety archive; remember whether the
+		// empty directory existed so failed imports can undo their own files.
+		emptyTargetExisted := false
+		if !content {
+			info, statErr := os.Stat(target)
+			if statErr == nil {
+				emptyTargetExisted = info.IsDir()
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				admission.Release()
 				os.Remove(tmpPath)
+				res.Action, res.Error = "skipped", "cannot inspect empty import target: "+statErr.Error()
+				results = append(results, s.logImportResult(res))
+				continue
+			}
+		}
+		var safetyPath string
+		var safetyRoots map[string]string
+		if content {
+			safetyDir := filepath.Join(settings.BackupsDir, "_import-safety")
+			safetyPath = filepath.Join(safetyDir, fmt.Sprintf("%s-%d.zip", sanitizeFilename(g.ID), baseMs))
+			safetyErr := os.MkdirAll(safetyDir, 0o777)
+			if safetyErr == nil {
+				var rootsErr error
+				safetyRoots, rootsErr = s.Daemon.Store.GameRootPaths(g.ID)
+				if rootsErr != nil {
+					safetyErr = fmt.Errorf("inspect mapped roots before import: %w", rootsErr)
+				} else {
+					var skipped []string
+					skipped, safetyErr = snapshot.ZipRoots(target, safetyRoots, safetyPath)
+					if safetyErr == nil && len(skipped) > 0 {
+						safetyErr = fmt.Errorf("safety copy omitted %d unreadable entries", len(skipped))
+					}
+					if safetyErr == nil {
+						safetyErr = snapshot.CheckExtractable(safetyPath)
+					}
+				}
+			}
+			if safetyErr != nil {
+				admission.Release()
+				os.Remove(tmpPath)
+				os.Remove(safetyPath)
 				res.Action = "skipped"
-				res.Error = "couldn't take a safety copy of the existing files, refusing to overwrite: " + err.Error()
+				res.Error = "couldn't take a safety copy of the existing files, refusing to overwrite: " + safetyErr.Error()
 				results = append(results, s.logImportResult(res))
 				continue
 			}
 			s.Daemon.Log.Log("info", fmt.Sprintf("existing files at %s backed up to %s", target, safetyPath))
+		}
+
+		importRoots, importErr := s.Daemon.Store.GameRootPaths(g.ID)
+		if importErr != nil {
+			admission.Release()
+			os.Remove(tmpPath)
+			res.Action, res.Error = "skipped", "cannot inspect mapped roots before import: "+importErr.Error()
+			results = append(results, s.logImportResult(res))
+			continue
 		}
 
 		// When the manifest says this save is a folder, create it before
@@ -802,6 +859,7 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 		// Creating the folder first removes the guess entirely.
 		if g.SaveKind == "dir" {
 			if mkErr := os.MkdirAll(target, 0o777); mkErr != nil {
+				admission.Release()
 				os.Remove(tmpPath)
 				res.Action, res.Error = "skipped", mkErr.Error()
 				results = append(results, s.logImportResult(res))
@@ -809,48 +867,105 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 			}
 		}
 
-		importRoots, importErr := s.Daemon.Store.GameRootPaths(g.ID)
-		if importErr != nil {
-			importRoots = nil
-		}
 		// Written into a game's save folder, so held as any other write to one
 		// is: nothing syncing the game reads it half-restored
 		// (syncengine/settle.go).
 		importDone := s.Daemon.P2P.Sync.Writing(g.ID)
 		unplaced, unzipErr := snapshot.UnzipRoots(tmpPath, target, importRoots)
-		importDone()
 		for _, name := range unplaced {
 			s.Daemon.Log.Log("warn", fmt.Sprintf("%q in this backup includes a %q save location, which this device has no folder for — those files were not restored", g.Name, name))
 		}
 		err = unzipErr
 		os.Remove(tmpPath)
 		if err != nil {
-			res.Action, res.Error = "skipped", err.Error()
+			var recoveryErr error
+			if content {
+				recoveryErr = restoreImportSafety(safetyPath, target, safetyRoots)
+			} else {
+				recoveryErr = restoreEmptyImportTarget(target, emptyTargetExisted)
+			}
+			if recoveryErr != nil {
+				s.Daemon.Log.Log("warn", fmt.Sprintf(
+					"backup import: safety recovery failed for %s: %v", target, recoveryErr))
+			}
+			// The native write gate and ownership claim cover every recovery write.
+			importDone()
+			admission.Release()
+			res.Action = "skipped"
+			if recoveryErr != nil {
+				res.Error = fmt.Sprintf("import failed: %v; recovery failed: %v; recovery archive (if created): %s",
+					err, recoveryErr, safetyPath)
+			} else {
+				res.Error = err.Error()
+			}
 			results = append(results, s.logImportResult(res))
 			continue
 		}
-		res.Action = "restored"
+		importDone()
 
 		// Track it. Restoring a backup onto a machine that has never seen
 		// these games is the whole point of the format, and putting the files
 		// back without the games left the app empty and every one of them
-		// waiting to be re-added by hand — the files were on disk, but nothing
-		// was watching, syncing or snapshotting them, and nothing said so.
+		// waiting to be re-added by hand.
 		//
 		// The manifest's id is reused rather than derived afresh, so the game
 		// keeps the identity its peers and its snapshot history already use.
-		// Failing to track is not failing to restore: the files are already
-		// back, so the outcome stands and only the tracked flag says otherwise.
-		tracked, trackErr := s.Daemon.TrackGame(store.Game{
+		// If the destination already had files, a failed registration puts
+		// that safety copy back. An empty destination keeps the extracted
+		// files and says they were not tracked.
+		tracked, trackErr := s.Daemon.TrackImportedGame(store.Game{
 			ID: g.ID, Name: g.Name, SavePath: target, AppID: g.AppID,
-		})
+		}, admission)
 		if trackErr != nil {
-			s.Daemon.Log.Log("warn", fmt.Sprintf(
-				"backup import: restored %q to %s but could not track it: %v", g.Name, target, trackErr))
+			// Tracking can fail AFTER CreateGame committed (for example while
+			// clearing the tombstone or retrieving the newly created game).
+			// Never roll a live, registered game's save back to an old archive.
+			registered, lookupErr := s.Daemon.Store.GetGame(g.ID)
+			switch {
+			case lookupErr == nil && registered.SavePath == target:
+				res.Action, res.Tracked, res.Path = "restored", true, registered.SavePath
+				s.Daemon.Log.Log("warn", fmt.Sprintf(
+					"backup import: %q was registered but post-registration setup failed: %v", g.Name, trackErr))
+			case lookupErr != nil && !errors.Is(lookupErr, store.ErrNotFound):
+				res.Action = "skipped"
+				res.Error = fmt.Sprintf("cannot verify game registration (%v); import may have committed: %v; safety archive: %s",
+					lookupErr, trackErr, safetyPath)
+			case lookupErr == nil:
+				res.Action = "skipped"
+				res.Error = fmt.Sprintf("import target cannot be verified: game is tracked at %q, not %q; %v",
+					registered.SavePath, target, trackErr)
+			case content:
+				restoreDone := s.Daemon.P2P.Sync.Writing(g.ID)
+				recoveryErr := restoreImportSafety(safetyPath, target, safetyRoots)
+				restoreDone()
+				res.Action = "skipped"
+				if recoveryErr != nil {
+					s.Daemon.Log.Log("warn", fmt.Sprintf(
+						"backup import: safety recovery failed for %s: %v", target, recoveryErr))
+					res.Error = fmt.Sprintf("registration failed: %v; recovery failed: %v; manual recovery archive: %s",
+						trackErr, recoveryErr, safetyPath)
+				} else {
+					res.Error = "restored files could not be tracked; previous files recovered: " + trackErr.Error()
+				}
+			default:
+				restoreDone := s.Daemon.P2P.Sync.Writing(g.ID)
+				recoveryErr := restoreEmptyImportTarget(target, emptyTargetExisted)
+				restoreDone()
+				res.Action = "skipped"
+				if recoveryErr != nil {
+					res.Error = fmt.Sprintf("registration failed: %v; empty target cleanup failed: %v",
+						trackErr, recoveryErr)
+				} else {
+					res.Error = "newly imported files discarded after registration failure: " + trackErr.Error()
+				}
+			}
 		} else {
+			res.Action = "restored"
 			res.Tracked = true
 			res.Path = tracked.SavePath
 		}
+		// Keep the ownership claim through all recovery mutations.
+		admission.Release()
 		results = append(results, s.logImportResult(res))
 	}
 	return results
@@ -874,18 +989,63 @@ func (s *Server) logImportResult(res importResult) importResult {
 	return res
 }
 
-// pathHasContent reports whether target holds anything worth a safety
-// copy: an existing file, or a directory with at least one entry.
-func pathHasContent(target string) bool {
-	info, err := os.Stat(target)
-	if err != nil {
-		return false
+// restoreImportSafety puts a verified pre-import archive back after a
+// failed extract or registration. The live tree must not stay half-written.
+func restoreImportSafety(safetyPath, target string, roots map[string]string) error {
+	if err := snapshot.CheckExtractable(safetyPath); err != nil {
+		return err
 	}
-	if !info.IsDir() {
-		return true
+	if len(roots) == 0 {
+		return snapshot.UnzipTo(safetyPath, target)
+	}
+	unplaced, err := snapshot.UnzipRoots(safetyPath, target, roots)
+	if err != nil {
+		return err
+	}
+	if len(unplaced) > 0 {
+		return fmt.Errorf("safety recovery could not restore %d mapped roots: %v", len(unplaced), unplaced)
+	}
+	return nil
+}
+
+// restoreEmptyImportTarget removes only files introduced into a destination
+// that was empty at admission. Preserve its original empty directory if one
+// existed. This is not used when the destination had existing user data:
+// those bytes must be restored from the verified safety archive instead.
+func restoreEmptyImportTarget(target string, existed bool) error {
+	if !existed {
+		return os.RemoveAll(target)
 	}
 	entries, err := os.ReadDir(target)
-	return err == nil && len(entries) > 0
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(target, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pathHasContent reports whether target holds anything worth a safety
+// copy: an existing file, or a directory with at least one entry.
+func pathHasContent(target string) (bool, error) {
+	info, err := os.Stat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() {
+		return true, nil
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) > 0, nil
 }
 
 // copyFile copies src to dst (creating/truncating dst).

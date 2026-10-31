@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -117,6 +118,11 @@ func (s *Store) ResolveGameAlias(aliasID string) (string, bool) {
 // lock for the whole thing, so an alias committed by anyone else is either
 // visible to the check or blocked until the insert is done.
 func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) {
+	done, err := s.claimLock()
+	if err != nil {
+		return "", err
+	}
+	defer done()
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return "", err
@@ -124,13 +130,24 @@ func (s *Store) CreateGameUnlessAliased(g Game) (canonicalID string, err error) 
 	defer tx.Rollback()
 
 	var aliasTarget string
-	if err := tx.Get(&aliasTarget, `SELECT game_id FROM game_aliases WHERE alias_id = ?`, g.ID); err == nil && aliasTarget != "" {
-		return aliasTarget, nil
+	if err := tx.Get(&aliasTarget, `SELECT game_id FROM game_aliases WHERE alias_id = ?`, g.ID); err == nil {
+		if aliasTarget != "" {
+			return aliasTarget, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("look up game alias before creation: %w", err)
 	}
 	// Someone may also have created the game itself in the window.
 	var existing string
-	if err := tx.Get(&existing, `SELECT id FROM games WHERE id = ?`, g.ID); err == nil && existing != "" {
-		return existing, nil
+	if err := tx.Get(&existing, `SELECT id FROM games WHERE id = ?`, g.ID); err == nil {
+		if existing != "" {
+			return existing, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("look up game before creation: %w", err)
+	}
+	if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+		return "", err
 	}
 
 	if g.ActiveBranch == "" {
