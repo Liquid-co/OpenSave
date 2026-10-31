@@ -2,7 +2,6 @@ package cliapp
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 
 	"github.com/opensave/opensave/internal/daemon"
@@ -31,15 +30,7 @@ func cmdLocations(d *daemon.Daemon, args []string) int {
 			return fail(asJSON, err)
 		}
 		oldRoots, _ := d.Store.GameRootPaths(gameID)
-		if running, err := useRunningDaemon(); err != nil {
-			return fail(asJSON, err)
-		} else if running {
-			if _, err := daemonRequest("POST", "/api/games/"+url.PathEscape(gameID)+"/roots", map[string]string{"name": name, "path": abs}); err != nil {
-				return fail(asJSON, err)
-			}
-		} else if err := withOfflineRootAdmission(func() error {
-			return d.Store.AddGameRoot(gameID, name, abs)
-		}); err != nil {
+		if err := d.Store.AddGameRoot(gameID, name, abs); err != nil {
 			return fail(asJSON, err)
 		}
 		d.LocationsChanged(gameID, oldRoots)
@@ -56,15 +47,7 @@ func cmdLocations(d *daemon.Daemon, args []string) int {
 			return 1
 		}
 		oldRoots, _ := d.Store.GameRootPaths(args[1])
-		if running, err := useRunningDaemon(); err != nil {
-			return fail(asJSON, err)
-		} else if running {
-			if _, err := daemonRequest("DELETE", "/api/games/"+url.PathEscape(args[1])+"/roots/"+url.PathEscape(args[2]), nil); err != nil {
-				return fail(asJSON, err)
-			}
-		} else if err := withOfflineRootAdmission(func() error {
-			return d.Store.RemoveGameRoot(args[1], args[2])
-		}); err != nil {
+		if err := d.Store.RemoveGameRoot(args[1], args[2]); err != nil {
 			return fail(asJSON, err)
 		}
 		d.LocationsChanged(args[1], oldRoots)
