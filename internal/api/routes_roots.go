@@ -125,7 +125,9 @@ func (s *Server) acquireRootTopology(w http.ResponseWriter, r *http.Request, gam
 		writeError(w, http.StatusServiceUnavailable, "Save-location admission is unavailable.")
 		return nil, false
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	limit := s.topologyWaitFor
+	if limit <= 0 { limit = 30 * time.Second }
+	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
 	done, err := s.Daemon.P2P.Sync.WaitTopologyMutation(ctx, gameID, 100*time.Millisecond)
 	if err == nil { return done, true }
