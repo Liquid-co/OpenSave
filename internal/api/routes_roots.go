@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"time"
 	"net/http"
 	"net/url"
 	"strings"
@@ -71,11 +74,8 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	// A root that is currently being written by an in-flight transfer must
 	// not be remapped out from under that transfer (issue #60).
-	done, ok := s.tryRootTopology(gameID)
-	if !ok {
-		writeError(w, http.StatusConflict, "cannot change root while native work is active or admission is unavailable")
-		return
-	}
+	done, ok := s.acquireRootTopology(w, r, gameID)
+	if !ok { return }
 	defer done()
 	// Rejections here are the overlap and naming rules, which are the user's
 	// to hear about rather than a server fault: "that folder is already
@@ -102,11 +102,8 @@ func (s *Server) handleRemoveGameRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	// Refuse while any transfer still holds a captured path for this game
 	// (issue #60). The mapping must stay until the last write finishes.
-	done, ok := s.tryRootTopology(gameID)
-	if !ok {
-		writeError(w, http.StatusConflict, "cannot remove root while native work is active or admission is unavailable")
-		return
-	}
+	done, ok := s.acquireRootTopology(w, r, gameID)
+	if !ok { return }
 	defer done()
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
 	if err := s.Daemon.Store.RemoveGameRoot(gameID, name); err != nil {
@@ -121,11 +118,21 @@ func (s *Server) handleRemoveGameRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// tryRootTopology acquires native admission for the entire root mutation,
-// not merely a snapshot of whether a writer happened to be active.
-func (s *Server) tryRootTopology(gameID string) (func(), bool) {
+// acquireRootTopology waits for interactive edits only. The 30-second bound
+// covers acquiring the reservation; the database/watcher phase may take longer.
+func (s *Server) acquireRootTopology(w http.ResponseWriter, r *http.Request, gameID string) (func(), bool) {
 	if s.Daemon == nil || s.Daemon.P2P == nil || s.Daemon.P2P.Sync == nil {
+		writeError(w, http.StatusServiceUnavailable, "Save-location admission is unavailable.")
 		return nil, false
 	}
-	return s.Daemon.P2P.Sync.TryTopologyMutation(gameID)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	done, err := s.Daemon.P2P.Sync.WaitTopologyMutation(ctx, gameID, 100*time.Millisecond)
+	if err == nil { return done, true }
+	if errors.Is(err, context.DeadlineExceeded) && r.Context().Err() == nil {
+		writeError(w, http.StatusConflict, "A sync of this game is in progress. Try again in a moment.")
+	} else if r.Context().Err() == nil {
+		writeError(w, http.StatusServiceUnavailable, "Save-location admission was cancelled or is unavailable.")
+	}
+	return nil, false
 }
