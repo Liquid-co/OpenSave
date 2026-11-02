@@ -1,6 +1,9 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
+	"github.com/opensave/opensave/internal/store"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -136,4 +139,51 @@ func TestRestoreEmptyImportTarget(t *testing.T) {
 			t.Fatalf("original empty directory not restored: %v %v", items, err)
 		}
 	})
+}
+
+// A real SQLite trigger rejects registration only after extraction has run.
+// This exercises the HTTP recovery path without a production fault hook.
+func TestBackupImportRegistrationFailureRecoversPreviousFiles(t *testing.T) {
+	ts := startTestServer(t)
+	target := filepath.Join(t.TempDir(), "untracked-root")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	slot := filepath.Join(target, "slot.sav")
+	if err := os.WriteFile(slot, []byte("ARCHIVED"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	archive := exportV2(t, ts, []map[string]string{{"id": "failed-import", "name": "Failed Import", "savePath": target}})
+	if err := os.WriteFile(slot, []byte("ORIGINAL-LIVE"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	extra := filepath.Join(target, "original-only.sav")
+	if err := os.WriteFile(extra, []byte("KEEP"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", ts.daemon.Paths.SQLiteDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TRIGGER reject_import BEFORE INSERT ON games WHEN NEW.id = 'failed-import' BEGIN SELECT RAISE(ABORT, 'injected registration failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := ts.do(t, http.MethodPost, "/api/backup/restore", map[string]string{"sourcePath": archive, "mode": "overwrite"})
+	if resp.StatusCode != http.StatusOK || string(body["restored"]) != "0" {
+		t.Fatalf("unexpected import result: %d %v", resp.StatusCode, body)
+	}
+	for path, want := range map[string]string{slot: "ORIGINAL-LIVE", extra: "KEEP"} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != want {
+			t.Fatalf("recovery %s = %q, %v", filepath.Base(path), got, err)
+		}
+	}
+	if _, err := ts.daemon.Store.GetGame("failed-import"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("failed import registered: %v", err)
+	}
+	// A new ordinary registration proves the import claim was released.
+	if err := ts.daemon.Store.CreateGame(store.Game{ID: "after-failure", Name: "After", SavePath: target}); err != nil {
+		t.Fatalf("claim leaked: %v", err)
+	}
 }

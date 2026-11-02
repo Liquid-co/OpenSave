@@ -911,8 +911,8 @@ func (s *Server) importBackupV2(zr *zip.Reader, manifest *backupManifest, mode s
 		// The manifest's id is reused rather than derived afresh, so the game
 		// keeps the identity its peers and its snapshot history already use.
 		// If the destination already had files, a failed registration puts
-		// that safety copy back. An empty destination keeps the extracted
-		// files and says they were not tracked.
+		// that safety copy back. An empty destination is returned to its
+		// original empty or absent state.
 		tracked, trackErr := s.Daemon.TrackImportedGame(store.Game{
 			ID: g.ID, Name: g.Name, SavePath: target, AppID: g.AppID,
 		}, admission)
