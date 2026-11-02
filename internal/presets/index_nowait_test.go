@@ -40,10 +40,14 @@ New Game:
 		t.Fatal(err)
 	}
 
+	// The rebuild is held, as a real one of the whole manifest takes about a
+	// minute: what is asked for meanwhile is answered without waiting for it.
+	release, _ := slowBuilds(t, sc)
 	got := sc.loadManifestIndexNoWait()
 	if len(got) != 1 || got[0].Name != "Old Game" {
 		t.Fatalf("got %+v, want the index on disk as it is", got)
 	}
+	release()
 
 	// Rebuilt in the background; what the next start reads.
 	deadline := time.Now().Add(30 * time.Second)
@@ -114,9 +118,11 @@ New Game:
 	if err := os.Chtimes(yamlPath, downloaded, downloaded); err != nil {
 		t.Fatal(err)
 	}
+	release, _ := slowBuilds(t, sc) // held, as in the test above
 	if got := sc.loadManifestIndexNoWait(); len(got) != 0 {
 		t.Fatalf("got %+v, want nothing until the index is built", got)
 	}
+	release()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		if _, err := os.Stat(indexPath); err == nil {
