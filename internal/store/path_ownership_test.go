@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func ownedTestGame(id, path string) Game {
@@ -239,5 +240,198 @@ func TestNativeOwnershipMissingLeafUnderPhysicalAlias(t *testing.T) {
 	// Missing and disjoint leaves remain valid for peer/unmapped workflows.
 	if err := s.CreateGame(ownedTestGame("disjoint", filepath.Join(alias, "other", "future"))); err != nil {
 		t.Fatalf("disjoint future root refused: %v", err)
+	}
+}
+
+func TestPreparedOwnershipDoesNotHoldSQLiteDuringFilesystemResolution(t *testing.T) {
+	s := openTestStore(t)
+	owned := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("existing", owned)); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	unblock := make(chan struct{})
+	defer func() {
+		select {
+		case <-unblock:
+		default:
+			close(unblock)
+		}
+	}()
+	result := make(chan error, 1)
+	go func() {
+		_, err := s.prepareNativePathsFor(t.TempDir(), func(path string) preparedNativePath {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+			<-unblock // Simulates an unresponsive NAS or unplugged disk.
+			return prepareNativePath(path)
+		})
+		result <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("resolver was never entered")
+	}
+	// The exact same Store has SetMaxOpenConns(1). The independent DB read
+	// must proceed while the resolver is blocked, not wait for a transaction.
+	queryDone := make(chan error, 1)
+	go func() {
+		_, err := s.GetGame("existing")
+		queryDone <- err
+	}()
+	select {
+	case err := <-queryDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("filesystem resolution monopolised the SQLite connection")
+	}
+	close(unblock)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPreparedOwnershipDoesNotBlockUnrelatedSQLiteWriter guards the specific
+// single-connection SQLite starvation reported by the upstream maintainer:
+// an inaccessible save directory must not hold an ownership transaction open
+// while an unrelated metadata write is ready to commit.
+func TestPreparedOwnershipDoesNotBlockUnrelatedSQLiteWriter(t *testing.T) {
+	s := openTestStore(t)
+	owned := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("existing", owned)); err != nil {
+		t.Fatal(err)
+	}
+	candidate := t.TempDir()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	preparedDone := make(chan error, 1)
+	go func() {
+		_, err := s.prepareNativePathsFor(candidate, func(path string) preparedNativePath {
+			select {
+			case <-entered:
+			default:
+				close(entered)
+			}
+			<-release // Simulates an offline or unresponsive save filesystem.
+			return prepareNativePath(path)
+		})
+		preparedDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ownership preparation never reached the filesystem")
+	}
+
+	// This actual SQL UPDATE must finish while path preparation is paused.
+	// The single-connection Store makes this a sensitive regression for an
+	// ownership transaction being opened before filesystem resolution.
+	writerDone := make(chan error, 1)
+	go func() {
+		_, err := s.db.Exec("UPDATE games SET name = ? WHERE id = ?", "updated-while-blocked", "existing")
+		writerDone <- err
+	}()
+	select {
+	case err := <-writerDone:
+		if err != nil {
+			t.Fatalf("independent SQLite writer failed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("independent SQLite writer was blocked by slow filesystem preparation")
+	}
+	got, err := s.GetGame("existing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "updated-while-blocked" {
+		t.Fatalf("independent writer did not commit: %q", got.Name)
+	}
+	close(release)
+	if err := <-preparedDone; err != nil {
+		t.Fatalf("filesystem preparation after writer: %v", err)
+	}
+}
+
+func TestPreparedOwnershipRejectsNewClaimAfterPreflight(t *testing.T) {
+	s := openTestStore(t)
+	choice := t.TempDir()
+	prepared, err := s.prepareNativePaths(choice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A competing transaction commits after the file identities were read.
+	newClaim := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("late-owner", newClaim)); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.db.Beginx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := checkGamePathOwnershipTx(tx, prepared, "incoming"); !errors.Is(err, ErrOwnershipClaimsChanged) {
+		t.Fatalf("unprepared new claim accepted after preflight: %v", err)
+	}
+}
+
+func TestPreparedOwnershipRejectsChangedRootAfterPreflight(t *testing.T) {
+	s := openTestStore(t)
+	primary := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("main-game", primary)); err != nil {
+		t.Fatal(err)
+	}
+	candidate := t.TempDir()
+	prepared, err := s.prepareNativePaths(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRoot := t.TempDir()
+	if err := s.AddGameRoot("main-game", "config", newRoot); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.db.Beginx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := checkGameLocalRootsTx(tx, prepared, "main-game", ""); !errors.Is(err, ErrOwnershipClaimsChanged) {
+		t.Fatalf("unprepared same-game root accepted: %v", err)
+	}
+}
+
+func TestPreparedOwnershipRetainsCrossGameAndPhysicalAliasExclusion(t *testing.T) {
+	s := openTestStore(t)
+	owned := t.TempDir()
+	if err := s.CreateGame(ownedTestGame("owner", owned)); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(owned, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	prepared, err := s.prepareNativePaths(filepath.Join(alias, "new-leaf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.db.Beginx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := checkGamePathOwnershipTx(tx, prepared, "incoming"); !errors.Is(err, ErrGamePathOwned) {
+		t.Fatalf("prepared physical alias escaped ownership: %v", err)
 	}
 }

@@ -3,6 +3,7 @@ import {
   DropdownItem,
   PanelSection,
   PanelSectionRow,
+  Router,
   ToggleField,
   staticClasses,
 } from "@decky/ui";
@@ -17,6 +18,7 @@ interface Game {
   name: string;
   activeBranch: string;
   appId?: string;
+  autoSync?: boolean;
   savePath?: string;
   branches?: Record<string, { snapshots?: Snapshot[] }>;
 }
@@ -78,7 +80,7 @@ interface DaemonStatus {
 /** A sync of one game: what it did, or why it did not happen. */
 interface SyncResult {
   success: boolean;
-  outcome?: "changed" | "in-sync" | "conflict" | "queued";
+  outcome?: "changed" | "in-sync" | "conflict" | "queued" | "timeout";
   reason?: "paused" | "held" | "offline" | "error";
   error?: string;
 }
@@ -98,6 +100,7 @@ const resolveConflict = callable<[game_id: string, peer_id: string, resolution: 
 const resolveLocationConflict =
   callable<[game_id: string, peer_id: string, root: string, resolution: string], Done>("resolve_location_conflict");
 const answerEmptied = callable<[game_id: string, answer: string], Done>("answer_emptied");
+const markSession = callable<[game_id: string, state: "start" | "end"], Done>("mark_session");
 const pauseSync = callable<[minutes: number], Done>("pause_sync");
 const resumeSync = callable<[], Done>("resume_sync");
 
@@ -197,6 +200,19 @@ function setAutoSyncEnabled(on: boolean) {
   localStorage.setItem(AUTO_SYNC_KEY, on ? "true" : "false");
 }
 
+// Holding a game's launch until its save has synced. Without the hold the
+// sync ran alongside the game starting, so a game could read its old save
+// while the newer one was still arriving, and playing on it led to a conflict
+// at the next sync.
+const HOLD_LAUNCH_KEY = "opensave:holdLaunchForSync";
+
+function holdLaunchEnabled(): boolean {
+  return localStorage.getItem(HOLD_LAUNCH_KEY) !== "false"; // default on
+}
+function setHoldLaunchEnabled(on: boolean) {
+  localStorage.setItem(HOLD_LAUNCH_KEY, on ? "true" : "false");
+}
+
 const PAUSE_CHOICES = [
   { data: 60, label: "For an hour" },
   { data: 180, label: "For 3 hours" },
@@ -211,13 +227,16 @@ function Content() {
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const [autoSync, setAutoSync] = useState(autoSyncEnabled());
+  const [holdLaunch, setHoldLaunch] = useState(holdLaunchEnabled());
   const [activity, setActivity] = useState<Record<string, SyncActivity>>({});
   const [baseUrl, setBaseUrl] = useState<string>("");
 
   const refresh = async () => {
     const s = await getDaemonStatus();
     setStatus(s);
-    setGames(s.running ? await getGames() : {});
+    const g = s.running ? await getGames() : {};
+    setGames(g);
+    rememberTracked(g);
   };
 
   useEffect(() => {
@@ -535,7 +554,7 @@ function Content() {
       <PanelSectionRow>
         <ToggleField
           label="Sync around gameplay"
-          description="Pull the latest save before a game starts, and push it again when you quit."
+          description="Bring in the newest save when a game starts, and send it on when you quit."
           checked={autoSync}
           onChange={(v: boolean) => {
             setAutoSync(v);
@@ -543,6 +562,19 @@ function Content() {
           }}
         />
       </PanelSectionRow>
+      {autoSync && (
+        <PanelSectionRow>
+          <ToggleField
+            label="Wait for the save before starting"
+            description={`Holds a game's start until its save has synced, for up to ${LAUNCH_HOLD_MS / 1000} seconds, so the game never opens an older save. Off, the game starts at once and the save syncs alongside it.`}
+            checked={holdLaunch}
+            onChange={(v: boolean) => {
+              setHoldLaunch(v);
+              setHoldLaunchEnabled(v);
+            }}
+          />
+        </PanelSectionRow>
+      )}
 
       <PanelSection title="Tracked games">
         {list.length === 0 ? (
@@ -617,6 +649,7 @@ function lifecycleSaid(res: SyncResult, when: "launch" | "exit"): string {
   if (res.success) {
     if (res.outcome === "changed") return when === "launch" ? "Brought the newest save in" : "Save synced";
     if (res.outcome === "conflict") return "Changed here and on another device — open OpenSave to choose";
+    if (res.outcome === "timeout") return "Still syncing — started anyway, the save follows";
     return when === "exit" ? "Save synced" : "";
   }
   switch (res.reason) {
@@ -631,52 +664,257 @@ function lifecycleSaid(res: SyncResult, when: "launch" | "exit"): string {
   }
 }
 
+// How long a game's start may be held for its save, at most. A sync that
+// takes longer carries on alongside the game, as every sync did before.
+const LAUNCH_HOLD_MS = 30_000;
+
+// The tracked games by Steam App ID, kept to hand: whether to hold a launch is
+// decided the moment Steam reports it, before the daemon could be asked.
+let trackedByAppId = new Map<string, Game>();
+
+function rememberTracked(games: Record<string, Game>) {
+  const next = new Map<string, Game>();
+  for (const g of Object.values(games ?? {})) {
+    if (g.appId) next.set(String(g.appId), g);
+  }
+  trackedByAppId = next;
+}
+
+async function refreshTracked() {
+  try {
+    const s = await getDaemonStatus();
+    rememberTracked(s.running ? await getGames() : {});
+  } catch {
+    trackedByAppId = new Map();
+  }
+}
+
+/** The end of a sync of a game that was queued behind one already running,
+ *  as the daemon reports it, or "timeout" after ms. */
+function queuedSyncDone(gameId: string, ms: number): Promise<SyncResult> {
+  return new Promise((resolve) => {
+    const onSync = (type: string, data: { gameId?: string; data?: any }) => {
+      if (data?.gameId !== gameId) return;
+      if (type === "sync-complete") finish({ success: true, outcome: "in-sync" });
+      else if (type === "sync-error") finish({ success: false, reason: "error", error: data?.data?.error });
+    };
+    const finish = (res: SyncResult) => {
+      clearTimeout(timer);
+      removeEventListener<[string, any]>("opensave_sync", onSync);
+      resolve(res);
+    };
+    const timer = setTimeout(() => finish({ success: true, outcome: "timeout" }), ms);
+    addEventListener<[string, any]>("opensave_sync", onSync);
+  });
+}
+
+/** A game's sync before it starts, given at most LAUNCH_HOLD_MS. */
+async function syncBeforeStart(game: Game): Promise<SyncResult> {
+  const began = Date.now();
+  const left = () => Math.max(0, LAUNCH_HOLD_MS - (Date.now() - began));
+  const sync = (async () => {
+    const res = await syncGame(game.id);
+    return res.success && res.outcome === "queued" ? queuedSyncDone(game.id, left()) : res;
+  })();
+  const timeout = new Promise<SyncResult>((resolve) =>
+    setTimeout(() => resolve({ success: true, outcome: "timeout" }), LAUNCH_HOLD_MS),
+  );
+  return Promise.race([sync, timeout]);
+}
+
+// The play sessions this plugin began, by App ID, kept in localStorage: a
+// session begun from here is only ended from here, and a reload of the plugin
+// while a game runs would otherwise forget it and miss its stop.
+const OPEN_SESSIONS_KEY = "opensave:openSessions";
+
+function loadOpenSessions(): Map<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPEN_SESSIONS_KEY) ?? "{}");
+    return new Map(Object.entries(raw).filter(([, v]) => typeof v === "string") as [string, string][]);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveOpenSessions(sessions: Map<string, string>) {
+  try {
+    localStorage.setItem(OPEN_SESSIONS_KEY, JSON.stringify(Object.fromEntries(sessions)));
+  } catch {
+    /* storage refused: the sessions are still ended while the plugin runs */
+  }
+}
+
+/** The App IDs of the games Steam is running now. */
+function runningAppIds(): Set<string> {
+  try {
+    return new Set((Router.RunningApps ?? []).map((app) => String(app.appid)));
+  } catch {
+    return new Set();
+  }
+}
+
 function registerLifecycleHooks(): () => void {
   // SteamClient is a global declared by @decky/ui, but Game Mode is the only
   // place it exists — guard so a desktop/dev context degrades quietly.
   const client = (globalThis as any).SteamClient;
-  if (!client?.GameSessions?.RegisterForAppLifetimeNotifications) {
-    console.warn("[OpenSave] SteamClient.GameSessions unavailable; auto-sync disabled");
-    return () => {};
-  }
+  const disposers: Array<() => void> = [];
 
   // Guards against a game's rapid start/stop churn queueing duplicate syncs.
   const inFlight = new Set<string>();
+  // A launch held for its save and then started again by this plugin: let
+  // through once. And its save is synced, so its start does not sync again.
+  const relaunching = new Set<string>();
+  const synced = new Set<string>();
+  // Games whose start the daemon was told of, by App ID, so it is told of
+  // their stop too: a session begun from here only ends when it is, and the
+  // game's save is held back from syncing until then. Kept across a reload
+  // of the plugin (openSessions), which would otherwise miss the stop.
+  const inSession = loadOpenSessions();
+  const remember = () => saveOpenSessions(inSession);
 
-  const syncFor = async (appId: string, when: "launch" | "exit") => {
+  // A game whose stop was missed — the plugin reloaded, or Steam restarted,
+  // while it ran — is not running now: its session is ended. One still
+  // running keeps its session, and its stop ends it as usual.
+  void (async () => {
+    if (inSession.size === 0) return;
+    const running = runningAppIds();
+    for (const [appId, gameId] of [...inSession]) {
+      if (running.has(appId)) continue;
+      const res = await markSession(gameId, "end");
+      if (res.success) {
+        inSession.delete(appId);
+        remember();
+      }
+    }
+  })().catch((e) => console.error("[OpenSave] ending sessions left open", e));
+
+  void refreshTracked();
+  const refresher = setInterval(refreshTracked, 60_000);
+  disposers.push(() => clearInterval(refresher));
+
+  // Before a game starts: hold the launch, sync, start it again.
+  const apps = client?.Apps;
+  if (apps?.RegisterForGameActionStart && apps?.CancelGameAction && apps?.RunGame) {
+    const reg = apps.RegisterForGameActionStart(
+      (actionId: number, appId: string, action: string, source: number) => {
+        const id = String(appId);
+        if (action !== "LaunchApp") return;
+        if (relaunching.delete(id)) return;
+        const game = trackedByAppId.get(id);
+        if (!game || game.autoSync === false || !autoSyncEnabled() || !holdLaunchEnabled()) return;
+        if (inFlight.has(id)) return;
+        try {
+          apps.CancelGameAction(actionId);
+        } catch (e) {
+          // Not held: it starts now, and its start syncs alongside it.
+          console.error("[OpenSave] could not hold the launch", e);
+          return;
+        }
+        inFlight.add(id);
+        void (async () => {
+          // Said only when the wait is long enough to notice.
+          const slow = setTimeout(
+            () => toaster.toast({ title: game.name, body: "Getting the newest save before it starts…" }),
+            1500,
+          );
+          let res: SyncResult;
+          try {
+            res = await syncBeforeStart(game);
+          } catch (e) {
+            res = { success: false, reason: "error", error: String(e) };
+          }
+          clearTimeout(slow);
+          // Started again whatever the sync did: a game is never left unstarted.
+          relaunching.add(id);
+          synced.add(id);
+          setTimeout(() => relaunching.delete(id), 30_000);
+          try {
+            apps.RunGame(id, "", -1, source ?? 100);
+          } catch (e) {
+            relaunching.delete(id);
+            synced.delete(id);
+            console.error("[OpenSave] could not start the game again", e);
+            toaster.toast({ title: game.name, body: "Couldn't start the game — start it again" });
+          } finally {
+            inFlight.delete(id);
+          }
+          const said = lifecycleSaid(res, "launch");
+          if (said) toaster.toast({ title: game.name, body: said });
+        })();
+      },
+    );
+    disposers.push(() => reg?.unregister?.());
+  }
+
+  const onStarted = async (appId: string) => {
+    const alreadySynced = synced.delete(appId);
     if (!autoSyncEnabled() || inFlight.has(appId)) return;
+    // Starting the daemon on demand would delay a game launch, so only act
+    // when it's already up.
+    if (!(await getDaemonStatus()).running) return;
+    const match = await findGameByAppId(appId);
+    if (!match.found || !match.game) return;
+    const game = match.game;
+    inSession.set(appId, game.id);
+    remember();
+    void markSession(game.id, "start");
+    if (alreadySynced) return;
+    // Not held (the hold is off, or Steam would not let it): the save syncs
+    // alongside the game starting.
     inFlight.add(appId);
     try {
-      // Starting the daemon on demand would delay a game launch, so only act
-      // when it's already up.
-      if (!(await getDaemonStatus()).running) return;
-
-      const match = await findGameByAppId(appId);
-      if (!match.found || !match.game) return;
-
-      const said = lifecycleSaid(await syncGame(match.game.id), when);
-      if (said) toaster.toast({ title: match.game.name, body: said });
-    } catch (e) {
-      console.error("[OpenSave] lifecycle sync failed", e);
+      const said = lifecycleSaid(await syncGame(game.id), "launch");
+      if (said) toaster.toast({ title: game.name, body: said });
     } finally {
       inFlight.delete(appId);
     }
   };
 
-  const unregister = client.GameSessions.RegisterForAppLifetimeNotifications(
-    (update: { unAppID: number; bRunning: boolean }) => {
-      const appId = String(update.unAppID);
-      // Deliberately fire-and-forget: a game launch must never wait on the
-      // network. The sync runs alongside it.
-      void syncFor(appId, update.bRunning ? "launch" : "exit");
-    },
-  );
+  const onStopped = async (appId: string) => {
+    const gameId = inSession.get(appId);
+    // Ended even with syncing around gameplay switched off since it began.
+    // Ending it takes the "After playing" snapshot and syncs it. Forgotten
+    // only once the daemon has it: otherwise the next load ends it.
+    if (gameId && (await markSession(gameId, "end")).success) {
+      inSession.delete(appId);
+      remember();
+    }
+    if (!autoSyncEnabled() || inFlight.has(appId)) return;
+    if (!(await getDaemonStatus()).running) return;
+    const match = await findGameByAppId(appId);
+    if (!match.found || !match.game) return;
+    // And synced here as well: a session too short to count takes no
+    // snapshot and syncs nothing, and this says how it went.
+    inFlight.add(appId);
+    try {
+      const said = lifecycleSaid(await syncGame(match.game.id), "exit");
+      if (said) toaster.toast({ title: match.game.name, body: said });
+    } finally {
+      inFlight.delete(appId);
+    }
+  };
+
+  const sessions = client?.GameSessions;
+  if (sessions?.RegisterForAppLifetimeNotifications) {
+    const reg = sessions.RegisterForAppLifetimeNotifications(
+      (update: { unAppID: number; bRunning: boolean }) => {
+        const appId = String(update.unAppID);
+        const run = update.bRunning ? onStarted(appId) : onStopped(appId);
+        run.catch((e) => console.error("[OpenSave] lifecycle sync failed", e));
+      },
+    );
+    disposers.push(() => reg?.unregister?.());
+  } else {
+    console.warn("[OpenSave] SteamClient.GameSessions unavailable; auto-sync disabled");
+  }
 
   return () => {
-    try {
-      unregister?.unregister?.();
-    } catch {
-      /* nothing useful to do if Steam already tore it down */
+    for (const dispose of disposers) {
+      try {
+        dispose();
+      } catch {
+        /* nothing useful to do if Steam already tore it down */
+      }
     }
   };
 }

@@ -40,12 +40,17 @@ func (s *Store) BeginImportPath(path, incomingGameID string) (*ImportPathAdmissi
 	if err != nil {
 		return nil, err
 	}
+	prepared, err := s.prepareNativePaths(path)
+	if err != nil {
+		release()
+		return nil, err
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		release()
 		return nil, err
 	}
-	if err := checkGamePathOwnershipTx(tx, path, incomingGameID); err != nil {
+	if err := checkGamePathOwnershipTx(tx, prepared, incomingGameID); err != nil {
 		_ = tx.Rollback()
 		release()
 		return nil, err

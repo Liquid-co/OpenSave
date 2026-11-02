@@ -3,13 +3,14 @@
 package sessions
 
 import (
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 // listProcesses walks the process table and asks each process for its full
-// program path. A process this user may not look at (a service, another
+// program path and how much processor time it has used. A process this user may not look at (a service, another
 // user's) is skipped: no game of theirs is one of ours.
 func listProcesses() ([]Proc, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -27,8 +28,8 @@ func listProcesses() ([]Proc, error) {
 	buf := make([]uint16, windows.MAX_LONG_PATH)
 	for {
 		if pid := entry.ProcessID; pid > 4 {
-			if exe := imagePath(pid, buf); exe != "" {
-				out = append(out, Proc{PID: int(pid), Exe: exe})
+			if p, ok := inspect(pid, buf); ok {
+				out = append(out, p)
 			}
 		}
 		if err := windows.Process32Next(snap, &entry); err != nil {
@@ -38,15 +39,26 @@ func listProcesses() ([]Proc, error) {
 	return out, nil
 }
 
-func imagePath(pid uint32, buf []uint16) string {
+func inspect(pid uint32, buf []uint16) (Proc, bool) {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
-		return ""
+		return Proc{}, false
 	}
 	defer windows.CloseHandle(h)
 	n := uint32(len(buf))
 	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &n); err != nil {
-		return ""
+		return Proc{}, false
 	}
-	return windows.UTF16ToString(buf[:n])
+	p := Proc{PID: int(pid), Exe: windows.UTF16ToString(buf[:n])}
+
+	var creation, exit, kernel, user windows.Filetime
+	timesOK := windows.GetProcessTimes(h, &creation, &exit, &kernel, &user) == nil
+	if timesOK {
+		p.Measured = true
+		// FILETIME counts 100-nanosecond intervals.
+		ticks := (uint64(kernel.HighDateTime)<<32 | uint64(kernel.LowDateTime)) +
+			(uint64(user.HighDateTime)<<32 | uint64(user.LowDateTime))
+		p.CPU = time.Duration(ticks * 100)
+	}
+	return p, true
 }

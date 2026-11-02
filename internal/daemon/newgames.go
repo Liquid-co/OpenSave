@@ -231,3 +231,27 @@ func (d *Daemon) DismissNewGames() {
 		d.OnNewGames([]NewGame{})
 	}
 }
+
+// scanForOffer looks for a peer's offered game's folder now, rather than at
+// the next hourly scan: a game already played here then syncs within seconds,
+// the peer's next attempt finding its folder known. Not more than once a
+// minute, and never two at once — offers can arrive in a burst.
+func (d *Daemon) scanForOffer() {
+	d.offerScanMu.Lock()
+	if d.offerScanRunning || time.Since(d.lastOfferScan) < time.Minute {
+		d.offerScanMu.Unlock()
+		return
+	}
+	d.offerScanRunning = true
+	d.lastOfferScan = time.Now()
+	d.offerScanMu.Unlock()
+
+	go func() {
+		defer func() {
+			d.offerScanMu.Lock()
+			d.offerScanRunning = false
+			d.offerScanMu.Unlock()
+		}()
+		d.DetectNewGames()
+	}()
+}

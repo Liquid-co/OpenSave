@@ -11,9 +11,10 @@ import (
 
 // Games a peer syncs that this device has not been given a folder for.
 //
-// These exist only when the device is set to ask before tracking; with the
-// default setting an unknown game is tracked at a guessed folder and never
-// becomes an offer. See internal/store/migrations/0021_offered_games.sql.
+// A game becomes an offer when this device cannot vouch for the peer's folder
+// as that game's save folder (CVE-2026-103398; p2p ensureManifestGame), and
+// every unknown game does when the device is set to ask before tracking. See
+// internal/store/migrations/0021_offered_games.sql.
 
 func (s *Server) handleListOfferedGames(w http.ResponseWriter, r *http.Request) {
 	offers, err := s.Daemon.Store.ListOfferedGames()

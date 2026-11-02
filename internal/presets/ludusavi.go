@@ -627,6 +627,17 @@ func loadEmbeddedIndex() []indexedGame {
 // manifest feature is enabled (ManifestURL set — always true in
 // production; hermetic tests leave it empty).
 func (sc *Scanner) loadManifestIndex() []indexedGame {
+	return sc.manifestIndex(-1)
+}
+
+// manifestIndex is loadManifestIndex for a caller that cannot wait long.
+//
+// Indexing the full manifest takes half a minute. A scan can wait for that; a
+// peer's request cannot, as the peer gives up after thirty seconds and the
+// sync fails. So when the index must first be built from a newer manifest,
+// this waits at most wait for it (a negative wait: as long as it takes) and
+// meanwhile answers with the index it had.
+func (sc *Scanner) manifestIndex(wait time.Duration) []indexedGame {
 	yamlPath, indexPath := sc.manifestPaths()
 
 	embedded := func() []indexedGame {
@@ -643,77 +654,157 @@ func (sc *Scanner) loadManifestIndex() []indexedGame {
 		return embedded()
 	}
 
-	// Reuse the index when it's newer than the YAML it was built from.
-	if games, fresh := readManifestIndex(indexPath, yamlInfo); fresh {
+	c := indexCacheFor(indexPath)
+	if games := c.current(indexPath, yamlInfo); len(games) > 0 {
 		return games
 	}
-
-	if games := rebuildManifestIndex(yamlPath, indexPath); len(games) > 0 {
+	done := c.rebuild(yamlPath, indexPath)
+	if wait < 0 {
+		<-done
+	} else {
+		timer := time.NewTimer(wait)
+		select {
+		case <-done:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+	if games := c.lastKnown(indexPath); len(games) > 0 {
 		return games
 	}
 	return embedded()
 }
 
 // loadManifestIndexNoWait is loadManifestIndex for a caller that must not wait
-// on a rebuild: the daemon while it starts, before the window can open.
+// on a rebuild at all: the daemon while it starts, before the window can open.
 // Building the index parses the whole manifest, about a minute on an ordinary
 // PC, and it is due at the first start after the index format changes and
-// after every weekly manifest download. This takes the index on disk as it is,
-// stale or not, or the embedded one when there is none, and rebuilds it in the
-// background; the next start reads the new one.
+// after every weekly manifest download. This answers with the index it had,
+// however old, or the embedded one when there is none, while the rebuild runs
+// in the background.
 func (sc *Scanner) loadManifestIndexNoWait() []indexedGame {
-	yamlPath, indexPath := sc.manifestPaths()
+	return sc.manifestIndex(0)
+}
 
-	sc.refreshManifestAsync(yamlPath)
+// indexCache holds one index file's games in memory, so a check made while a
+// peer waits decodes nothing, and builds the index one build at a time: a scan
+// and a peer's request share a build rather than each parsing the manifest.
+type indexCache struct {
+	mu       sync.Mutex
+	games    []indexedGame
+	from     manifestStamp // the manifest these games were built from
+	building chan struct{} // closed when the running build ends; nil if none
+}
 
-	yamlInfo, err := os.Stat(yamlPath)
-	if err != nil {
-		if sc.ManifestURL == "" {
-			return nil
-		}
-		return loadEmbeddedIndex()
+// manifestStamp tells one copy of the manifest from another.
+type manifestStamp struct {
+	mod  time.Time
+	size int64
+}
+
+func stampOf(info os.FileInfo) manifestStamp {
+	return manifestStamp{info.ModTime(), info.Size()}
+}
+
+func (a manifestStamp) same(b manifestStamp) bool {
+	return a.mod.Equal(b.mod) && a.size == b.size
+}
+
+var indexCaches sync.Map // index path → *indexCache
+
+// buildIndex is buildManifestIndex, replaced by tests that need a build to
+// take a while.
+var buildIndex = buildManifestIndex
+
+func indexCacheFor(indexPath string) *indexCache {
+	c, _ := indexCaches.LoadOrStore(indexPath, &indexCache{})
+	return c.(*indexCache)
+}
+
+// current returns the games when they are those of the manifest as it is now:
+// built from it in this run, or read from an index file newer than it.
+func (c *indexCache) current(indexPath string, yamlInfo os.FileInfo) []indexedGame {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.games != nil && c.from.same(stampOf(yamlInfo)) {
+		return c.games
 	}
-	games, fresh := readManifestIndex(indexPath, yamlInfo)
-	if !fresh && rebuildInFlight.CompareAndSwap(false, true) {
-		go func() {
-			defer rebuildInFlight.Store(false)
-			rebuildManifestIndex(yamlPath, indexPath)
-		}()
-	}
-	if len(games) > 0 {
-		return games
-	}
-	if sc.ManifestURL == "" {
+	idxInfo, err := os.Stat(indexPath)
+	if err != nil || !idxInfo.ModTime().After(yamlInfo.ModTime()) {
 		return nil
 	}
-	return loadEmbeddedIndex()
+	games := readIndexFile(indexPath)
+	if len(games) == 0 {
+		return nil
+	}
+	c.games, c.from = games, stampOf(yamlInfo)
+	return games
 }
 
-// rebuildInFlight guards against overlapping background index builds.
-var rebuildInFlight atomic.Bool
-
-// readManifestIndex reads the index on disk, and says whether it is newer
-// than the manifest it was built from. Nil when there is none or it does not
-// parse.
-func readManifestIndex(indexPath string, yamlInfo os.FileInfo) (games []indexedGame, fresh bool) {
-	idxInfo, err := os.Stat(indexPath)
-	if err != nil {
-		return nil, false
+// lastKnown returns the games last built or read, else the index file however
+// old: while a newer manifest is indexed, the previous one still answers.
+func (c *indexCache) lastKnown(indexPath string) []indexedGame {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.games == nil {
+		c.games = readIndexFile(indexPath)
 	}
-	raw, err := os.ReadFile(indexPath)
-	if err != nil || json.Unmarshal(raw, &games) != nil || len(games) == 0 {
-		return nil, false
-	}
-	return games, idxInfo.ModTime().After(yamlInfo.ModTime())
+	return c.games
 }
 
-// rebuildManifestIndex builds the index from the manifest and saves it.
-func rebuildManifestIndex(yamlPath, indexPath string) []indexedGame {
-	games := buildManifestIndex(yamlPath)
-	if len(games) > 0 {
-		if raw, err := json.Marshal(games); err == nil {
-			_ = writeFileAtomic(indexPath, raw)
+// rebuild starts indexing the manifest unless that is already under way, and
+// returns a channel closed when it ends. A manifest replaced while it is read
+// (a download landing) is read again, so whoever waits gets the newest.
+func (c *indexCache) rebuild(yamlPath, indexPath string) <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.building != nil {
+		return c.building
+	}
+	done := make(chan struct{})
+	c.building = done
+	go func() {
+		for attempt := 0; attempt < 3; attempt++ {
+			before, err := os.Stat(yamlPath)
+			if err != nil {
+				break
+			}
+			games := buildIndex(yamlPath)
+			if len(games) == 0 {
+				break
+			}
+			after, err := os.Stat(yamlPath)
+			replaced := err != nil || !stampOf(after).same(stampOf(before))
+			if !replaced {
+				// Written only for the manifest it was built from: an index
+				// file newer than a manifest is taken to be its index.
+				if raw, err := json.Marshal(games); err == nil {
+					_ = writeFileAtomic(indexPath, raw)
+				}
+			}
+			c.mu.Lock()
+			c.games, c.from = games, stampOf(before)
+			c.mu.Unlock()
+			if !replaced {
+				break
+			}
 		}
+		c.mu.Lock()
+		c.building = nil
+		c.mu.Unlock()
+		close(done)
+	}()
+	return done
+}
+
+func readIndexFile(indexPath string) []indexedGame {
+	raw, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil
+	}
+	var games []indexedGame
+	if json.Unmarshal(raw, &games) != nil || len(games) == 0 {
+		return nil
 	}
 	return games
 }
@@ -789,7 +880,12 @@ func (sc *Scanner) downloadManifest(yamlPath string) {
 		}
 	}
 	_ = os.Remove(yamlPath)
-	_ = os.Rename(tmp, yamlPath)
+	if os.Rename(tmp, yamlPath) != nil {
+		return
+	}
+	// Indexed now, while nothing waits on it, rather than by the next check
+	// made while a peer waits.
+	sc.manifestIndex(-1)
 }
 
 // buildManifestIndex parses the manifest YAML and keeps only what a

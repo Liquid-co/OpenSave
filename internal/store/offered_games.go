@@ -69,7 +69,10 @@ func (s *Store) ListOfferedGames() ([]OfferedGame, error) {
 	var out []OfferedGame
 	if err := s.db.Select(&out, `
 		SELECT game_id, peer_id, name, app_id, cover_url, peer_path, first_seen
-		FROM offered_games ORDER BY first_seen, name`); err != nil {
+		FROM offered_games
+		-- Tracked by now, however it came to be: nothing left to ask.
+		WHERE game_id NOT IN (SELECT id FROM games)
+		ORDER BY first_seen, name`); err != nil {
 		return nil, fmt.Errorf("list offered games: %w", err)
 	}
 	return out, nil

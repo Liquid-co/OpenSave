@@ -106,7 +106,10 @@ func (s *Server) peersPayload() map[string]any {
 			// differs per pairing and the reader cannot work out which case
 			// they are in from a general statement.
 			p2p.PeerProtection
-		}{Peer: p, PeerProtection: s.Daemon.P2P.PeerProtection(p)}
+			// Whether this device may choose the folders of games it syncs
+			// here (Devices; migration 0038).
+			ChoosesFolders bool `json:"choosesFolders"`
+		}{Peer: p, PeerProtection: s.Daemon.P2P.PeerProtection(p), ChoosesFolders: s.Daemon.Store.PeerChoosesFolders(p.ID)}
 		if b, ok := builds[p.ID]; ok {
 			entry.AppVersion = b.AppVersion
 			entry.BuildTimeMs = b.BuildTimeMs

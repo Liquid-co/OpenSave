@@ -161,6 +161,29 @@ class Decisions(unittest.TestCase):
         self.assertEqual(sum(1 for m, path, _ in stub.seen if path == "/api/games/hades/emptied"), 1)
 
 
+class PlaySessions(unittest.TestCase):
+    def test_a_game_starting_and_stopping_reaches_the_daemon(self):
+        stub = StubDaemon({"POST /api/games/hades/session": (200, {"ok": True})})
+        try:
+            p = main.Plugin()
+            self.assertTrue(run(p.mark_session("hades", "start"))["success"])
+            self.assertTrue(run(p.mark_session("hades", "end"))["success"])
+            self.assertFalse(run(p.mark_session("hades", "paused"))["success"])
+        finally:
+            stub.close()
+        bodies = [body for m, path, body in stub.seen if path == "/api/games/hades/session"]
+        self.assertEqual(bodies, [{"state": "start"}, {"state": "end"}])  # not the unknown one
+
+    def test_a_session_the_daemon_refuses_is_reported_not_raised(self):
+        stub = StubDaemon({"POST /api/games/gone/session": (404, {"error": "game not found"})})
+        try:
+            res = run(main.Plugin().mark_session("gone", "start"))
+        finally:
+            stub.close()
+        self.assertFalse(res["success"])
+        self.assertIn("game not found", res["error"])
+
+
 class FindingTheDaemon(unittest.TestCase):
     def test_install_sh_location_is_found_without_it_on_path(self):
         home = "/home/deck"

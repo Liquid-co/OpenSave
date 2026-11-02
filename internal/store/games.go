@@ -98,6 +98,10 @@ func (s *Store) createGameWithoutClaimLock(g Game) error {
 		g.MaxSnapshots = 20
 	}
 
+	prepared, err := s.prepareNativePaths(g.SavePath)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return err
@@ -107,7 +111,7 @@ func (s *Store) createGameWithoutClaimLock(g Game) error {
 	// Run the ownership decision on the SAME transaction as the insert.
 	// Preflight validation in the daemon is useful for messaging but cannot
 	// authorize a write once another native writer changes the database.
-	if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+	if err := checkGamePathOwnershipTx(tx, prepared, g.ID); err != nil {
 		return err
 	}
 
@@ -172,6 +176,22 @@ func (s *Store) UpdateGame(g Game) error {
 		return err
 	}
 	defer done()
+	// Avoid filesystem work for ordinary metadata-only updates. A concurrent
+	// relocation detected inside the transaction must fail closed instead.
+	var observedPath string
+	if err := s.db.Get(&observedPath, "SELECT save_path FROM games WHERE id = ?", g.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("inspect game path before update %s: %w", g.ID, err)
+	}
+	var prepared *preparedNativePaths
+	if observedPath != g.SavePath {
+		prepared, err = s.prepareNativePaths(g.SavePath)
+		if err != nil {
+			return err
+		}
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin update game %s: %w", g.ID, err)
@@ -186,10 +206,13 @@ func (s *Store) UpdateGame(g Game) error {
 		return fmt.Errorf("read existing game path %s: %w", g.ID, err)
 	}
 	if oldPath != g.SavePath {
-		if err := checkGamePathOwnershipTx(tx, g.SavePath, g.ID); err != nil {
+		if prepared == nil {
+			return ErrOwnershipClaimsChanged
+		}
+		if err := checkGamePathOwnershipTx(tx, prepared, g.ID); err != nil {
 			return err
 		}
-		if err := checkGameLocalRootsTx(tx, g.ID, g.SavePath, ""); err != nil {
+		if err := checkGameLocalRootsTx(tx, prepared, g.ID, ""); err != nil {
 			return err
 		}
 	}

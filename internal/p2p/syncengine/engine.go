@@ -164,6 +164,13 @@ type Engine struct {
 	// settings (presets/devicesettings.go), set by the daemon; nil leaves
 	// them syncing. See IgnoreText.
 	DeviceSettingsFor func(store.Game) []string
+	// Playing reports whether a game is being played on this device
+	// (playing.go). Set by the daemon from its play sessions.
+	Playing func(gameID string) bool
+	// playingMu guards playingSaid: per game and peer, whether its "playing"
+	// answer was said already this session (playing.go).
+	playingMu   sync.Mutex
+	playingSaid map[string]bool
 }
 
 // New creates an Engine.
@@ -262,6 +269,10 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 	// by a peer — so this is the one place a pause has to stop them.
 	if e.Paused != nil && e.Paused() {
 		return nil, ErrPaused
+	}
+	// A game being played here is synced when the session ends (playing.go).
+	if e.PlayingHere(gameID) {
+		return nil, ErrPlayingHere
 	}
 	// A save emptied here is not synced until someone says whether that was
 	// meant (hold.go).
@@ -371,7 +382,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// divergence from the NEXT sync, causing the peer to silently overwrite
 		// its own changes instead of detecting the conflict and asking.
 		switch res.Status {
-		case "conflict", "error", "unwritable":
+		case "conflict", "error", "unwritable", "peer_playing":
 		case "peer_missing", "peer_awaiting_folder", "peer_holding":
 			// The two devices talked and finished, which is what the
 			// per-device stamp has always recorded. But nothing of THIS game
@@ -465,6 +476,12 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		if isAwaitingFolder(err) {
 			return Result{Status: "peer_awaiting_folder", PeerID: peer.ID, PeerName: peer.Name}, nil
 		}
+		// Being played there: its save comes when the session ends, sent by
+		// that device. Before isSettling, whose message this one contains.
+		if isPlaying(err) {
+			e.notePeerPlaying(gameID, peer, game.Name)
+			return Result{Status: "peer_playing", PeerID: peer.ID, PeerName: peer.Name}, nil
+		}
 		// The peer is still writing this game for a sync of its own, and
 		// would otherwise have described a save half-way between two states
 		// (settle.go). SyncGame asks again once it has finished.
@@ -482,6 +499,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		}
 		return Result{}, fmt.Errorf("fetch remote manifest: %w", err)
 	}
+	e.peerNotPlaying(gameID, peer.ID)
 
 	// 2. Branch alignment: local follows the remote's active branch.
 	//

@@ -1,11 +1,12 @@
 <script>
   // ── Games a peer syncs that this device has no folder for ─────────
   //
-  // Only ever populated when "Ask me where to keep it" is chosen in Settings;
-  // with the default an unknown game is tracked automatically and never
-  // reaches this list. Shown at the top of the page on purpose: an offer
-  // nobody notices is worse than a folder guessed slightly wrong, because a
-  // wrong guess is at least visible and can be moved afterwards.
+  // A peer's game lands here when this device cannot vouch for the folder as
+  // that game's save folder (CVE-2026-103398), and every unknown game does
+  // with "Ask me where to keep it" in Settings. Shown at the top of the page
+  // on purpose: an offer nobody notices is worse than a folder guessed
+  // slightly wrong, because a wrong guess is at least visible and can be
+  // moved afterwards.
   import { gameList, toast } from '../../lib/stores.js';
   import { withUndo, hiddenKeys } from '../../lib/undo.js';
   import { api, native } from '../../lib/api.js';

@@ -45,6 +45,30 @@
     run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
   };
 
+  // A game a paired device syncs is tracked by itself only at a folder this
+  // device recognises as that game's save; anywhere else it waits on Home
+  // for the user to place. Their own devices they can let choose instead, as
+  // every device could before 2.4.1 — which is why turning it on asks.
+  const setChoosesFolders = async (peer, box) => {
+    const allowed = box.checked;
+    if (allowed) {
+      const ok = await askConfirm(
+        `Only do this for a device that is yours. When "${peer.name}" syncs a game this device ` +
+          `doesn't recognise, its saves go in the folder "${peer.name}" names, instead of waiting ` +
+          `on Home for you to choose one.`,
+        { title: `Trust "${peer.name}" to choose folders?`, confirmText: 'Trust it' }
+      );
+      if (!ok) {
+        box.checked = false; // as it was: nothing changed
+        return;
+      }
+    }
+    run(
+      () => api.post(`/api/peers/${peer.id}/choose-folders`, { allowed }),
+      allowed ? `${peer.name} can choose folders here` : `${peer.name} no longer chooses folders here`
+    );
+  };
+
   // The only repair for a pairing with no encryption key is to make it again,
   // and this button can only do the first half of that. Saying "Pair again to
   // encrypt" on a control that just unpairs would leave someone believing they
@@ -115,6 +139,15 @@
               </button>
             {/if}
           </div>
+          <label class="check trust" title="For your own devices: games it syncs go in the folder it names, even one this device doesn't recognise as a save, instead of waiting on Home for you.">
+            <input
+              type="checkbox"
+              checked={!!peer.choosesFolders}
+              disabled={busy}
+              on:change={(e) => setChoosesFolders(peer, e.currentTarget)}
+            />
+            Trust it to choose folders
+          </label>
         </div>
         {#if peer.hasNewerBuild && peer.status === 'online'}
           <button class="btn small primary" disabled={busy || !!$appUpdate} on:click={() => updateFromPeer(peer)}>
@@ -225,6 +258,11 @@
     gap: 0.5rem;
     margin-top: 0.35rem;
     flex-wrap: wrap;
+  }
+  .trust {
+    margin-top: 0.45rem;
+    font-size: 0.82rem;
+    color: var(--text-dim);
   }
   .linkish {
     background: none;

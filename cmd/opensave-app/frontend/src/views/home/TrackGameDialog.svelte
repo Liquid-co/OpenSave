@@ -1,6 +1,7 @@
 <script>
-  // Tracking a game by hand, as the game database knows it: one found by
-  // name, or the one a program or folder belongs to. Whatever it is picked by,
+  // Tracking a game by hand, as the game database knows it: one running now,
+  // one found by name, or the one a program or folder belongs to. Whatever it
+  // is picked by,
   // it is tracked with its name, App ID (cover art, launching) and a save
   // location the database knows on this device — what a folder tracked on its
   // own lacked. A game tracked already under another entry is offered to link
@@ -22,6 +23,17 @@
   let results = [];
   let searching = false;
   let note = '';
+
+  // The games running now that the game database knows: the game being
+  // played is the one most often tracked. null while being looked for.
+  let running = null;
+  (async () => {
+    try {
+      running = (await api.get('/api/gamedb/running')).games ?? [];
+    } catch {
+      running = [];
+    }
+  })();
 
   // The game picked, and how it is to be tracked.
   let picked = null;
@@ -137,6 +149,25 @@
 <Modal title={$t('home.findGame.title')} icon={Gamepad2} width={620} height="auto" onClose={() => dispatch('close')}>
   <div class="body">
     {#if !picked}
+      <div class="field">
+        <span class="label">{$t('home.findGame.runningNow')}</span>
+        {#if running === null}
+          <p class="hint"><Spinner size={13} /> {$t('home.findGame.lookingAtRunning')}</p>
+        {:else if running.length === 0}
+          <p class="hint">{$t('home.findGame.nothingRunning')}</p>
+        {:else}
+          <div class="list">
+            {#each running as g (g.exe)}
+              <button class="row" on:click={() => choose(g, g.exe)}>
+                <span class="row-name">{g.name}</span>
+                <span class="row-sub">
+                  {g.trackedName ? $t('home.findGame.trackedAs', { name: g.trackedName }) : g.exe}
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
       <div class="field">
         <label for="tg-search">{$t('home.findGame.findByName')}</label>
         <input id="tg-search" placeholder={$t('home.findGame.searchPlaceholder')} bind:value={query} />

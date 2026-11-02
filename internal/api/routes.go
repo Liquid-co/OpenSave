@@ -33,6 +33,7 @@ func (s *Server) routes(r chi.Router) {
 	// The game database, for tracking a game by hand (daemon/gamedb.go).
 	r.Get("/api/gamedb/search", s.handleGameDBSearch)
 	r.Get("/api/gamedb/identify", s.handleGameDBIdentify)
+	r.Get("/api/gamedb/running", s.handleGameDBRunning)
 	r.Get("/api/suggest-name", s.handleSuggestName)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
 
@@ -378,7 +379,7 @@ func (s *Server) handleTrackGame(w http.ResponseWriter, r *http.Request) {
 		// Duplicates (id or path) are conflicts; anything else the daemon
 		// rejects is bad input.
 		status := http.StatusBadRequest
-		if errors.Is(err, store.ErrGamePathOwned) ||
+		if errors.Is(err, store.ErrGamePathOwned) || errors.Is(err, store.ErrOwnershipClaimsChanged) ||
 			strings.Contains(err.Error(), "already track") ||
 			strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
@@ -489,7 +490,11 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.Daemon.Store.UpdateGame(game); err != nil {
-		writeError(w, notFoundToStatus(err), err.Error())
+		status := notFoundToStatus(err)
+		if errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	if game.Name != oldName {
