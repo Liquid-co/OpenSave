@@ -3,12 +3,13 @@ package api
 import (
 	"context"
 	"errors"
-	"time"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/opensave/opensave/internal/store"
 )
 
 // A game's extra save locations: the folders beyond its main one that belong
@@ -75,14 +76,20 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 	// A root that is currently being written by an in-flight transfer must
 	// not be remapped out from under that transfer (issue #60).
 	done, ok := s.acquireRootTopology(w, r, gameID)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	defer done()
 	// Rejections here are the overlap and naming rules, which are the user's
 	// to hear about rather than a server fault: "that folder is already
 	// covered by the main save" is a sentence, not a 500.
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
 	if err := s.Daemon.Store.AddGameRoot(gameID, body.Name, path); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		if errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	s.Daemon.LocationsChanged(gameID, oldRoots)
@@ -103,7 +110,9 @@ func (s *Server) handleRemoveGameRoot(w http.ResponseWriter, r *http.Request) {
 	// Refuse while any transfer still holds a captured path for this game
 	// (issue #60). The mapping must stay until the last write finishes.
 	done, ok := s.acquireRootTopology(w, r, gameID)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	defer done()
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
 	if err := s.Daemon.Store.RemoveGameRoot(gameID, name); err != nil {
@@ -126,11 +135,15 @@ func (s *Server) acquireRootTopology(w http.ResponseWriter, r *http.Request, gam
 		return nil, false
 	}
 	limit := s.topologyWaitFor
-	if limit <= 0 { limit = 30 * time.Second }
+	if limit <= 0 {
+		limit = 30 * time.Second
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
 	done, err := s.Daemon.P2P.Sync.WaitTopologyMutation(ctx, gameID, 100*time.Millisecond)
-	if err == nil { return done, true }
+	if err == nil {
+		return done, true
+	}
 	if errors.Is(err, context.DeadlineExceeded) && r.Context().Err() == nil {
 		writeError(w, http.StatusConflict, "A sync of this game is in progress. Try again in a moment.")
 	} else if r.Context().Err() == nil {

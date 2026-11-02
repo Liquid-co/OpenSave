@@ -178,11 +178,40 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 			}
 		}
 	}
+	var prepared *preparedNativePaths
+	if strings.TrimSpace(path) != "" {
+		var err error
+		prepared, err = s.prepareNativePaths(path)
+		if err != nil {
+			return err
+		}
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if strings.TrimSpace(path) != "" {
+		// The earlier user-friendly checks are advisory only. Every path
+		// owner (primary or named) is rechecked in the writer transaction.
+		var primary string
+		if err := tx.Get(&primary, `SELECT save_path FROM games WHERE id = ?`, gameID); err != nil {
+			return fmt.Errorf("read primary game root before mapping: %w", err)
+		}
+		primaryOverlap, err := prepared.shares(primary, path)
+		if err != nil {
+			return fmt.Errorf("inspect changed primary root: %w", err)
+		}
+		if primaryOverlap {
+			return fmt.Errorf("%w: named root overlaps primary %q", ErrGamePathOwned, primary)
+		}
+		if err := checkGameLocalRootsTx(tx, prepared, gameID, n); err != nil {
+			return err
+		}
+		if err := checkGamePathOwnershipTx(tx, prepared, gameID); err != nil {
+			return err
+		}
+	}
 	var before string
 	if err := tx.Get(&before, `SELECT path FROM game_roots WHERE game_id = ? AND name = ?`, gameID, n); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("add game root: %w", err)
@@ -197,7 +226,17 @@ func (s *Store) AddGameRoot(gameID, name, path string) error {
 	// A different folder from the one it had, or its first: from now on is
 	// when this folder's contents began (migration 0037). The same folder
 	// saved again is not a new one.
-	if strings.TrimSpace(path) != "" && normalizeLocationPath(path) != normalizeLocationPath(before) {
+	// Compare the previous mapping using identities prepared before the
+	// transaction. An unprepared concurrent remap must fail closed.
+	beforeSame := false
+	if strings.TrimSpace(path) != "" && strings.TrimSpace(before) != "" {
+		previous, ok := prepared.values[before]
+		if !ok {
+			return ErrOwnershipClaimsChanged
+		}
+		beforeSame = prepared.values[path].text == previous.text
+	}
+	if strings.TrimSpace(path) != "" && !beforeSame {
 		if _, err := tx.Exec(`
 			INSERT INTO game_root_mapped (game_id, name, mapped_ms) VALUES (?, ?, ?)
 			ON CONFLICT(game_id, name) DO UPDATE SET mapped_ms = excluded.mapped_ms`,

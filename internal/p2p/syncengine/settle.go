@@ -321,12 +321,19 @@ func (e *Engine) TryTopologyMutation(gameID string) (done func(), ok bool) {
 // WaitTopologyMutation waits for per-game admission, without holding either
 // sync mutex while polling. The caller supplies a single overall deadline.
 func (e *Engine) WaitTopologyMutation(ctx context.Context, gameID string, interval time.Duration) (release func(), err error) {
-	if interval <= 0 { interval = 100 * time.Millisecond }
+	if interval <= 0 {
+		interval = 100 * time.Millisecond
+	}
 	for {
-		if err := ctx.Err(); err != nil { return nil, err }
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		done, ok := e.TryTopologyMutation(gameID)
 		if ok {
-			if err := ctx.Err(); err != nil { done(); return nil, err }
+			if err := ctx.Err(); err != nil {
+				done()
+				return nil, err
+			}
 			return done, nil
 		}
 		timer := time.NewTimer(interval)

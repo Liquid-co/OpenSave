@@ -17,7 +17,10 @@ sync service without dropping to Desktop Mode.
   put them back, or delete them on your other devices too
 - **Pauses and resumes syncing** — for an hour, three, or until resumed
 - **Auto-syncs around gameplay** — when a game starts and when it exits, and
-  stays quiet when your other devices are simply off
+  stays quiet when your other devices are simply off. A Steam game's start
+  waits for its save to sync, for up to 30 seconds, so it never opens an
+  older save ("Wait for the save before starting", on by default). Each time
+  you play gets an "After playing" snapshot, as on the desktop
 - **Snapshot** a save before a risky run
 - Cover art for every game, Switch games included
 - **Starts the sync service** if it isn't running (Game Mode never launches the

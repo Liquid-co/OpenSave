@@ -35,8 +35,8 @@ type Server struct {
 	Daemon *daemon.Daemon
 	Hub    *Hub
 
-	httpServer     *http.Server
-	listener       net.Listener
+	httpServer      *http.Server
+	listener        net.Listener
 	topologyWaitFor time.Duration // test-injectable admission limit; defaults to 30s
 	// instance marks every response from this process (instanceHeader), so
 	// Start can tell whether 127.0.0.1 at its port is really answered by it.
@@ -514,6 +514,13 @@ func (s *Server) gamesPayload() map[string]any {
 	if err != nil {
 		return map[string]any{}
 	}
+	return s.gamesPayloadFrom(games)
+}
+
+// gamesPayloadFrom renders a snapshot of an inventory that its caller has
+// already verified. The HTTP route checks the read error before returning
+// 200; it must not issue a second, potentially failing inventory query.
+func (s *Server) gamesPayloadFrom(games []store.Game) map[string]any {
 	out := make(map[string]any, len(games))
 	for _, g := range games {
 		out[g.ID] = s.gamePayload(g)

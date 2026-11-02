@@ -21,13 +21,14 @@ import (
 // prunes now run over the same list in the same pass.
 func TestRetentionUnderConcurrentCreation(t *testing.T) {
 	env := setup(t)
+	stressDir := t.TempDir()
 	if err := env.store.CreateGame(store.Game{
-		ID: "stress", Name: "Stress", SavePath: env.saveDir,
+		ID: "stress", Name: "Stress", SavePath: stressDir,
 		MaxSnapshots: 3, MaxManualSnapshots: 3,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	writeSave(t, env.saveDir, "slot1.sav", "seed")
+	writeSave(t, stressDir, "slot1.sav", "seed")
 
 	const workers = 8
 	const each = 4
