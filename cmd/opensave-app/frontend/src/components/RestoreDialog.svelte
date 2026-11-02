@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../lib/i18n.js';
   // "Restore this snapshot?", answered knowing what it would do: the files it
   // changes, brings back and removes, worked out by the daemon without
   // touching anything. See lib/restore.js.
@@ -48,26 +49,26 @@
 </script>
 
 {#if req}
-  <Modal title="Restore this snapshot?" icon={RotateCcw} onClose={() => answer(false)} width={600} height="auto" maxHeight="min(80vh, 680px)">
+  <Modal title="{$translateUI('restoreDialog.restoreThisSnapshot')}" icon={RotateCcw} onClose={() => answer(false)} width={600} height="auto" maxHeight="min(80vh, 680px)">
     <svelte:fragment slot="sub">
-      {req.game.name} · the snapshot from {whenLabel(req.snap.timestamp)}
+      {req.game.name} {$translateUI('restoreDialog.theSnapshotFrom')} {whenLabel(req.snap.timestamp)}
     </svelte:fragment>
 
     <div class="body">
       {#if !preview && !error}
-        <p class="quiet"><Spinner size={13} /> Comparing it with your save…</p>
+        <p class="quiet"><Spinner size={13} /> {$translateUI('restoreDialog.comparingItWithYourSave')}</p>
       {:else if error}
-        <p class="quiet">Couldn't compare it with your save first ({error}). Restoring is still safe.</p>
+        <p class="quiet">{$translateUI('restoreDialog.couldnTCompareItWithYourSaveFirst')}{error}{$translateUI('restoreDialog.restoringIsStillSafe')}</p>
       {:else if preview.identical}
-        <p class="lead">Your save already matches this snapshot — restoring it would change nothing.</p>
+        <p class="lead">{$translateUI('restoreDialog.yourSaveAlreadyMatchesThisSnapshot')}</p>
       {:else}
-        <p class="lead">{describeSummary(preview)}{#if preview.unchanged}; {preview.unchanged} {preview.unchanged === 1 ? 'stays' : 'stay'} as {preview.unchanged === 1 ? 'it is' : 'they are'}{/if}.</p>
+        <p class="lead">{describeSummary(preview)}{#if preview.unchanged}; {$translateUI('restoreDialog.unchanged', { n: preview.unchanged })}{/if}.</p>
         <ul class="files">
           {#each preview.changes as c}
             <li class="file {c.change}">
               <span class="kind"><svelte:component this={icons[c.change]} size={14} /></span>
               <span class="path" title={c.path}>{#if c.location}<span class="loc">{c.location}</span>{/if}{c.path}</span>
-              <span class="what">{c.change === 'changed' ? 'changes' : c.change === 'restored' ? 'comes back' : 'removed'}</span>
+              <span class="what">{$translateUI('restoreDialog.change.' + c.change)}</span>
               <span class="size">{sizes(c)}</span>
             </li>
           {/each}
@@ -75,18 +76,17 @@
       {/if}
       {#if preview?.unplaced?.length}
         <p class="quiet">
-          It also has files for {preview.unplaced.map((n) => `“${n}”`).join(', ')}, which has no folder on this
-          device; they are left out.
+          {$translateUI('restoreDialog.itAlsoHasFilesFor')} {preview.unplaced.map((n) => `“${n}”`).join(', ')}{$translateUI('restoreDialog.whichHasNoFolderOnThis')}
         </p>
       {/if}
-      <p class="safe"><History size={14} class="inline-icon" />Your current save is kept as a snapshot first, so this can be undone.</p>
+      <p class="safe"><History size={14} class="inline-icon" />{$translateUI('restoreDialog.yourCurrentSaveIsKeptAsA')}</p>
     </div>
 
     <ModalFoot>
       <span></span>
       <div class="actions">
-        <button class="btn" on:click={() => answer(false)}>Cancel</button>
-        <button class="btn primary" on:click={() => answer(true)}>{preview?.identical ? 'Restore anyway' : 'Restore'}</button>
+        <button class="btn" on:click={() => answer(false)}>{$translateUI('common.cancel')}</button>
+        <button class="btn primary" on:click={() => answer(true)}>{preview?.identical ? $translateUI('restoreDialog.restoreAnyway') : $translateUI('cloudBrowser.restore')}</button>
       </div>
     </ModalFoot>
   </Modal>

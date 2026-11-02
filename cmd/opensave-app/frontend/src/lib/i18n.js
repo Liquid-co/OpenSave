@@ -11,7 +11,7 @@
 // The language choice is 'system' until the user picks one, and only an
 // explicit pick is persisted — so an unpicked app keeps following the OS
 // language as it changes.
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 
 import en from '../locales/en.json';
 import zhHans from '../locales/zh-Hans.json';
@@ -135,4 +135,9 @@ export function segments(template, params = {}, boldNames = []) {
   }
   if (last < template.length) out.push({ text: template.slice(last), bold: false });
   return out;
+}
+
+/** Translate at call time in non-component presentation helpers. */
+export function tr(key, params) {
+  return get(t)(key, params);
 }

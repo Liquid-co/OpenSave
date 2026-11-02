@@ -13,7 +13,7 @@
   import { showSetupAgain } from '../lib/setup.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
   import { PAGES } from '../lib/shortcuts.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
   import { rank, snapshotEntries } from '../lib/palette.js';
 
   const dispatch = createEventDispatcher();
@@ -29,21 +29,21 @@
   const isDark = () => resolvedTheme($appearance.theme, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true) === 'dark';
 
   $: entries = [
-    ...PAGES.map((p) => ({ label: $t('palette.goTo', { page: p.label }), kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
-    { label: $t('palette.syncAll'), kind: 'Action', idle: true, run: syncAll },
-    { label: $t('palette.snapshotAll'), kind: 'Action', idle: true, keywords: ['backup', 'save', 'all'], run: snapshotAll },
-    { label: $t('home.welcome.scanForSaves'), kind: 'Action', idle: true, keywords: ['find', 'detect', 'auto-scan'], run: () => navigate('home', { scan: Date.now() }) },
-    { label: $t('palette.trackFolder'), kind: 'Action', idle: true, keywords: ['add', 'game'], run: () => navigate('home', { add: true }) },
+    ...PAGES.map((p) => ({ label: $translateUI('palette.goTo', { page: p.label }), kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
+    { label: $translateUI('palette.syncAll'), kind: 'Action', idle: true, run: syncAll },
+    { label: $translateUI('palette.snapshotAll'), kind: 'Action', idle: true, keywords: ['backup', 'save', 'all'], run: snapshotAll },
+    { label: $translateUI('home.welcome.scanForSaves'), kind: 'Action', idle: true, keywords: ['find', 'detect', 'auto-scan'], run: () => navigate('home', { scan: Date.now() }) },
+    { label: $translateUI('palette.trackFolder'), kind: 'Action', idle: true, keywords: ['add', 'game'], run: () => navigate('home', { add: true }) },
     {
-      label: isDark() ? $t('palette.toLight') : $t('palette.toDark'),
+      label: isDark() ? $translateUI('palette.toLight') : $translateUI('palette.toDark'),
       kind: 'Action',
       idle: true,
       keywords: ['theme', 'appearance', 'mode'],
       run: () => appearance.update((a) => ({ ...a, theme: isDark() ? 'light' : 'dark' }))
     },
-    { label: $t('shortcuts.title'), kind: 'Help', idle: true, keywords: ['keys', 'help'], run: () => dispatch('help') },
+    { label: $translateUI('shortcuts.title'), kind: 'Help', idle: true, keywords: ['keys', 'help'], run: () => dispatch('help') },
     {
-      label: $t('palette.showSetup'),
+      label: $translateUI('palette.showSetup'),
       kind: 'Help',
       keywords: ['tutorial', 'getting started', 'onboarding', 'help', 'checklist'],
       run: () => {
@@ -52,9 +52,9 @@
       }
     },
     ...($syncPause.paused
-      ? [{ label: $t('pause.resume'), kind: 'Action', idle: true, keywords: ['unpause', 'start'], run: resumeSync }]
+      ? [{ label: $translateUI('pause.resume'), kind: 'Action', idle: true, keywords: ['unpause', 'start'], run: resumeSync }]
       : PAUSE_CHOICES.map((c) => ({
-          label: $t('palette.pauseFor', { when: c.label }),
+          label: $translateUI('palette.pauseFor', { when: c.label }),
           kind: 'Action',
           keywords: ['stop', 'hold', 'offline'],
           run: () => pauseSync(c.minutes)
@@ -62,7 +62,7 @@
     ...$collections
       .filter((c) => c.gameIds.length)
       .map((c) => ({
-        label: $t('palette.show', { name: c.name }),
+        label: $translateUI('palette.show', { name: c.name }),
         kind: 'Collection',
         idle: c.builtin,
         keywords: ['collection', 'filter'],
@@ -73,11 +73,11 @@
       })),
     ...$visibleGames.flatMap((g) => [
       { label: g.name, kind: 'Game', idle: true, weight: 1, run: () => runGameAction('open', g) },
-      { label: $t('palette.syncGame', { game: g.name }), kind: 'Action', weight: -1, run: () => runGameAction('sync', g) },
-      { label: $t('palette.snapshotGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['backup', 'save'], run: () => runGameAction('snapshot', g) },
-      ...(canLaunch(g) ? [{ label: $t('palette.launchGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['play', 'start'], run: () => runGameAction('launch', g) }] : []),
-      { label: $t('palette.openSaveFolder', { game: g.name }), kind: 'Action', weight: -1, keywords: ['explorer', 'files'], run: () => runGameAction('folder', g) },
-      { label: $t('palette.renameGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['name', 'title'], run: () => runGameAction('rename', g) }
+      { label: $translateUI('palette.syncGame', { game: g.name }), kind: 'Action', weight: -1, run: () => runGameAction('sync', g) },
+      { label: $translateUI('palette.snapshotGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['backup', 'save'], run: () => runGameAction('snapshot', g) },
+      ...(canLaunch(g) ? [{ label: $translateUI('palette.launchGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['play', 'start'], run: () => runGameAction('launch', g) }] : []),
+      { label: $translateUI('palette.openSaveFolder', { game: g.name }), kind: 'Action', weight: -1, keywords: ['explorer', 'files'], run: () => runGameAction('folder', g) },
+      { label: $translateUI('palette.renameGame', { game: g.name }), kind: 'Action', weight: -1, keywords: ['name', 'title'], run: () => runGameAction('rename', g) }
     ]),
     // Snapshots with words of their own — a note, or a comment someone typed
     // — found by those words: "boss" finds "Before the final boss".
@@ -92,8 +92,8 @@
       const res = await api.post('/api/snapshots/all', {});
       toast(
         res.failed?.length
-          ? $t('palette.snapshotAllPartial', { n: res.taken, failed: res.failed.length })
-          : $t('palette.snapshotAllDone', { n: res.taken }),
+          ? $translateUI('palette.snapshotAllPartial', { n: res.taken, failed: res.failed.length })
+          : $translateUI('palette.snapshotAllDone', { n: res.taken }),
         res.failed?.length ? 'error' : 'success'
       );
     } catch (e) {
@@ -103,7 +103,7 @@
 
   async function syncAll() {
     for (const g of $visibleGames) api.post(`/api/games/${g.id}/sync`).catch(() => {});
-    toast($t('home.syncAllToast'));
+    toast($translateUI('home.syncAllToast'));
   }
 
   function choose(entry) {
@@ -137,14 +137,14 @@
 </script>
 
 <div class="scrim" role="presentation" on:mousedown|self={close}>
-  <div class="palette" role="dialog" aria-modal="true" aria-label={$t('palette.ariaLabel')}>
+  <div class="palette" role="dialog" aria-modal="true" aria-label={$translateUI('palette.ariaLabel')}>
     <div class="input-row">
       <Search size={17} />
       <input
         bind:this={input}
         bind:value={query}
         on:keydown={onKeydown}
-        placeholder={$t('palette.placeholder')}
+        placeholder={$translateUI('palette.placeholder')}
         role="combobox"
         aria-expanded="true"
         aria-controls="palette-results"
@@ -164,12 +164,12 @@
           on:mousemove={() => (active = i)}
           on:mousedown|preventDefault={() => choose(entry)}
         >
-          <span class="label">{entry.label}</span>
-          <span class="kind">{$t(`palette.kind.${entry.kind.toLowerCase()}`)}</span>
+          <span class="label">{($translateUI, entry.label)}</span>
+          <span class="kind">{$translateUI(`palette.kind.${entry.kind.toLowerCase()}`)}</span>
           {#if i === active}<CornerDownLeft size={13} />{/if}
         </li>
       {:else}
-        <li class="none">{$t('palette.noMatches', { query })}</li>
+        <li class="none">{$translateUI('palette.noMatches', { query })}</li>
       {/each}
     </ul>
   </div>

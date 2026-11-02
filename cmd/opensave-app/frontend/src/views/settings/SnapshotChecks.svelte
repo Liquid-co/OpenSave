@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Whether every snapshot can still be restored: when they were last read
   // back, what was found, what to do about what was found, and how often it
   // happens by itself. See daemon/verify.go and daemon/repair.go.
@@ -32,11 +33,11 @@
     try {
       const report = await api.post('/api/snapshots/check', {});
       summary = report.summary;
-      const fixed = report.repaired ? ` — ${report.repaired} put back from the cloud` : '';
+      const fixed = report.repaired ? $translateUI('snapshotChecks.putBackFromTheCloud', { p0: report.repaired }) : '';
       toast(
         report.damaged.length
-          ? `${report.damaged.length} of ${report.checked} snapshots can't be restored${fixed}`
-          : `Checked ${report.checked} snapshots — every one can be restored${fixed}`,
+          ? $translateUI('snapshotChecks.ofSnapshotsCanTBeRestored', { p0: report.damaged.length, p1: report.checked, p2: fixed })
+          : $translateUI('snapshotChecks.checkedSnapshotsEveryOneCanBe', { p0: report.checked, p1: fixed }),
         report.damaged.length ? 'error' : 'success'
       );
       settings.update((s) => (s ? { ...s, lastVerifyMs: Date.now() } : s));
@@ -56,13 +57,13 @@
       const back = r.repaired.length;
       const left = r.remaining.length;
       if (!r.cloudChecked) {
-        toast(`Couldn't look in the cloud: ${r.cloudError}`, 'error');
+        toast($translateUI('snapshotChecks.couldnTLookInTheCloud', { p0: r.cloudError }), 'error');
       } else if (back && left) {
-        toast(`Put back ${back} from the cloud; ${left} have no copy there`, 'success');
+        toast($translateUI('snapshotChecks.putBackFromTheCloudHaveNo', { p0: back, p1: left }), 'success');
       } else if (back) {
-        toast(`Put back all ${back} from the cloud`, 'success');
+        toast($translateUI('snapshotChecks.putBackAllFromTheCloud', { p0: back }), 'success');
       } else {
-        toast(`None of them have a copy in the cloud`, 'info');
+        toast($translateUI('snapshotChecks.noneOfThemHaveACopyIn'), 'info');
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -75,14 +76,14 @@
   async function removeDamaged() {
     const n = summary.damaged.length;
     const ok = await askConfirm(
-      `Remove the ${n} snapshot${n === 1 ? '' : 's'} that can't be restored from the history? Their archives are already gone or damaged, so nothing that could be restored is lost; every other snapshot stays.`,
-      { title: 'Remove them?', confirmText: `Remove ${n}`, danger: true }
+      $translateUI('snapshotChecks.removeTheSnapshotThatCanTBeRestored', { p0: n, p1: n === 1 ? '' : 's' }),
+      { title: $translateUI('snapshotChecks.removeThem'), confirmText: $translateUI('snapshotChecks.remove', { p0: n }), danger: true }
     );
     if (!ok) return;
     removing = true;
     try {
       const r = await api.post('/api/snapshots/forget-damaged', {});
-      toast(`Removed ${r.removed.length} snapshot${r.removed.length === 1 ? '' : 's'} that couldn't be restored`, 'success');
+      toast($translateUI('snapshotChecks.removedSnapshotThatCouldnTBeRestored', { p0: r.removed.length, p1: r.removed.length === 1 ? '' : 's' }), 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -92,12 +93,12 @@
   }
 
   // How often it happens by itself: a daemon setting (verify_every_days).
-  const EVERY = [
-    [1, 'every day'],
-    [3, 'every 3 days'],
-    [7, 'every week'],
-    [14, 'every 2 weeks'],
-    [30, 'every month']
+  $: EVERY = [
+    [1, $translateUI('snapshotChecks.everyDay')],
+    [3, $translateUI('snapshotChecks.every3Days')],
+    [7, $translateUI('snapshotChecks.everyWeek')],
+    [14, $translateUI('snapshotChecks.every2Weeks')],
+    [30, $translateUI('snapshotChecks.everyMonth')]
   ];
   async function setEvery(days) {
     try {
@@ -125,7 +126,7 @@
   function inWords(ms) {
     const days = Math.round((ms - Date.now()) / 86_400_000);
     if (days <= 0) return 'soon';
-    return days === 1 ? 'tomorrow' : `in ${days} days`;
+    return days === 1 ? 'tomorrow' : $translateUI('snapshotChecks.inDays', { p0: days });
   }
 </script>
 
@@ -135,18 +136,18 @@
       {#if summary.damaged.length}
         <TriangleAlert size={18} />
         <span>
-          <strong>{summary.damaged.length} {summary.damaged.length === 1 ? "snapshot can't" : "snapshots can't"} be restored.</strong>
-          Their archives were deleted or damaged outside OpenSave. Every other snapshot is fine, and so is each game's save.
+          <strong>{summary.damaged.length} {summary.damaged.length === 1 ? $translateUI('snapshotChecks.snapshotCanT') : $translateUI('snapshotChecks.snapshotsCanT')} {$translateUI('snapshotChecks.beRestored')}</strong>
+          {$translateUI('snapshotChecks.theirArchivesWereDeletedOrDamagedOutside')}
         </span>
       {:else if summary.lastCheckedMs}
         <FileCheck size={18} />
         <span>
-          <strong>Every snapshot checked can be restored.</strong>
-          {summary.checked} of {summary.total} checked, last {timeAgo(iso(summary.lastCheckedMs))}.
+          <strong>{$translateUI('snapshotChecks.everySnapshotCheckedCanBeRestored')}</strong>
+          {summary.checked} {$translateUI('cloudBrowser.of')} {summary.total} {$translateUI('snapshotChecks.checkedLast')} {timeAgo(iso(summary.lastCheckedMs))}.
         </span>
       {:else}
         <FileCheck size={18} />
-        <span>Not checked yet.</span>
+        <span>{$translateUI('snapshotChecks.notCheckedYet')}</span>
       {/if}
     </div>
 
@@ -155,22 +156,21 @@
         {#each byGame as [gameId, list] (gameId)}
           <li>
             <button class="linklike" on:click={() => navigate('game', { gameId, snapshot: list[0].id })}>{nameOf(gameId)}</button>
-            <span class="count">{list.length} snapshot{list.length === 1 ? '' : 's'}, {whenLabel(list[list.length - 1].timestamp)}{list.length > 1 ? ` to ${whenLabel(list[0].timestamp)}` : ''}</span>
+            <span class="count">{list.length} {$translateUI('cloudBrowser.snapshot')}{list.length === 1 ? '' : 's'}, {whenLabel(list[list.length - 1].timestamp)}{list.length > 1 ? $translateUI('snapshotChecks.to', { p0: whenLabel(list[0].timestamp) }) : ''}</span>
           </li>
         {/each}
       </ul>
       <div class="fix">
         <button class="btn small primary" disabled={repairing || removing} on:click={repair}>
-          <CloudDownload size={14} />{repairing ? 'Looking in the cloud…' : 'Look for copies in the cloud'}
+          <CloudDownload size={14} />{repairing ? $translateUI('snapshotChecks.lookingInTheCloud') : $translateUI('snapshotChecks.lookForCopiesInTheCloud')}
         </button>
         <button class="btn small" disabled={repairing || removing} on:click={removeDamaged}>
-          <Trash2 size={14} />{removing ? 'Removing…' : 'Remove them from the history'}
+          <Trash2 size={14} />{removing ? $translateUI('snapshotChecks.removing') : $translateUI('snapshotChecks.removeThemFromTheHistory')}
         </button>
-        <button class="linklike quiet" on:click={() => (details = !details)}>{details ? 'Hide details' : 'Details'}</button>
+        <button class="linklike quiet" on:click={() => (details = !details)}>{details ? $translateUI('snapshotChecks.hideDetails') : $translateUI('snapshotChecks.details')}</button>
       </div>
       <p class="hint">
-        With cloud backup on, each snapshot was uploaded as it was taken: a whole copy there is fetched, checked and put back.
-        What has no copy anywhere can only be removed — the record promises a save that no longer exists.
+        {$translateUI('snapshotChecks.withCloudBackupOnEachSnapshotWas')}
       </p>
       {#if details}
         <ul class="damaged">
@@ -190,24 +190,24 @@
   <div class="schedule">
     <label class="toggle">
       <input type="checkbox" checked={auto} on:change={(e) => setEvery(e.currentTarget.checked ? lastEvery : 0)} />
-      Check automatically
+      {$translateUI('snapshotChecks.checkAutomatically')}
     </label>
     {#if auto}
-      <select value={every} on:change={(e) => setEvery(Number(e.currentTarget.value))} aria-label="How often">
+      <select value={every} on:change={(e) => setEvery(Number(e.currentTarget.value))} aria-label="{$translateUI('snapshotChecks.howOften')}">
         {#each EVERY as [days, label]}
           <option value={days}>{label}</option>
         {/each}
-        {#if !EVERY.some(([d]) => d === every)}<option value={every}>every {every} days</option>{/if}
+        {#if !EVERY.some(([d]) => d === every)}<option value={every}>{$translateUI('snapshotChecks.every')} {every} {$translateUI('snapshotChecks.days')}</option>{/if}
       </select>
-      <span class="hint">{nextAt ? `Next ${inWords(nextAt)}.` : 'The first a little after OpenSave starts.'} Anything the cloud still has whole is put back as it's found.</span>
+      <span class="hint">{nextAt ? $translateUI('snapshotChecks.next', { p0: inWords(nextAt) }) : $translateUI('snapshotChecks.theFirstALittleAfterOpenSaveStarts')} {$translateUI('snapshotChecks.anythingTheCloudStillHasWholeIs')}</span>
     {:else}
-      <span class="hint">Snapshots are still checked before they're restored.</span>
+      <span class="hint">{$translateUI('snapshotChecks.snapshotsAreStillCheckedBeforeTheyReRestored')}</span>
     {/if}
   </div>
 
   <div class="actions">
-    <button class="btn small" disabled={checking} on:click={checkNow}>{checking ? 'Checking…' : 'Check every snapshot now'}</button>
-    <span class="hint">Each is read back in full and every file compared with its checksum. A snapshot is also checked before it is restored.</span>
+    <button class="btn small" disabled={checking} on:click={checkNow}>{checking ? $translateUI('snapshotChecks.checking') : $translateUI('snapshotChecks.checkEverySnapshotNow')}</button>
+    <span class="hint">{$translateUI('snapshotChecks.eachIsReadBackInFullAnd')}</span>
   </div>
 </div>
 

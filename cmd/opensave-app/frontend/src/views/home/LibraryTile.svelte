@@ -176,7 +176,7 @@
         />{:else if status.tone === 'busy'}<RefreshCw
           size={12}
           class="status-icon spin"
-        />{:else if justSynced}<Check size={13} strokeWidth={2.6} class="status-icon synced" />{/if}<span class="status-text" title={status.label}>{status.label}</span>
+        />{:else if justSynced}<Check size={13} strokeWidth={2.6} class="status-icon synced" />{/if}<span class="status-text" title={($t, status.label)}>{($t, status.label)}</span>
     </div>
     {#if cover === 'wide'}
       <div class="meta">

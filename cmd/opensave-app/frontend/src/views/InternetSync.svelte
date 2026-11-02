@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../lib/i18n.js';
   import { settings, wanRoom, peers, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { generateRoomCode } from '../lib/roomcode.js';
@@ -78,9 +79,9 @@
       if (!code) {
         if ($wanRoom?.enabled) {
           await saveSettings({ syncCode: '', relayUrl: relayDraft.trim() });
-          toast('Left the relay room', 'success');
+          toast($translateUI('internetSync.leftTheRelayRoom'), 'success');
         } else {
-          toast('Enter a room code first', 'error');
+          toast($translateUI('internetSync.enterARoomCodeFirst'), 'error');
         }
         return;
       }
@@ -88,20 +89,20 @@
       await saveSettings({ syncCode: code, relayUrl: relayDraft.trim() });
       // Saving identical settings doesn't re-dial, so force a fresh attempt.
       if (rejoining) await api.post('/api/relay/reconnect');
-      toast(rejoining ? `Reconnecting to room “${code}”…` : `Joining room “${code}”…`);
+      toast(rejoining ? $translateUI('internetSync.reconnectingToRoom', { p0: code }) : $translateUI('internetSync.joiningRoom', { p0: code }));
     });
 
   const retryConnect = () =>
     run(async () => {
       await api.post('/api/relay/reconnect');
-      toast('Reconnecting to relay…');
+      toast($translateUI('internetSync.reconnectingToRelay'));
     });
   const leaveRoom = () => {
     codeDraft = '';
-    return run(() => saveSettings({ syncCode: '' }), 'Left the relay room');
+    return run(() => saveSettings({ syncCode: '' }), $translateUI('internetSync.leftTheRelayRoom'));
   };
   const pairWan = (p) =>
-    run(() => api.post('/api/peers/pair', { peerId: p.id, address: 'relay' }), `Pairing request sent to ${p.deviceName}`);
+    run(() => api.post('/api/peers/pair', { peerId: p.id, address: 'relay' }), $translateUI('devices.pairingRequestSentTo', { p0: p.deviceName }));
 
   async function checkHealth() {
     health = null;
@@ -114,13 +115,12 @@
 
   function copyCode() {
     navigator.clipboard?.writeText($wanRoom?.roomCode ?? codeDraft);
-    toast('Room code copied');
+    toast($translateUI('internetSync.roomCodeCopied'));
   }
 </script>
 
 <p class="lead">
-  Sync across the internet with no port forwarding: both devices join the same room code on a relay,
-  and the connection to it is encrypted. The relay stores nothing — no copy of a save is written to it.
+  {$translateUI('internetSync.syncAcrossTheInternetWithNoPort')}
 </p>
 
 <!-- Said here, at the point where somebody decides whether to use the public
@@ -135,11 +135,9 @@
      deciding whether to trust a relay deserves the actual boundary, not a
      reassuring version of it. -->
 <p class="lead subtle">
-  Saves are sealed between your two devices, so the relay passes on data it cannot read — not even
-  ours. It can still see that two devices are talking, roughly how much data moves, and which games
-  by id. Running
-  <a href="https://github.com/Liquid-co/OpenSave/blob/main/docs/RELAY.md" target="_blank" rel="noreferrer">your own relay</a>
-  keeps that from us too.
+  {$translateUI('internetSync.savesAreSealedBetweenYourTwoDevices')}
+  <a href="https://github.com/Liquid-co/OpenSave/blob/main/docs/RELAY.md" target="_blank" rel="noreferrer">{$translateUI('internetSync.yourOwnRelay')}</a>
+  {$translateUI('internetSync.keepsThatFromUsToo')}
 </p>
 
 <!-- Stated as a plain instruction rather than a condition the reader has to
@@ -149,10 +147,7 @@
      let someone on the previous version conclude this did not apply to them.
      It applied to all of them. -->
 <p class="lead subtle">
-  Both devices need a recent version for this, and internet pairings made before it need to be made
-  again: pairing over a relay never kept the key, so an older pair still sends in the clear. Unpair
-  and pair those two devices again to protect them. Pairings made over a local network kept their key
-  and are unaffected.
+  {$translateUI('internetSync.bothDevicesNeedARecentVersionFor')}
 </p>
 
 <!-- Always-visible connection status: exactly one of four states. Keyed
@@ -162,16 +157,16 @@
   <div class="status idle">
     <span class="status-dot gray"></span>
     <div class="status-text">
-      <strong>Not in a room</strong>
-      <span>Enter a room code below and press <strong>Join room</strong> to start syncing over the internet.</span>
+      <strong>{$translateUI('internetSync.notInARoom')}</strong>
+      <span>{$translateUI('internetSync.enterARoomCodeBelowAndPress')} <strong>{$translateUI('internetSync.joinRoom')}</strong> {$translateUI('internetSync.toStartSyncingOverTheInternet')}</span>
     </div>
   </div>
 {:else if $wanRoom?.connected}
   <div class="status ok">
     <span class="status-dot green"></span>
     <div class="status-text">
-      <strong>In room “{$wanRoom.roomCode}”</strong>
-      <span>{roomPeers.length === 0 ? 'Waiting for your other device to join with the same code.' : `${roomPeers.length} other device${roomPeers.length === 1 ? '' : 's'} here.`}</span>
+      <strong>{$translateUI('internetSync.inRoom')}{$wanRoom.roomCode}”</strong>
+      <span>{roomPeers.length === 0 ? $translateUI('internetSync.waitingForYourOtherDeviceToJoin') : $translateUI('internetSync.otherDeviceHere', { p0: roomPeers.length, p1: roomPeers.length === 1 ? '' : 's' })}</span>
       <!-- Said at the moment of joining, because that is when it matters:
            every device in a room receives every other device's traffic, so
            whether that traffic is readable is part of what joining means. -->
@@ -181,25 +176,20 @@
              forward-looking fact, and conditional on both devices being on a
              version that exchanges keys over a relay — earlier ones did not. -->
         <span class="encryption-line">
-          <Lock size={14} class="inline-icon" />Devices you pair here sync encrypted end to end, so nobody else holding this
-          code — including the relay — can read your saves. Both devices need this version;
-          each one shows its own state here and under Devices once it's paired.
+          <Lock size={14} class="inline-icon" />{$translateUI('internetSync.devicesYouPairHereSyncEncryptedEnd')}
         </span>
       {:else}
         <span class="encryption-line">
           {#if unprotectedPeers.length === 0}
-            <Lock size={14} class="inline-icon" />Saves to
-            {relayPeers.length === 1 ? 'your other device' : `all ${relayPeers.length} of your devices`}
-            here are encrypted — nobody else in this room can read them.
+            <Lock size={14} class="inline-icon" />{$translateUI('internetSync.savesTo')}
+            {relayPeers.length === 1 ? $translateUI('internetSync.yourOtherDevice') : $translateUI('internetSync.allOfYourDevices', { p0: relayPeers.length })}
+            {$translateUI('internetSync.hereAreEncryptedNobodyElseIn')}
           {:else if encryptedPeers.length === 0}
-            <LockOpen size={14} class="inline-icon warn-icon" />Saves sent through this room are <strong>not encrypted</strong>, so anyone
-            holding this room code can read them. Pair
-            {unprotectedPeers.length === 1 ? `“${unprotectedPeers[0].name}”` : 'those devices'}
-            again to fix it.
+            <LockOpen size={14} class="inline-icon warn-icon" />{$translateUI('internetSync.savesSentThroughThisRoomAre')} <strong>{$translateUI('internetSync.notEncrypted')}</strong>{$translateUI('internetSync.soAnyoneHoldingThisRoomCode')}
+            {unprotectedPeers.length === 1 ? `“${unprotectedPeers[0].name}”` : $translateUI('internetSync.thoseDevices')}
+            {$translateUI('internetSync.againToFixIt')}
           {:else}
-            <LockOpen size={14} class="inline-icon warn-icon" />{encryptedPeers.length} of {relayPeers.length} paired devices here are
-            encrypted. Pair the {unprotectedPeers.length === 1 ? 'other one' : 'others'} again to
-            protect {unprotectedPeers.length === 1 ? 'it' : 'them'} too.
+            <LockOpen size={14} class="inline-icon warn-icon" />{encryptedPeers.length} {$translateUI('cloudBrowser.of')} {relayPeers.length} {$translateUI('internetSync.pairedDevicesHereAreEncryptedPairThe')} {unprotectedPeers.length === 1 ? $translateUI('internetSync.otherOne') : 'others'} {$translateUI('internetSync.againToProtect')} {unprotectedPeers.length === 1 ? 'it' : 'them'} {$translateUI('internetSync.too')}
           {/if}
         </span>
       {/if}
@@ -209,77 +199,75 @@
   <div class="status wait">
     <span class="sspin"></span>
     <div class="status-text">
-      <strong>Connecting to relay…</strong>
-      <span>Free-hosted relays can take up to a minute to wake from sleep — hang tight, we retry automatically.</span>
+      <strong>{$translateUI('internetSync.connectingToRelay')}</strong>
+      <span>{$translateUI('internetSync.freeHostedRelaysCanTakeUpToA')}</span>
     </div>
   </div>
 {:else}
   <div class="status err">
     <span class="status-dot red"></span>
     <div class="status-text">
-      <strong>Not connected</strong>
-      <span>{$wanRoom?.error ?? 'The relay connection is down.'} Retrying automatically every few seconds.</span>
+      <strong>{$translateUI('internetSync.notConnected')}</strong>
+      <span>{$wanRoom?.error ?? $translateUI('internetSync.theRelayConnectionIsDown')} {$translateUI('internetSync.retryingAutomaticallyEveryFewSeconds')}</span>
     </div>
-    <button class="btn small" disabled={busy} on:click={retryConnect}>Retry now</button>
+    <button class="btn small" disabled={busy} on:click={retryConnect}>{$translateUI('internetSync.retryNow')}</button>
   </div>
 {/if}
 
 <div class="card">
-  <h3>Relay room</h3>
+  <h3>{$translateUI('internetSync.relayRoom')}</h3>
   <div class="row">
     <div class="field grow">
-      <label for="room-code">Room code — share this with your other device</label>
+      <label for="room-code">{$translateUI('internetSync.roomCodeShareThisWithYour')}</label>
       <div class="code-row">
-        <input id="room-code" placeholder="e.g. k7m2-9xqp-4wnt" bind:value={codeDraft} />
-        <button class="btn icon" on:click={randomCode} title="Make up a random code" aria-label="Random code"><Dices size={17} /></button>
+        <input id="room-code" placeholder="{$translateUI('internetSync.eGK7m29xqp4wnt')}" bind:value={codeDraft} />
+        <button class="btn icon" on:click={randomCode} title="{$translateUI('internetSync.makeUpARandomCode')}" aria-label="{$translateUI('internetSync.randomCode')}"><Dices size={17} /></button>
         {#if $wanRoom?.enabled}
-          <button class="btn" on:click={copyCode}>Copy</button>
+          <button class="btn" on:click={copyCode}>{$translateUI('activityLog.copy')}</button>
         {/if}
       </div>
     </div>
   </div>
   <div class="row">
     <div class="field grow">
-      <label for="relay-url">Relay server (self-hostable)</label>
+      <label for="relay-url">{$translateUI('internetSync.relayServerSelfHostable')}</label>
       <!-- Pinned by the environment: shown, because it is the relay actually
            in use, but not editable, because typing here would be discarded. -->
       <input id="relay-url" bind:value={relayDraft} readonly={$settings?.relayUrlLocked} />
       {#if $settings?.relayUrlLocked}
         <span class="hint">
-          Set by the <code>OPENSAVE_RELAY_URL</code> environment variable, so it can't be changed
-          here. Change the variable and restart OpenSave, or unset it to go back to the saved
-          setting.
+          {$translateUI('internetSync.setByThe')} <code>OPENSAVE_RELAY_URL</code> {$translateUI('internetSync.environmentVariableSoItCanTBeChanged')}
         </span>
       {:else}
-        <span class="hint">Run your own with the opensave-relay binary and point this at it.</span>
+        <span class="hint">{$translateUI('internetSync.runYourOwnWithTheOpensaveRelayBinary')}</span>
       {/if}
     </div>
   </div>
   <div class="actions">
-    <button class="btn" on:click={checkHealth}>Test relay</button>
+    <button class="btn" on:click={checkHealth}>{$translateUI('internetSync.testRelay')}</button>
     {#if $wanRoom?.enabled}
-      <button class="btn danger" disabled={busy} on:click={leaveRoom}>Leave room</button>
+      <button class="btn danger" disabled={busy} on:click={leaveRoom}>{$translateUI('internetSync.leaveRoom')}</button>
     {/if}
     <button class="btn primary" disabled={busy} on:click={joinRoom}>
-      {$wanRoom?.enabled ? 'Update' : 'Join room'}
+      {$wanRoom?.enabled ? $translateUI('internetSync.update') : $translateUI('internetSync.joinRoom')}
     </button>
   </div>
   {#if health}
     <div class="health with-icon" class:ok={health.reachable}>
       {#if health.reachable}
-        <CircleCheck size={16} /> Relay reachable — {plural(health.health?.clients ?? 0, 'device')} connected, in {plural(health.health?.rooms ?? 0, 'room')}
+        <CircleCheck size={16} /> {$translateUI('internetSync.relayReachable')} {plural(health.health?.clients ?? 0, 'device')} {$translateUI('internetSync.connectedIn')} {plural(health.health?.rooms ?? 0, 'room')}
       {:else}
-        <CircleX size={16} /> Relay unreachable: {health.error}
+        <CircleX size={16} /> {$translateUI('internetSync.relayUnreachable')} {health.error}
       {/if}
     </div>
   {/if}
 </div>
 
 {#if $wanRoom?.enabled}
-  <h3 class="section">In this room</h3>
+  <h3 class="section">{$translateUI('internetSync.inThisRoom')}</h3>
   {#if roomPeers.length === 0}
     <p class="quiet">
-      No other devices in the room yet. Enter the same code on your other device and it will appear here.
+      {$translateUI('internetSync.noOtherDevicesInTheRoomYet')}
     </p>
   {:else}
     <div class="list">
@@ -293,9 +281,9 @@
             </div>
           </div>
           {#if p.paired || pairedIds.has(p.id)}
-            <span class="badge online">paired</span>
+            <span class="badge online">{$translateUI('internetSync.paired')}</span>
           {:else}
-            <button class="btn small primary" disabled={busy} on:click={() => pairWan(p)}>Pair</button>
+            <button class="btn small primary" disabled={busy} on:click={() => pairWan(p)}>{$translateUI('devices.pair')}</button>
           {/if}
         </div>
       {/each}

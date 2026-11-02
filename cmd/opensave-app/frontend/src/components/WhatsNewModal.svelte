@@ -5,7 +5,7 @@
   import DiscordBanner from './DiscordBanner.svelte';
   import { navigate } from '../lib/stores.js';
   import X from 'lucide-svelte/icons/x';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   export let releases = [];
   export let version = '';
@@ -25,13 +25,13 @@
 <svelte:window on:keydown={onKeydown} />
 
 <div class="backdrop" use:backdropClose={onClose} role="presentation" out:dialogOut|global>
-  <div class="modal" role="dialog" aria-modal="true" aria-label={$t('whatsNew.title')}>
-    <button class="btn ghost icon x" on:click={onClose} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={$translateUI('whatsNew.title')}>
+    <button class="btn ghost icon x" on:click={onClose} title={$translateUI('common.close')} aria-label={$translateUI('common.close')}><X size={18} /></button>
 
     <div class="hero">
-      <div class="badge">{$t('whatsNew.badge')}</div>
+      <div class="badge">{$translateUI('whatsNew.badge')}</div>
       <h2>OpenSave {version}</h2>
-      {#if from}<p class="from">{$t('whatsNew.from', { from })}</p>{/if}
+      {#if from}<p class="from">{$translateUI('whatsNew.from', { from })}</p>{/if}
     </div>
 
     <div class="body">
@@ -40,8 +40,8 @@
     </div>
 
     <footer>
-      <button class="btn" on:click={openFullChangelog}>{$t('whatsNew.fullChangelog')}</button>
-      <button class="btn primary" on:click={onClose}>{$t('whatsNew.gotIt')}</button>
+      <button class="btn" on:click={openFullChangelog}>{$translateUI('whatsNew.fullChangelog')}</button>
+      <button class="btn primary" on:click={onClose}>{$translateUI('whatsNew.gotIt')}</button>
     </footer>
   </div>
 </div>

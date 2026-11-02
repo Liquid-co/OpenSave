@@ -3,18 +3,18 @@
   import Keyboard from 'lucide-svelte/icons/keyboard';
   import Modal from './ui/Modal.svelte';
   import { SHORTCUTS } from '../lib/shortcuts.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   export let onClose = () => {};
   const isMac = /Mac/i.test(globalThis.navigator?.platform ?? '');
   const show = (keys) => (isMac ? keys.replace('Ctrl', '⌘') : keys);
 </script>
 
-<Modal title={$t('shortcuts.title')} icon={Keyboard} {onClose} width={520} height="auto">
+<Modal title={$translateUI('shortcuts.title')} icon={Keyboard} {onClose} width={520} height="auto">
   <dl>
-    {#each SHORTCUTS as [keys, what]}
+    {#each SHORTCUTS as [keys, what], i}
       <dt>{#each show(keys).split(' ') as k}<kbd>{k}</kbd>{/each}</dt>
-      <dd>{what}</dd>
+      <dd>{$translateUI('shortcuts.description.' + i)}</dd>
     {/each}
   </dl>
 </Modal>

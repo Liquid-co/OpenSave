@@ -26,7 +26,7 @@
     clearAllHappened
   } from '../lib/notifications.js';
   import { timeAgo } from '../lib/timeago.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   let open = false;
   let items = [];
@@ -60,7 +60,7 @@
     clearInterval(tick);
   });
 
-  $: allWaiting = waitingOnYou({
+  $: allWaiting = ($translateUI, waitingOnYou({
     games: $games,
     conflicts: $conflicts,
     locationConflicts: $locationConflicts,
@@ -68,7 +68,7 @@
     cloudOffers: $cloudOffers,
     newGames: $newGames,
     update: $availableUpdate
-  });
+  }));
   $: allEvents = [...$exampleEvents, ...happened(items, $games, seenAt, now)];
   // What is shown, and counted on the bell: what has not been cleared.
   $: waiting = notCleared(allWaiting, cleared);
@@ -121,8 +121,8 @@
     class="bell"
     class:has={count > 0}
     on:click={toggle}
-    title={count ? $t('notifications.countTitle', { n: count }) : $t('notifications.title')}
-    aria-label={count ? $t('notifications.countAria', { n: count }) : $t('notifications.title')}
+    title={count ? $translateUI('notifications.countTitle', { n: count }) : $translateUI('notifications.title')}
+    aria-label={count ? $translateUI('notifications.countAria', { n: count }) : $translateUI('notifications.title')}
     aria-expanded={open}
   >
     <Bell size={14} />
@@ -131,16 +131,16 @@
 
   {#if open}
     <!-- Unfolds out of the bell and folds back into it (lib/motion.js). -->
-    <div class="panel" bind:this={panel} role="dialog" aria-label={$t('notifications.title')} transition:unfold>
+    <div class="panel" bind:this={panel} role="dialog" aria-label={$translateUI('notifications.title')} transition:unfold>
       <div class="head">
-        <span class="title">{$t('notifications.title')}</span>
+        <span class="title">{$translateUI('notifications.title')}</span>
         {#if events.some((e) => e.unread)}
-          <button class="linklike" on:click={markAllRead}>{$t('notifications.markAllRead')}</button>
+          <button class="linklike" on:click={markAllRead}>{$translateUI('notifications.markAllRead')}</button>
         {/if}
       </div>
       <div class="scroll">
         {#if waiting.length}
-          <div class="section">{$t('notifications.needsYou')}</div>
+          <div class="section">{$translateUI('notifications.needsYou')}</div>
           {#each waiting as w, i (w.id)}
             <div class="row">
             <button class="item tone-{w.tone}" class:dismissable={canDismiss(w)} style="--i: {i}" on:click={() => go(w)}>
@@ -152,15 +152,15 @@
               <span class="text"><span class="t">{w.title}</span><span class="d">{w.detail}</span></span>
             </button>
             {#if canDismiss(w)}
-              <button class="dismiss" title="Dismiss" aria-label="Dismiss: {w.title}" on:click={() => dismiss(w)}><X size={13} /></button>
+              <button class="dismiss" title="{$translateUI('common.dismiss')}" aria-label="{$translateUI('notificationHub.dismiss')} {w.title}" on:click={() => dismiss(w)}><X size={13} /></button>
             {/if}
             </div>
           {/each}
         {/if}
         {#if events.length}
           <div class="section section-row">
-            <span>{$t('notifications.earlier')}</span>
-            <button class="linklike" on:click={clearAll} title={$t('notifications.clearAllTitle')}>{$t('notifications.clearAll')}</button>
+            <span>{$translateUI('notifications.earlier')}</span>
+            <button class="linklike" on:click={clearAll} title={$translateUI('notifications.clearAllTitle')}>{$translateUI('notifications.clearAll')}</button>
           </div>
           {#each events as e, i (e.id)}
             <div class="row">
@@ -174,18 +174,18 @@
                 <span class="t">{e.title}</span>
                 <span class="d">{e.detail ? `${e.detail} · ` : ''}{timeAgo(iso(e.atMs), now)}</span>
               </span>
-              {#if e.unread}<span class="dot" aria-label={$t('notifications.unread')}></span>{/if}
+              {#if e.unread}<span class="dot" aria-label={$translateUI('notifications.unread')}></span>{/if}
             </button>
-            <button class="dismiss" title="Dismiss" aria-label="Dismiss: {e.title}" on:click={() => dismiss(e)}><X size={13} /></button>
+            <button class="dismiss" title="{$translateUI('common.dismiss')}" aria-label="{$translateUI('notificationHub.dismiss')} {e.title}" on:click={() => dismiss(e)}><X size={13} /></button>
             </div>
           {/each}
         {/if}
         {#if !waiting.length && !events.length}
-          <div class="empty">{$t('notifications.empty')}</div>
+          <div class="empty">{$translateUI('notifications.empty')}</div>
         {/if}
       </div>
       <div class="foot">
-        <button class="linklike" on:click={() => go({ go: { view: 'activity' } })}>{$t('notifications.seeAll')}</button>
+        <button class="linklike" on:click={() => go({ go: { view: 'activity' } })}>{$translateUI('notifications.seeAll')}</button>
       </div>
     </div>
   {/if}

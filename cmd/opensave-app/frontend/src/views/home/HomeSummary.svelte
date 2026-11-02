@@ -24,7 +24,7 @@
   import { api } from '../../lib/api.js';
   import { timeAgo } from '../../lib/timeago.js';
   import { libraryView } from '../../lib/libraryview.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
   import RecentActivity from './RecentActivity.svelte';
 
   /** [{game, status}] for every tracked game, from the library. */
@@ -58,7 +58,7 @@
 
   const ICONS = { ok: Save, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
 
-  $: summary = librarySummary(rows);
+  $: summary = ($translateUI, librarySummary(rows));
   // The pause's countdown starts from the moment it changes.
   $: if ($syncPause) now = Date.now();
   // A pause outranks the quiet states, not a decision waiting or a sync in
@@ -72,19 +72,19 @@
   $: online = paired.filter((p) => p.status === 'online');
   $: devices =
     paired.length === 0
-      ? $t('home.summary.nonePaired')
+      ? $translateUI('home.summary.nonePaired')
       : paired.length === 1
-        ? `${paired[0].name} · ${online.length ? $t('home.summary.online') : $t('home.summary.offline')}`
-        : $t('home.summary.devicesOnline', { online: online.length, paired: paired.length });
+        ? `${paired[0].name} · ${online.length ? $translateUI('home.summary.online') : $translateUI('home.summary.offline')}`
+        : $translateUI('home.summary.devicesOnline', { online: online.length, paired: paired.length });
 
   // Set up, not just switched on: a fresh install has backup on with no
   // folder chosen, which backs up nothing.
   $: cloudOn = !!$settings?.cloudSync?.ready;
   $: cloud = cloudOn
-    ? (providerById($settings.cloudSync.provider)?.label ?? $t('home.summary.cloudOn'))
+    ? (providerById($settings.cloudSync.provider)?.label ?? $translateUI('home.summary.cloudOn'))
     : $settings?.cloudSync?.enabled
-      ? $t('home.summary.cloudNotSetUp')
-      : $t('home.summary.cloudOff');
+      ? $translateUI('home.summary.cloudNotSetUp')
+      : $translateUI('home.summary.cloudOff');
 
   $: space = spaceUsed(Object.fromEntries(rows.map((r) => [r.game.id, r.game])));
 
@@ -101,41 +101,41 @@
       <p class="headline" role="status">{summary.headline}</p>
       {#if lowSpace !== null}
         <p class="detail warn">
-          {$t('home.summary.lowSpace', { size: fmtSize(lowSpace) })}
-          <button class="inline-link" on:click={() => navigate('settings', { tab: 'storage' })}>{$t('home.summary.seeSpace')}</button>
+          {$translateUI('home.summary.lowSpace', { size: fmtSize(lowSpace) })}
+          <button class="inline-link" on:click={() => navigate('settings', { tab: 'storage' })}>{$translateUI('home.summary.seeSpace')}</button>
         </p>
       {/if}
       {#if paused}
-        <p class="detail">{$t('home.summary.pausedDetail', { length: pauseLength($syncPause, now) })}</p>
+        <p class="detail">{$translateUI('home.summary.pausedDetail', { length: pauseLength($syncPause, now) })}</p>
       {/if}
     </div>
     {#if paused}
-      <button class="btn small" on:click={resumeSync}>{$t('home.summary.resumeNow')}</button>
+      <button class="btn small" on:click={resumeSync}>{$translateUI('home.summary.resumeNow')}</button>
     {/if}
   </div>
 
   <div class="facts">
-    <button class="fact link" on:click={() => navigate('devices')} title={$t('home.summary.devicesTitle')}>
-      <span class="label">{$t('home.devices')}</span>
+    <button class="fact link" on:click={() => navigate('devices')} title={$translateUI('home.summary.devicesTitle')}>
+      <span class="label">{$translateUI('home.devices')}</span>
       <span class="value" class:quiet={paired.length === 0}><span class="v">{devices}</span><ChevronRight size={13} class="go" /></span>
     </button>
-    <button class="fact link" on:click={() => navigate('cloud')} title={$t('home.summary.cloudBackupTitle')}>
-      <span class="label">{$t('home.summary.cloudBackup')}</span>
+    <button class="fact link" on:click={() => navigate('cloud')} title={$translateUI('home.summary.cloudBackupTitle')}>
+      <span class="label">{$translateUI('home.summary.cloudBackup')}</span>
       <span class="value" class:quiet={!cloudOn}><span class="v">{cloud}</span><ChevronRight size={13} class="go" /></span>
     </button>
     <div
       class="fact"
-      title={newest ? $t('home.summary.lastSnapshotTitle', { name: newest.name, when: new Date(newest.at).toLocaleString() }) : ''}
+      title={newest ? $translateUI('home.summary.lastSnapshotTitle', { name: newest.name, when: new Date(newest.at).toLocaleString() }) : ''}
     >
-      <span class="label">{$t('home.summary.lastSnapshot')}</span>
-      <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : $t('home.summary.noneYet')}</span></span>
+      <span class="label">{$translateUI('home.summary.lastSnapshot')}</span>
+      <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : $translateUI('home.summary.noneYet')}</span></span>
     </div>
     <button
       class="fact link"
       on:click={() => navigate('settings', { tab: 'storage' })}
-      title={sharedSaving > 0 ? $t('home.summary.sharedSavingTitle', { size: fmtSize(sharedSaving) }) : $t('home.summary.spaceUsedTitle')}
+      title={sharedSaving > 0 ? $translateUI('home.summary.sharedSavingTitle', { size: fmtSize(sharedSaving) }) : $translateUI('home.summary.spaceUsedTitle')}
     >
-      <span class="label">{$t('home.summary.spaceUsed')}</span>
+      <span class="label">{$translateUI('home.summary.spaceUsed')}</span>
       <span class="value"><span class="v">{fmtSize(Math.max(0, space - sharedSaving))}</span><ChevronRight size={13} class="go" /></span>
     </button>
   </div>

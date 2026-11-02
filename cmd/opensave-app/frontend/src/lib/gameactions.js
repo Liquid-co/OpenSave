@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // What can be done to a game from anywhere: the right-click menu on the
 // library and the sidebar, the game's own page, the Ctrl+K palette.
 //
@@ -37,23 +38,23 @@ export function canLaunch(game) {
 export function gameMenuItems(game, { now = new Date(), favourite = false } = {}) {
   const latest = latestSnapshot(game);
   return [
-    { id: 'open', label: 'Open' },
-    { id: 'favourite', label: favourite ? 'Remove from Favourites' : 'Add to Favourites' },
-    { id: 'collections', label: 'Collections…' },
-    { id: 'rename', label: 'Rename…' },
+    { id: 'open', label: tr('common.open') },
+    { id: 'favourite', label: favourite ? tr('gameHeader.removeFromFavourites') : tr('gameHeader.addToFavourites') },
+    { id: 'collections', label: tr('gameactions.collections') },
+    { id: 'rename', label: tr('gameactions.rename') },
     null,
-    { id: 'sync', label: 'Sync now' },
-    { id: 'snapshot', label: 'Snapshot now' },
-    ...(canLaunch(game) ? [{ id: 'launch', label: 'Launch' }] : []),
-    { id: 'folder', label: 'Open save folder' },
+    { id: 'sync', label: tr('gameHeader.syncNow') },
+    { id: 'snapshot', label: tr('snapshotsTab.snapshotNow') },
+    ...(canLaunch(game) ? [{ id: 'launch', label: tr('gameHeader.launch') }] : []),
+    { id: 'folder', label: tr('gameactions.openSaveFolder') },
     {
       id: 'restore-latest',
-      label: 'Restore latest snapshot…',
+      label: tr('gameactions.restoreLatestSnapshot'),
       disabled: !latest,
-      hint: latest ? whenLabel(latest.timestamp, now) : 'none yet'
+      hint: latest ? whenLabel(latest.timestamp, now) : tr('gameactions.noneYet')
     },
     null,
-    { id: 'untrack', label: 'Stop tracking', danger: true }
+    { id: 'untrack', label: tr('manageTab.stopTracking'), danger: true }
   ];
 }
 
@@ -71,11 +72,11 @@ export async function runGameAction(id, game) {
     case 'open':
       return navigate('game', { gameId: game.id });
     case 'sync':
-      return attempt(() => api.post(`/api/games/${game.id}/sync`), `Syncing ${game.name}`);
+      return attempt(() => api.post(`/api/games/${game.id}/sync`), tr('gameactions.syncing', { p0: game.name }));
     case 'snapshot':
-      return attempt(() => api.post(`/api/games/${game.id}/snapshot`, { comment: '' }), `Snapshot of ${game.name} taken`);
+      return attempt(() => api.post(`/api/games/${game.id}/snapshot`, { comment: '' }), tr('gameactions.snapshotOfTaken', { p0: game.name }));
     case 'launch':
-      return attempt(() => api.post(`/api/games/${game.id}/launch`), `Launching ${game.name}…`);
+      return attempt(() => api.post(`/api/games/${game.id}/launch`), tr('gameactions.launching', { p0: game.name }));
     case 'folder': {
       const problem = await native.openFolder(game.savePath);
       if (problem) toast(problem, 'error');
@@ -105,11 +106,11 @@ export const MAX_GAME_NAME = 120;
  *  the field can say so before anything is sent. Pure, so tested. */
 export function cleanGameName(raw) {
   const name = String(raw ?? '').trim();
-  if (!name) return { error: "A game's name cannot be empty." };
+  if (!name) return { error: tr('gameactions.aGameSNameCannotBeEmpty') };
   const length = [...name].length;
-  if (length > MAX_GAME_NAME) return { error: `A game's name can be at most ${MAX_GAME_NAME} characters (this one is ${length}).` };
+  if (length > MAX_GAME_NAME) return { error: tr('gameactions.aGameSNameCanBeAtMost', { p0: MAX_GAME_NAME, p1: length }) };
   // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) return { error: "A game's name cannot contain line breaks." };
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) return { error: tr('gameactions.aGameSNameCannotContainLineBreaks') };
   return { name };
 }
 
@@ -125,7 +126,7 @@ export async function renameGame(game, raw) {
   if (name === game.name) return true;
   try {
     await api.patch(`/api/games/${game.id}`, { name });
-    toast(`Renamed to ${name}`, 'success');
+    toast(tr('gameactions.renamedTo', { p0: name }), 'success');
     return true;
   } catch (e) {
     toast(e.message, 'error');
@@ -137,7 +138,7 @@ async function restoreLatest(game) {
   const snap = latestSnapshot(game);
   if (!snap) return;
   if (!(await askRestore(game, snap))) return;
-  return attempt(() => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), `${game.name} restored`);
+  return attempt(() => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), tr('importDialog.restored', { p0: game.name }));
 }
 
 /** Stops tracking a game, with a few seconds to undo it. */
@@ -145,7 +146,7 @@ export async function untrackGame(game) {
   const current = get(view);
   if (current.name === 'game' && current.params?.gameId === game.id) navigate('home');
   const outcome = await withUndo({
-    message: `Stopped tracking ${game.name}. Its snapshots stay on disk.`,
+    message: tr('gameactions.stoppedTrackingItsSnapshotsStayOn', { p0: game.name }),
     keys: [game.id],
     stillThere: (id) => !!get(games)[id],
     run: () => api.del(`/api/games/${game.id}`)
@@ -159,7 +160,7 @@ export function untrackGames(list) {
   const ids = list.map((g) => g.id);
   const n = ids.length;
   return withUndo({
-    message: `Stopped tracking ${n} game${n === 1 ? '' : 's'}. Their snapshots stay on disk.`,
+    message: tr('gameactions.stoppedTrackingGameTheirSnapshotsStayOn', { p0: n, p1: n === 1 ? '' : 's' }),
     keys: ids,
     stillThere: (id) => !!get(games)[id],
     run: () => api.post('/api/games/untrack-bulk', { ids })
@@ -177,22 +178,22 @@ async function offerCloudCleanup(game) {
     return;
   }
   if (!settings?.cloudSync?.ready) return;
-  toast(`${game.name}'s cloud snapshots were kept.`, 'info', {
+  toast(tr('gameactions.sCloudSnapshotsWereKept', { p0: game.name }), 'info', {
     ttl: 12000,
     action: {
-      label: 'Delete them',
+      label: tr('gameactions.deleteThem'),
       run: async () => {
-        const ok = await askConfirm(`Delete "${game.name}"'s snapshots from the cloud? Snapshots on your devices are not touched.`, {
-          title: 'Delete cloud copies?',
-          confirmText: 'Delete from cloud',
+        const ok = await askConfirm(tr('gameactions.deleteSSnapshotsFromTheCloudSnapshots', { p0: game.name }), {
+          title: tr('gameactions.deleteCloudCopies'),
+          confirmText: tr('gameactions.deleteFromCloud'),
           danger: true
         });
         if (!ok) return;
         try {
           const res = await api.post(`/api/cloud/delete-game/${game.id}`);
-          toast(res.deleted > 0 ? `Removed ${plural(res.deleted, 'cloud snapshot')}` : 'No cloud snapshots to remove', 'success');
+          toast(res.deleted > 0 ? tr('gameactions.removed', { p0: plural(res.deleted, 'cloud snapshot') }) : tr('gameactions.noCloudSnapshotsToRemove'), 'success');
         } catch (e) {
-          toast(`Cloud cleanup failed: ${e.message}`, 'error');
+          toast(tr('gameactions.cloudCleanupFailed', { p0: e.message }), 'error');
         }
       }
     }

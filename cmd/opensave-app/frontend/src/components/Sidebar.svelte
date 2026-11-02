@@ -24,7 +24,7 @@
   import CoverImage from './CoverImage.svelte';
   import { visibleGames } from '../lib/gameactions.js';
   import { openGameMenu } from '../lib/contextmenu.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
   import House from 'lucide-svelte/icons/house';
   import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
   import Cloud from 'lucide-svelte/icons/cloud';
@@ -66,7 +66,7 @@
     <div class="avatar">{initials(deviceName)}</div>
     <div class="who">
       <div class="name">{deviceName}</div>
-      <div class="sub">{$t('sidebar.thisDevice')}</div>
+      <div class="sub">{$translateUI('sidebar.thisDevice')}</div>
     </div>
   </div>
 
@@ -74,7 +74,7 @@
     {#each nav as item}
       <button class:active={$view.name === item.id} on:click={() => navigate(item.id)}>
         <svelte:component this={item.icon} size={17} strokeWidth={1.8} />
-        <span>{$t(item.key)}</span>
+        <span>{$translateUI(item.key)}</span>
         {#if badgeFor(item.id)}
           <span class="nav-badge">{badgeFor(item.id)}</span>
         {/if}
@@ -83,13 +83,13 @@
   </nav>
 
   <div class="library-head">
-    <span>{$t('sidebar.myLibrary')}</span>
-    <button class="add" title={$t('home.addGame.title')} aria-label={$t('home.addGame.title')} on:click={() => navigate('home', { add: true })}><Plus size={15} /></button>
+    <span>{$translateUI('sidebar.myLibrary')}</span>
+    <button class="add" title={$translateUI('home.addGame.title')} aria-label={$translateUI('home.addGame.title')} on:click={() => navigate('home', { add: true })}><Plus size={15} /></button>
   </div>
 
   <label class="filter">
     <Search size={14} />
-    <input placeholder={$t('sidebar.filterLibrary')} aria-label={$t('sidebar.filterLibrary')} data-find-fallback bind:value={filter} />
+    <input placeholder={$translateUI('sidebar.filterLibrary')} aria-label={$translateUI('sidebar.filterLibrary')} data-find-fallback bind:value={filter} />
   </label>
 
   <div class="library">
@@ -123,16 +123,16 @@
         </span>
         <span class="game-name">{game.name}</span>
         {#if game.playingSince}
-          <span class="session" title={$t('sidebar.inSession')}><Gamepad2 size={13} /></span>
+          <span class="session" title={$translateUI('sidebar.inSession')}><Gamepad2 size={13} /></span>
         {/if}
         {#if $syncActivity[game.id]?.state === 'running'}
-          <span class="spin" title={$t('sidebar.syncing')}></span>
+          <span class="spin" title={$translateUI('sidebar.syncing')}></span>
         {/if}
       </button>
     {:else}
       {#if $stateLoaded}
         <div class="library-empty">
-          {$gameList.length === 0 ? $t('sidebar.noGamesYet') : $t('sidebar.noMatches')}
+          {$gameList.length === 0 ? $translateUI('sidebar.noGamesYet') : $translateUI('sidebar.noMatches')}
         </div>
       {/if}
     {/each}
@@ -141,7 +141,7 @@
   {#if activeSyncs > 0}
     <div class="sync-note">
       <span class="spin"></span>
-      {$t('sidebar.syncsInProgress', { n: activeSyncs })}
+      {$translateUI('sidebar.syncsInProgress', { n: activeSyncs })}
     </div>
   {/if}
 </aside>

@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Which events interrupt you, on this device.
 //
 // Two kinds of interruption: a chime with the window brought to the front,
@@ -17,12 +18,12 @@
 import { writable, get } from 'svelte/store';
 
 export const NOTIFY_EVENTS = {
-  pairing: { label: 'A device asks to pair', kind: 'attention' },
-  conflicts: { label: 'Two saves conflict', kind: 'attention' },
-  emptied: { label: 'Every save file of a game is deleted here', kind: 'attention' },
-  arrivals: { label: 'A save arrives from another device', kind: 'message' },
-  cloudPulled: { label: 'A newer save is brought from the cloud', kind: 'message' },
-  newGames: { label: 'A newly installed game is found', kind: 'message' }
+  pairing: { get label() { return tr('notifyprefs.aDeviceAsksToPair'); }, kind: 'attention' },
+  conflicts: { get label() { return tr('notifyprefs.twoSavesConflict'); }, kind: 'attention' },
+  emptied: { get label() { return tr('notifyprefs.everySaveFileOfAGameIs'); }, kind: 'attention' },
+  arrivals: { get label() { return tr('notifyprefs.aSaveArrivesFromAnotherDevice'); }, kind: 'message' },
+  cloudPulled: { get label() { return tr('notifyprefs.aNewerSaveIsBroughtFromThe'); }, kind: 'message' },
+  newGames: { get label() { return tr('notifyprefs.aNewlyInstalledGameIsFound'); }, kind: 'message' }
 };
 
 export const DEFAULT_NOTIFY = Object.freeze({

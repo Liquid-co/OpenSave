@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Restoring a snapshot, asked about with what it would change.
 //
 // "Restore the snapshot from 1:13 PM?" asked someone to trust a timestamp.
@@ -47,8 +48,8 @@ export function summarize(preview) {
 export function describeSummary(s) {
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   const parts = [];
-  if (s.changed) parts.push(n(s.changed, 'file changes', 'files change'));
-  if (s.restored) parts.push(`${s.restored} ${s.restored === 1 ? 'comes' : 'come'} back`);
-  if (s.removed) parts.push(`${s.removed} ${s.removed === 1 ? 'is' : 'are'} removed`);
+  if (s.changed) parts.push(n(s.changed, tr('restore.fileChanges'), tr('restore.filesChange')));
+  if (s.restored) parts.push(tr('restore.back', { p0: s.restored, p1: s.restored === 1 ? 'comes' : 'come' }));
+  if (s.removed) parts.push(tr('restore.removed', { p0: s.removed, p1: s.removed === 1 ? 'is' : 'are' }));
   return parts.join(', ');
 }

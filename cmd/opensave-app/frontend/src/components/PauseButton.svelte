@@ -7,7 +7,7 @@
   import Play from 'lucide-svelte/icons/play';
   import { syncPause } from '../lib/stores.js';
   import { openMenu } from '../lib/contextmenu.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
   import { PAUSE_CHOICES, pauseSync, resumeSync, pauseShort, pauseLength } from '../lib/syncpause.js';
 
   let now = Date.now();
@@ -18,7 +18,7 @@
   const choose = (e) =>
     openMenu(
       e,
-      PAUSE_CHOICES.map((c) => ({ label: $t('pause.pauseFor', { when: c.label }), icon: Pause, run: () => pauseSync(c.minutes) }))
+      PAUSE_CHOICES.map((c) => ({ label: $translateUI('pause.pauseFor', { when: c.label }), icon: Pause, run: () => pauseSync(c.minutes) }))
     );
 </script>
 
@@ -26,13 +26,13 @@
   <button
     class="btn resume"
     on:click={resumeSync}
-    title={$t('pause.resumeTitle', { length: pauseLength($syncPause, now) })}
+    title={$translateUI('pause.resumeTitle', { length: pauseLength($syncPause, now) })}
   >
-    <Play size={15} />{$t('pause.resume')}<span class="left">{pauseShort($syncPause, now)}</span>
+    <Play size={15} />{$translateUI('pause.resume')}<span class="left">{pauseShort($syncPause, now)}</span>
   </button>
 {:else}
-  <button class="btn" on:click={choose} title={$t('pause.pauseTitle')}>
-    <Pause size={15} />{$t('statusBar.pause')}
+  <button class="btn" on:click={choose} title={$translateUI('pause.pauseTitle')}>
+    <Pause size={15} />{$translateUI('statusBar.pause')}
   </button>
 {/if}
 

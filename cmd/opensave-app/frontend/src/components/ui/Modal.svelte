@@ -12,7 +12,7 @@
   import { onMount } from 'svelte';
   import X from 'lucide-svelte/icons/x';
   import { backdropClose } from '../../lib/backdrop.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
 
   export let title = '';
   /** A lucide icon component drawn before the title. */
@@ -55,7 +55,7 @@
       </div>
       <div class="head-actions">
         <slot name="actions" />
-        <button class="btn ghost icon" disabled={!closable} on:click={close} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
+        <button class="btn ghost icon" disabled={!closable} on:click={close} title={$translateUI('common.close')} aria-label={$translateUI('common.close')}><X size={18} /></button>
       </div>
     </div>
     <slot />

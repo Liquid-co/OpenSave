@@ -14,7 +14,7 @@
   import Spinner from '../../components/ui/Spinner.svelte';
   import { navigate, toast } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
   const canPick = native.isWails();
@@ -87,21 +87,21 @@
     name = '';
     exePath = exe ? path : '';
     savePath = exe ? '' : path;
-    note = $t('home.findGame.notKnown');
+    note = $translateUI('home.findGame.notKnown');
   }
 
   async function pickProgram() {
-    const exe = await native.selectFile($t('home.findGame.programDialog'));
+    const exe = await native.selectFile($translateUI('home.findGame.programDialog'));
     if (exe) await identify(exe, true);
   }
 
   async function pickFolder() {
-    const dir = await native.selectDirectory($t('home.findGame.saveFolderDialog'));
+    const dir = await native.selectDirectory($translateUI('home.findGame.saveFolderDialog'));
     if (dir) await identify(dir, false);
   }
 
   async function pickSaveFolder() {
-    const dir = await native.selectDirectory($t('home.findGame.saveFolderOf', { name: name || $t('home.findGame.theGame') }));
+    const dir = await native.selectDirectory($translateUI('home.findGame.saveFolderOf', { name: name || $translateUI('home.findGame.theGame') }));
     if (dir) savePath = dir;
   }
 
@@ -115,7 +115,7 @@
       if (picked.appId) body.appId = picked.appId;
       if (exePath) body.exePath = exePath;
       await api.patch(`/api/games/${picked.trackedId}`, body);
-      toast($t('home.findGame.linked', { tracked: picked.trackedName, name: picked.name }), 'success');
+      toast($translateUI('home.findGame.linked', { tracked: picked.trackedName, name: picked.name }), 'success');
       dispatch('close');
       navigate('game', { gameId: picked.trackedId });
     } catch (e) {
@@ -135,7 +135,7 @@
         appId: picked?.appId ?? '',
         exePath
       });
-      toast($t('common.nowTracking', { name: game.name ?? name }), 'success');
+      toast($translateUI('common.nowTracking', { name: game.name ?? name }), 'success');
       dispatch('close');
       navigate('game', { gameId: game.id });
     } catch (e) {
@@ -146,22 +146,22 @@
   }
 </script>
 
-<Modal title={$t('home.findGame.title')} icon={Gamepad2} width={620} height="auto" onClose={() => dispatch('close')}>
+<Modal title={$translateUI('home.findGame.title')} icon={Gamepad2} width={620} height="auto" onClose={() => dispatch('close')}>
   <div class="body">
     {#if !picked}
       <div class="field">
-        <span class="label">{$t('home.findGame.runningNow')}</span>
+        <span class="label">{$translateUI('home.findGame.runningNow')}</span>
         {#if running === null}
-          <p class="hint"><Spinner size={13} /> {$t('home.findGame.lookingAtRunning')}</p>
+          <p class="hint"><Spinner size={13} /> {$translateUI('home.findGame.lookingAtRunning')}</p>
         {:else if running.length === 0}
-          <p class="hint">{$t('home.findGame.nothingRunning')}</p>
+          <p class="hint">{$translateUI('home.findGame.nothingRunning')}</p>
         {:else}
           <div class="list">
             {#each running as g (g.exe)}
               <button class="row" on:click={() => choose(g, g.exe)}>
                 <span class="row-name">{g.name}</span>
                 <span class="row-sub">
-                  {g.trackedName ? $t('home.findGame.trackedAs', { name: g.trackedName }) : g.exe}
+                  {g.trackedName ? $translateUI('home.findGame.trackedAs', { name: g.trackedName }) : g.exe}
                 </span>
               </button>
             {/each}
@@ -169,10 +169,10 @@
         {/if}
       </div>
       <div class="field">
-        <label for="tg-search">{$t('home.findGame.findByName')}</label>
-        <input id="tg-search" placeholder={$t('home.findGame.searchPlaceholder')} bind:value={query} />
+        <label for="tg-search">{$translateUI('home.findGame.findByName')}</label>
+        <input id="tg-search" placeholder={$translateUI('home.findGame.searchPlaceholder')} bind:value={query} />
         {#if searching}
-          <p class="hint"><Spinner size={13} /> {$t('home.findGame.searching')}</p>
+          <p class="hint"><Spinner size={13} /> {$translateUI('home.findGame.searching')}</p>
         {:else if results.length > 0}
           <div class="list">
             {#each results as g (g.name)}
@@ -180,23 +180,23 @@
                 <span class="row-name">{g.name}</span>
                 <span class="row-sub">
                   {g.trackedName
-                    ? $t('home.findGame.trackedAs', { name: g.trackedName })
+                    ? $translateUI('home.findGame.trackedAs', { name: g.trackedName })
                     : g.savePaths?.length
                       ? g.savePaths[0]
-                      : $t('home.findGame.noSavesHere')}
+                      : $translateUI('home.findGame.noSavesHere')}
                 </span>
               </button>
             {/each}
           </div>
         {:else if query.trim().length >= 2}
-          <p class="hint">{$t('home.findGame.nothingFound')}</p>
+          <p class="hint">{$translateUI('home.findGame.nothingFound')}</p>
         {/if}
       </div>
 
       {#if canPick}
         <div class="alt">
-          <button class="linklike" on:click={pickProgram}>{$t('home.findGame.chooseProgram')}</button>
-          <button class="linklike" on:click={pickFolder}>{$t('home.findGame.chooseSaveFolder')}</button>
+          <button class="linklike" on:click={pickProgram}>{$translateUI('home.findGame.chooseProgram')}</button>
+          <button class="linklike" on:click={pickFolder}>{$translateUI('home.findGame.chooseSaveFolder')}</button>
         </div>
       {/if}
     {:else}
@@ -205,22 +205,22 @@
           <img class="cover" src={coverURL(picked.appId)} alt="" on:error={(e) => (e.currentTarget.style.display = 'none')} />
         {/if}
         <div class="field grow">
-          <label for="tg-name">{$t('home.addGame.name')}</label>
-          <input id="tg-name" bind:value={name} placeholder={$t('home.addGame.namePlaceholder')} />
+          <label for="tg-name">{$translateUI('home.addGame.name')}</label>
+          <input id="tg-name" bind:value={name} placeholder={$translateUI('home.addGame.namePlaceholder')} />
         </div>
       </div>
       {#if note}<p class="hint">{note}</p>{/if}
       {#if picked.trackedId}
         <div class="already">
-          <p class="hint">{$t('home.findGame.already', { tracked: picked.trackedName, name: picked.name || $t('home.findGame.theGame') })}</p>
+          <p class="hint">{$translateUI('home.findGame.already', { tracked: picked.trackedName, name: picked.name || $translateUI('home.findGame.theGame') })}</p>
           <button class="btn" disabled={adding} on:click={link}>
-            {$t('home.findGame.link', { tracked: picked.trackedName, name: picked.name })}
+            {$translateUI('home.findGame.link', { tracked: picked.trackedName, name: picked.name })}
           </button>
         </div>
       {/if}
 
       <div class="field">
-        <span class="label">{$t('home.findGame.saveFolder')}</span>
+        <span class="label">{$translateUI('home.findGame.saveFolder')}</span>
         {#if picked.savePaths?.length > 1}
           {#each picked.savePaths as p}
             <label class="check"><input type="radio" bind:group={savePath} value={p} /> <bdi>{p}</bdi></label>
@@ -228,27 +228,27 @@
         {:else if savePath}
           <div class="picked" title={savePath}><bdi>{savePath}</bdi></div>
         {:else}
-          <p class="hint">{$t('home.findGame.noSavesYet')}</p>
+          <p class="hint">{$translateUI('home.findGame.noSavesYet')}</p>
         {/if}
         {#if canPick}
-          <div class="alt"><button class="linklike" on:click={pickSaveFolder}>{$t('home.findGame.otherSaveFolder')}</button></div>
+          <div class="alt"><button class="linklike" on:click={pickSaveFolder}>{$translateUI('home.findGame.otherSaveFolder')}</button></div>
         {/if}
       </div>
       {#if exePath}
         <div class="field">
-          <span class="label">{$t('home.findGame.program')}</span>
+          <span class="label">{$translateUI('home.findGame.program')}</span>
           <div class="picked" title={exePath}><bdi>{exePath}</bdi></div>
         </div>
       {/if}
-      <div class="alt"><button class="linklike" on:click={() => (picked = null)}>{$t('home.findGame.pickAnother')}</button></div>
+      <div class="alt"><button class="linklike" on:click={() => (picked = null)}>{$translateUI('home.findGame.pickAnother')}</button></div>
     {/if}
   </div>
   <ModalFoot>
     <span />
     <div class="actions">
-      <button class="btn" on:click={() => dispatch('close')}>{$t('common.cancel')}</button>
+      <button class="btn" on:click={() => dispatch('close')}>{$translateUI('common.cancel')}</button>
       <button class="btn primary" disabled={!picked || picked.trackedId || !name.trim() || !savePath || adding} on:click={track}>
-        {adding ? $t('home.addGame.adding') : $t('home.addGame.startTracking')}
+        {adding ? $translateUI('home.addGame.adding') : $translateUI('home.addGame.startTracking')}
       </button>
     </div>
   </ModalFoot>

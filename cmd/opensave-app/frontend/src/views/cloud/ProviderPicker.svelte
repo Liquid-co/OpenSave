@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // The provider cards. The one holding the stored sign-in keeps its tick
   // while you look at the others.
   import { providers, providerStatus } from '../../lib/cloudproviders.js';
@@ -9,15 +10,15 @@
   export let connected = null;
 </script>
 
-<div class="label">Select cloud storage provider</div>
+<div class="label">{$translateUI('providerPicker.selectCloudStorageProvider')}</div>
 <div class="grid">
   {#each providers as p}
     <button class="card-btn" class:active={config.provider === p.id} on:click={() => (config.provider = p.id)}>
       {#if p.id === connected}
-        <span class="tick" title="Connected"><Check size={13} strokeWidth={3.2} /></span>
+        <span class="tick" title="{$translateUI('providerPicker.connected')}"><Check size={13} strokeWidth={3.2} /></span>
       {/if}
       <div class="icon"><ProviderIcon provider={p} /></div>
-      <div class="name">{p.label}</div>
+      <div class="name">{($translateUI, p.label)}</div>
       <div class="status" class:is-connected={p.id === connected}>
         {providerStatus(p.id, connected, config)}
       </div>

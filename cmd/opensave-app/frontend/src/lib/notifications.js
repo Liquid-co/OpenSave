@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // The notification hub (components/NotificationHub.svelte): everything worth
 // telling you, in one place behind the bell.
 //
@@ -19,7 +20,7 @@ export const NOTIFY_KINDS = ['received', 'cloud-pulled', 'deleted', 'restored', 
 /** How far back "Earlier" reaches. */
 export const NOTIFY_DAYS = 14;
 
-const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+const n = (count, one, many) => plural(count, one, many);
 
 /**
  * The things waiting on you, most pressing first.
@@ -27,47 +28,47 @@ const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
  */
 export function waitingOnYou({ games = {}, conflicts = {}, locationConflicts = [], pairingRequests = [], cloudOffers = [], newGames = [], update = null } = {}) {
   const out = [];
-  const name = (id) => games[id]?.name ?? 'A game';
+  const name = (id) => games[id]?.name ?? tr('notifications.aGame');
   for (const id of Object.keys(conflicts)) {
-    out.push({ id: `conflict:${id}`, tone: 'warn', gameId: id, title: `${name(id)} needs a decision`, detail: 'It changed here and on another device at once', go: { view: 'game', params: { gameId: id } } });
+    out.push({ id: `conflict:${id}`, tone: 'warn', gameId: id, title: tr('gamestatus.needsADecisionLabel', { p0: name(id) }), detail: tr('notifications.itChangedHereAndOnAnotherDevice'), go: { view: 'game', params: { gameId: id } } });
   }
   for (const c of locationConflicts) {
-    out.push({ id: `location:${c.gameId}:${c.root}`, tone: 'warn', gameId: c.gameId, title: `${name(c.gameId)} needs a decision`, detail: `Its “${c.root}” location changed on two devices`, go: { view: 'game', params: { gameId: c.gameId } } });
+    out.push({ id: `location:${c.gameId}:${c.root}`, tone: 'warn', gameId: c.gameId, title: tr('gamestatus.needsADecisionLabel', { p0: name(c.gameId) }), detail: tr('notifications.itsLocationChangedOnTwoDevices', { p0: c.root }), go: { view: 'game', params: { gameId: c.gameId } } });
   }
   for (const g of Object.values(games)) {
     if (g.emptied?.state === 'held') {
-      out.push({ id: `emptied:${g.id}`, tone: 'warn', gameId: g.id, title: `Every save file of ${g.name} was deleted here`, detail: 'Your other devices keep theirs until you choose', go: { view: 'game', params: { gameId: g.id } } });
+      out.push({ id: `emptied:${g.id}`, tone: 'warn', gameId: g.id, title: tr('notifications.everySaveFileOfWasDeletedHere', { p0: g.name }), detail: tr('notifications.yourOtherDevicesKeepTheirsUntilYou'), go: { view: 'game', params: { gameId: g.id } } });
     }
   }
   for (const r of pairingRequests) {
-    out.push({ id: `pair:${r.peerId}`, tone: 'info', title: `${r.deviceName ?? 'A device'} wants to pair`, detail: 'Approve it on Home to sync with it', go: { view: 'home' } });
+    out.push({ id: `pair:${r.peerId}`, tone: 'info', title: tr('notifications.wantsToPair', { p0: r.deviceName ?? 'A device' }), detail: tr('notifications.approveItOnHomeToSyncWith'), go: { view: 'home' } });
   }
   for (const o of cloudOffers) {
-    out.push({ id: `offer:${o.gameId}:${o.snapshotId}`, tone: 'info', gameId: o.gameId, title: `A newer save for ${o.gameName ?? name(o.gameId)}`, detail: `From ${o.deviceName ?? 'another device'}, through the cloud`, go: { view: 'home' } });
+    out.push({ id: `offer:${o.gameId}:${o.snapshotId}`, tone: 'info', gameId: o.gameId, title: tr('notifications.aNewerSaveFor', { p0: o.gameName ?? name(o.gameId) }), detail: tr('notifications.fromThroughTheCloud', { p0: o.deviceName ?? 'another device' }), go: { view: 'home' } });
   }
   for (const g of Object.values(games)) {
     // The same folder found on another drive here: offered, waiting for a yes.
     if (g.savePathMissing && g.relocateSuggestion) {
-      out.push({ id: `relocate:${g.id}:${g.relocateSuggestion}`, tone: 'warn', gameId: g.id, title: `${g.name}'s save folder may be at ${g.relocateSuggestion}`, detail: 'Confirm it before it is used', go: { view: 'game', params: { gameId: g.id } } });
+      out.push({ id: `relocate:${g.id}:${g.relocateSuggestion}`, tone: 'warn', gameId: g.id, title: tr('notifications.sSaveFolderMayBeAt', { p0: g.name, p1: g.relocateSuggestion }), detail: tr('notifications.confirmItBeforeItIsUsed'), go: { view: 'game', params: { gameId: g.id } } });
     }
   }
   for (const g of Object.values(games)) {
     // A drive this device doesn't have is not waiting on anyone.
     if (g.savePathMissing && !g.saveDriveMissing) {
-      out.push({ id: `missing:${g.id}`, tone: 'warn', gameId: g.id, title: `${g.name}'s save folder is missing`, detail: 'Nothing is synced for it until it is back', go: { view: 'game', params: { gameId: g.id } } });
+      out.push({ id: `missing:${g.id}`, tone: 'warn', gameId: g.id, title: tr('gamestatus.sSaveFolderIsMissing', { p0: g.name }), detail: tr('notifications.nothingIsSyncedForItUntilIt'), go: { view: 'game', params: { gameId: g.id } } });
     }
   }
   for (const g of Object.values(games)) {
     const damaged = Object.values(g.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem)).length;
     if (damaged) {
-      out.push({ id: `damaged:${g.id}`, tone: 'warn', gameId: g.id, title: `${n(damaged, 'snapshot', 'snapshots')} of ${g.name} can't be restored`, detail: 'Found damaged when read back', go: { view: 'game', params: { gameId: g.id } } });
+      out.push({ id: `damaged:${g.id}`, tone: 'warn', gameId: g.id, title: tr('notifications.ofCanTBeRestored', { p0: n(damaged, 'snapshot', 'snapshots'), p1: g.name }), detail: tr('notifications.foundDamagedWhenReadBack'), go: { view: 'game', params: { gameId: g.id } } });
     }
   }
   if (newGames.length) {
-    out.push({ id: `new:${newGames.map((g) => g.name).join(',')}`, tone: 'info', title: `${n(newGames.length, 'new game', 'new games')} found`, detail: newGames.slice(0, 3).map((g) => g.name).join(', '), go: { view: 'home' } });
+    out.push({ id: `new:${newGames.map((g) => g.name).join(',')}`, tone: 'info', title: tr('notifications.found', { p0: n(newGames.length, 'new game', 'new games') }), detail: newGames.slice(0, 3).map((g) => g.name).join(', '), go: { view: 'home' } });
   }
   if (update?.latest) {
-    out.push({ id: `update:${update.latest}`, tone: 'info', title: `OpenSave ${update.latest} is available`, detail: `You're on ${update.current ?? 'an older version'} — install it from the banner at the top`, go: null });
+    out.push({ id: `update:${update.latest}`, tone: 'info', title: tr('notifications.openSaveIsAvailable', { p0: update.latest }), detail: tr('notifications.youReOnInstallItFromThe', { p0: update.current ?? 'an older version' }), go: null });
   }
   return out;
 }
@@ -186,7 +187,7 @@ export function arrivalMessage(ev, games, lastShown, now = Date.now()) {
   if (ev?.kind !== 'received' || !games?.[ev.gameId]) return null;
   if (now - (lastShown[ev.gameId] ?? 0) < ARRIVAL_QUIET_MS) return null;
   lastShown[ev.gameId] = now;
-  return `${games[ev.gameId].name}: got ${plural(ev.files || 1, 'file')} from ${ev.device}`;
+  return tr('notifications.gotFrom', { p0: games[ev.gameId].name, p1: plural(ev.files || 1, 'file'), p2: ev.device });
 }
 
 /** An arrival as the desktop shows it: the game's name over what came, with
@@ -194,7 +195,7 @@ export function arrivalMessage(ev, games, lastShown, now = Date.now()) {
 export function arrivalNote(ev, games) {
   const game = games?.[ev.gameId];
   if (!game) return null;
-  return { title: game.name, body: `Got ${plural(ev.files || 1, 'file')} from ${ev.device}`, game };
+  return { title: game.name, body: tr('notifications.gotFromLabel', { p0: plural(ev.files || 1, 'file'), p1: ev.device }), game };
 }
 
 /** A game whose automatic snapshots keep missing files it holds open
@@ -211,10 +212,10 @@ export function incompleteSnapshotsMessage(data, t) {
 export function newGamesNote(found) {
   if (!found?.length) return null;
   const names = found.map((g) => g.name);
-  const body = names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  const body = names.length <= 3 ? names.join(', ') : tr('notifications.andMore', { p0: names.slice(0, 2).join(', '), p1: names.length - 2 });
   return {
-    title: names.length === 1 ? 'New game found' : `${names.length} new games found`,
-    body: `${body} — track ${names.length === 1 ? 'it' : 'them'} to keep ${names.length === 1 ? 'its' : 'their'} saves in sync`,
+    title: names.length === 1 ? tr('notifications.newGameFound') : tr('notifications.newGamesFound', { p0: names.length }),
+    body: tr('notifications.trackToKeepSavesIn', { p0: body, p1: names.length === 1 ? 'it' : 'them', p2: names.length === 1 ? 'its' : 'their' }),
     open: { view: 'home', params: {} }
   };
 }
@@ -229,8 +230,8 @@ export function exampleEvent(now = Date.now()) {
     example: true,
     atMs: now,
     tone: 'info',
-    title: 'Hades: got 3 files from Steam Deck',
-    detail: 'An example — this is how a save arriving from another device shows',
+    title: tr('notifications.hadesGot3FilesFromSteamDeck'),
+    detail: tr('notifications.anExampleThisIsHowA'),
     unread: true,
     go: null
   };

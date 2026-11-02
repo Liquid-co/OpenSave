@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../lib/i18n.js';
   // A paired or discovered device, by kind: a handheld or a computer.
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import Monitor from 'lucide-svelte/icons/monitor';
@@ -10,7 +11,7 @@
   $: handheld = isHandheld(type);
 </script>
 
-<span class="device-icon" title={handheld ? 'Handheld' : 'Computer'}>
+<span class="device-icon" title={handheld ? $translateUI('deviceIcon.handheld') : $translateUI('deviceIcon.computer')}>
   <svelte:component this={handheld ? Gamepad2 : Monitor} size={19} />
 </span>
 

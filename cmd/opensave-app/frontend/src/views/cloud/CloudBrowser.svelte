@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Every game with snapshots in the cloud, as tiles — and every tracked game
   // with none there yet, so it can be sent up. Click one to restore, delete
   // or upload its snapshots. Fires `close`.
@@ -87,8 +88,8 @@
   const deleteCloud = async (g, f) => {
     if (
       !(await askConfirm(
-        `Delete ${f.snapshotId} of "${g.gameName}" from the cloud? Snapshots stored on your devices are not affected.`,
-        { title: 'Delete cloud snapshot?', confirmText: 'Delete', danger: true }
+        $translateUI('cloudBrowser.deleteOfFromTheCloudSnapshots', { p0: f.snapshotId, p1: g.gameName }),
+        { title: $translateUI('cloudBrowser.deleteCloudSnapshot'), confirmText: 'Delete', danger: true }
       ))
     )
       return;
@@ -99,7 +100,7 @@
       g.count = g.snapshots.length;
       g.totalSize = g.snapshots.reduce((n, x) => n + x.sizeBytes, 0);
       cloudGames = cloudGames.filter((x) => x.count > 0);
-      toast('Deleted from cloud', 'success');
+      toast($translateUI('cloudBrowser.deletedFromCloud'), 'success');
     } catch (e) {
       handleCloudError(e);
     } finally {
@@ -108,11 +109,11 @@
   };
 
   const restoreCloud = async (gameId, file) => {
-    if (!(await askConfirm(`Restore ${file.snapshotId} from the cloud over your current save?`, { title: 'Restore from cloud?', confirmText: 'Restore' }))) return;
+    if (!(await askConfirm($translateUI('cloudBrowser.restoreFromTheCloudOverYourCurrent', { p0: file.snapshotId }), { title: $translateUI('cloudBrowser.restoreFromCloud'), confirmText: $translateUI('cloudBrowser.restore') }))) return;
     busy.set(true);
     try {
       await api.post(`/api/cloud/restore/${gameId}`, { fileName: file.name });
-      toast('Restored from cloud', 'success');
+      toast($translateUI('cloudBrowser.restoredFromCloud'), 'success');
     } catch (e) {
       handleCloudError(e);
     } finally {
@@ -126,8 +127,8 @@
       const res = await api.post(`/api/cloud/sync-local/${gameId}`);
       toast(
         res.uploaded === 0 && res.skipped > 0
-          ? `Everything already in the cloud (${res.skipped} skipped)`
-          : `Uploaded ${res.uploaded}, skipped ${res.skipped}`,
+          ? $translateUI('cloudBrowser.everythingAlreadyInTheCloudSkipped', { p0: res.skipped })
+          : $translateUI('cloudBrowser.uploadedSkipped', { p0: res.uploaded, p1: res.skipped }),
         'success'
       );
       await browse(); // the detail re-derives from the fresh listing
@@ -139,55 +140,55 @@
     }
   };
 
-  const tabOptions = [['all', 'All'], ['cloud', 'In cloud'], ['local', 'Not uploaded']];
+  $: tabOptions = [['all', $translateUI('home.scan.tab.all')], ['cloud', $translateUI('cloudBrowser.inCloud')], ['local', $translateUI('cloudBrowser.notUploaded')]];
 </script>
 
-<Modal title="Cloud snapshots" icon={Cloud} onClose={close}>
+<Modal title="{$translateUI('cloudBrowser.cloudSnapshots')}" icon={Cloud} onClose={close}>
   <svelte:fragment slot="sub">
     {#if browsing}
-      Reading cloud storage…
+      {$translateUI('cloudBrowser.readingCloudStorage')}
     {:else if cloudGames}
-      {cloudGames.length} game{cloudGames.length === 1 ? '' : 's'} · {totals.snaps}
-      snapshot{totals.snaps === 1 ? '' : 's'} · {fmtSize(totals.size)} in the cloud
+      {cloudGames.length} {$translateUI('cloudBrowser.game')}{cloudGames.length === 1 ? '' : 's'} · {totals.snaps}
+      {$translateUI('cloudBrowser.snapshot')}{totals.snaps === 1 ? '' : 's'} · {fmtSize(totals.size)} {$translateUI('cloudBrowser.inTheCloud')}
     {:else}
-      Could not read cloud storage
+      {$translateUI('cloudBrowser.couldNotReadCloudStorage')}
     {/if}
   </svelte:fragment>
   <svelte:fragment slot="actions">
     <button class="btn small" disabled={browsing} on:click={browse}>
-      <RefreshCw size={14} />{browsing ? 'Loading…' : 'Refresh'}
+      <RefreshCw size={14} />{browsing ? $translateUI('timeline.loading') : $translateUI('cloudTab.refresh')}
     </button>
   </svelte:fragment>
 
   {#if browsing && !cloudGames}
-    <ModalLoading>Listing snapshots from your provider…</ModalLoading>
+    <ModalLoading>{$translateUI('cloudBrowser.listingSnapshotsFromYourProvider')}</ModalLoading>
   {:else if cloudGames && detail}
     <!-- drill-in: one game's cloud snapshots -->
     <div class="detail-head">
-      <button class="btn small" on:click={() => (detailId = null)}><ArrowLeft size={14} />Back</button>
+      <button class="btn small" on:click={() => (detailId = null)}><ArrowLeft size={14} />{$translateUI('cloudBrowser.back')}</button>
       <div class="detail-title">
         <strong>{detail.name}</strong>
         <span class="quiet">
           {#if detail.cloud}
-            {detail.cloud.count} snapshot{detail.cloud.count === 1 ? '' : 's'} · {fmtSize(detail.cloud.totalSize)} in the cloud
+            {detail.cloud.count} {$translateUI('cloudBrowser.snapshot')}{detail.cloud.count === 1 ? '' : 's'} · {fmtSize(detail.cloud.totalSize)} {$translateUI('cloudBrowser.inTheCloud')}
           {:else}
-            nothing in the cloud yet
+            {$translateUI('cloudBrowser.nothingInTheCloudYet')}
           {/if}
         </span>
       </div>
       {#if detail.tracked}
         <button class="btn small" disabled={uploading} on:click={() => uploadLocal(detail.id)}>
-          <Upload size={14} />{uploading ? 'Uploading…' : 'Upload local snapshots'}
+          <Upload size={14} />{uploading ? $translateUI('cloudBrowser.uploadingMessage') : $translateUI('cloudBrowser.uploadLocalSnapshots')}
         </button>
       {/if}
     </div>
     {#if uploading}
       <ProgressBar done={uploadProg?.done ?? 0} total={uploadProg?.total ?? 0}>
         {#if uploadProg && uploadProg.total > 0}
-          Uploading {Math.min(uploadProg.done + 1, uploadProg.total)} of {uploadProg.total}
+          {$translateUI('cloudBrowser.uploading')} {Math.min(uploadProg.done + 1, uploadProg.total)} {$translateUI('cloudBrowser.of')} {uploadProg.total}
           {#if uploadProg.current}&nbsp;— <code>{uploadProg.current}</code>{/if}
         {:else}
-          Checking what needs uploading…
+          {$translateUI('cloudBrowser.checkingWhatNeedsUploading')}
         {/if}
       </ProgressBar>
     {/if}
@@ -202,37 +203,37 @@
             <button
               class="btn small primary"
               disabled={$busy || !detail.tracked}
-              title={detail.tracked ? 'Download and restore this snapshot' : 'Track this game first to restore'}
+              title={detail.tracked ? $translateUI('cloudBrowser.downloadAndRestoreThisSnapshot') : $translateUI('cloudBrowser.trackThisGameFirstToRestore')}
               on:click={() => restoreCloud(detail.id, f)}
             >
-              Restore
+              {$translateUI('cloudBrowser.restore')}
             </button>
             <button
               class="btn small danger"
               disabled={$busy}
-              title="Delete from the cloud (local snapshots are kept)"
+              title="{$translateUI('cloudBrowser.deleteFromTheCloudLocalSnapshotsAre')}"
               on:click={() => deleteCloud(detail.cloud, f)}
             >
-              Delete
+              {$translateUI('common.delete')}
             </button>
           </div>
         {/each}
       {:else}
         <div class="empty-state">
           <div class="empty-icon"><Cloud size={36} strokeWidth={1.5} /></div>
-          <p>No cloud snapshots for this game yet.</p>
-          <p class="quiet">Use <strong>Upload local snapshots</strong> above to push them up.</p>
+          <p>{$translateUI('cloudBrowser.noCloudSnapshotsForThisGameYet')}</p>
+          <p class="quiet">{$translateUI('cloudBrowser.use')} <strong>{$translateUI('cloudBrowser.uploadLocalSnapshots')}</strong> {$translateUI('cloudBrowser.aboveToPushThemUp')}</p>
         </div>
       {/if}
     </div>
     <ModalFoot>
-      <span class="quiet">Deleting only removes the cloud copy — snapshots on your devices stay.</span>
-      <button class="btn" on:click={close}>Close</button>
+      <span class="quiet">{$translateUI('cloudBrowser.deletingOnlyRemovesTheCloudCopy')}</span>
+      <button class="btn" on:click={close}>{$translateUI('common.close')}</button>
     </ModalFoot>
   {:else if cloudGames}
     <!-- tile grid -->
     <div class="toolbar">
-      <SearchInput placeholder="Filter by name…" bind:value={filter} />
+      <SearchInput placeholder="{$translateUI('cloudBrowser.filterByName')}" bind:value={filter} />
       <FilterTabs options={tabOptions} counts={tabCounts} bind:value={tab} />
     </div>
 
@@ -251,21 +252,21 @@
           >
             <svelte:fragment slot="hover">
               <button class="btn small primary" on:click|stopPropagation={() => (detailId = t.id)}>
-                {t.cloud ? 'Browse' : 'Upload'}
+                {t.cloud ? $translateUI('providerFields.browse') : $translateUI('cloudBrowser.upload')}
               </button>
             </svelte:fragment>
           </CoverTile>
         {:else}
           <div class="grid-empty">
-            {tiles.length === 0 ? 'No tracked games and nothing in the cloud yet.' : 'No matches for this filter.'}
+            {tiles.length === 0 ? $translateUI('cloudBrowser.noTrackedGamesAndNothingInThe') : $translateUI('home.scan.emptyNoMatches')}
           </div>
         {/each}
       </div>
     </div>
 
     <ModalFoot>
-      <span class="quiet">Click a game to browse, restore, delete, or upload its snapshots.</span>
-      <button class="btn" on:click={close}>Close</button>
+      <span class="quiet">{$translateUI('cloudBrowser.clickAGameToBrowseRestoreDelete')}</span>
+      <button class="btn" on:click={close}>{$translateUI('common.close')}</button>
     </ModalFoot>
   {/if}
 </Modal>

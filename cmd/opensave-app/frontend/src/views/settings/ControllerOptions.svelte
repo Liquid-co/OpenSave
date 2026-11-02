@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Using OpenSave with a gamepad, on this device (lib/controller.js). Kept
   // with the appearance in local storage: it is about this screen and what
   // is in the hands in front of it.
@@ -10,43 +11,43 @@
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
 
   // What each button does, in the order someone reaches for them.
-  const BUTTONS = [
-    { keys: ['D-pad', 'Left stick'], does: 'Move between games, buttons and fields' },
-    { keys: ['A'], does: 'Press what is highlighted' },
-    { keys: ['B'], does: 'Close what is open, or go back' },
-    { keys: ['X'], does: "Open the highlighted game's menu" },
-    { keys: ['Y', 'Start'], does: 'Quick switcher (Ctrl+K)' },
-    { keys: ['LB', 'RB'], does: 'Previous or next page' }
+  $: BUTTONS = [
+    { keys: ['D-pad', $translateUI('controllerOptions.leftStick')], does: $translateUI('controllerOptions.moveBetweenGamesButtonsAndFields') },
+    { keys: ['A'], does: $translateUI('controllerOptions.pressWhatIsHighlighted') },
+    { keys: ['B'], does: $translateUI('controllerOptions.closeWhatIsOpenOrGoBack') },
+    { keys: ['X'], does: $translateUI('controllerOptions.openTheHighlightedGameSMenu') },
+    { keys: ['Y', 'Start'], does: $translateUI('controllerOptions.quickSwitcherCtrlK') },
+    { keys: ['LB', 'RB'], does: $translateUI('controllerOptions.previousOrNextPage') }
   ];
 
   $: active = controllerOn($appearance.controller, { deviceType: $settings?.deviceType, used: $padUsed });
 </script>
 
 <div class="row">
-  <div class="segmented" role="radiogroup" aria-label="Controller" use:slidingIndicator={{ mode: 'fill' }}>
+  <div class="segmented" role="radiogroup" aria-label="{$translateUI('controllerOptions.controller')}" use:slidingIndicator={{ mode: 'fill' }}>
     {#each Object.entries(CONTROLLER_MODES) as [id, label]}
       <button role="radio" aria-checked={$appearance.controller === id} class:on={$appearance.controller === id} on:click={() => set({ controller: id })}>
-        {label}
+        {$translateUI('appearance.controller.' + id)}
       </button>
     {/each}
   </div>
   <span class="state" class:is-on={active}>
-    {#if $appearance.controller === 'on'}On
-    {:else if $appearance.controller === 'off'}Off — the arrow keys scroll as usual
-    {:else if active}On now — a controller was used, or this is a Steam Deck or handheld
-    {:else}Turns on when a controller is used, and on a Steam Deck or handheld{/if}
+    {#if $appearance.controller === 'on'}{$translateUI('home.summary.cloudOn')}
+    {:else if $appearance.controller === 'off'}{$translateUI('controllerOptions.offTheArrowKeysScrollAs')}
+    {:else if active}{$translateUI('controllerOptions.onNowAControllerWasUsed')}
+    {:else}{$translateUI('controllerOptions.turnsOnWhenAControllerIsUsed')}{/if}
   </span>
 </div>
 
-<dl class="buttons" aria-label="What the buttons do">
+<dl class="buttons" aria-label="{$translateUI('controllerOptions.whatTheButtonsDo')}">
   {#each BUTTONS as b}
     <dt>
-      {#each b.keys as k, i}{#if i > 0}<span class="or">or</span>{/if}<kbd>{k}</kbd>{/each}
+      {#each b.keys as k, i}{#if i > 0}<span class="or">{$translateUI('controllerOptions.or')}</span>{/if}<kbd>{k}</kbd>{/each}
     </dt>
     <dd>{b.does}</dd>
   {/each}
 </dl>
-<p class="hint">The arrow keys do the same while it's on — a Steam Deck in desktop mode sends them for the D-pad.</p>
+<p class="hint">{$translateUI('controllerOptions.theArrowKeysDoTheSameWhile')}</p>
 
 <style>
   .row {

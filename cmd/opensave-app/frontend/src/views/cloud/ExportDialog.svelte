@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Export: tracked games plus saves the scan found, pre-ticked for the
   // tracked ones. The chosen games' LIVE saves, with where each belongs, go
   // into one .sscb file. Fires `close`.
@@ -75,7 +76,7 @@
   async function run() {
     const chosen = (items ?? []).filter((it) => sel[it.id]);
     if (!chosen.length) return;
-    const target = await native.selectSaveFile('Export selected saves', 'opensave-saves.sscb');
+    const target = await native.selectSaveFile($translateUI('exportDialog.exportSelectedSaves'), 'opensave-saves.sscb');
     if (!target) return;
     exporting = true;
     try {
@@ -88,9 +89,9 @@
       // snapshot; say so, since that is not the save as it stands.
       const fromSnap = res.fromSnapshot?.length ?? 0;
       toast(
-        `Exported ${res.exported} save${res.exported === 1 ? '' : 's'}` +
-          (fromSnap ? ` — ${fromSnap === 1 ? res.fromSnapshot[0].name : `${fromSnap} games`} from the newest snapshot, as the save folder was empty or missing` : '') +
-          (skipped ? `, ${skipped} skipped — see Activity` : ''),
+        $translateUI('exportDialog.exportedSave', { p0: res.exported, p1: res.exported === 1 ? '' : 's' }) +
+          (fromSnap ? $translateUI('exportDialog.fromTheNewestSnapshotAs', { p0: fromSnap === 1 ? res.fromSnapshot[0].name : $translateUI('exportDialog.games', { p0: fromSnap }) }) : '') +
+          (skipped ? $translateUI('exportDialog.skippedSeeActivity', { p0: skipped }) : ''),
         skipped ? 'info' : 'success'
       );
       close();
@@ -102,30 +103,29 @@
   }
 </script>
 
-<Modal title="Export saves" icon={Package} onClose={close}>
+<Modal title="{$translateUI('exportDialog.exportSaves')}" icon={Package} onClose={close}>
   <svelte:fragment slot="sub">
     {#if !items}
-      Looking for saves on this machine…
+      {$translateUI('exportDialog.lookingForSavesOnThisMachine')}
     {:else}
-      {count} of {items.length} selected — each game's current save is exported
-      along with where it belongs
+      {count} {$translateUI('cloudBrowser.of')} {items.length} {$translateUI('exportDialog.selectedEachGameSCurrentSaveIs')}
     {/if}
   </svelte:fragment>
 
   {#if !items}
-    <ModalLoading>Listing tracked games and scanning for saves…</ModalLoading>
+    <ModalLoading>{$translateUI('exportDialog.listingTrackedGamesAndScanningForSaves')}</ModalLoading>
   {:else}
     <div class="toolbar">
       <button class="btn small" on:click={() => setAll(!allSelected)}>
-        {allSelected ? 'Unselect all' : 'Select all'}
+        {allSelected ? $translateUI('home.library.unselectAll') : $translateUI('exportDialog.selectAll')}
       </button>
-      <button class="btn small" on:click={() => { setAll(false); setAll(true, true); }}>Tracked only</button>
+      <button class="btn small" on:click={() => { setAll(false); setAll(true, true); }}>{$translateUI('exportDialog.trackedOnly')}</button>
     </div>
     <div class="list">
       {#if items.length === 0}
         <div class="empty-state">
           <div class="empty-icon"><Package size={36} strokeWidth={1.5} /></div>
-          <p>No saves found to export.</p>
+          <p>{$translateUI('exportDialog.noSavesFoundToExport')}</p>
         </div>
       {:else}
         <div class="grid">
@@ -144,16 +144,16 @@
     </div>
     {#if exporting && prog}
       <ProgressBar done={prog.done} total={prog.total}>
-        Exporting {Math.min(prog.done + 1, prog.total)} of {prog.total}
+        {$translateUI('exportDialog.exporting')} {Math.min(prog.done + 1, prog.total)} {$translateUI('cloudBrowser.of')} {prog.total}
         {#if prog.current}&nbsp;— <code>{prog.current}</code>{/if}
       </ProgressBar>
     {/if}
     <ModalFoot>
-      <span class="quiet">Detected saves export fine without being tracked.</span>
+      <span class="quiet">{$translateUI('exportDialog.detectedSavesExportFineWithoutBeingTracked')}</span>
       <div class="actions">
-        <button class="btn" on:click={close}>Cancel</button>
+        <button class="btn" on:click={close}>{$translateUI('common.cancel')}</button>
         <button class="btn primary" disabled={exporting || count === 0} on:click={run}>
-          {exporting ? 'Exporting…' : `Export ${count} save${count === 1 ? '' : 's'}`}
+          {exporting ? $translateUI('exportDialog.exportingMessage') : $translateUI('exportDialog.exportSave', { p0: count, p1: count === 1 ? '' : 's' })}
         </button>
       </div>
     </ModalFoot>

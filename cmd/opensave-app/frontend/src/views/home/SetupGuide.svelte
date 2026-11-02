@@ -10,7 +10,7 @@
   import X from 'lucide-svelte/icons/x';
   import { gameList, peers, settings, navigate } from '../../lib/stores.js';
   import { setupState, setupSteps } from '../../lib/setup.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
 
   /** Whether a scan is running, from the page's scan dialog. */
   export let scanning = false;
@@ -50,10 +50,10 @@
 <div class="card guide">
   <div class="top">
     <div>
-      <h3>{$t('home.setup.title')}</h3>
-      <p class="progress">{$t('home.setup.progress', { n: plan.settled })}</p>
+      <h3>{$translateUI('home.setup.title')}</h3>
+      <p class="progress">{$translateUI('home.setup.progress', { n: plan.settled })}</p>
     </div>
-    <button class="btn small ghost" on:click={later} title={$t('home.setup.hideTitle')}><X size={14} />{$t('home.setup.later')}</button>
+    <button class="btn small ghost" on:click={later} title={$translateUI('home.setup.hideTitle')}><X size={14} />{$translateUI('home.setup.later')}</button>
   </div>
   <ol>
     {#each plan.steps as step, i}
@@ -63,21 +63,21 @@
           {#if step.done}<Check size={14} strokeWidth={3} />{:else}{i + 1}{/if}
         </span>
         <div class="body">
-          <div class="title">{$t(c.titleKey)}{#if step.skipped}<span class="tag">{$t('home.setup.skipped')}</span>{/if}</div>
+          <div class="title">{$translateUI(c.titleKey)}{#if step.skipped}<span class="tag">{$translateUI('home.setup.skipped')}</span>{/if}</div>
           {#if plan.next === step.id}
-            <p class="text">{$t(c.textKey)}</p>
+            <p class="text">{$translateUI(c.textKey)}</p>
             <div class="actions">
               {#if step.id === 'saves'}
                 <button class="btn small primary" disabled={scanning} on:click={() => dispatch('scan')}>
-                  <ScanSearch size={14} />{scanning ? $t('home.scanning') : $t('home.welcome.scanForSaves')}
+                  <ScanSearch size={14} />{scanning ? $translateUI('home.scanning') : $translateUI('home.welcome.scanForSaves')}
                 </button>
-                <button class="btn small" on:click={() => dispatch('add')}><FolderPlus size={14} />{$t('home.setup.pickFolder')}</button>
+                <button class="btn small" on:click={() => dispatch('add')}><FolderPlus size={14} />{$translateUI('home.setup.pickFolder')}</button>
               {:else if step.id === 'devices'}
-                <button class="btn small primary" on:click={() => navigate('devices')}><MonitorSmartphone size={14} />{$t('home.setup.pairDevice')}</button>
-                <button class="btn small ghost" on:click={() => skip('devices')}>{$t('home.setup.onlyThisDevice')}</button>
+                <button class="btn small primary" on:click={() => navigate('devices')}><MonitorSmartphone size={14} />{$translateUI('home.setup.pairDevice')}</button>
+                <button class="btn small ghost" on:click={() => skip('devices')}>{$translateUI('home.setup.onlyThisDevice')}</button>
               {:else}
-                <button class="btn small primary" on:click={() => navigate('cloud')}><Cloud size={14} />{$t('home.setup.chooseWhere')}</button>
-                <button class="btn small ghost" on:click={() => skip('cloud')}>{$t('home.setup.noCloudBackup')}</button>
+                <button class="btn small primary" on:click={() => navigate('cloud')}><Cloud size={14} />{$translateUI('home.setup.chooseWhere')}</button>
+                <button class="btn small ghost" on:click={() => skip('cloud')}>{$translateUI('home.setup.noCloudBackup')}</button>
               {/if}
             </div>
           {/if}

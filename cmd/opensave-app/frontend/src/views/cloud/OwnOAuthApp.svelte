@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // ── Your own OAuth app ───────────────────────────────────────────
   // The daemon has always supported a per-provider client id and secret;
   // nothing in the app set them, so the only route was a hand-written API
@@ -48,9 +49,9 @@
       );
       if (changed && wasConnected) {
         await api.post('/api/auth/disconnect');
-        toast('Saved. Sign in again — the old connection belonged to the previous app.', 'success');
+        toast($translateUI('ownOAuthApp.savedSignInAgainTheOld'), 'success');
       } else {
-        toast(ownAppID.trim() ? 'Saved. Sign in to use your own app.' : 'Cleared — the built-in app will be used.', 'success');
+        toast(ownAppID.trim() ? $translateUI('ownOAuthApp.savedSignInToUseYourOwn') : $translateUI('ownOAuthApp.clearedTheBuiltInAppWillBe'), 'success');
       }
       // Reload for the fresh tokens/ids, but keep this card selected. The
       // stored provider is whatever was last saved with "Save provider" — so
@@ -69,15 +70,13 @@
 <div class="own-app">
   {#if needsOwnApp(provider) && !ownAppID}
     <p class="quiet required">
-      <strong>OneDrive needs your own app registration.</strong> Microsoft doesn't allow a
-      shared one, so OpenSave can't ship credentials for it. Create a free app in the
-      <button class="linkish" on:click={() => native.openExternal('https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade')}>Azure portal</button>
-      with redirect URI <code>http://localhost/callback</code>, then paste its Application
-      (client) ID below.
+      <strong>{$translateUI('ownOAuthApp.oneDriveNeedsYourOwnAppRegistration')}</strong> {$translateUI('ownOAuthApp.microsoftDoesnTAllowASharedOneSo')}
+      <button class="linkish" on:click={() => native.openExternal('https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade')}>{$translateUI('ownOAuthApp.azurePortal')}</button>
+      {$translateUI('ownOAuthApp.withRedirectURI')} <code>http://localhost/callback</code>{$translateUI('ownOAuthApp.thenPasteItsApplicationClientID')}
     </p>
   {:else}
     <button class="linkish" on:click={() => (showOwnApp = !showOwnApp)}>
-      <Chevron open={showOwnApp} size={12} /> Use your own OAuth app{ownAppID ? ' (in use)' : ''}
+      <Chevron open={showOwnApp} size={12} /> {$translateUI('ownOAuthApp.useYourOwnOAuthApp')}{ownAppID ? $translateUI('ownOAuthApp.inUse') : ''}
     </button>
   {/if}
 
@@ -85,47 +84,44 @@
     <div class="body">
       {#if provider === 'google_drive'}
         <p class="quiet">
-          OpenSave's built-in Google credentials are a shared app still in testing, so Drive
-          can ask you to sign in again every week. Your own Client ID stops that. Create one
-          in the
-          <button class="linkish" on:click={() => native.openExternal('https://console.cloud.google.com/apis/credentials')}>Google Cloud console</button>
-          as an OAuth client with redirect URI <code>http://localhost/callback</code>.
+          {$translateUI('ownOAuthApp.openSaveSBuiltInGoogleCredentialsAreAShared')}
+          <button class="linkish" on:click={() => native.openExternal('https://console.cloud.google.com/apis/credentials')}>{$translateUI('ownOAuthApp.googleCloudConsole')}</button>
+          {$translateUI('ownOAuthApp.asAnOAuthClientWithRedirectURI')} <code>http://localhost/callback</code>.
         </p>
       {:else if provider === 'dropbox'}
         <p class="quiet">
-          Only needed if you'd rather use your own Dropbox app than the built-in one.
+          {$translateUI('ownOAuthApp.onlyNeededIfYouDRatherUseYour')}
         </p>
       {/if}
       <div class="field">
-        <label for="cb-clientid">Client ID</label>
+        <label for="cb-clientid">{$translateUI('ownOAuthApp.clientID')}</label>
         <input
           id="cb-clientid"
           bind:value={ownAppID}
           spellcheck="false"
-          placeholder={provider === 'google_drive' ? '…apps.googleusercontent.com' : 'Application (client) ID'}
+          placeholder={provider === 'google_drive' ? '…apps.googleusercontent.com' : $translateUI('ownOAuthApp.applicationClientID')}
         />
       </div>
       <div class="field">
-        <label for="cb-clientsecret">Client secret <span class="quiet">— leave empty unless your app requires one</span></label>
+        <label for="cb-clientsecret">{$translateUI('ownOAuthApp.clientSecret')} <span class="quiet">{$translateUI('ownOAuthApp.leaveEmptyUnlessYourAppRequires')}</span></label>
         <input id="cb-clientsecret" type="password" bind:value={ownAppSecret} spellcheck="false" />
       </div>
       <div class="path-row">
-        <button class="btn primary" disabled={$busy} on:click={save}>Save credentials</button>
+        <button class="btn primary" disabled={$busy} on:click={save}>{$translateUI('ownOAuthApp.saveCredentials')}</button>
         {#if ownAppID}
           <button
             class="btn small"
             disabled={$busy}
-            title="Go back to OpenSave's built-in credentials"
+            title="{$translateUI('ownOAuthApp.goBackToOpenSaveSBuiltInCredentials')}"
             on:click={() => { ownAppID = ''; ownAppSecret = ''; save(); }}
           >
-            Use the built-in app
+            {$translateUI('ownOAuthApp.useTheBuiltInApp')}
           </button>
         {/if}
       </div>
       {#if connected === provider}
         <p class="quiet">
-          You're signed in already — changing this disconnects you, because the existing
-          sign-in belongs to the old app.
+          {$translateUI('ownOAuthApp.youReSignedInAlreadyChangingThis')}
         </p>
       {/if}
     </div>

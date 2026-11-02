@@ -8,7 +8,7 @@
   import { api, coverURL } from '../../lib/api.js';
   import Modal from '../../components/ui/Modal.svelte';
   import { withUndo, hiddenKeys } from '../../lib/undo.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
   import Chevron from '../../components/ui/Chevron.svelte';
   import ScanSearch from 'lucide-svelte/icons/scan-search';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
@@ -61,7 +61,7 @@
       const results = (await api.get('/api/presets/scan')) ?? [];
       // A list, always. Anything else is not a scan, and reading one as a
       // list failed with "i is not iterable" — which says nothing.
-      if (!Array.isArray(results)) throw new Error($t('home.scan.badResponse'));
+      if (!Array.isArray(results)) throw new Error($translateUI('home.scan.badResponse'));
       fillMissingAppIds(results);
       scanResults = results;
     } catch (e) {
@@ -90,7 +90,7 @@
     selected.delete(item.id);
     selected = selected;
     withUndo({
-      message: $t('home.scan.excludeToast', { name: item.name }),
+      message: $translateUI('home.scan.excludeToast', { name: item.name }),
       keys: [`scan:${item.savePath}`],
       stillThere: () => (scanResults ?? []).some((r) => r.id === item.id),
       run: async () => {
@@ -229,11 +229,11 @@
       const { failed } = await trackAsOneGame(primary, extras);
       consumeRows(new Set(group.suggested.map((m) => m.id)));
       if (failed.length > 0) {
-        toast($t('home.scan.trackPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
+        toast($translateUI('home.scan.trackPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
       } else if (extras.length > 0) {
-        toast($t('home.scan.trackedAcrossFolders', { name: primary.name, n: extras.length + 1 }), 'success');
+        toast($translateUI('home.scan.trackedAcrossFolders', { name: primary.name, n: extras.length + 1 }), 'success');
       } else {
-        toast($t('common.nowTracking', { name: primary.name }), 'success');
+        toast($translateUI('common.nowTracking', { name: primary.name }), 'success');
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -265,7 +265,7 @@
     consumeRows(new Set(items.map((i) => i.id)));
     clearSelection();
     toast(
-      locations > 0 ? $t('home.scan.trackedGamesWithExtras', { n: games, m: locations }) : $t('home.scan.trackedGames', { n: games }),
+      locations > 0 ? $translateUI('home.scan.trackedGamesWithExtras', { n: games, m: locations }) : $translateUI('home.scan.trackedGames', { n: games }),
       problems.length > 0 ? 'error' : 'success'
     );
     if (problems.length > 0) toast(problems[0], 'error');
@@ -287,46 +287,46 @@
       const { failed } = await trackAsOneGame(primary, extras);
       consumeRows(new Set(items.map((i) => i.id)));
       clearSelection();
-      if (failed.length > 0) toast($t('home.scan.mergedPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
-      else toast($t('home.scan.trackedAcrossFolders', { name: primary.name, n: items.length }), 'success');
+      if (failed.length > 0) toast($translateUI('home.scan.mergedPartialFail', { name: primary.name, n: failed.length, detail: failed[0] }), 'error');
+      else toast($translateUI('home.scan.trackedAcrossFolders', { name: primary.name, n: items.length }), 'success');
       if (filteredResults.length === 0) close();
     } catch (e) {
       toast(e.message, 'error');
     }
   }
 
-  $: typeLabels = { emulator: $t('home.scan.type.emulator'), repack: $t('home.scan.type.repack'), game: $t('home.scan.type.game') };
+  $: typeLabels = { emulator: $translateUI('home.scan.type.emulator'), repack: $translateUI('home.scan.type.repack'), game: $translateUI('home.scan.type.game') };
   const typeIcon = (t) => (t === 'emulator' ? Joystick : t === 'repack' ? Package : Gamepad2);
   $: typeTabs = [
-    ['all', $t('home.scan.tab.all')],
-    ['game', $t('home.scan.tab.games')],
-    ['emulator', $t('home.scan.tab.emulators')],
-    ['repack', $t('home.scan.tab.repacks')]
+    ['all', $translateUI('home.scan.tab.all')],
+    ['game', $translateUI('home.scan.tab.games')],
+    ['emulator', $translateUI('home.scan.tab.emulators')],
+    ['repack', $translateUI('home.scan.tab.repacks')]
   ];
 </script>
 
 <svelte:window on:keydown={onKeydown} />
 
 {#if open}
-  <Modal title={$t('home.scan.title')} icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
+  <Modal title={$translateUI('home.scan.title')} icon={ScanSearch} onClose={close} width={920} height="min(82vh, 860px)">
     <svelte:fragment slot="sub">
-      {#if scanning}{$t('home.scan.subScanning')}{:else if emptyCount > 0 && !showEmpty}{$t('home.scan.foundSummaryEmpty', { n: scanCounts.all, m: availableGroups.length, e: emptyCount })}{:else}{$t('home.scan.foundSummary', { n: scanCounts.all, m: availableGroups.length })}{/if}
+      {#if scanning}{$translateUI('home.scan.subScanning')}{:else if emptyCount > 0 && !showEmpty}{$translateUI('home.scan.foundSummaryEmpty', { n: scanCounts.all, m: availableGroups.length, e: emptyCount })}{:else}{$translateUI('home.scan.foundSummary', { n: scanCounts.all, m: availableGroups.length })}{/if}
     </svelte:fragment>
 
     {#if scanning}
-      <ModalLoading>{$t('home.scan.scanningDetail')}</ModalLoading>
+      <ModalLoading>{$translateUI('home.scan.scanningDetail')}</ModalLoading>
     {:else}
       <div class="toolbar">
-        <SearchInput placeholder={$t('home.scan.filterPlaceholder')} bind:value={scanFilter} />
+        <SearchInput placeholder={$translateUI('home.scan.filterPlaceholder')} bind:value={scanFilter} />
         <FilterTabs options={typeTabs} counts={scanCounts} bind:value={scanType} />
-        <label class="toggle" title={$t('home.scan.showTrackedTitle')}>
+        <label class="toggle" title={$translateUI('home.scan.showTrackedTitle')}>
           <input type="checkbox" bind:checked={showTracked} />
-          {$t('home.scan.showTracked')}
+          {$translateUI('home.scan.showTracked')}
         </label>
         {#if emptyCount > 0}
-          <label class="toggle" title={$t('home.scan.showEmptyTitle')}>
+          <label class="toggle" title={$translateUI('home.scan.showEmptyTitle')}>
             <input type="checkbox" bind:checked={showEmpty} />
-            {$t('home.scan.showEmpty', { n: emptyCount })}
+            {$translateUI('home.scan.showEmpty', { n: emptyCount })}
           </label>
         {/if}
       </div>
@@ -338,7 +338,7 @@
             {@const tracked = isTracked(item)}
             {#if i === availableGroups.length && trackedGroups.length > 0}
               <div class="divider">
-                {$t('home.scan.alreadyTracked', { n: trackedGroups.length })}
+                {$translateUI('home.scan.alreadyTracked', { n: trackedGroups.length })}
               </div>
             {/if}
             <!--
@@ -355,7 +355,7 @@
               icon={typeIcon(item.type)}
               selected={groupSelected(group, selected)}
               badge={typeLabels[item.type] ?? item.type}
-              stamp={tracked ? $t('home.scan.tracked') : ''}
+              stamp={tracked ? $translateUI('home.scan.tracked') : ''}
               dimmed={tracked}
               faded={isEmptyResult(item)}
               meta={contentsLabel(item)}
@@ -364,15 +364,15 @@
             >
               <svelte:fragment slot="hover">
                 <button class="btn small primary" on:click|stopPropagation={() => trackGroup(group)}>
-                  {group.suggested.length > 1 ? $t('home.scan.trackAll', { n: group.suggested.length }) : $t('home.scan.track')}
+                  {group.suggested.length > 1 ? $translateUI('home.scan.trackAll', { n: group.suggested.length }) : $translateUI('home.scan.track')}
                 </button>
                 <button
                   class="btn small"
                   disabled={excluding === item.id}
-                  title={$t('home.scan.excludeTitle')}
+                  title={$translateUI('home.scan.excludeTitle')}
                   on:click|stopPropagation={() => excludeResult(item)}
                 >
-                  {excluding === item.id ? $t('home.scan.excluding') : $t('home.scan.exclude')}
+                  {excluding === item.id ? $translateUI('home.scan.excluding') : $translateUI('home.scan.exclude')}
                 </button>
               </svelte:fragment>
               {#if group.extras.length > 0}
@@ -381,8 +381,8 @@
                   class:open={expandedGroup === group.id}
                   on:click|stopPropagation={() => (expandedGroup = expandedGroup === group.id ? null : group.id)}
                 >
-                  <Chevron open={expandedGroup === group.id} size={12} /> {$t('home.scan.foundInFolders', { n: group.members.length })}
-                  {#if group.suggested.length > 1}<span class="folders-hint">{$t('home.scan.oneSave', { n: group.suggested.length })}</span>{/if}
+                  <Chevron open={expandedGroup === group.id} size={12} /> {$translateUI('home.scan.foundInFolders', { n: group.members.length })}
+                  {#if group.suggested.length > 1}<span class="folders-hint">{$translateUI('home.scan.oneSave', { n: group.suggested.length })}</span>{/if}
                 </button>
               {/if}
             </CoverTile>
@@ -392,7 +392,7 @@
             {/if}
           {:else}
             <div class="empty-grid">
-              {scanCounts.all === 0 ? $t('home.scan.emptyNothingDetected') : $t('home.scan.emptyNoMatches')}
+              {scanCounts.all === 0 ? $translateUI('home.scan.emptyNothingDetected') : $translateUI('home.scan.emptyNoMatches')}
             </div>
           {/each}
         </div>
@@ -400,9 +400,9 @@
 
       <ModalFoot>
         <div class="actions">
-          <button class="btn small" on:click={selectAllVisible} disabled={availableGroups.length === 0}>{$t('home.scan.selectAll', { n: availableGroups.length })}</button>
+          <button class="btn small" on:click={selectAllVisible} disabled={availableGroups.length === 0}>{$translateUI('home.scan.selectAll', { n: availableGroups.length })}</button>
           {#if selectedCount > 0}
-            <button class="btn small" on:click={clearSelection}>{$t('home.scan.clear')}</button>
+            <button class="btn small" on:click={clearSelection}>{$translateUI('home.scan.clear')}</button>
           {/if}
         </div>
         <!-- Both tracking actions sit together on the right: they are the
@@ -412,14 +412,14 @@
           {#if selectedCount > 1}
             <button
               class="btn primary"
-              title={$t('home.scan.trackAsOneTitle')}
+              title={$translateUI('home.scan.trackAsOneTitle')}
               on:click={mergeSelectedIntoOneGame}
             >
-              {$t('home.scan.trackAsOne')}
+              {$translateUI('home.scan.trackAsOne')}
             </button>
           {/if}
           <button class="btn primary" disabled={selectedCount === 0} on:click={trackSelected}>
-            {$t('home.scan.trackSelected', { n: selectedCount })}
+            {$translateUI('home.scan.trackSelected', { n: selectedCount })}
           </button>
         </div>
       </ModalFoot>

@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // ── Extra save locations ─────────────────────────────────────────
   //
   // A location learned from a peer or a backup arrives named but not placed:
@@ -29,9 +30,9 @@
   async function pick(name) {
     const label = String(name ?? '').trim();
     if (!label || $busy) return;
-    const dir = await native.selectDirectory(`Folder for “${label}” — ${game.name}`);
+    const dir = await native.selectDirectory($translateUI('saveLocations.folderFor', { p0: label, p1: game.name }));
     if (!dir) return;
-    await run(`“${label}” now covered`, async () => {
+    await run($translateUI('saveLocations.nowCovered', { p0: label }), async () => {
       await api.post(`/api/games/${game.id}/roots`, { name: label, path: dir });
       newLocation = '';
       await load();
@@ -43,7 +44,7 @@
   const keyOf = (name) => `root:${game.id}:${name}`;
   function remove(name) {
     withUndo({
-      message: `The “${name}” folder is no longer covered. Its files are left where they are.`,
+      message: $translateUI('saveLocations.theFolderIsNoLongerCovered', { p0: name }),
       keys: [keyOf(name)],
       stillThere: () => locations.some((l) => l.name === name),
       run: async () => {
@@ -56,14 +57,12 @@
 </script>
 
 <div class="section">
-  <h4>Save locations</h4>
+  <h4>{$translateUI('saveLocations.saveLocations')}</h4>
   <p class="hint">
-    Some games keep their save split across more than one folder — the save data in one
-    place, settings or mods in another. Add each extra folder here and it is synced,
-    snapshotted and restored along with the main one.
+    {$translateUI('saveLocations.someGamesKeepTheirSaveSplitAcross')}
   </p>
   <div class="row">
-    <span class="name">main save</span>
+    <span class="name">{$translateUI('saveLocations.mainSave')}</span>
     <span class="path" title={game.savePath}>{game.savePath}</span>
   </div>
   {#each shownLocations as loc (loc.name)}
@@ -73,27 +72,25 @@
         <span class="path" title={loc.path}>{loc.path}</span>
       {:else}
         <span class="path missing">
-          no folder on this device — this location isn't being synced
+          {$translateUI('saveLocations.noFolderOnThisDeviceThis')}
         </span>
       {/if}
       <button class="btn small" disabled={$busy} on:click={() => pick(loc.name)}>
-        {loc.mapped ? 'Change' : 'Choose folder'}
+        {loc.mapped ? $translateUI('saveLocations.change') : $translateUI('saveLocations.chooseFolder')}
       </button>
       <button class="btn small danger" disabled={$busy} on:click={() => remove(loc.name)}>
-        Remove
+        {$translateUI('saveLocations.remove')}
       </button>
     </div>
   {/each}
   <div class="add">
-    <input placeholder="Name for the folder (e.g. config)" bind:value={newLocation} />
+    <input placeholder="{$translateUI('saveLocations.nameForTheFolderEGConfig')}" bind:value={newLocation} />
     <button class="btn" disabled={!newLocation || $busy} on:click={() => pick(newLocation)}>
-      + Add a folder
+      {$translateUI('saveLocations.addAFolder')}
     </button>
   </div>
   <span class="hint">
-    Give the same <strong>name</strong> on your other devices — that is what the two
-    sides match on, since the folder lives somewhere different on each machine. Removing
-    a location here never deletes its files.
+    {$translateUI('saveLocations.giveTheSame')} <strong>{$translateUI('saveLocations.name')}</strong> {$translateUI('saveLocations.onYourOtherDevicesThatIs')}
   </span>
 </div>
 

@@ -5,7 +5,7 @@
   // clickable version, shown above the notes where the announcement is.
   import { native } from '../lib/api.js';
   import { DISCORD_URL } from '../lib/links.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   export let compact = false;
 </script>
@@ -17,10 +17,10 @@
     </svg>
   </span>
   <span class="text">
-    <span class="title">{$t('discord.title')}</span>
-    <span class="sub">{$t('discord.sub')}</span>
+    <span class="title">{$translateUI('discord.title')}</span>
+    <span class="sub">{$translateUI('discord.sub')}</span>
   </span>
-  <span class="cta">{$t('discord.join')} <span class="arrow" aria-hidden="true">→</span></span>
+  <span class="cta">{$translateUI('discord.join')} <span class="arrow" aria-hidden="true">→</span></span>
 </button>
 
 <style>

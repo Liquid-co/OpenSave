@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Pausing syncing, from the app: the wording, and the calls. The state is the
 // daemon's (see internal/syncpause); the app shows it and asks for changes.
 import { api } from './api.js';
@@ -6,45 +7,45 @@ import { toast } from './stores.js';
 /** The lengths offered wherever pausing is, worded to follow "Pause
  *  syncing". null is until resumed. */
 export const PAUSE_CHOICES = [
-  { minutes: 15, label: 'for 15 minutes' },
-  { minutes: 60, label: 'for 1 hour' },
-  { minutes: 180, label: 'for 3 hours' },
-  { minutes: null, label: 'until I resume' }
+  { minutes: 15, get label() { return tr('syncpause.for15Minutes'); } },
+  { minutes: 60, get label() { return tr('syncpause.for1Hour'); } },
+  { minutes: 180, get label() { return tr('syncpause.for3Hours'); } },
+  { minutes: null, get label() { return tr('syncpause.untilIResume'); } }
 ];
 
 /** "for 42 more minutes", "for 1 h 05 min", "until you resume". */
 export function pauseLength(pause, now = Date.now()) {
   if (!pause?.paused) return '';
-  if (pause.untilRestart || !pause.endsAt) return 'until you resume';
+  if (pause.untilRestart || !pause.endsAt) return tr('syncpause.untilYouResume');
   const minutes = Math.max(0, Math.ceil((pause.endsAt - now) / 60000));
   if (minutes >= 60) {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    const hours = h === 1 ? '1 hour' : `${h} hours`;
-    return m ? `for ${hours} ${m === 1 ? '1 minute' : `${m} minutes`}` : `for ${hours}`;
+    const hours = h === 1 ? tr('syncpause.1Hour') : tr('syncpause.hours', { p0: h });
+    return m ? tr('syncpause.for', { p0: hours, p1: m === 1 ? tr('time.oneMinute') : tr('time.minutes', { n: m }) }) : tr('syncpause.forLabel', { p0: hours });
   }
-  if (minutes <= 1) return 'for less than a minute';
-  return `for ${minutes} more minutes`;
+  if (minutes <= 1) return tr('syncpause.forLessThanAMinute');
+  return tr('syncpause.forMoreMinutes', { p0: minutes });
 }
 
 /** Short form for the status bar: "42 min left", "until resumed". */
 export function pauseShort(pause, now = Date.now()) {
   if (!pause?.paused) return '';
-  if (pause.untilRestart || !pause.endsAt) return 'until resumed';
+  if (pause.untilRestart || !pause.endsAt) return tr('syncpause.untilResumed');
   const minutes = Math.max(0, Math.ceil((pause.endsAt - now) / 60000));
   if (minutes >= 60) {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return m ? `${h} h ${m} min left` : `${h} h left`;
+    return m ? tr('syncpause.hMinLeft', { p0: h, p1: m }) : tr('syncpause.hLeft', { p0: h });
   }
-  return `${Math.max(1, minutes)} min left`;
+  return tr('syncpause.minLeft', { p0: Math.max(1, minutes) });
 }
 
 export async function pauseSync(minutes) {
   try {
     await api.post('/api/sync/pause', minutes ? { minutes } : { untilRestart: true });
     toast(
-      minutes ? `Syncing paused — snapshots are still taken` : 'Syncing paused until you resume — snapshots are still taken',
+      minutes ? tr('syncpause.syncingPausedSnapshotsAreStillTaken') : tr('syncpause.syncingPausedUntilYouResumeSnapshots'),
       'success'
     );
   } catch (e) {
@@ -55,7 +56,7 @@ export async function pauseSync(minutes) {
 export async function resumeSync() {
   try {
     await api.post('/api/sync/resume', {});
-    toast('Syncing resumed — catching up', 'success');
+    toast(tr('syncpause.syncingResumedCatchingUp'), 'success');
   } catch (e) {
     toast(e.message, 'error');
   }

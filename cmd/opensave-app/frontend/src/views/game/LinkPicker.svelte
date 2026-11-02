@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Choosing the game to link, by its cover: the games on this device, and
   // the ones on your other devices, as the library shows them. A name alone
   // was a long list of look-alikes — the same title tracked twice reads the
@@ -29,11 +30,11 @@
 {#if many}
   <label class="search">
     <Search size={14} />
-    <input type="search" placeholder="Find a game…" bind:value={query} aria-label="Find a game to link" />
+    <input type="search" placeholder="{$translateUI('home.library.searchPlaceholder')}" bind:value={query} aria-label="{$translateUI('linkPicker.findAGameToLink')}" />
   </label>
 {/if}
 
-{#each [['On this device', 'Its entry here merges into this one', local, false], ['On your other devices', 'Nothing is removed on either device', remote, true]] as [title, note, list, onPeer]}
+{#each [[$translateUI('linkPicker.onThisDevice'), $translateUI('linkPicker.itsEntryHereMergesIntoThisOne'), local, false], [$translateUI('linkPicker.onYourOtherDevices'), $translateUI('linkPicker.nothingIsRemovedOnEitherDevice'), remote, true]] as [title, note, list, onPeer]}
   {#if list.length}
     <div class="group-head">
       <span class="title">{title}</span><span class="note">{note}</span>
@@ -45,7 +46,7 @@
           role="radio"
           aria-checked={selected === g.id}
           class:on={selected === g.id}
-          title={onPeer ? `${g.name} on ${g.peerName}` : `${g.name} — ${g.savePath}`}
+          title={onPeer ? $translateUI('linkPicker.on', { p0: g.name, p1: g.peerName }) : `${g.name} — ${g.savePath}`}
           on:click={() => (selected = selected === g.id ? '' : g.id)}
         >
           <span class="cover">
@@ -61,7 +62,7 @@
   {/if}
 {/each}
 {#if many && local.length === 0 && remote.length === 0}
-  <p class="none">No game matches “{query}”.</p>
+  <p class="none">{$translateUI('linkPicker.noGameMatches')}{query}”.</p>
 {/if}
 
 <style>

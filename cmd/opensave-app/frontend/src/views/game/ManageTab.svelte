@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Linking this game with the same game tracked under another name, and
   // stopping tracking it.
   import { games, askConfirm } from '../../lib/stores.js';
@@ -76,19 +77,19 @@
     // "removed from your library" for the second would be a lie about a
     // destructive step that isn't happening.
     const message = remote
-      ? `Link "${remote.name}" on ${remote.peerName} to "${game.name}"? The two will be treated as the same game when these devices sync. Nothing on either device is removed.`
-      : `Link "${other?.name ?? linkTarget}" into "${game.name}"? They'll be treated as the same game when syncing across devices. "${other?.name ?? linkTarget}" leaves your library here — its save files stay where they are, and its snapshots move to "${game.name}", on a branch of their own.`;
+      ? $translateUI('manageTab.linkOnToTheTwo', { p0: remote.name, p1: remote.peerName, p2: game.name })
+      : $translateUI('manageTab.linkIntoTheyLlBeTreated', { p0: other?.name ?? linkTarget, p1: game.name, p2: other?.name ?? linkTarget, p3: game.name });
 
-    const ok = await askConfirm(message, { title: 'Link games?', confirmText: 'Link' });
+    const ok = await askConfirm(message, { title: $translateUI('manageTab.linkGames'), confirmText: $translateUI('manageTab.linkMessage') });
     if (!ok) return;
     const canonicalId = game.id;
-    await run('Games linked', () => api.post(`/api/games/${canonicalId}/link`, { alias: linkTarget }));
+    await run($translateUI('manageTab.gamesLinked'), () => api.post(`/api/games/${canonicalId}/link`, { alias: linkTarget }));
     linkTarget = '';
     await loadAliases();
   }
 
   async function unlink(aliasId) {
-    await run('Link removed', () => api.del(`/api/games/${game.id}/alias/${aliasId}`));
+    await run($translateUI('manageTab.linkRemoved'), () => api.del(`/api/games/${game.id}/alias/${aliasId}`));
     await loadAliases();
   }
 
@@ -97,12 +98,9 @@
 </script>
 
 <div class="card">
-  <h3>Linked copies</h3>
+  <h3>{$translateUI('manageTab.linkedCopies')}</h3>
   <p class="desc">
-    If this game is tracked under a different name or drive on another PC (e.g. a Steam copy vs. a
-    portable copy), link the copies so their saves sync across devices. Linking merges another tracked
-    game here into this one: its save files stay where they are, and its snapshots move here, onto a
-    branch named after it.
+    {$translateUI('manageTab.ifThisGameIsTrackedUnderA')}
   </p>
   {#if aliases.length > 0}
     <div class="alias-list">
@@ -111,7 +109,7 @@
           <span class="alias-id" title={a.savePath || a.id}>
             <Link size={13} class="inline-icon" />{a.name || a.id}{a.savePath ? ` — ${a.savePath}` : ''}
           </span>
-          <button class="btn small" disabled={$busy} on:click={() => unlink(a.id)}>Unlink</button>
+          <button class="btn small" disabled={$busy} on:click={() => unlink(a.id)}>{$translateUI('manageTab.unlink')}</button>
         </div>
       {/each}
     </div>
@@ -123,29 +121,27 @@
     <LinkPicker localGames={otherGames} {peerGames} bind:selected={linkTarget} />
     <div class="link-row">
       <button class="btn small primary" disabled={$busy || !linkTarget} on:click={linkGame}>
-        <Link size={13} />{linkTarget ? `Link ${chosenName}` : 'Choose a game above to link'}
+        <Link size={13} />{linkTarget ? $translateUI('manageTab.link', { p0: chosenName }) : $translateUI('manageTab.chooseAGameAboveToLink')}
       </button>
     </div>
     {#if peerGamesLoading}
-      <p class="desc">Checking paired devices…</p>
+      <p class="desc">{$translateUI('manageTab.checkingPairedDevices')}</p>
     {/if}
   {:else if peerGamesLoading}
-    <p class="desc">Checking paired devices…</p>
+    <p class="desc">{$translateUI('manageTab.checkingPairedDevices')}</p>
   {:else}
     <p class="desc">
-      Nothing to link to. Track the other copy on this device, or pair the device that
-      has it and make sure it's online — its games appear here once it answers.
+      {$translateUI('manageTab.nothingToLinkToTrackTheOther')}
     </p>
   {/if}
 </div>
 
 <div class="card" style="margin-top: 16px;">
-  <h3>Stop tracking</h3>
+  <h3>{$translateUI('manageTab.stopTracking')}</h3>
   <p class="desc">
-    Removes "{game.name}" from OpenSave. Your save files and existing snapshot archives on disk are
-    kept.
+    {$translateUI('manageTab.removes')}{game.name}{$translateUI('manageTab.fromOpenSaveYourSaveFilesAnd')}
   </p>
-  <button class="btn danger" disabled={$busy} on:click={untrack}>Stop tracking this game</button>
+  <button class="btn danger" disabled={$busy} on:click={untrack}>{$translateUI('manageTab.stopTrackingThisGame')}</button>
 </div>
 
 <style>

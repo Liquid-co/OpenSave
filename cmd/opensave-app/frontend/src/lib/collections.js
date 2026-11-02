@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Collections in the app: which games are in which, the chips that filter the
 // library by them, and the calls that change them. The daemon keeps them
 // (internal/store/collections.go); the list arrives with the first state and
@@ -62,7 +63,7 @@ export function toggleFavourite(all, game) {
   const on = !isFavourite(all, game.id);
   return call(
     () => api.post(`/api/collections/${FAVOURITES}/games`, { gameId: game.id, in: on }),
-    on ? `${game.name} added to Favourites` : `${game.name} removed from Favourites`
+    on ? tr('collections.addedToFavourites', { p0: game.name }) : tr('collections.removedFromFavourites', { p0: game.name })
   );
 }
 

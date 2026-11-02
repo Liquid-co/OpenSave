@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // This game's snapshots in the cloud backup: restore one, or send up the
   // ones that are only here.
   import { navigate, toast, askConfirm, settings } from '../../lib/stores.js';
@@ -31,16 +32,16 @@
   load();
 
   const restore = async (snap) => {
-    if (!(await askConfirm(`Download and restore cloud snapshot ${snap.snapshotId} over your current save?`, { title: 'Restore from cloud?', confirmText: 'Download & restore' }))) return;
-    return run('Restored from cloud', async () => {
+    if (!(await askConfirm($translateUI('cloudTab.downloadAndRestoreCloudSnapshotOverYour', { p0: snap.snapshotId }), { title: $translateUI('cloudBrowser.restoreFromCloud'), confirmText: $translateUI('cloudTab.downloadRestore') }))) return;
+    return run($translateUI('cloudBrowser.restoredFromCloud'), async () => {
       await api.post(`/api/cloud/restore/${game.id}`, { fileName: snap.name });
     });
   };
 
   const upload = () =>
-    run('Uploaded to cloud', async () => {
+    run($translateUI('cloudTab.uploadedToCloud'), async () => {
       const res = await api.post(`/api/cloud/sync-local/${game.id}`);
-      toast(`Uploaded ${res.uploaded}, skipped ${res.skipped}`, 'success');
+      toast($translateUI('cloudBrowser.uploadedSkipped', { p0: res.uploaded, p1: res.skipped }), 'success');
       await load();
     });
 </script>
@@ -48,33 +49,32 @@
 <div class="card">
   <div class="head">
     <div>
-      <h3 class="with-icon"><Cloud size={18} /> Cloud snapshots for {game.name}</h3>
-      <p class="sub">Snapshots backed up to your configured cloud provider.</p>
+      <h3 class="with-icon"><Cloud size={18} /> {$translateUI('cloudTab.cloudSnapshotsFor')} {game.name}</h3>
+      <p class="sub">{$translateUI('cloudTab.snapshotsBackedUpToYourConfiguredCloud')}</p>
     </div>
     <div class="actions">
-      <button class="btn small" disabled={$busy} on:click={load}><RefreshCw size={13} />Refresh</button>
-      <button class="btn small primary" disabled={$busy} on:click={upload}><Upload size={13} />Upload local snapshots</button>
+      <button class="btn small" disabled={$busy} on:click={load}><RefreshCw size={13} />{$translateUI('cloudTab.refresh')}</button>
+      <button class="btn small primary" disabled={$busy} on:click={upload}><Upload size={13} />{$translateUI('cloudBrowser.uploadLocalSnapshots')}</button>
     </div>
   </div>
 
   {#if loading}
-    <div class="quiet-block"><Spinner size={13} /> Loading cloud snapshots…</div>
+    <div class="quiet-block"><Spinner size={13} /> {$translateUI('cloudTab.loadingCloudSnapshots')}</div>
   {:else if !snaps || snaps.length === 0}
     <div class="quiet-block">
-      <p>No cloud snapshots for this game yet.</p>
+      <p>{$translateUI('cloudBrowser.noCloudSnapshotsForThisGameYet')}</p>
       {#if $settings?.cloudSync?.ready}
-        <p class="hint">New snapshots are copied up as they are taken. “Upload local snapshots” sends the ones from before.</p>
+        <p class="hint">{$translateUI('cloudTab.newSnapshotsAreCopiedUpAsThey')}</p>
       {:else}
         <p class="hint">
-          Set up a provider in <button class="linklike" on:click={() => navigate('cloud')}>Cloud Backup</button>,
-          then use “Upload local snapshots”.
+          {$translateUI('cloudTab.setUpAProviderIn')} <button class="linklike" on:click={() => navigate('cloud')}>{$translateUI('home.cloudBackup')}</button>{$translateUI('cloudTab.thenUseUploadLocalSnapshots')}
         </p>
       {/if}
     </div>
   {:else}
     <table>
       <thead>
-        <tr><th>Branch</th><th>Date</th><th>Size</th><th></th></tr>
+        <tr><th>{$translateUI('cloudTab.branch')}</th><th>{$translateUI('cloudTab.date')}</th><th>{$translateUI('cloudTab.size')}</th><th></th></tr>
       </thead>
       <tbody>
         {#each snaps as snap (snap.name)}
@@ -83,7 +83,7 @@
             <td class="mono">{new Date(snap.createdTime).toLocaleString()}</td>
             <td class="mono">{fmtSize(snap.sizeBytes)}</td>
             <td class="right">
-              <button class="btn small primary" disabled={$busy} on:click={() => restore(snap)}>Restore</button>
+              <button class="btn small primary" disabled={$busy} on:click={() => restore(snap)}>{$translateUI('cloudBrowser.restore')}</button>
             </td>
           </tr>
         {/each}

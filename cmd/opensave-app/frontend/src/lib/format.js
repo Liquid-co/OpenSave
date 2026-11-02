@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Small formatters shared by the views.
 
 import { get } from 'svelte/store';
@@ -22,6 +23,8 @@ export const fmtTime = (t) => (t ? new Date(t).toLocaleString() : '—');
  *  locale's Intl.PluralRules (English one/other; other languages get their
  *  own categories once their views are translated). */
 export const plural = (n, word, many = word + 's') => {
+  const key = 'count.' + word.replaceAll(' ', '.');
+  if (['file', 'snapshot', 'cloud snapshot', 'new game'].includes(word)) return tr(key, { n });
   const category = pluralRulesFor(get(locale)).select(Number(n ?? 0));
   return `${n} ${category === 'one' ? word : many}`;
 };
@@ -31,6 +34,6 @@ export function playLength(ms) {
   const minutes = Math.round((ms ?? 0) / 60000);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h === 0) return `${m} min`;
-  return m ? `${h} h ${m} min` : `${h} h`;
+  if (h === 0) return tr('format.min', { p0: m });
+  return m ? tr('format.hMin', { p0: h, p1: m }) : tr('time.hours', { n: h });
 }

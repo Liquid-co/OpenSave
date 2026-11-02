@@ -5,7 +5,7 @@
   import { navigate } from '../lib/stores.js';
   import { backdropClose } from '../lib/backdrop.js';
   import { DISCORD_URL, GITHUB_URL } from '../lib/links.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
   import logoUrl from '../assets/logo.png';
   import X from 'lucide-svelte/icons/x';
   import ExternalLink from 'lucide-svelte/icons/external-link';
@@ -40,18 +40,18 @@
 <svelte:window on:keydown={onKeydown} />
 
 <div class="backdrop" use:backdropClose={onClose} role="presentation" out:dialogOut|global>
-  <div class="modal" role="dialog" aria-modal="true" aria-label={$t('about.title')}>
-    <button class="btn ghost icon x" on:click={onClose} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={$translateUI('about.title')}>
+    <button class="btn ghost icon x" on:click={onClose} title={$translateUI('common.close')} aria-label={$translateUI('common.close')}><X size={18} /></button>
     <img class="logo" src={logoUrl} alt="" />
     <h2>{info?.name ?? 'OpenSave'}</h2>
     <div class="ver">
-      {$t('about.version', { version: info?.version ?? '—' })}{#if buildLabel}<span class="build">{$t('about.builtAt', { time: buildLabel })}</span>{/if}
+      {$translateUI('about.version', { version: info?.version ?? '—' })}{#if buildLabel}<span class="build">{$translateUI('about.builtAt', { time: buildLabel })}</span>{/if}
     </div>
     <p class="tagline">{info?.tagline ?? ''}</p>
 
     <div class="meta">
-      <div><span>{$t('about.license')}</span> {info?.license ?? 'MIT'}</div>
-      <div><span>{$t('about.builtWith')}</span> {info?.tech ?? 'Go + Wails'}</div>
+      <div><span>{$translateUI('about.license')}</span> {info?.license ?? 'MIT'}</div>
+      <div><span>{$translateUI('about.builtWith')}</span> {info?.tech ?? 'Go + Wails'}</div>
     </div>
 
     <div class="links">
@@ -59,14 +59,14 @@
         <svg viewBox="0 0 24 18" width="16" height="12" fill="currentColor" aria-hidden="true">
           <path d="M20.32 1.53A19.8 19.8 0 0 0 15.43 0c-.21.38-.46.9-.63 1.31a18.3 18.3 0 0 0-5.6 0C9.03.9 8.77.38 8.56 0A19.74 19.74 0 0 0 3.67 1.53C.57 6.19-.27 10.73.15 15.21A19.9 19.9 0 0 0 6.18 18c.49-.66.92-1.37 1.29-2.11-.71-.27-1.39-.6-2.03-.98.17-.13.34-.26.5-.4a14.2 14.2 0 0 0 12.12 0c.16.14.33.27.5.4-.64.38-1.32.71-2.03.98.37.74.8 1.45 1.29 2.11a19.87 19.87 0 0 0 6.03-2.79c.5-5.19-.84-9.69-3.53-13.68ZM8.02 12.46c-1.18 0-2.15-1.08-2.15-2.4s.95-2.4 2.15-2.4c1.2 0 2.17 1.09 2.15 2.4 0 1.32-.95 2.4-2.15 2.4Zm7.96 0c-1.18 0-2.15-1.08-2.15-2.4s.95-2.4 2.15-2.4c1.2 0 2.17 1.09 2.15 2.4 0 1.32-.95 2.4-2.15 2.4Z" />
         </svg>
-        {$t('about.joinDiscord')}
+        {$translateUI('about.joinDiscord')}
       </button>
       <button class="btn small" on:click={() => native.openExternal(GITHUB_URL)}>GitHub<ExternalLink size={13} /></button>
-      <button class="btn small" on:click={openChangelog}><ScrollText size={14} />{$t('about.changelog')}</button>
+      <button class="btn small" on:click={openChangelog}><ScrollText size={14} />{$translateUI('about.changelog')}</button>
     </div>
 
     <p class="copy">{info?.copyright ?? ''}</p>
-    <p class="note">{$t('about.note')}</p>
+    <p class="note">{$translateUI('about.note')}</p>
   </div>
 </div>
 

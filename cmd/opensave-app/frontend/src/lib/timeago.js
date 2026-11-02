@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // A stored moment, said the way a person would: "just now", "4 min ago",
 // "yesterday". The same thresholds as the CLI's timeAgo, so the app and the
 // terminal describe one sync the same way.
@@ -12,20 +13,20 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
 export function timeAgo(iso, now = Date.now()) {
-  if (!iso) return 'never';
+  if (!iso) return tr('time.never');
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return String(iso);
   const d = now - t;
   // A stamp a few seconds in the future is a peer's clock running slightly
   // ahead, not a negative age.
-  if (d < 45 * SEC) return 'just now';
-  if (d < 90 * SEC) return 'a minute ago';
-  if (d < HOUR) return `${Math.round(d / MIN)} min ago`;
-  if (d < 90 * MIN) return 'an hour ago';
-  if (d < DAY) return `${Math.round(d / HOUR)} hours ago`;
-  if (d < 36 * HOUR) return 'yesterday';
-  if (d < 7 * DAY) return `${Math.round(d / DAY)} days ago`;
-  return 'on ' + new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  if (d < 45 * SEC) return tr('scan.justNow');
+  if (d < 90 * SEC) return tr('timeago.aMinuteAgo');
+  if (d < HOUR) return tr('timeago.minAgo', { p0: Math.round(d / MIN) });
+  if (d < 90 * MIN) return tr('timeago.anHourAgo');
+  if (d < DAY) return tr('timeago.hoursAgo', { p0: Math.round(d / HOUR) });
+  if (d < 36 * HOUR) return tr('time.yesterday');
+  if (d < 7 * DAY) return tr('timeago.daysAgo', { p0: Math.round(d / DAY) });
+  return tr('time.onDate', { date: new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) });
 }
 
 // The newest of several stamps, or null when there are none. Used where one

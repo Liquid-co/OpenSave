@@ -1,6 +1,7 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   export let value = '';
-  export let placeholder = 'Filter…';
+  export let placeholder = $translateUI('searchInput.filter');
 </script>
 
 <!-- data-find: what Ctrl+F focuses (see components/Shortcuts.svelte). -->

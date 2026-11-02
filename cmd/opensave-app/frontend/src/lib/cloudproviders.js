@@ -1,11 +1,12 @@
+import { tr } from './i18n.js';
 // The cloud backup providers and the rules for what each card says.
 
 export const providers = [
   { id: 'google_drive', label: 'Google Drive', oauth: true, img: 'cloud/googledrive.png' },
   { id: 'onedrive', label: 'OneDrive', oauth: true, img: 'cloud/onedrive.png' },
   { id: 'dropbox', label: 'Dropbox', oauth: true, img: 'cloud/dropbox.png' },
-  { id: 'local', label: 'Local Folder', oauth: false, icon: 'folder' },
-  { id: 'webdav', label: 'WebDAV Server', oauth: false, icon: 'cloud' },
+  { id: 'local', get label() { return tr('cloudproviders.localFolder'); }, oauth: false, icon: 'folder' },
+  { id: 'webdav', get label() { return tr('cloudproviders.webDAVServer'); }, oauth: false, icon: 'cloud' },
   { id: 'webhook', label: 'HTTP Webhook', oauth: false, icon: 'webhook' }
 ];
 
@@ -36,11 +37,11 @@ export function providerStatus(id, connected, cfg) {
   if (!cfg) return '';
   if (id === connected) {
     const email = cfg.tokens?.userEmail;
-    return isEmail(email) ? email : 'Connected';
+    return isEmail(email) ? email : tr('providerPicker.connected');
   }
-  if (isOAuth(id)) return 'Click to sign in';
-  if (id === cfg.provider && cfg.url) return 'Configured';
-  return 'Not configured';
+  if (isOAuth(id)) return tr('cloudproviders.clickToSignIn');
+  if (id === cfg.provider && cfg.url) return tr('cloudproviders.configured');
+  return tr('cloudproviders.notConfigured');
 }
 
 /** Tracked games and games only in the cloud, one tile each, so the cloud

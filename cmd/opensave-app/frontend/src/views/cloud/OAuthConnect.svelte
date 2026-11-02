@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Signing in to Google Drive, OneDrive or Dropbox — or the account card
   // once signed in. Kept mounted while other cards are looked at, so a
   // sign-in finishing in the browser meanwhile is still caught.
@@ -30,10 +31,10 @@
     cloudAuthEvent.set(null);
     authInProgress = false;
     if (ev.success) {
-      toast(`Connected as ${ev.userEmail}`, 'success');
+      toast($translateUI('oAuthConnect.connectedAs', { p0: ev.userEmail }), 'success');
       reload();
     } else {
-      toast(ev.error ?? 'Sign-in failed', 'error');
+      toast(ev.error ?? $translateUI('oAuthConnect.signInFailed'), 'error');
     }
   });
   onDestroy(unsubAuth);
@@ -46,9 +47,9 @@
       authInProgress = true;
       authAuto = !!res.autoCallback;
       if (authAuto) {
-        toast('Finish signing in — OpenSave connects automatically.');
+        toast($translateUI('oAuthConnect.finishSigningInOpenSaveConnectsAutomatically'));
       } else {
-        toast('Sign in using the browser window, then paste the address it lands on here.');
+        toast($translateUI('oAuthConnect.signInUsingTheBrowserWindowThen'));
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -66,7 +67,7 @@
     busy.set(true);
     try {
       const res = await api.post('/api/auth/callback', { code: authCode.trim() });
-      toast(`Connected as ${res.userEmail}`, 'success');
+      toast($translateUI('oAuthConnect.connectedAs', { p0: res.userEmail }), 'success');
       authInProgress = false;
       authCode = '';
       await reload();
@@ -81,7 +82,7 @@
     busy.set(true);
     try {
       await api.post('/api/auth/disconnect');
-      toast('Disconnected');
+      toast($translateUI('oAuthConnect.disconnected'));
       await reload();
     } catch (e) {
       toast(e.message, 'error');
@@ -96,53 +97,50 @@
     <div class="acct">
       <div class="acct-icon"><ProviderIcon provider={current} size={26} /></div>
       <div class="acct-info">
-        <div class="acct-title">Connected to {current?.label}</div>
+        <div class="acct-title">{$translateUI('oAuthConnect.connectedTo')} {current?.label}</div>
         <div class="acct-sub">
           <span class="acct-dot"></span>
-          {isEmail(config.tokens.userEmail) ? config.tokens.userEmail : 'Signed in — new snapshots upload automatically'}
+          {isEmail(config.tokens.userEmail) ? config.tokens.userEmail : $translateUI('oAuthConnect.signedInNewSnapshotsUploadAutomatically')}
         </div>
       </div>
-      <button class="btn small danger" disabled={$busy} on:click={disconnect}>Disconnect</button>
+      <button class="btn small danger" disabled={$busy} on:click={disconnect}>{$translateUI('oAuthConnect.disconnect')}</button>
     </div>
   {:else}
     {#if connected}
       <p class="quiet" style="margin-bottom: 10px;">
-        You're currently connected to {providerById(connected)?.label} — signing in
-        here will replace that connection.
+        {$translateUI('oAuthConnect.youReCurrentlyConnectedTo')} {providerById(connected)?.label} {$translateUI('oAuthConnect.signingInHereWillReplaceThat')}
       </p>
     {/if}
     {#if !authInProgress}
       <button class="btn primary" disabled={$busy} on:click={startAuth}>
-        Sign in with {current?.label}
+        {$translateUI('oAuthConnect.signInWith')} {current?.label}
       </button>
       {#if config.provider === 'google_drive'}
         <p class="quiet" style="margin-top: 10px;">
-          <TriangleAlert size={14} class="inline-icon warn-icon" />On Google's consent screen, <strong>tick the checkbox</strong> allowing OpenSave to access
-          its own Drive files — without it, uploads fail with "insufficient permissions".
+          <TriangleAlert size={14} class="inline-icon warn-icon" />{$translateUI('oAuthConnect.onGoogleSConsentScreen')} <strong>{$translateUI('oAuthConnect.tickTheCheckbox')}</strong> {$translateUI('oAuthConnect.allowingOpenSaveToAccessItsOwnDrive')}
         </p>
       {/if}
     {:else}
       <div class="waiting">
         <Spinner size={16} />
         <div class="waiting-text">
-          <strong>Waiting for you to finish signing in…</strong>
+          <strong>{$translateUI('oAuthConnect.waitingForYouToFinishSigningIn')}</strong>
           <span class="quiet">
-            {authAuto ? 'Approve access in your browser — OpenSave connects by itself.' : 'Approve access in your browser, then paste below where it lands.'}
+            {authAuto ? $translateUI('oAuthConnect.approveAccessInYourBrowserOpenSave') : $translateUI('oAuthConnect.approveAccessInYourBrowserThenPaste')}
           </span>
         </div>
-        <button class="btn small" on:click={cancelAuth}>Cancel</button>
+        <button class="btn small" on:click={cancelAuth}>{$translateUI('common.cancel')}</button>
       </div>
       <!-- Always shown, not behind a link: when the browser can't reach
            OpenSave it shows an error page with the code in its address bar,
            and this is the only way on from there (GitHub #39). -->
       <div class="code">
         <p class="quiet">
-          {authAuto ? "If your browser shows an error page instead, " : 'After approving access, the browser lands on a localhost page. '}copy
-          the whole address from its address bar and paste it here:
+          {authAuto ? $translateUI('oAuthConnect.ifYourBrowserShowsAnErrorPage') : $translateUI('oAuthConnect.afterApprovingAccessTheBrowserLandsOn')}{$translateUI('oAuthConnect.copyTheWholeAddressFromItsAddress')}
         </p>
         <div class="path-row">
-          <input placeholder="http://localhost/callback?code=…" bind:value={authCode} aria-label="Address or code from the browser" />
-          <button class="btn primary" disabled={!authCode.trim() || $busy} on:click={finishAuth}>Connect</button>
+          <input placeholder="http://localhost/callback?code=…" bind:value={authCode} aria-label="{$translateUI('oAuthConnect.addressOrCodeFromTheBrowser')}" />
+          <button class="btn primary" disabled={!authCode.trim() || $busy} on:click={finishAuth}>{$translateUI('oAuthConnect.connect')}</button>
         </div>
       </div>
     {/if}

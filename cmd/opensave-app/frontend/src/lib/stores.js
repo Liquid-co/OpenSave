@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Central app state, fed by the daemon's init dump + live WS updates.
 import { writable, derived, get } from 'svelte/store';
 import { notifyPrefs } from './notifyprefs.js';
@@ -64,7 +65,7 @@ setInterval(() => {
       if (entry.state === 'running' && age > SYNC_STALE_MS) {
         delete copy[gameId];
         changed = true;
-        toast(`Sync of ${get(games)[gameId]?.name ?? 'a game'} stalled — it will retry automatically`, 'error');
+        toast(tr('stores.syncOfStalledItWillRetry', { p0: get(games)[gameId]?.name ?? 'a game' }), 'error');
       } else if ((entry.state === 'error' || entry.state === 'done') && age > SYNC_ERROR_LINGER_MS) {
         delete copy[gameId];
         changed = true;
@@ -102,10 +103,10 @@ export const confirmRequest = writable(null); // {title, message, confirmText, c
 export function askConfirm(message, opts = {}) {
   return new Promise((resolve) => {
     confirmRequest.set({
-      title: opts.title ?? 'Are you sure?',
+      title: opts.title ?? tr('stores.areYouSure'),
       message,
-      confirmText: opts.confirmText ?? 'Confirm',
-      cancelText: opts.cancelText ?? 'Cancel',
+      confirmText: opts.confirmText ?? tr('stores.confirm'),
+      cancelText: opts.cancelText ?? tr('common.cancel'),
       danger: opts.danger ?? false,
       resolve
     });
@@ -137,11 +138,11 @@ function friendlySyncError(raw) {
   if (!raw) return '';
   const m = String(raw).toLowerCase();
   if (m.includes('no space') || m.includes('not enough space') || m.includes('enospc') || m.includes('disk full'))
-    return 'not enough free storage to save the incoming files';
+    return tr('stores.notEnoughFreeStorageToSaveThe');
   if (m.includes('permission') || m.includes('access is denied') || m.includes('eacces'))
-    return 'the save folder is read-only or locked by another program';
+    return tr('stores.theSaveFolderIsReadOnlyOrLocked');
   if (m.includes('timeout') || m.includes('connection') || m.includes('reset') || m.includes('eof') || m.includes('refused'))
-    return 'the connection to the other device dropped';
+    return tr('stores.theConnectionToTheOtherDeviceDropped');
   // Unknown error: show it, trimmed to something readable.
   return String(raw).slice(0, 160);
 }
@@ -198,10 +199,10 @@ export function applyMessage(msg) {
       // device had and this device had not changed since. Said out loud all
       // the same: a save that changes by itself should say who changed it.
       if (get(notifyPrefs).cloudPulled) {
-        toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
+        toast(tr('stores.broughtSNewerSaveForFrom', { p0: data.deviceName, p1: data.gameName }), 'success');
         toDesktop('cloudPulled', {
           title: data.gameName,
-          body: `Brought ${data.deviceName}'s newer save from the cloud`,
+          body: tr('stores.broughtSNewerSaveFromTheCloud', { p0: data.deviceName }),
           game: get(games)[data.gameId]
         });
       }
@@ -214,7 +215,7 @@ export function applyMessage(msg) {
       activityTick.update((n) => n + 1);
       const said = get(notifyPrefs).arrivals ? arrivalMessage(data, get(games), arrivalShown) : null;
       if (said) {
-        toast(said, 'info', { action: { label: 'Open', run: () => navigate('game', { gameId: data.gameId }) } });
+        toast(said, 'info', { action: { label: tr('common.open'), run: () => navigate('game', { gameId: data.gameId }) } });
         toDesktop('arrivals', arrivalNote(data, get(games)));
       }
       break;
@@ -245,7 +246,7 @@ export function applyMessage(msg) {
       break;
     case 'sync-error': {
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', at: Date.now(), ...data.data } }));
-      const gameName = get(games)[data.gameId]?.name ?? 'a game';
+      const gameName = get(games)[data.gameId]?.name ?? tr('stores.aGame');
       const reason = friendlySyncError(data.data?.error);
       // Every failed sync is queued for automatic retry — reassure the user
       // they don't need to manually re-sync. The retry loop re-fails every
@@ -253,24 +254,24 @@ export function applyMessage(msg) {
       const now = Date.now();
       if (now - (lastSyncErrorToast[data.gameId] ?? 0) > 60_000) {
         lastSyncErrorToast[data.gameId] = now;
-        toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}. OpenSave will retry automatically.`, 'error');
+        toast(tr('stores.syncFailedForOpenSaveWillRetry', { p0: gameName, p1: reason ? ' — ' + reason : '' }), 'error');
       }
       break;
     }
     case 'conflict-resolved': {
-      const gameName = get(games)[data.gameId]?.name ?? 'a game';
+      const gameName = get(games)[data.gameId]?.name ?? tr('stores.aGame');
       if (data.error) {
         toast(
-          `Couldn't apply your choice for “${gameName}” — ${friendlySyncError(data.error)}. The conflict is still open.`,
+          tr('stores.couldnTApplyYourChoiceFor', { p0: gameName, p1: friendlySyncError(data.error) }),
           'error'
         );
       } else {
         toast(
           data.resolution === 'merge-branch'
-            ? `Both versions kept for “${gameName}” — you carry on with yours, and the other device's is on branch "${data.branchName}"`
+            ? tr('stores.bothVersionsKeptForYou', { p0: gameName, p1: data.branchName })
             : data.resolution === 'keep-remote'
-              ? `Now using the other device's version of “${gameName}” — yours is snapshotted if you change your mind`
-              : `Kept this device's version of “${gameName}”`,
+              ? tr('stores.nowUsingTheOtherDeviceSVersionOf', { p0: gameName })
+              : tr('stores.keptThisDeviceSVersionOf', { p0: gameName }),
           'success'
         );
       }
@@ -282,17 +283,17 @@ export function applyMessage(msg) {
       // outcome arrives here rather than at the click. A failure has to be
       // said out loud: the folder stays out of sync until it is answered, and
       // a silent failure looks exactly like a silent success.
-      const name = get(games)[data.gameId]?.name ?? 'a game';
+      const name = get(games)[data.gameId]?.name ?? tr('stores.aGame');
       if (data.error) {
         toast(
-          `Couldn't apply your choice for the “${data.root}” folder of “${name}” — ${friendlySyncError(data.error)}. It's still waiting.`,
+          tr('stores.couldnTApplyYourChoiceForThe', { p0: data.root, p1: name, p2: friendlySyncError(data.error) }),
           'error'
         );
       } else {
         toast(
           data.resolution === 'keep-remote'
-            ? `Now using the other device's “${data.root}” folder for “${name}” — yours is snapshotted if you change your mind`
-            : `Kept this device's “${data.root}” folder for “${name}”`,
+            ? tr('stores.nowUsingTheOtherDeviceSFolder', { p0: data.root, p1: name })
+            : tr('stores.keptThisDeviceSFolderFor', { p0: data.root, p1: name }),
           'success'
         );
       }
@@ -310,7 +311,7 @@ export function applyMessage(msg) {
     case 'app-update':
       appUpdate.set(data ?? null);
       if (data?.state === 'error') {
-        toast(`Update failed — ${data.error}. Nothing was changed; you're still on the current version.`, 'error');
+        toast(tr('stores.updateFailedNothingWasChanged', { p0: data.error }), 'error');
         setTimeout(() => appUpdate.set(null), 500);
       }
       break;
@@ -341,7 +342,7 @@ function applyPeersPayload(data, isInit = false) {
     // initial state dump at app launch (already-connected is not news).
     const connected = !!room?.connected;
     if (connected && !wasWanConnected && !isInit) {
-      toast(`Connected to relay room “${room.roomCode}”`, 'success');
+      toast(tr('stores.connectedToRelayRoom', { p0: room.roomCode }), 'success');
     }
     wasWanConnected = connected;
   }

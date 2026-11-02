@@ -9,7 +9,7 @@
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Plus from 'lucide-svelte/icons/plus';
   import Modal from './ui/Modal.svelte';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
   import ModalFoot from './ui/ModalFoot.svelte';
   import { askConfirm } from '../lib/stores.js';
   import { collectionsDialog } from '../lib/gameactions.js';
@@ -46,14 +46,14 @@
 
   async function remove(c) {
     const n = c.gameIds.length;
-    const body = $t('collections.deleteConfirmBody', { name: c.name }) + ' ' + (n ? $t('collections.deleteConfirmGames', { n }) : $t('collections.deleteConfirmEmpty'));
-    if (!(await askConfirm(body, { title: $t('collections.deleteConfirmTitle'), confirmText: $t('common.delete'), danger: true }))) return;
+    const body = $translateUI('collections.deleteConfirmBody', { name: c.name }) + ' ' + (n ? $translateUI('collections.deleteConfirmGames', { n }) : $translateUI('collections.deleteConfirmEmpty'));
+    if (!(await askConfirm(body, { title: $translateUI('collections.deleteConfirmTitle'), confirmText: $translateUI('common.delete'), danger: true }))) return;
     await deleteCollection(c.id);
   }
 </script>
 
 {#if game}
-  <Modal title={$t('collections.title')} icon={Tags} onClose={close} width={460} height="auto" maxHeight="min(78vh, 620px)">
+  <Modal title={$translateUI('collections.title')} icon={Tags} onClose={close} width={460} height="auto" maxHeight="min(78vh, 620px)">
     <svelte:fragment slot="sub">{game.name}</svelte:fragment>
     <div class="body">
       <ul>
@@ -82,22 +82,22 @@
                 <span class="count">{c.gameIds.length}</span>
               </label>
               {#if !c.builtin}
-                <button class="btn small ghost icon" title={$t('common.rename')} aria-label={$t('collections.renameAria', { name: c.name })} on:click={() => startRename(c)}><Pencil size={13} /></button>
-                <button class="btn small ghost icon" title={$t('common.delete')} aria-label={$t('collections.deleteAria', { name: c.name })} on:click={() => remove(c)}><Trash2 size={13} /></button>
+                <button class="btn small ghost icon" title={$translateUI('common.rename')} aria-label={$translateUI('collections.renameAria', { name: c.name })} on:click={() => startRename(c)}><Pencil size={13} /></button>
+                <button class="btn small ghost icon" title={$translateUI('common.delete')} aria-label={$translateUI('collections.deleteAria', { name: c.name })} on:click={() => remove(c)}><Trash2 size={13} /></button>
               {/if}
             {/if}
           </li>
         {/each}
       </ul>
       <form class="new" on:submit|preventDefault={add}>
-        <input placeholder={$t('collections.newPlaceholder')} maxlength="40" bind:value={newName} />
-        <button class="btn small" type="submit" disabled={!newName.trim()}><Plus size={14} />{$t('common.add')}</button>
+        <input placeholder={$translateUI('collections.newPlaceholder')} maxlength="40" bind:value={newName} />
+        <button class="btn small" type="submit" disabled={!newName.trim()}><Plus size={14} />{$translateUI('common.add')}</button>
       </form>
-      <p class="hint">{$t('collections.hint')}</p>
+      <p class="hint">{$translateUI('collections.hint')}</p>
     </div>
     <ModalFoot>
       <span></span>
-      <button class="btn primary" on:click={close}>{$t('common.done')}</button>
+      <button class="btn primary" on:click={close}>{$translateUI('common.done')}</button>
     </ModalFoot>
   </Modal>
 {/if}

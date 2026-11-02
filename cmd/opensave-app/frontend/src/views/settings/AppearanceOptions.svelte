@@ -25,26 +25,26 @@
   </label>
 
   <div class="group">
-    <span class="label" id="ap-theme">Theme</span>
+    <span class="label" id="ap-theme">{$t('appearanceOptions.theme')}</span>
     <div class="segmented" role="radiogroup" aria-labelledby="ap-theme" use:slidingIndicator={{ mode: 'fill' }}>
       {#each Object.entries(THEMES) as [id, label]}
         <button role="radio" aria-checked={$appearance.theme === id} class:on={$appearance.theme === id} on:click={() => set({ theme: id })}>
-          <svelte:component this={themeIcons[id]} size={14} />{label}
+          <svelte:component this={themeIcons[id]} size={14} />{$t('appearance.theme.' + id)}
         </button>
       {/each}
     </div>
   </div>
 
   <div class="group">
-    <span class="label" id="ap-accent">Accent colour</span>
+    <span class="label" id="ap-accent">{$t('appearanceOptions.accentColour')}</span>
     <div class="swatches" role="radiogroup" aria-labelledby="ap-accent">
       {#each Object.entries(ACCENTS) as [id, a]}
         <button
           class="swatch"
           role="radio"
           aria-checked={$appearance.accent === id}
-          aria-label={a.label}
-          title={a.label}
+          aria-label={$t('appearance.accent.' + id)}
+          title={$t('appearance.accent.' + id)}
           style="--swatch: {a.hex}; --swatch-on: {onAccent(a.hex)}"
           on:click={() => set({ accent: id })}
         >
@@ -55,10 +55,10 @@
   </div>
 
   <label class="group">
-    <span class="label">Size</span>
+    <span class="label">{$t('cloudTab.size')}</span>
     <select value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
       {#each SCALES as s}
-        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ' (default)' : ''}</option>
+        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? $t('appearanceOptions.default') : ''}</option>
       {/each}
     </select>
   </label>
@@ -66,12 +66,12 @@
 
 <label class="check motion">
   <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
-  Animations
+  {$t('appearanceOptions.animations')}
 </label>
 <p class="hint">
-  Small movements as pages, dialogs and your library come into view, and as you point at a game.
+  {$t('appearanceOptions.smallMovementsAsPagesDialogsAndYour')}
   {#if $systemReducesMotion}
-    Off for now whatever this says: Windows is asking apps to reduce motion.
+    {$t('appearanceOptions.offForNowWhateverThisSaysWindows')}
   {/if}
 </p>
 

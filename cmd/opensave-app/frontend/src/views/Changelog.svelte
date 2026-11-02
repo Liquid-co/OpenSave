@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../lib/i18n.js';
   import { onMount } from 'svelte';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import { native } from '../lib/api.js';
@@ -24,12 +25,12 @@
 <div class="page">
   <header class="head">
     <div>
-      <h1>Changelog</h1>
-      <p class="sub">Everything that's changed, newest first.</p>
+      <h1>{$translateUI('about.changelog')}</h1>
+      <p class="sub">{$translateUI('changelog.everythingThatSChangedNewestFirst')}</p>
     </div>
     {#if current}
-      <div class="running" title="The version you're running">
-        <span>Running</span>
+      <div class="running" title="{$translateUI('changelog.theVersionYouReRunning')}">
+        <span>{$translateUI('changelog.running')}</span>
         {current}
       </div>
     {/if}

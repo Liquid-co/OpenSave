@@ -4,7 +4,7 @@
   import { onDestroy, onMount } from 'svelte';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import { dragging, listenForDrops } from '../lib/filedrop.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   let stop = () => {};
   onMount(() => (stop = listenForDrops()));
@@ -41,8 +41,8 @@
   <div class="drop">
     <div class="box">
       <FolderPlus size={34} strokeWidth={1.6} />
-      <strong>{$t('drop.title')}</strong>
-      <span>{$t('drop.hint')}</span>
+      <strong>{$translateUI('drop.title')}</strong>
+      <span>{$translateUI('drop.hint')}</span>
     </div>
   </div>
 {/if}

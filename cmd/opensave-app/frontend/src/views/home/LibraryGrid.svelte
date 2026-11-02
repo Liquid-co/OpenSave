@@ -12,7 +12,7 @@
   // once (e.g. clear a batch of wrongly-tracked entries) without going in and
   // out of each one.
   import { navigate, toast } from '../../lib/stores.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
   import { api } from '../../lib/api.js';
   import Camera from 'lucide-svelte/icons/camera';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -39,12 +39,12 @@
   let query = '';
   let status = 'all';
 
-  $: filters = offeredFilters(rows);
+  $: filters = ($translateUI, offeredFilters(rows));
   // A filter chosen while it made sense stays chosen only while it still does.
   $: if (status !== 'all' && !filters.some((f) => f.id === status)) status = 'all';
   // Collections narrow the list the same way the status chips do, and the
   // two combine: Favourites that need attention.
-  $: chips = collectionChips($collections, rows);
+  $: chips = ($translateUI, collectionChips($collections, rows));
   $: if ($collectionFilter && !$collections.some((c) => c.id === $collectionFilter)) collectionFilter.set('');
   $: shown = sortRows(filterRows(inCollection(rows, $collections, $collectionFilter), { query, status }), $libraryView.sort, $libraryView.reverse);
   $: filtering = query.trim() !== '' || status !== 'all' || !!$collectionFilter;
@@ -147,14 +147,14 @@
     }
     bulkBusy = false;
     const done = games.length - failed.length;
-    if (failed.length) toast($t('home.library.bulkPartial', { verb, done, total: games.length, failed: failed.join('; ') }), 'error');
-    else toast($t('home.library.bulkDone', { verb, n: done }), 'success');
+    if (failed.length) toast($translateUI('home.library.bulkPartial', { verb, done, total: games.length, failed: failed.join('; ') }), 'error');
+    else toast($translateUI('home.library.bulkDone', { verb, n: done }), 'success');
   }
   const snapshotPicked = () =>
-    forEachPicked($t('home.library.verbSnapshot'), (g) => api.post(`/api/games/${g.id}/snapshot`, { comment: '' }));
-  const syncPicked = () => forEachPicked($t('home.library.verbSync'), (g) => api.post(`/api/games/${g.id}/sync`, {}));
+    forEachPicked($translateUI('home.library.verbSnapshot'), (g) => api.post(`/api/games/${g.id}/snapshot`, { comment: '' }));
+  const syncPicked = () => forEachPicked($translateUI('home.library.verbSync'), (g) => api.post(`/api/games/${g.id}/sync`, {}));
   const favouritePicked = () =>
-    forEachPicked($t('home.library.verbFavourite'), (g) => api.post('/api/collections/favourites/games', { gameId: g.id, in: true }));
+    forEachPicked($translateUI('home.library.verbFavourite'), (g) => api.post('/api/collections/favourites/games', { gameId: g.id, in: true }));
   // "All" is what is on screen: selecting games a filter is hiding, to then
   // untrack them, would act on things nobody was looking at.
   $: allSelected = shown.length > 0 && shown.every((r) => libSelected.has(r.game.id));
@@ -178,80 +178,80 @@
 />
 
 <div class="toolbar">
-  <h3>{$t('home.library.title')}</h3>
+  <h3>{$translateUI('home.library.title')}</h3>
   <input
     class="search"
     type="search"
     data-find
-    placeholder={$t('home.library.searchPlaceholder')}
+    placeholder={$translateUI('home.library.searchPlaceholder')}
     bind:value={query}
-    aria-label={$t('home.library.searchLabel')}
+    aria-label={$translateUI('home.library.searchLabel')}
   />
   <div class="spacer"></div>
   {#if selectMode}
-    <span class="select-count">{$t('home.library.selectedCount', { n: libSelected.size })}</span>
+    <span class="select-count">{$translateUI('home.library.selectedCount', { n: libSelected.size })}</span>
     <button class="btn small" on:click={toggleSelectAll}>
-      {allSelected ? $t('home.library.unselectAll') : $t('home.library.selectAll', { count: shown.length })}
+      {allSelected ? $translateUI('home.library.unselectAll') : $translateUI('home.library.selectAll', { count: shown.length })}
     </button>
     <button
       class="btn small"
       disabled={libSelected.size === 0 || bulkBusy}
       on:click={snapshotPicked}
-      title={$t('home.library.snapshotTitle')}
+      title={$translateUI('home.library.snapshotTitle')}
     >
-      <Camera size={14} />{$t('home.library.snapshot')}
+      <Camera size={14} />{$translateUI('home.library.snapshot')}
     </button>
     <button
       class="btn small"
       disabled={libSelected.size === 0 || bulkBusy}
       on:click={syncPicked}
-      title={$t('home.library.syncTitle')}
+      title={$translateUI('home.library.syncTitle')}
     >
-      <RefreshCw size={14} />{$t('home.library.sync')}
+      <RefreshCw size={14} />{$translateUI('home.library.sync')}
     </button>
     <button
       class="btn small"
       disabled={libSelected.size === 0 || bulkBusy}
       on:click={favouritePicked}
-      title={$t('home.library.favouriteTitle')}
+      title={$translateUI('home.library.favouriteTitle')}
     >
-      <Star size={14} />{$t('home.library.favourite')}
+      <Star size={14} />{$translateUI('home.library.favourite')}
     </button>
     <button class="btn small danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
-      {$t('home.library.untrackSelected')}
+      {$translateUI('home.library.untrackSelected')}
     </button>
-    <button class="btn small" on:click={stopSelecting}>{$t('common.cancel')}</button>
+    <button class="btn small" on:click={stopSelecting}>{$translateUI('common.cancel')}</button>
   {:else}
     <label class="sort">
-      <span>{$t('home.library.sort')}</span>
+      <span>{$translateUI('home.library.sort')}</span>
       <select bind:value={$libraryView.sort}>
         {#each Object.entries(SORTS) as [id, s]}
-          <option value={id}>{s.label}</option>
+          <option value={id}>{($translateUI, s.label)}</option>
         {/each}
       </select>
     </label>
     <button
       class="btn small icon order"
       on:click={() => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))}
-      title={$libraryView.reverse ? $t('home.library.reversedTitle') : $t('home.library.reverseTitle')}
-      aria-label={$t('home.library.reverseTitle')}
+      title={$libraryView.reverse ? $translateUI('home.library.reversedTitle') : $translateUI('home.library.reverseTitle')}
+      aria-label={$translateUI('home.library.reverseTitle')}
       aria-pressed={$libraryView.reverse}
     >
       <svelte:component this={$libraryView.reverse ? ArrowUpNarrowWide : ArrowDownWideNarrow} size={15} />
     </button>
     <div class="view-anchor">
       <button class="btn small" class:active={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
-        <LayoutGrid size={14} />{$t('home.library.view')}
+        <LayoutGrid size={14} />{$translateUI('home.library.view')}
       </button>
       {#if viewOpen}
         <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
-        <div class="view-panel card" role="dialog" aria-label={$t('home.library.viewLabel')}>
+        <div class="view-panel card" role="dialog" aria-label={$translateUI('home.library.viewLabel')}>
           <LibraryViewOptions />
-          <p class="view-hint">{$t('home.library.viewHint')}</p>
+          <p class="view-hint">{$translateUI('home.library.viewHint')}</p>
         </div>
       {/if}
     </div>
-    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />{$t('home.library.select')}</button>
+    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />{$translateUI('home.library.select')}</button>
   {/if}
 </div>
 
@@ -262,10 +262,10 @@
     {/if}
     {#if chips.length}
       {#if filters.length > 1}<span class="chip-sep" aria-hidden="true"></span>{/if}
-      <div class="collection-chips" role="group" aria-label={$t('home.library.collectionsLabel')}>
+      <div class="collection-chips" role="group" aria-label={$translateUI('home.library.collectionsLabel')}>
         {#each chips as c}
           <button class="collection-chip" class:active={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
-            {#if c.builtin}<Star size={12} />{/if}{c.label}<span class="count">{c.count}</span>
+            {#if c.builtin}<Star size={12} />{/if}{($translateUI, c.label)}<span class="count">{c.count}</span>
           </button>
         {/each}
       </div>
@@ -276,11 +276,11 @@
 {#if shown.length === 0}
   <div class="none">
     {#if query.trim()}
-      <p>{$t('home.library.emptyFor', { query: query.trim() })}</p>
+      <p>{$translateUI('home.library.emptyFor', { query: query.trim() })}</p>
     {:else}
-      <p>{$t('home.library.empty')}</p>
+      <p>{$translateUI('home.library.empty')}</p>
     {/if}
-    <button class="btn small" on:click={clearFilters}>{$t('home.library.clearFilters')}</button>
+    <button class="btn small" on:click={clearFilters}>{$translateUI('home.library.clearFilters')}</button>
   </div>
 {:else}
   <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}" on:keydown={gridKeys} role="presentation">
@@ -299,8 +299,8 @@
   </div>
   {#if filtering}
     <p class="showing">
-      {$t('home.library.showing', { shown: shown.length, total: rows.length })}
-      <button class="linklike" on:click={clearFilters}>{$t('home.library.showAll')}</button>
+      {$translateUI('home.library.showing', { shown: shown.length, total: rows.length })}
+      <button class="linklike" on:click={clearFilters}>{$translateUI('home.library.showAll')}</button>
     </p>
   {/if}
 {/if}

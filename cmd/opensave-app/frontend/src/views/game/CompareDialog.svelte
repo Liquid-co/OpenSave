@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Two snapshots of a game side by side: which files one has that the other
   // does not, and which both have in different versions. Read from the
   // archives' own lists, so it is instant (see snapshot/compare.go).
@@ -46,18 +47,18 @@
     c.change === 'changed' ? `${fmtSize(c.fromSize)} → ${fmtSize(c.toSize)}` : fmtSize(c.change === 'added' ? c.toSize : c.fromSize);
 </script>
 
-<Modal title="Compare snapshots" icon={GitCompareArrows} {onClose} width={640} height="auto" maxHeight="min(80vh, 680px)">
+<Modal title="{$translateUI('compareDialog.compareSnapshots')}" icon={GitCompareArrows} {onClose} width={640} height="auto" maxHeight="min(80vh, 680px)">
   <svelte:fragment slot="sub">{game.name}</svelte:fragment>
   <div class="body">
     <div class="pick">
       <label class="field">
-        <span>From</span>
+        <span>{$translateUI('compareDialog.from')}</span>
         <select bind:value={from}>
           {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
         </select>
       </label>
       <label class="field">
-        <span>To</span>
+        <span>{$translateUI('compareDialog.to')}</span>
         <select bind:value={to}>
           {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
         </select>
@@ -65,14 +66,14 @@
     </div>
 
     {#if error}
-      <p class="quiet">Couldn't compare them: {error}</p>
+      <p class="quiet">{$translateUI('compareDialog.couldnTCompareThem')} {error}</p>
     {:else if !result}
-      <p class="quiet"><Spinner size={13} /> Comparing…</p>
+      <p class="quiet"><Spinner size={13} /> {$translateUI('compareDialog.comparing')}</p>
     {:else if result.changes.length === 0}
-      <p class="quiet">{from === to ? 'The same snapshot.' : `No difference: the same ${result.unchanged} file${result.unchanged === 1 ? '' : 's'} in both.`}</p>
+      <p class="quiet">{from === to ? $translateUI('compareDialog.theSameSnapshot') : $translateUI('compareDialog.noDifferenceTheSameFileInBoth', { p0: result.unchanged, p1: result.unchanged === 1 ? '' : 's' })}</p>
     {:else}
       <p class="count" class:stale={loading}>
-        {result.changes.length} file{result.changes.length === 1 ? '' : 's'} differ{result.changes.length === 1 ? 's' : ''}{#if result.unchanged}, {result.unchanged} the same{/if}
+        {result.changes.length} {$translateUI('compareDialog.file')}{result.changes.length === 1 ? '' : 's'} {$translateUI('compareDialog.differ')}{result.changes.length === 1 ? 's' : ''}{#if result.unchanged}, {result.unchanged} {$translateUI('compareDialog.theSame')}{/if}
       </p>
       <ul class:stale={loading}>
         {#each result.changes as c (c.location + '/' + c.path)}

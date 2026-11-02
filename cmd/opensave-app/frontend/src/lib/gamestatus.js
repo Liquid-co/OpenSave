@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // One line per game saying where its save stands, for the library and the
 // summary above it. The order is the order a person needs to hear things in:
 // something waiting on them first, then something happening now, then how
@@ -23,38 +24,37 @@ export function gameStatus(game, { peers = {}, activity, conflicted = false, now
   // move — no snapshot, no sync, no decision taken.
   // …unless the whole drive is absent here: the game's saves live on another
   // device's D:\ or E:\, and there is nothing on this one to worry about.
-  if (game.savePathMissing && game.saveDriveMissing) return { state: 'elsewhere', label: 'Not on this device', tone: 'muted' };
-  if (game.savePathMissing) return { state: 'missing', label: 'Save folder missing', tone: 'warn' };
+  if (game.savePathMissing && game.saveDriveMissing) return { state: 'elsewhere', label: tr('gamestatus.notOnThisDevice'), tone: 'muted' };
+  if (game.savePathMissing) return { state: 'missing', label: tr('gamestatus.saveFolderMissing'), tone: 'warn' };
   // Every save file deleted here at once, held back from the other devices
   // until someone says whether that was meant (lib/emptied.js).
-  if (game.emptied?.state === 'held') return { state: 'emptied', label: 'Files deleted — needs a decision', tone: 'warn' };
-  if (game.emptied?.state === 'fetching') return { state: 'restoring', label: 'Putting files back', tone: 'busy' };
-  if (conflicted) return { state: 'conflict', label: 'Needs a decision', tone: 'warn' };
+  if (game.emptied?.state === 'held') return { state: 'emptied', label: tr('gamestatus.filesDeletedNeedsADecision'), tone: 'warn' };
+  if (game.emptied?.state === 'fetching') return { state: 'restoring', label: tr('gamestatus.puttingFilesBack'), tone: 'busy' };
+  if (conflicted) return { state: 'conflict', label: tr('gamestatus.needsADecision'), tone: 'warn' };
   // Being played here now (see daemon/sessions.go): what matters most about
   // it while it lasts; its save is kept as the session leaves it. Its own
   // tone, green, and never the spinning "busy" one — nothing is syncing.
   if (game.playingSince) return { state: 'playing', label: sessionLabel(game.playingSince, now), tone: 'playing' };
   if (activity?.state === 'running') {
-    return { state: 'syncing', label: `Syncing ${activity.percentage ?? 0}%`, tone: 'busy' };
+    return { state: 'syncing', label: tr('gamestatus.syncing', { p0: activity.percentage ?? 0 }), tone: 'busy' };
   }
-  if (activity?.state === 'error') return { state: 'error', label: 'Last sync failed', tone: 'warn' };
-  if (game.autoSync === false) return { state: 'paused', label: 'Auto-sync off', tone: 'muted' };
+  if (activity?.state === 'error') return { state: 'error', label: tr('gamestatus.lastSyncFailed'), tone: 'warn' };
+  if (game.autoSync === false) return { state: 'paused', label: tr('gamestatus.autoSyncOff'), tone: 'muted' };
 
   if (Object.keys(peers).length > 0) {
     const paired = Object.fromEntries(Object.entries(game.lastSyncedWith ?? {}).filter(([id]) => id in peers));
     const at = latestOf(paired);
     return at
-      ? { state: 'synced', label: `Synced ${timeAgo(at, now)}`, tone: 'ok' }
-      : { state: 'unsynced', label: 'Not synced yet', tone: 'muted' };
+      ? { state: 'synced', label: tr('gamestatus.synced', { p0: timeAgo(at, now) }), tone: 'ok' }
+      : { state: 'unsynced', label: tr('gamestatus.notSyncedYet'), tone: 'muted' };
   }
 
   const snap = latestSnapshotAt(game);
   return snap
-    ? { state: 'local', label: `Snapshot ${timeAgo(snap, now)}`, tone: 'ok' }
-    : { state: 'empty', label: 'No snapshots yet', tone: 'muted' };
+    ? { state: 'local', label: tr('gamestatus.snapshot', { p0: timeAgo(snap, now) }), tone: 'ok' }
+    : { state: 'empty', label: tr('snapshotsTab.noSnapshotsYet'), tone: 'muted' };
 }
 
-const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
 /**
  * The one sentence above the library: the most pressing thing about all of
@@ -85,8 +85,8 @@ export function librarySummary(rows) {
       tone: 'warn',
       headline:
         missing.length === 1
-          ? `${missing[0].game.name}'s save folder is missing`
-          : `${missing.length} games' save folders are missing`
+          ? tr('gamestatus.sSaveFolderIsMissing', { p0: missing[0].game.name })
+          : tr('gamestatus.gamesSaveFoldersAreMissing', { p0: missing.length })
     };
   }
   if (emptied.length > 0) {
@@ -94,8 +94,8 @@ export function librarySummary(rows) {
       tone: 'warn',
       headline:
         emptied.length === 1
-          ? `${emptied[0].game.name}'s save files were all deleted here`
-          : `${emptied.length} games' save files were all deleted here`
+          ? tr('gamestatus.sSaveFilesWereAllDeletedHere', { p0: emptied[0].game.name })
+          : tr('gamestatus.gamesSaveFilesWereAllDeleted', { p0: emptied.length })
     };
   }
   if (conflict.length > 0) {
@@ -103,14 +103,14 @@ export function librarySummary(rows) {
       tone: 'warn',
       headline:
         conflict.length === 1
-          ? `${conflict[0].game.name} needs a decision`
-          : `${n(conflict.length, 'game needs', 'games need')} a decision`
+          ? tr('gamestatus.needsADecisionLabel', { p0: conflict[0].game.name })
+          : tr('summary.decisions', { n: conflict.length })
     };
   }
   if (syncing.length > 0) {
     return {
       tone: 'busy',
-      headline: syncing.length === 1 ? `Syncing ${syncing[0].game.name}…` : `Syncing ${syncing.length} games…`
+      headline: syncing.length === 1 ? tr('gamestatus.syncingLabel', { p0: syncing[0].game.name }) : tr('gamestatus.syncingGames', { p0: syncing.length })
     };
   }
   if (failed.length > 0) {
@@ -118,8 +118,8 @@ export function librarySummary(rows) {
       tone: 'warn',
       headline:
         failed.length === 1
-          ? `The last sync of ${failed[0].game.name} failed — it will try again`
-          : `${failed.length} syncs failed — they will try again`
+          ? tr('gamestatus.theLastSyncOfFailedIt', { p0: failed[0].game.name })
+          : tr('gamestatus.syncsFailedTheyWillTry', { p0: failed.length })
     };
   }
   if (damaged.length > 0) {
@@ -127,25 +127,25 @@ export function librarySummary(rows) {
       tone: 'warn',
       headline:
         damaged.length === 1
-          ? `A snapshot of ${damaged[0].name} can't be restored`
-          : `${damaged.length} snapshots can't be restored`
+          ? tr('gamestatus.aSnapshotOfCanTBeRestored', { p0: damaged[0].name })
+          : tr('gamestatus.snapshotsCanTBeRestored', { p0: damaged.length })
     };
   }
   if (empty.length > 0) {
     return {
       tone: 'muted',
-      headline: `${n(empty.length, 'game has', 'games have')} no snapshot yet`
+      headline: tr('summary.empty', { n: empty.length })
     };
   }
   if (paused.length > 0) {
     return {
       tone: 'muted',
-      headline: `Auto-sync is off for ${n(paused.length, 'game', 'games')}`
+      headline: tr('summary.paused', { n: paused.length, unit: paused.length === 1 ? 'game' : 'games' })
     };
   }
   return {
     tone: 'ok',
-    headline: rows.length === 1 ? 'Your game is backed up' : `All ${rows.length} games are backed up`
+    headline: rows.length === 1 ? tr('gamestatus.yourGameIsBackedUp') : tr('gamestatus.allGamesAreBackedUp', { p0: rows.length })
   };
 }
 
@@ -188,33 +188,33 @@ const URGENCY = { missing: 0, emptied: 1, conflict: 2, error: 3, syncing: 4, res
  * any of them around.
  */
 export const SORTS = {
-  name: { label: 'Name', compare: byName },
+  name: { get label() { return tr('home.addGame.name'); }, compare: byName },
   // The newest snapshot is the last time OpenSave saw the save change.
-  recent: { label: 'Recently changed', compare: descending((r) => stamp(latestSnapshotAt(r.game))) },
+  recent: { get label() { return tr('gamestatus.recentlyChanged'); }, compare: descending((r) => stamp(latestSnapshotAt(r.game))) },
   synced: {
-    label: 'Recently synced',
+    get label() { return tr('gamestatus.recentlySynced'); },
     compare: descending((r) => {
       const times = Object.values(r.game.lastSyncedWith ?? {}).map(stamp).filter((t) => t !== null);
       return times.length ? Math.max(...times) : null;
     })
   },
   attention: {
-    label: 'Needs attention first',
+    get label() { return tr('gamestatus.needsAttentionFirst'); },
     compare: (a, b) => {
       const x = URGENCY[a.status?.state] ?? 9;
       const y = URGENCY[b.status?.state] ?? 9;
       return x === y ? byName(a, b) : x - y;
     }
   },
-  snapshots: { label: 'Most snapshots', compare: descending((r) => snapshotsOf(r.game).length) },
+  snapshots: { get label() { return tr('gamestatus.mostSnapshots'); }, compare: descending((r) => snapshotsOf(r.game).length) },
   size: {
-    label: 'Most space',
+    get label() { return tr('gamestatus.mostSpace'); },
     compare: descending((r) => snapshotsOf(r.game).reduce((n, s) => n + (Number(s.sizeBytes) || 0), 0))
   },
-  added: { label: 'Recently added', compare: descending((r) => stamp(r.game.createdAt)) },
+  added: { get label() { return tr('gamestatus.recentlyAdded'); }, compare: descending((r) => stamp(r.game.createdAt)) },
   // A game being played now first, then by when it was last played.
   played: {
-    label: 'Recently played',
+    get label() { return tr('gamestatus.recentlyPlayed'); },
     compare: descending((r) => (r.game.playingSince ? Infinity : stamp(r.game.lastPlayedAt || null)))
   }
 };
@@ -229,5 +229,5 @@ export function sortRows(rows, sort, reverse = false) {
 /** "In session", and for how long once it is a minute or more. */
 export function sessionLabel(since, now = Date.now()) {
   const ms = now - Date.parse(since);
-  return Number.isFinite(ms) && ms >= 60_000 ? `In session for ${playLength(ms)}` : 'In session';
+  return Number.isFinite(ms) && ms >= 60_000 ? tr('gamestatus.inSessionFor', { p0: playLength(ms) }) : tr('sidebar.inSession');
 }

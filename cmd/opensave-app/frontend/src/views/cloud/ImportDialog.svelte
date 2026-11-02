@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Import a .sscb backup. "snapshots" (the default) never touches live
   // files; "overwrite" restores every save in the file onto disk — the daemon
   // takes safety copies of anything it replaces. Fires `close`.
@@ -32,13 +33,13 @@
     try {
       const res = await api.post('/api/backup/restore', { sourcePath: source, mode });
       if (res.legacy) {
-        toast(`Imported ${plural(res.imported, 'snapshot')}, skipped ${res.skipped}`, 'success');
+        toast($translateUI('importDialog.importedSkipped', { p0: plural(res.imported, 'snapshot'), p1: res.skipped }), 'success');
       } else {
         const bits = [];
-        if (res.restored) bits.push(`${res.restored} restored`);
-        if (res.snapshots) bits.push(`${res.snapshots} added to snapshots`);
-        if (res.skipped) bits.push(`${res.skipped} skipped`);
-        toast(`Import finished: ${bits.join(', ') || 'nothing imported'} — details in Activity`, res.skipped ? 'info' : 'success');
+        if (res.restored) bits.push($translateUI('importDialog.restored', { p0: res.restored }));
+        if (res.snapshots) bits.push($translateUI('importDialog.addedToSnapshots', { p0: res.snapshots }));
+        if (res.skipped) bits.push($translateUI('importDialog.skipped', { p0: res.skipped }));
+        toast($translateUI('importDialog.importFinishedDetailsInActivity', { p0: bits.join(', ') || $translateUI('importDialog.nothingImported') }), res.skipped ? 'info' : 'success');
       }
       close();
     } catch (e) {
@@ -51,30 +52,25 @@
 
 <!-- Two choices and a footer don't need the full browser-modal height —
      sized to content so the dialog doesn't look hollow. -->
-<Modal title="Import backup" icon={PackageOpen} onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
+<Modal title="{$translateUI('importDialog.importBackup')}" icon={PackageOpen} onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
   <svelte:fragment slot="sub"><code>{source}</code></svelte:fragment>
 
   <div class="modes">
     <label class="mode" class:selected={mode === 'snapshots'}>
       <input type="radio" bind:group={mode} value="snapshots" />
       <div>
-        <div class="mode-title">Add to snapshots <span class="badge online">recommended</span></div>
+        <div class="mode-title">{$translateUI('importDialog.addToSnapshots')} <span class="badge online">{$translateUI('importDialog.recommended')}</span></div>
         <p class="quiet">
-          Each save in the file is added to its game's snapshot history. Nothing on disk
-          changes — restore individual games whenever you choose. Games not tracked on this
-          machine are reported in Activity and skipped.
+          {$translateUI('importDialog.eachSaveInTheFileIsAdded')}
         </p>
       </div>
     </label>
     <label class="mode danger-mode" class:selected={mode === 'overwrite'}>
       <input type="radio" bind:group={mode} value="overwrite" />
       <div>
-        <div class="mode-title">Overwrite current saves</div>
+        <div class="mode-title">{$translateUI('importDialog.overwriteCurrentSaves')}</div>
         <p class="quiet">
-          Every save in the file is written to its location on this machine — tracked games to
-          their tracked folder, others to the path recorded in the backup. A safety copy of
-          whatever is there now is taken first. Check Activity afterwards for exactly what was
-          restored where.
+          {$translateUI('importDialog.everySaveInTheFileIsWritten')}
         </p>
       </div>
     </label>
@@ -82,16 +78,16 @@
 
   {#if importing && prog}
     <ProgressBar done={prog.done} total={prog.total}>
-      Importing {Math.min(prog.done + 1, prog.total)} of {prog.total}
+      {$translateUI('importDialog.importing')} {Math.min(prog.done + 1, prog.total)} {$translateUI('cloudBrowser.of')} {prog.total}
       {#if prog.current}&nbsp;— <code>{prog.current}</code>{/if}
     </ProgressBar>
   {/if}
   <ModalFoot>
-    <span class="quiet">Nothing is ever overwritten without a safety copy.</span>
+    <span class="quiet">{$translateUI('importDialog.nothingIsEverOverwrittenWithoutASafety')}</span>
     <div class="actions">
-      <button class="btn" disabled={importing} on:click={close}>Cancel</button>
+      <button class="btn" disabled={importing} on:click={close}>{$translateUI('common.cancel')}</button>
       <button class="btn {mode === 'overwrite' ? 'danger' : 'primary'}" disabled={importing} on:click={run}>
-        {importing ? 'Importing…' : mode === 'overwrite' ? 'Overwrite saves' : 'Add to snapshots'}
+        {importing ? $translateUI('importDialog.importingMessage') : mode === 'overwrite' ? $translateUI('importDialog.overwriteSaves') : $translateUI('importDialog.addToSnapshots')}
       </button>
     </div>
   </ModalFoot>

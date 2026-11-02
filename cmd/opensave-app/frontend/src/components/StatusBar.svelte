@@ -12,7 +12,7 @@
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
   import { paletteOpen } from '../lib/shortcuts.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   const modKey = /Mac/i.test(globalThis.navigator?.platform ?? '') ? '⌘' : 'Ctrl';
 
@@ -35,7 +35,7 @@
   const pauseMenu = (e) =>
     openMenu(
       e,
-      PAUSE_CHOICES.map((c) => ({ label: `Pause syncing ${c.label}`, icon: Pause, run: () => pauseSync(c.minutes) }))
+      PAUSE_CHOICES.map((c) => ({ label: $translateUI('statusBar.pauseSyncing', { p0: c.label }), icon: Pause, run: () => pauseSync(c.minutes) }))
     );
 
   $: running = Object.entries($syncActivity).filter(([, s]) => s.state === 'running');
@@ -60,38 +60,38 @@
 <footer>
   <div class="left">
     {#if lost}
-      <span class="offline" title={$t('statusBar.reconnectingTitle')}>{$t('statusBar.reconnecting')}</span>
+      <span class="offline" title={$translateUI('statusBar.reconnectingTitle')}>{$translateUI('statusBar.reconnecting')}</span>
     {:else if $syncPause.paused}
-      <span class="paused" title="Syncing is paused {pauseLength($syncPause, now)}. Snapshots are still taken.">
-        Syncing paused · {pauseShort($syncPause, now)}
+      <span class="paused" title="{$translateUI('home.syncPaused')} {pauseLength($syncPause, now)}{$translateUI('statusBar.snapshotsAreStillTaken')}">
+        {$translateUI('statusBar.syncingPaused')} {pauseShort($syncPause, now)}
       </span>
-      <button class="bar-btn" on:click={resumeSync} title={$t('statusBar.resumeTitle')}><Play size={11} />{$t('statusBar.resume')}</button>
+      <button class="bar-btn" on:click={resumeSync} title={$translateUI('statusBar.resumeTitle')}><Play size={11} />{$translateUI('statusBar.resume')}</button>
     {:else}
-      {#if running.length}<span>{$t('statusBar.syncing', { n: running.length })}</span>{:else}<span>{$t('statusBar.noSyncs')}</span>{/if}
+      {#if running.length}<span>{$translateUI('statusBar.syncing', { n: running.length })}</span>{:else}<span>{$translateUI('statusBar.noSyncs')}</span>{/if}
       {#if running.length && running[0][1].percentage != null}
         <span class="pct">{running[0][1].percentage}%</span>
       {/if}
-      <button class="bar-btn icon" on:click={pauseMenu} title={$t('statusBar.pause')} aria-label={$t('statusBar.pause')}><Pause size={11} /></button>
+      <button class="bar-btn icon" on:click={pauseMenu} title={$translateUI('statusBar.pause')} aria-label={$translateUI('statusBar.pause')}><Pause size={11} /></button>
     {/if}
   </div>
   <div class="right">
     {#if $wanRoom?.connected}
-      <span class="wan">relay: {$wanRoom.roomCode}</span>
+      <span class="wan">{$translateUI('statusBar.relay')} {$wanRoom.roomCode}</span>
     {/if}
-    <span>{$t('statusBar.devicesOnline', { n: onlinePeers })}</span>
+    <span>{$translateUI('statusBar.devicesOnline', { n: onlinePeers })}</span>
     <button
       class="bar-btn"
       class:on={transfersOpen}
       on:click={() => (transfersOpen = !transfersOpen)}
-      title={$t('statusBar.transfersHint')}
+      title={$translateUI('statusBar.transfersHint')}
       aria-expanded={transfersOpen}
     >
-      <ArrowDownUp size={11} />{$t('transfers.title')}{#if running.length}<span class="count">{running.length}</span>{/if}
+      <ArrowDownUp size={11} />{$translateUI('transfers.title')}{#if running.length}<span class="count">{running.length}</span>{/if}
     </button>
-    <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title={$t('statusBar.paletteHint')}>
+    <button class="kbd-hint" on:click={() => paletteOpen.set(true)} title={$translateUI('statusBar.paletteHint')}>
       <kbd>{modKey} K</kbd>
     </button>
-    <button class="ver" on:click={() => showAbout.set(true)} title={$t('statusBar.aboutTitle')}>OpenSave v{version}</button>
+    <button class="ver" on:click={() => showAbout.set(true)} title={$translateUI('statusBar.aboutTitle')}>OpenSave v{version}</button>
   </div>
 </footer>
 

@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Saves emptied on this device and held back from the others until someone
 // says whether that was meant (internal/p2p/syncengine/hold.go). The game
 // carries `emptied` while it waits: {state: 'held' | 'fetching', files,
@@ -21,6 +22,6 @@ export function newlyEmptied(before, games) {
 
 /** Where the files went from, in words: "its save folder", or a location. */
 export function emptiedWhere(locations = []) {
-  const names = locations.map((n) => (n === '' ? 'its save folder' : `its “${n}” location`));
-  return names.length ? names.join(' and ') : 'its save folder';
+  const names = locations.map((n) => (n === '' ? tr('emptied.itsSaveFolder') : tr('emptied.itsLocation', { p0: n })));
+  return names.length ? names.join(' and ') : tr('emptied.itsSaveFolder');
 }

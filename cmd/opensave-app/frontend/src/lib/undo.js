@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // Undo in place of "Are you sure?".
 //
 // A confirmation asks before every untrack, exclusion or dismissal, and is
@@ -62,7 +63,7 @@ export function withUndo({ message, keys = [], run, delay = UNDO_DELAY, notify =
     };
 
     const timer = setTimeout(() => finish(false), delay);
-    notify(message, 'info', { ttl: delay, action: { label: 'Undo', run: () => finish(true) } });
+    notify(message, 'info', { ttl: delay, action: { label: tr('undo.undo'), run: () => finish(true) } });
   });
 }
 

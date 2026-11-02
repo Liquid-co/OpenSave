@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // The activity timeline (GET /api/activity, internal/daemon/activity.go):
 // what happened to every game's save — syncs with other devices, snapshots,
 // play sessions, restores — said as a person would say it.
@@ -9,10 +10,10 @@ import { fmtSize, playLength, plural } from './format.js';
 // are among the syncs; a filter of their own was nearly always empty, and
 // what is waiting on you now is the bell's to say.
 export const TIMELINE_FILTERS = {
-  all: { label: 'Everything', kinds: null },
-  syncs: { label: 'Syncs', kinds: ['received', 'sent', 'deleted', 'cloud-pulled', 'conflict', 'emptied'] },
-  snapshots: { label: 'Snapshots', kinds: ['snapshot', 'restored'] },
-  play: { label: 'Play', kinds: ['played'] }
+  all: { get label() { return tr('timeline.everything'); }, kinds: null },
+  syncs: { get label() { return tr('timeline.syncs'); }, kinds: ['received', 'sent', 'deleted', 'cloud-pulled', 'conflict', 'emptied'] },
+  snapshots: { get label() { return tr('gameDetail.snapshots'); }, kinds: ['snapshot', 'restored'] },
+  play: { get label() { return tr('timeline.play'); }, kinds: ['played'] }
 };
 
 export function filterItems(items, filter = 'all', gameId = '') {
@@ -29,27 +30,27 @@ export function describe(item, now = new Date()) {
   const where = item.detail && item.kind !== 'restored' ? ` ${item.detail}` : '';
   switch (item.kind) {
     case 'received':
-      return { icon: 'down', title: `Got ${files} from ${item.device}${where}`, detail: item.bytes ? fmtSize(item.bytes) : '', tone: 'ok' };
+      return { icon: 'down', title: tr('timeline.gotFrom', { p0: files, p1: item.device, p2: where }), detail: item.bytes ? fmtSize(item.bytes) : '', tone: 'ok' };
     case 'sent':
-      return { icon: 'up', title: `${item.device} took ${files} from here`, detail: '', tone: 'ok' };
+      return { icon: 'up', title: tr('timeline.tookFromHere', { p0: item.device, p1: files }), detail: '', tone: 'ok' };
     case 'deleted':
-      return { icon: 'trash', title: `Deleted ${files} as ${item.device} did${where}`, detail: '', tone: 'muted' };
+      return { icon: 'trash', title: tr('timeline.deletedAsDid', { p0: files, p1: item.device, p2: where }), detail: '', tone: 'muted' };
     case 'restored': {
       const [, at] = (item.detail ?? '').split('|');
-      return { icon: 'restore', title: at ? `Put back the snapshot of ${whenLabel(at, now)}` : 'Put back a snapshot', detail: '', tone: 'ok' };
+      return { icon: 'restore', title: at ? tr('timeline.putBackTheSnapshotOf', { p0: whenLabel(at, now) }) : tr('timeline.putBackASnapshot'), detail: '', tone: 'ok' };
     }
     case 'cloud-pulled':
-      return { icon: 'cloud', title: `Brought ${item.device}'s newer save from the cloud`, detail: '', tone: 'ok' };
+      return { icon: 'cloud', title: tr('stores.broughtSNewerSaveFromTheCloud', { p0: item.device }), detail: '', tone: 'ok' };
     case 'emptied':
-      return { icon: 'alert', title: 'Every save file was deleted here', detail: item.files ? `${files} kept on your other devices until you chose` : '', tone: 'warn' };
+      return { icon: 'alert', title: tr('timeline.everySaveFileWasDeletedHere'), detail: item.files ? tr('timeline.keptOnYourOtherDevicesUntil', { p0: files }) : '', tone: 'warn' };
     case 'conflict':
-      return { icon: 'alert', title: `Changed here and on ${item.device} at once`, detail: 'Needed a decision', tone: 'warn' };
+      return { icon: 'alert', title: tr('timeline.changedHereAndOnAtOnce', { p0: item.device }), detail: tr('timeline.neededADecision'), tone: 'warn' };
     case 'played':
-      return { icon: 'play', title: item.durationMs ? `Played for ${playLength(item.durationMs)}` : 'Played', detail: 'On this device', tone: 'ok' };
+      return { icon: 'play', title: item.durationMs ? tr('timeline.playedFor', { p0: playLength(item.durationMs) }) : tr('timeline.played'), detail: tr('linkPicker.onThisDevice'), tone: 'ok' };
     case 'snapshot': {
-      if (item.device) return { icon: 'camera', title: `Kept a copy of ${item.device}'s save`, detail: '', tone: 'muted' };
+      if (item.device) return { icon: 'camera', title: tr('timeline.keptACopyOfSSave', { p0: item.device }), detail: '', tone: 'muted' };
       const why = snapshotKind({ comment: item.comment, isSystemAuto: item.auto }, now);
-      return { icon: 'camera', title: why.kind === 'manual' ? `Snapshot: ${why.title}` : why.title, detail: why.kind === 'manual' ? 'Taken by you' : '', tone: 'muted' };
+      return { icon: 'camera', title: why.kind === 'manual' ? tr('timeline.snapshot', { p0: why.title }) : why.title, detail: why.kind === 'manual' ? tr('snapshots.takenByYou') : '', tone: 'muted' };
     }
     default:
       return { icon: 'dot', title: item.kind, detail: '', tone: 'muted' };
@@ -94,13 +95,13 @@ export function byDay(list, now = new Date()) {
 function dayName(d, now) {
   const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((start(now) - start(d)) / 86_400_000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
+  if (diff === 0) return tr('snapshots.today');
+  if (diff === 1) return tr('snapshots.yesterday');
   return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
 }
 
 /** Where a game was last played, in words: this device, or another. */
 export function playedWhere(g, thisDevice) {
   if (!g?.lastPlayedAt) return '';
-  return g.lastPlayedOn ? g.lastPlayedOn : thisDevice ? `${thisDevice} (here)` : 'Here';
+  return g.lastPlayedOn ? g.lastPlayedOn : thisDevice ? tr('timeline.here', { p0: thisDevice }) : tr('timeline.hereLabel');
 }

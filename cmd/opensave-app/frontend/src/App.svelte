@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from './lib/i18n.js';
   import { onMount, onDestroy } from 'svelte';
   import { pageOut } from './lib/motion.js';
   import { initApi, connectWS, native } from './lib/api.js';
@@ -111,13 +112,13 @@
     const { now, fresh } = newlyEmptied(emptiedBefore, all);
     emptiedBefore = now;
     for (const g of fresh) {
-      toast(`Every save file of ${g.name} was deleted here. Your other devices keep theirs until you choose.`, 'warning', {
+      toast($translateUI('app.everySaveFileOfWasDeletedHere', { p0: g.name }), 'warning', {
         ttl: 15000,
-        action: { label: 'Choose', run: () => navigate('game', { gameId: g.id }) }
+        action: { label: $translateUI('app.choose'), run: () => navigate('game', { gameId: g.id }) }
       });
       demandAttention('emptied', {
         title: g.name,
-        body: 'Every save file was deleted here. Your other devices keep theirs until you choose.',
+        body: $translateUI('app.everySaveFileWasDeletedHereYour'),
         game: g
       });
     }
@@ -198,34 +199,34 @@
     <div class="update-banner installing">
       <span class="with-icon">
         {#if $appUpdate.state === 'downloading'}
-          <Download size={16} /> Updating OpenSave — downloading {$appUpdate.percentage ?? 0}%…
+          <Download size={16} /> {$translateUI('app.updatingOpenSaveDownloading')} {$appUpdate.percentage ?? 0}%…
         {:else if $appUpdate.state === 'installing'}
-          <Wrench size={16} /> Installing update…
+          <Wrench size={16} /> {$translateUI('app.installingUpdate')}
         {:else}
-          <RefreshCw size={16} /> Restarting with the new version…
+          <RefreshCw size={16} /> {$translateUI('app.restartingWithTheNewVersion')}
         {/if}
-        <em>The app restarts itself when done — your games keep syncing.</em>
+        <em>{$translateUI('app.theAppRestartsItselfWhenDone')}</em>
       </span>
     </div>
   {:else if update}
     <div class="update-banner">
-      <span class="with-icon"><Sparkles size={16} /> OpenSave {update.latest} is available — you're on {update.current}.</span>
+      <span class="with-icon"><Sparkles size={16} /> OpenSave {update.latest} {$translateUI('app.isAvailableYouReOn')} {update.current}.</span>
       <div class="update-actions">
         {#if update.notes}
           <button class="btn small ghost" on:click={() => (showNotes = !showNotes)}>
-            {showNotes ? 'Hide notes' : "What's new"}
+            {showNotes ? $translateUI('app.hideNotes') : $translateUI('app.whatSNew')}
           </button>
         {/if}
         {#if update.assetUrl}
           <button class="btn small primary" disabled={installStarted} on:click={installRelease}>
-            {installStarted ? 'Starting…' : 'Install & restart'}
+            {installStarted ? $translateUI('app.starting') : $translateUI('app.installRestart')}
           </button>
         {:else if update.flatpak}
-          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>Get .flatpak</button>
+          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>{$translateUI('app.getFlatpak')}</button>
         {:else}
-          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>Download</button>
+          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>{$translateUI('app.download')}</button>
         {/if}
-        <button class="btn small ghost icon" on:click={() => (update = null)} aria-label="Dismiss" title="Dismiss"><X size={15} /></button>
+        <button class="btn small ghost icon" on:click={() => (update = null)} aria-label="{$translateUI('common.dismiss')}" title="{$translateUI('common.dismiss')}"><X size={15} /></button>
       </div>
     </div>
     {#if showNotes && update.notes}
@@ -233,10 +234,10 @@
     {/if}
   {:else if updatedTo}
     <div class="update-banner">
-      <span class="with-icon"><Sparkles size={16} /> OpenSave was updated to v{updatedTo}.</span>
+      <span class="with-icon"><Sparkles size={16} /> {$translateUI('app.openSaveWasUpdatedToV')}{updatedTo}.</span>
       <div class="update-actions">
-        <button class="btn small primary" on:click={openWhatsNew}>What's new</button>
-        <button class="btn small ghost icon" on:click={() => (updatedTo = '')} aria-label="Dismiss" title="Dismiss"><X size={15} /></button>
+        <button class="btn small primary" on:click={openWhatsNew}>{$translateUI('app.whatSNew')}</button>
+        <button class="btn small ghost icon" on:click={() => (updatedTo = '')} aria-label="{$translateUI('common.dismiss')}" title="{$translateUI('common.dismiss')}"><X size={15} /></button>
       </div>
     </div>
   {/if}
@@ -252,13 +253,13 @@
     {#if bootError}
       <div class="boot-error">
         <img class="boot-logo" src={logoUrl} alt="OpenSave" />
-        <h2>OpenSave failed to start</h2>
+        <h2>{$translateUI('app.openSaveFailedToStart')}</h2>
         <p>{bootError}</p>
         <button class="btn primary" disabled={retrying} on:click={boot}>
-          {retrying ? 'Retrying…' : 'Retry'}
+          {retrying ? $translateUI('app.retrying') : $translateUI('app.retry')}
         </button>
         <p class="boot-hint">
-          Details are saved to <code>.opensave\opensave.log</code> in your user folder.
+          {$translateUI('app.detailsAreSavedTo')} <code>.opensave\opensave.log</code> {$translateUI('app.inYourUserFolder')}
         </p>
       </div>
     {:else if ready}
@@ -290,7 +291,7 @@
     {:else}
       <div class="boot-loading">
         <img class="boot-logo pulse" src={logoUrl} alt="OpenSave" />
-        <span>Starting OpenSave…</span>
+        <span>{$translateUI('app.startingOpenSave')}</span>
       </div>
     {/if}
   </div>

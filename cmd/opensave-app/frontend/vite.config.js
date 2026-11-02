@@ -3,6 +3,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
   plugins: [svelte()],
+  test: {
+    // Existing presentation assertions are English, independent of the host OS.
+    setupFiles: ['./src/test/setup.js']
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

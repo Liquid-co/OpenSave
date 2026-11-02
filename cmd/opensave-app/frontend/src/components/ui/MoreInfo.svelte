@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // The rest of a long hint, one click away. The first sentence of a hint
   // says what the setting is; the paragraph after it says why and when, and
   // printed in full under every field it turned the form into a wall of grey
@@ -10,7 +11,7 @@
 </script>
 
 <button type="button" class="more-toggle" aria-expanded={open} on:click|preventDefault={() => (open = !open)}>
-  <Info size={12} strokeWidth={2.4} />{open ? 'Less' : 'More'}
+  <Info size={12} strokeWidth={2.4} />{open ? $translateUI('moreInfo.less') : $translateUI('moreInfo.more')}
 </button>
 {#if open}<span class="more-body"><slot /></span>{/if}
 

@@ -12,7 +12,7 @@
   import { canLaunch, cleanGameName, renameGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
   import Spinner from '../../components/ui/Spinner.svelte';
   import { restoreProgressText } from '../../lib/restoreprogress.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import Play from 'lucide-svelte/icons/play';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -80,8 +80,8 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
 
-  const syncNow = () => run('Sync triggered', () => api.post(`/api/games/${game.id}/sync`));
-  const launchGame = () => run('Launching…', () => api.post(`/api/games/${game.id}/launch`));
+  const syncNow = () => run($translateUI('gameHeader.syncTriggered'), () => api.post(`/api/games/${game.id}/sync`));
+  const launchGame = () => run($translateUI('gameHeader.launching'), () => api.post(`/api/games/${game.id}/launch`));
 
   let editPath = false;
   let pathDraft = '';
@@ -93,17 +93,17 @@
     if (answer === 'delete') {
       const n = game.emptied.files;
       const ok = await askConfirm(
-        `Delete ${game.name}'s save files on your other devices too? ${n} file${n === 1 ? '' : 's'} there will go; each device keeps a snapshot of them first.`,
-        { title: 'Delete them everywhere?', confirmText: 'Delete them there too', danger: true }
+        $translateUI('gameHeader.deleteSSaveFilesOnYourOther', { p0: game.name, p1: n, p2: n === 1 ? '' : 's' }),
+        { title: $translateUI('gameHeader.deleteThemEverywhere'), confirmText: $translateUI('gameHeader.deleteThemThereToo'), danger: true }
       );
       if (!ok) return;
     }
     answering = true;
     try {
       const res = await api.post(`/api/games/${game.id}/emptied`, { answer });
-      if (answer === 'delete') toast(`${game.name}'s save files are deleted on your other devices at the next sync`, 'success');
-      else if (res.fetching > 0) toast(`Putting ${game.name}'s files back — ${res.fetching} come from your other devices`, 'success');
-      else toast(`${game.name}'s files are back`, 'success');
+      if (answer === 'delete') toast($translateUI('gameHeader.sSaveFilesAreDeletedOnYour', { p0: game.name }), 'success');
+      else if (res.fetching > 0) toast($translateUI('gameHeader.puttingSFilesBackComeFrom', { p0: game.name, p1: res.fetching }), 'success');
+      else toast($translateUI('gameHeader.sFilesAreBack', { p0: game.name }), 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -119,10 +119,10 @@
     try {
       if (use) {
         await api.post(`/api/games/${game.id}/relocate`, { path: found });
-        toast(`${game.name} now uses ${found}`, 'success');
+        toast($translateUI('gameHeader.nowUses', { p0: game.name, p1: found }), 'success');
       } else {
         await api.post(`/api/games/${game.id}/relocate/dismiss`);
-        toast(`Not using ${found} for ${game.name}`, 'success');
+        toast($translateUI('gameHeader.notUsingFor', { p0: found, p1: game.name }), 'success');
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -138,13 +138,13 @@
   }
 
   async function savePath() {
-    await run('Save path updated', () => api.patch(`/api/games/${game.id}`, { savePath: pathDraft }));
+    await run($translateUI('gameHeader.savePathUpdated'), () => api.patch(`/api/games/${game.id}`, { savePath: pathDraft }));
     editPath = false;
   }
 </script>
 
 <div class="head">
-  <button class="btn icon back" on:click={() => navigate('home')} title="Back" aria-label="Back"><ArrowLeft size={18} /></button>
+  <button class="btn icon back" on:click={() => navigate('home')} title="{$translateUI('cloudBrowser.back')}" aria-label="{$translateUI('cloudBrowser.back')}"><ArrowLeft size={18} /></button>
   {#if gameCover(game)}
     <img
       class="head-cover"
@@ -162,19 +162,19 @@
           class:invalid={!!nameProblem}
           bind:value={nameDraft}
           maxlength={MAX_GAME_NAME + 20}
-          aria-label="Game name"
+          aria-label="{$translateUI('gameHeader.gameName')}"
           aria-invalid={!!nameProblem}
           use:focusSelect
           on:keydown={nameKeys}
         />
-        <button class="btn small primary" disabled={!!nameProblem || nameSaving} on:click={saveName}>Save</button>
-        <button class="btn small" on:click={() => (editName = false)}>Cancel</button>
+        <button class="btn small primary" disabled={!!nameProblem || nameSaving} on:click={saveName}>{$translateUI('gameHeader.save')}</button>
+        <button class="btn small" on:click={() => (editName = false)}>{$translateUI('common.cancel')}</button>
       {:else}
         {game.name}
         <button
           class="btn small ghost icon rename"
-          title="Rename (only on this device; syncing is unaffected)"
-          aria-label="Rename"
+          title="{$translateUI('gameHeader.renameOnlyOnThisDeviceSyncingIs')}"
+          aria-label="{$translateUI('common.rename')}"
           on:click={startRename}
         >
           <Pencil size={14} />
@@ -183,8 +183,8 @@
       <button
         class="btn small ghost icon star"
         class:on={isFavourite($collections, game.id)}
-        title={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
-        aria-label={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
+        title={isFavourite($collections, game.id) ? $translateUI('gameHeader.removeFromFavourites') : $translateUI('gameHeader.addToFavourites')}
+        aria-label={isFavourite($collections, game.id) ? $translateUI('gameHeader.removeFromFavourites') : $translateUI('gameHeader.addToFavourites')}
         aria-pressed={isFavourite($collections, game.id)}
         on:click={() => toggleFavourite($collections, game)}
       >
@@ -193,33 +193,33 @@
     </h2>
     {#if editName}
       <div class="sub name-hint" class:problem={!!nameProblem} role={nameProblem ? 'alert' : undefined}>
-        {nameProblem ?? 'Only on this device. Your other devices keep their own name, and syncing carries on as before.'}
+        {nameProblem ?? $translateUI('gameHeader.onlyOnThisDeviceYourOtherDevices')}
       </div>
     {/if}
     <div class="sub">
-      branch <strong>{game.activeBranch}</strong>
+      {$translateUI('gameHeader.branch')} <strong>{game.activeBranch}</strong>
       {#if activity?.state === 'running'}
-        · <span class="syncing">syncing {activity.percentage ?? 0}%</span>
+        · <span class="syncing">{$translateUI('gameHeader.syncing')} {activity.percentage ?? 0}%</span>
       {/if}
       {#if game.restoring}
-        · <span class="syncing"><Spinner size={11} /> {restoreProgressText(game.restoring, $t)}</span>
+        · <span class="syncing"><Spinner size={11} /> {restoreProgressText(game.restoring, $translateUI)}</span>
       {/if}
       {#if game.playingSince}
-        · <span class="playing">in session since {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        · <span class="playing">{$translateUI('gameHeader.inSessionSince')} {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       {:else if game.lastPlayedAt}
-        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>played {timeAgo(game.lastPlayedAt, now)}, {playLength(game.playtimeMs)} in all</span>
+        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>{$translateUI('gameHeader.played')} {timeAgo(game.lastPlayedAt, now)}, {playLength(game.playtimeMs)} {$translateUI('gameHeader.inAll')}</span>
       {/if}
       {#if game.installed === 'not-found'}
-        · <span title="Steam on this PC does not have it, and it is in no folder games are kept in. Set its program under Configuration to launch it from somewhere else.">not found on this PC</span>
+        · <span title="{$translateUI('gameHeader.steamOnThisPCDoesNotHave')}">{$translateUI('gameHeader.notFoundOnThisPC')}</span>
       {/if}
     </div>
     {#if syncedWith.length > 0}
       <div class="sub synced-with">
         {#each syncedWith as d, i (d.id)}
           {#if i > 0}<span class="sep">·</span>{/if}
-          <span class="device" title={d.at ? `${d.name}: last synced ${new Date(d.at).toLocaleString()}` : `${d.name} has never synced this game`}>
+          <span class="device" title={d.at ? $translateUI('gameHeader.lastSynced', { p0: d.name, p1: new Date(d.at).toLocaleString() }) : $translateUI('gameHeader.hasNeverSyncedThisGame', { p0: d.name })}>
             {d.name}
-            <span class:never={!d.at}>{d.at ? `synced ${timeAgo(d.at, now)}` : 'never synced'}</span>
+            <span class:never={!d.at}>{d.at ? $translateUI('gameHeader.synced', { p0: timeAgo(d.at, now) }) : $translateUI('gameHeader.neverSynced')}</span>
           </span>
         {/each}
       </div>
@@ -227,24 +227,24 @@
   </div>
   <div class="head-actions">
     {#if canLaunch(game)}
-      <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />Launch</button>
+      <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />{$translateUI('gameHeader.launch')}</button>
     {/if}
-    <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />Sync now</button>
+    <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />{$translateUI('gameHeader.syncNow')}</button>
   </div>
 </div>
 
 <div class="path-line">
   {#if editPath}
     <input class="path-input" bind:value={pathDraft} />
-    <button class="btn small" on:click={async () => (pathDraft = (await native.selectDirectory('Select save folder')) || pathDraft)}>Browse</button>
-    <button class="btn small primary" on:click={savePath}>Save</button>
-    <button class="btn small" on:click={() => (editPath = false)}>Cancel</button>
+    <button class="btn small" on:click={async () => (pathDraft = (await native.selectDirectory($translateUI('gameHeader.selectSaveFolder'))) || pathDraft)}>{$translateUI('providerFields.browse')}</button>
+    <button class="btn small primary" on:click={savePath}>{$translateUI('gameHeader.save')}</button>
+    <button class="btn small" on:click={() => (editPath = false)}>{$translateUI('common.cancel')}</button>
   {:else}
     <span class="path" title={game.savePath}>{game.savePath}</span>
-    <button class="btn small" on:click={openSaveFolder} title="Show this folder in your file manager">
-      <FolderOpen size={14} />Open folder
+    <button class="btn small" on:click={openSaveFolder} title="{$translateUI('gameHeader.showThisFolderInYourFileManager')}">
+      <FolderOpen size={14} />{$translateUI('gameHeader.openFolder')}
     </button>
-    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />Edit</button>
+    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />{$translateUI('gameHeader.edit')}</button>
   {/if}
 </div>
 
@@ -256,23 +256,23 @@
     <TriangleAlert size={16} />
     <div>
       {#if game.emptied.state === 'fetching'}
-        <strong>Putting the files back.</strong>
-        Some are still to come from your other devices; this game syncs as usual once they're all here.
+        <strong>{$translateUI('gameHeader.puttingTheFilesBack')}</strong>
+        {$translateUI('gameHeader.someAreStillToComeFromYour')}
       {:else}
-        <strong>Every save file in {emptiedWhere(game.emptied.locations)} was deleted on this device.</strong>
-        Your other devices still have theirs, and nothing is synced until you choose.
+        <strong>{$translateUI('gameHeader.everySaveFileIn')} {emptiedWhere(game.emptied.locations)} {$translateUI('gameHeader.wasDeletedOnThisDevice')}</strong>
+        {$translateUI('gameHeader.yourOtherDevicesStillHaveTheirsAnd')}
         {#if game.emptied.putBackFrom}
-          Put them back from the snapshot of {whenLabel(game.emptied.putBackFromTime)}, with anything newer from your other devices
+          {$translateUI('gameHeader.putThemBackFromTheSnapshotOf')} {whenLabel(game.emptied.putBackFromTime)}{$translateUI('gameHeader.withAnythingNewerFromYourOther')}
         {:else}
-          Put them back from your other devices
+          {$translateUI('gameHeader.putThemBackFromYourOtherDevices')}
         {/if}
-        — or, if you meant it, delete them there too; each device keeps a snapshot first.
+        {$translateUI('gameHeader.orIfYouMeantItDelete')}
         <div class="emptied-actions">
           <button class="btn small primary" disabled={answering} on:click={() => answerEmptied('restore')}>
-            <RotateCcw size={13} />Put them back
+            <RotateCcw size={13} />{$translateUI('gameHeader.putThemBack')}
           </button>
           <button class="btn small" disabled={answering} on:click={() => answerEmptied('delete')}>
-            Delete them on my other devices too
+            {$translateUI('gameHeader.deleteThemOnMyOtherDevicesToo')}
           </button>
         </div>
       {/if}
@@ -286,9 +286,8 @@
   <div class="missing elsewhere" role="status">
     <Info size={16} />
     <div>
-      <strong>This game isn't on this device.</strong>
-      Its saves are on {game.savePath.slice(0, 2)}, which this PC doesn't have, so it's skipped here and keeps syncing
-      between your other devices. If it is installed here, point the game at its save folder with Edit.
+      <strong>{$translateUI('gameHeader.thisGameIsnTOnThisDevice')}</strong>
+      {$translateUI('gameHeader.itsSavesAreOn')} {game.savePath.slice(0, 2)}{$translateUI('gameHeader.whichThisPCDoesnTHaveSo')}
     </div>
   </div>
 {:else if game.savePathMissing && !editPath}
@@ -298,10 +297,8 @@
   <div class="missing" role="status">
     <TriangleAlert size={16} />
     <div>
-      <strong>This save folder is not there.</strong>
-      It may have been moved or deleted, or be on a drive that isn't connected. Nothing is snapshotted or synced for
-      this game until it's back — OpenSave picks it up again within a minute. If the save lives somewhere else now,
-      point the game at it with Edit.
+      <strong>{$translateUI('gameHeader.thisSaveFolderIsNotThere')}</strong>
+      {$translateUI('gameHeader.itMayHaveBeenMovedOrDeleted')}
     </div>
   </div>
 {/if}
@@ -312,11 +309,11 @@
   <div class="missing relocate" role="status">
     <Info size={16} />
     <div>
-      <strong>The same folder is at {game.relocateSuggestion}.</strong>
-      Is that where this game saves on this device? Only use it if it holds your current saves, not an old copy.
+      <strong>{$translateUI('gameHeader.theSameFolderIsAt')} {game.relocateSuggestion}.</strong>
+      {$translateUI('gameHeader.isThatWhereThisGameSavesOn')}
       <div class="relocate-actions">
-        <button class="btn small primary" disabled={relocating} on:click={() => answerRelocation(true)}>Use this folder</button>
-        <button class="btn small ghost" disabled={relocating} on:click={() => answerRelocation(false)}>Not this one</button>
+        <button class="btn small primary" disabled={relocating} on:click={() => answerRelocation(true)}>{$translateUI('gameHeader.useThisFolder')}</button>
+        <button class="btn small ghost" disabled={relocating} on:click={() => answerRelocation(false)}>{$translateUI('gameHeader.notThisOne')}</button>
       </div>
     </div>
   </div>

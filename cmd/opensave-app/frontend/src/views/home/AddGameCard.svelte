@@ -13,7 +13,7 @@
   import { navigate, toast } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
   import { folderName } from '../../lib/filedrop.js';
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
 
@@ -64,7 +64,7 @@
   onMount(() => nameInput?.focus());
 
   async function pickFolder() {
-    const dir = await native.selectDirectory($t('home.chooseFolderDialog'));
+    const dir = await native.selectDirectory($translateUI('home.chooseFolderDialog'));
     if (dir) {
       typed = false;
       path = dir;
@@ -72,7 +72,7 @@
   }
 
   async function pickFile() {
-    const file = await native.selectFile($t('home.addGame.chooseFile'));
+    const file = await native.selectFile($translateUI('home.addGame.chooseFile'));
     if (file) {
       typed = false;
       path = file;
@@ -84,7 +84,7 @@
     adding = true;
     try {
       const game = await api.post('/api/games', { name: name.trim(), savePath: path, appId });
-      toast($t('common.nowTracking', { name: game.name ?? name }), 'success');
+      toast($translateUI('common.nowTracking', { name: game.name ?? name }), 'success');
       dispatch('close');
       navigate('game', { gameId: game.id });
     } catch (e) {
@@ -95,40 +95,40 @@
   }
 </script>
 
-<Modal title={$t('home.addGame.title')} icon={FolderPlus} width={560} height="auto" onClose={() => dispatch('close')}>
+<Modal title={$translateUI('home.addGame.title')} icon={FolderPlus} width={560} height="auto" onClose={() => dispatch('close')}>
   <div class="body">
     <div class="field">
-      <span class="label">{$t('home.addGame.savePath')}</span>
+      <span class="label">{$translateUI('home.addGame.savePath')}</span>
       {#if canPick}
         <div class="picked" title={path}><bdi>{path}</bdi></div>
         <div class="alt">
-          <button class="linklike" on:click={pickFolder}>{$t('home.addGame.changeFolder')}</button>
-          <button class="linklike" on:click={pickFile}>{$t('home.addGame.trackFileInstead')}</button>
+          <button class="linklike" on:click={pickFolder}>{$translateUI('home.addGame.changeFolder')}</button>
+          <button class="linklike" on:click={pickFile}>{$translateUI('home.addGame.trackFileInstead')}</button>
         </div>
       {:else}
         <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={path} />
       {/if}
     </div>
     <div class="field">
-      <label for="g-name">{$t('home.addGame.name')}</label>
+      <label for="g-name">{$translateUI('home.addGame.name')}</label>
       <input
         id="g-name"
         bind:this={nameInput}
-        placeholder={$t('home.addGame.namePlaceholder')}
+        placeholder={$translateUI('home.addGame.namePlaceholder')}
         bind:value={name}
         on:input={() => (typed = true)}
         on:keydown={(e) => e.key === 'Enter' && add()}
       />
-      <span class="hint">{$t('home.addGame.nameHint')}</span>
-      {#if knownAs}<span class="hint">{$t('home.addGame.recognisedAs', { name: knownAs })}</span>{/if}
+      <span class="hint">{$translateUI('home.addGame.nameHint')}</span>
+      {#if knownAs}<span class="hint">{$translateUI('home.addGame.recognisedAs', { name: knownAs })}</span>{/if}
     </div>
   </div>
   <ModalFoot>
     <span />
     <div class="actions">
-      <button class="btn" on:click={() => dispatch('close')}>{$t('common.cancel')}</button>
+      <button class="btn" on:click={() => dispatch('close')}>{$translateUI('common.cancel')}</button>
       <button class="btn primary" disabled={!name.trim() || !path || adding} on:click={add}>
-        {adding ? $t('home.addGame.adding') : $t('home.addGame.startTracking')}
+        {adding ? $translateUI('home.addGame.adding') : $translateUI('home.addGame.startTracking')}
       </button>
     </div>
   </ModalFoot>

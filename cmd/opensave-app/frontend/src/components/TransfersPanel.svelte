@@ -11,7 +11,7 @@
   import { games, syncActivity, navigate } from '../lib/stores.js';
   import { timeAgo } from '../lib/timeago.js';
   import { amountLabel, peerLabel, speedLabel, withNames } from '../lib/transfers.js';
-  import { t } from '../lib/i18n.js';
+  import { t as translateUI } from '../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
   let data = null;
@@ -47,21 +47,21 @@
   }
 </script>
 
-<div class="panel" role="dialog" aria-label={$t('transfers.title')}>
+<div class="panel" role="dialog" aria-label={$translateUI('transfers.title')}>
   <div class="head">
-    <h3>{$t('transfers.title')}</h3>
-    <button class="btn small ghost icon" aria-label={$t('common.close')} title={$t('common.close')} on:click={() => dispatch('close')}><X size={14} /></button>
+    <h3>{$translateUI('transfers.title')}</h3>
+    <button class="btn small ghost icon" aria-label={$translateUI('common.close')} title={$translateUI('common.close')} on:click={() => dispatch('close')}><X size={14} /></button>
   </div>
 
   {#if error}
-    <p class="empty">{$t('transfers.readError', { error })}</p>
+    <p class="empty">{$translateUI('transfers.readError', { error })}</p>
   {:else if !data}
     <div class="skeleton" style="height: 44px; margin: 10px 14px"></div>
   {:else if shown.active.length === 0 && shown.recent.length === 0}
-    <p class="empty">{$t('transfers.empty')}</p>
+    <p class="empty">{$translateUI('transfers.empty')}</p>
   {:else}
     {#if shown.active.length}
-      <h4>{$t('transfers.now')}</h4>
+      <h4>{$translateUI('transfers.now')}</h4>
       {#each shown.active as t}
         <button class="row" on:click={() => open(t)}>
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
@@ -75,7 +75,7 @@
       {/each}
     {/if}
     {#if shown.recent.length}
-      <h4>{$t('transfers.recently')}</h4>
+      <h4>{$translateUI('transfers.recently')}</h4>
       {#each shown.recent.slice(0, 20) as t}
         <button class="row" on:click={() => open(t)} title={t.error || ''}>
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>

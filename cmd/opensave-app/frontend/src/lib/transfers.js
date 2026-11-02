@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // The transfers panel: what is moving between this device and others, and
 // what moved recently. The daemon keeps the record (internal/transfers); this
 // is how it reads.
@@ -11,7 +12,7 @@ export function speedLabel(bytesPerSec) {
 
 /** "400 KB of 1.0 MB", "1.0 MB", or '' when nothing is known. */
 export function amountLabel(t) {
-  if (t.totalBytes > 0 && t.state === 'running') return `${fmtSize(t.bytesTransferred ?? 0)} of ${fmtSize(t.totalBytes)}`;
+  if (t.totalBytes > 0 && t.state === 'running') return tr('transfers.of', { p0: fmtSize(t.bytesTransferred ?? 0), p1: fmtSize(t.totalBytes) });
   if (t.totalBytes > 0) return fmtSize(t.totalBytes);
   if (t.bytesTransferred > 0) return fmtSize(t.bytesTransferred);
   return '';
@@ -19,7 +20,7 @@ export function amountLabel(t) {
 
 /** "from Deck" for a download, "to Deck" for an upload. */
 export function peerLabel(t) {
-  return t.direction === 'upload' ? `to ${t.peer || 'another device'}` : `from ${t.peer || 'another device'}`;
+  return t.direction === 'upload' ? tr('transfers.to', { p0: t.peer || 'another device' }) : tr('transfers.from', { p0: t.peer || 'another device' });
 }
 
 /** The transfers as the panel lists them, with each game's name. */

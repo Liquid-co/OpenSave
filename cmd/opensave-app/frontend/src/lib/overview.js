@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // What Home shows above the library: the latest things that happened to your
 // saves, and the space the snapshots take.
 //
@@ -38,7 +39,7 @@ export function recentEvents(games, peers = {}, { limit = 5, now = new Date() } 
       // A device since unpaired still has its time on record; it is not news.
       if (!(peerId in peers)) continue;
       const at = ms(stamp);
-      if (Number.isFinite(at)) events.push({ kind: 'sync', game, title: `Synced with ${peers[peerId].name ?? 'a device'}`, at });
+      if (Number.isFinite(at)) events.push({ kind: 'sync', game, title: tr('overview.syncedWith', { p0: peers[peerId].name ?? 'a device' }), at });
     }
   }
   events.sort((a, b) => b.at - a.at);

@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // Files that shouldn't sync: a pattern box, and a list of what is actually
   // in the game's folders to tick instead.
   //
@@ -82,11 +83,9 @@
 </script>
 
 <div class="section">
-  <h4>Files that shouldn't sync</h4>
+  <h4>{$translateUI('syncIgnoreEditor.filesThatShouldnTSync')}</h4>
   <p class="hint">
-    Some games keep device-specific settings in the same folder as the save, and copying
-    those to another machine can break the game there. List them here and they stay put:
-    never sent, never received, never deleted by a sync.
+    {$translateUI('syncIgnoreEditor.someGamesKeepDeviceSpecificSettingsInThe')}
   </p>
   <textarea
     class="box"
@@ -96,24 +95,22 @@
     bind:value
   ></textarea>
   <span class="hint">
-    One pattern per line, like a <code>.gitignore</code> — <code>Config.gs</code> by name,
-    <code>/Config.gs</code> only at the top, <code>*.log</code> by extension,
-    <code>logs/</code> for a whole folder, <code>!keep.log</code> for an exception. Case
-    doesn't matter. Set the same list on your other devices; each one applies its own.
+    {$translateUI('syncIgnoreEditor.onePatternPerLineLikeA')} <code>.gitignore</code> — <code>Config.gs</code> {$translateUI('syncIgnoreEditor.byName')}
+    <code>/Config.gs</code> {$translateUI('syncIgnoreEditor.onlyAtTheTop')} <code>*.log</code> {$translateUI('syncIgnoreEditor.byExtension')}
+    <code>logs/</code> {$translateUI('syncIgnoreEditor.forAWholeFolder')} <code>!keep.log</code> {$translateUI('syncIgnoreEditor.forAnExceptionCaseDoesnTMatterSet')}
   </span>
   <span class="hint">
-    <strong>Snapshots still capture these files</strong>, so a restore brings them back —
-    excluding something stops it travelling, it never stops it being backed up.
+    <strong>{$translateUI('syncIgnoreEditor.snapshotsStillCaptureTheseFiles')}</strong>{$translateUI('syncIgnoreEditor.soARestoreBringsThemBack')}
   </span>
 
   <div class="picker-head">
     <button class="btn small" on:click={togglePicker}>
-      <Chevron open={showFiles} /> Pick from your save folder
+      <Chevron open={showFiles} /> {$translateUI('syncIgnoreEditor.pickFromYourSaveFolder')}
     </button>
     {#if showFiles && saveFiles}
       <span class="hint picker-count">
-        {excludedCount} of {saveFiles.length} files excluded
-        {#if truncated}· first {saveFiles.length} shown{/if}
+        {excludedCount} {$translateUI('cloudBrowser.of')} {saveFiles.length} {$translateUI('syncIgnoreEditor.filesExcluded')}
+        {#if truncated}{$translateUI('syncIgnoreEditor.first')} {saveFiles.length} {$translateUI('syncIgnoreEditor.shown')}{/if}
       </span>
     {/if}
   </div>
@@ -122,9 +119,9 @@
     {#if filesError}
       <p class="hint err">{filesError}</p>
     {:else if !saveFiles}
-      <p class="hint"><Spinner size={13} /> Reading the save folder…</p>
+      <p class="hint"><Spinner size={13} /> {$translateUI('syncIgnoreEditor.readingTheSaveFolder')}</p>
     {:else if saveFiles.length === 0}
-      <p class="hint">This game's folders are empty, so there is nothing to pick yet.</p>
+      <p class="hint">{$translateUI('syncIgnoreEditor.thisGameSFoldersAreEmptySoThere')}</p>
     {:else}
       <div class="picker">
         {#each saveFiles as f (f.location + '/' + f.path)}
@@ -133,17 +130,14 @@
             <span class="file-name">
               {#if f.location}<span class="file-loc">{f.location} ›</span>{/if}{f.path}
             </span>
-            <span class="verdict">{f.excluded ? "won't sync" : 'syncs'}</span>
+            <span class="verdict">{f.excluded ? $translateUI('syncIgnoreEditor.wonTSync') : 'syncs'}</span>
           </label>
         {/each}
       </div>
       <span class="hint">
-        Ticking a file writes the pattern for you, anchored so it can only ever mean that
-        one file. Unticking a file caught by a wildcard adds a <code>!</code> exception
-        rather than deleting the wildcard.
+        {$translateUI('syncIgnoreEditor.tickingAFileWritesThePatternFor')} <code>!</code> {$translateUI('syncIgnoreEditor.exceptionRatherThanDeletingTheWildcard')}
         {#if severalFolders}
-          A pattern applies to <strong>every one of this game's folders</strong>, so a
-          name that appears in two of them is excluded in both.
+          {$translateUI('syncIgnoreEditor.aPatternAppliesTo')} <strong>{$translateUI('syncIgnoreEditor.everyOneOfThisGameSFolders')}</strong>{$translateUI('syncIgnoreEditor.soANameThatAppearsIn')}
         {/if}
       </span>
     {/if}

@@ -1,4 +1,5 @@
 <script>
+  import { t as translateUI } from '../../lib/i18n.js';
   // The Steam App ID box, which says what Steam calls the number as it is
   // typed — so "did I get the number right?" is answered before Save rather
   // than by whether a cover eventually appears. A cover that does not appear
@@ -55,32 +56,27 @@
 </script>
 
 <div class="field">
-  <label for="c-appid">Steam App ID</label>
+  <label for="c-appid">{$translateUI('appIdField.steamAppID')}</label>
   <input id="c-appid" placeholder="e.g. 1091500" bind:value />
   <span class="hint">
-    The number in the game's Steam store URL. Used to launch it and fetch its cover art.
+    {$translateUI('appIdField.theNumberInTheGameSSteamStore')}
     <MoreInfo>
-      With “Match games by Steam App ID” turned on in Settings, it also lets this game sync
-      with a copy tracked under a different name on another device. Filled in automatically
-      when it can be worked out; a save under <code>AppData</code> often has nothing to work
-      it out from, so you can set it here.
+      {$translateUI('appIdField.withMatchGamesBySteamAppID')} <code>AppData</code> {$translateUI('appIdField.oftenHasNothingToWorkItOut')}
     </MoreInfo>
   </span>
   {#if error}<span class="hint hint-error">{error}</span>{/if}
   {#if check?.state === 'checking'}
-    <span class="hint appid-check">Checking with Steam…</span>
+    <span class="hint appid-check">{$translateUI('appIdField.checkingWithSteam')}</span>
   {:else if check?.state === 'found'}
-    <span class="hint appid-check ok"><CircleCheck size={13} class="inline-icon" />Steam: <strong>{check.name}</strong></span>
+    <span class="hint appid-check ok"><CircleCheck size={13} class="inline-icon" />{$translateUI('appIdField.steam')} <strong>{check.name}</strong></span>
   {:else if check?.state === 'unknown'}
     <span class="hint appid-check warn">
-      No Steam game has this App ID. It's the number in the store page address —
-      <code>store.steampowered.com/app/<strong>1091500</strong>/…</code> — not the one
-      from another store.
+      {$translateUI('appIdField.noSteamGameHasThisAppID')}
+      <code>store.steampowered.com/app/<strong>1091500</strong>/…</code> {$translateUI('appIdField.notTheOneFromAnotherStore')}
     </span>
   {:else if check?.state === 'unreachable'}
     <span class="hint appid-check warn">
-      Couldn't reach Steam to check this number. If Steam's store or CDN is blocked on
-      this network, cover art won't load here either — the ID itself may well be right.
+      {$translateUI('appIdField.couldnTReachSteamToCheckThisNumber')}
     </span>
   {/if}
 </div>

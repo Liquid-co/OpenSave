@@ -2,7 +2,7 @@
   // How the library looks: cover style, tiles per row, tile size. Shown in
   // Settings and in the library's View menu; both change the same thing, at
   // once. See lib/libraryview.js.
-  import { t } from '../../lib/i18n.js';
+  import { t as translateUI } from '../../lib/i18n.js';
   import { slidingIndicator } from '../../lib/motion.js';
   import { libraryView, COVER_STYLES, TILE_SIZES, COLUMN_CHOICES } from '../../lib/libraryview.js';
 
@@ -11,8 +11,8 @@
 
 <div class="options">
   <div class="group">
-    <div class="label">{$t('home.viewOptions.covers')}</div>
-    <div class="styles" role="radiogroup" aria-label={$t('home.viewOptions.coverStyle')}>
+    <div class="label">{$translateUI('home.viewOptions.covers')}</div>
+    <div class="styles" role="radiogroup" aria-label={$translateUI('home.viewOptions.coverStyle')}>
       {#each Object.entries(COVER_STYLES) as [id, style]}
         <button
           class="style"
@@ -24,7 +24,7 @@
           <span class="mini {id}" aria-hidden="true">
             {#each Array(id === 'wide' ? 3 : 5) as _}<span></span>{/each}
           </span>
-          <span class="style-name">{style.label}</span>
+          <span class="style-name">{($translateUI, style.label)}</span>
         </button>
       {/each}
     </div>
@@ -32,16 +32,16 @@
 
   <div class="row">
     <label class="group">
-      <span class="label">{$t('home.viewOptions.tilesPerRow')}</span>
+      <span class="label">{$translateUI('home.viewOptions.tilesPerRow')}</span>
       <select value={String($libraryView.columns)} on:change={(e) => set({ columns: e.currentTarget.value === 'auto' ? 'auto' : Number(e.currentTarget.value) })}>
         {#each COLUMN_CHOICES as c}
-          <option value={String(c)}>{c === 'auto' ? $t('home.viewOptions.autoFit') : c}</option>
+          <option value={String(c)}>{c === 'auto' ? $translateUI('home.viewOptions.autoFit') : c}</option>
         {/each}
       </select>
     </label>
 
     <div class="group">
-      <span class="label">{$t('home.viewOptions.tileSize')}</span>
+      <span class="label">{$translateUI('home.viewOptions.tileSize')}</span>
       <div class="segmented" class:off={$libraryView.columns !== 'auto'} use:slidingIndicator={{ mode: 'fill' }}>
         {#each Object.entries(TILE_SIZES) as [id, label]}
           <button
@@ -49,19 +49,19 @@
             disabled={$libraryView.columns !== 'auto'}
             on:click={() => set({ size: id })}
           >
-            {label}
+            {$translateUI('libraryview.' + id)}
           </button>
         {/each}
       </div>
     </div>
   </div>
   {#if $libraryView.columns !== 'auto'}
-    <p class="note">{$t('home.viewOptions.fixedNote')}</p>
+    <p class="note">{$translateUI('home.viewOptions.fixedNote')}</p>
   {/if}
 
   <label class="check">
     <input type="checkbox" checked={$libraryView.overview} on:change={(e) => set({ overview: e.currentTarget.checked })} />
-    {$t('home.viewOptions.overview')}
+    {$translateUI('home.viewOptions.overview')}
   </label>
 </div>
 

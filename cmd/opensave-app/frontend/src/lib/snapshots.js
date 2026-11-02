@@ -1,3 +1,4 @@
+import { tr } from './i18n.js';
 // How a snapshot is described in the list: when, and why it exists.
 //
 // The list used to title each one with its ID — snap_1790235804433 — which is
@@ -29,10 +30,10 @@ function sameDay(a, b) {
 /** "Today", "Yesterday", or the date. */
 export function dayLabel(date, now = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
-  if (sameDay(d, now)) return 'Today';
+  if (sameDay(d, now)) return tr('snapshots.today');
   const y = new Date(now);
   y.setDate(y.getDate() - 1);
-  if (sameDay(d, y)) return 'Yesterday';
+  if (sameDay(d, y)) return tr('snapshots.yesterday');
   return d.toLocaleDateString(undefined, {
     weekday: 'long',
     day: 'numeric',
@@ -45,7 +46,7 @@ export function dayLabel(date, now = new Date()) {
 export function humanizeComment(comment, now = new Date()) {
   return (comment ?? '').replace(/snap_\d{12,}/g, (id) => {
     const t = snapIdTime(id);
-    return t ? `the ${whenLabel(t, now)} snapshot` : id;
+    return t ? tr('snapshots.namedTime', { time: whenLabel(t, now) }) : id;
   });
 }
 
@@ -57,11 +58,11 @@ const safetyPattern = /^(before|pre-rollback|safety|auto backup before|this devi
 // The daemon's own wording for the copies it keeps, said plainly. Anything
 // not listed is shown as written.
 const plainTitles = [
-  [/^pre-rollback safety restore point \(before restoring (.+)\)$/i, (m) => `Before restoring ${m[1]}`],
-  [/^before sync replaced local files$/i, () => 'Before a sync replaced it'],
-  [/^safety snapshot before restoring file "(.+)" from (.+)$/i, (m) => `Before putting back ${m[1]} from ${m[2]}`],
-  [/^auto backup before switching to branch "(.+)"$/i, (m) => `Before switching to ${m[1]}`],
-  [/^branch "(.+)" created from "(.+)"$/i, (m) => `Start of ${m[1]}, copied from ${m[2]}`]
+  [/^pre-rollback safety restore point \(before restoring (.+)\)$/i, (m) => tr('snapshots.beforeRestoring', { p0: m[1] })],
+  [/^before sync replaced local files$/i, () => tr('snapshots.beforeASyncReplacedIt')],
+  [/^safety snapshot before restoring file "(.+)" from (.+)$/i, (m) => tr('snapshots.beforePuttingBackFrom', { p0: m[1], p1: m[2] })],
+  [/^auto backup before switching to branch "(.+)"$/i, (m) => tr('snapshots.beforeSwitchingTo', { p0: m[1] })],
+  [/^branch "(.+)" created from "(.+)"$/i, (m) => tr('snapshots.startOfCopiedFrom', { p0: m[1], p1: m[2] })]
 ];
 
 function plainTitle(comment) {
@@ -83,16 +84,16 @@ export function snapshotKind(snap, now = new Date()) {
   // not reasons, and read as noise on every row.
   if (/^(auto backup|manual snapshot)$/i.test(comment)) comment = '';
   if (!snap.isSystemAuto) {
-    return { kind: 'manual', label: 'Taken by you', title: comment || 'Snapshot' };
+    return { kind: 'manual', label: tr('snapshots.takenByYou'), title: comment || tr('palette.kind.snapshot') };
   }
-  if (comment === '') return { kind: 'auto', label: 'Automatic', title: 'Save changed' };
-  if (/^initial snapshot$/i.test(comment)) return { kind: 'start', label: 'Automatic', title: 'When tracking started' };
+  if (comment === '') return { kind: 'auto', label: tr('snapshots.automatic'), title: tr('snapshots.saveChanged') };
+  if (/^initial snapshot$/i.test(comment)) return { kind: 'start', label: tr('snapshots.automatic'), title: tr('snapshots.whenTrackingStarted') };
   // The save as a play session left it (daemon/sessions.go).
-  if (/^after playing/i.test(comment)) return { kind: 'session', label: 'After playing', title: comment };
+  if (/^after playing/i.test(comment)) return { kind: 'session', label: tr('snapshots.afterPlaying'), title: comment };
   if (safetyPattern.test(comment)) {
-    return { kind: 'safety', label: 'Safety copy', title: plainTitle(comment) };
+    return { kind: 'safety', label: tr('snapshots.safetyCopy'), title: plainTitle(comment) };
   }
-  return { kind: 'other', label: 'Automatic', title: plainTitle(comment) };
+  return { kind: 'other', label: tr('snapshots.automatic'), title: plainTitle(comment) };
 }
 
 const capitalise = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
