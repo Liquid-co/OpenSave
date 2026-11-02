@@ -513,6 +513,13 @@ func (s *Server) gamesPayload() map[string]any {
 	if err != nil {
 		return map[string]any{}
 	}
+	return s.gamesPayloadFrom(games)
+}
+
+// gamesPayloadFrom renders a snapshot of an inventory that its caller has
+// already verified. The HTTP route checks the read error before returning
+// 200; it must not issue a second, potentially failing inventory query.
+func (s *Server) gamesPayloadFrom(games []store.Game) map[string]any {
 	out := make(map[string]any, len(games))
 	for _, g := range games {
 		out[g.ID] = s.gamePayload(g)
