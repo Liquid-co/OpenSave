@@ -1,5 +1,6 @@
 <script>
   import { slidingIndicator } from '../lib/motion.js';
+  import { t } from '../lib/i18n.js';
   import { peers, discoveredPeers, wanRoom, appUpdate, toast, askConfirm } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
   import InternetSync from './InternetSync.svelte';
@@ -37,12 +38,12 @@
   }
 
   const pairDiscovered = (d) =>
-    run(() => api.post('/api/peers/pair', { address: d.address, port: d.port }), `Pairing request sent to ${d.deviceName}`);
+    run(() => api.post('/api/peers/pair', { address: d.address, port: d.port }), $t('devices.pairingSentTo', { name: d.deviceName }));
   const pairManual = () =>
-    run(() => api.post('/api/peers/pair', { address: manualIp, port: Number(manualPort) }), 'Pairing request sent');
+    run(() => api.post('/api/peers/pair', { address: manualIp, port: Number(manualPort) }), $t('devices.pairingSent'));
   const unpair = async (peer) => {
-    if (!(await askConfirm(`Unpair "${peer.name}"? Their games stay on both devices; syncing between you stops.`, { title: 'Unpair device?', confirmText: 'Unpair', danger: true }))) return;
-    run(() => api.del(`/api/peers/${peer.id}`), `Unpaired ${peer.name}`);
+    if (!(await askConfirm($t('devices.unpairConfirmBody', { name: peer.name }), { title: $t('devices.unpairConfirmTitle'), confirmText: $t('devices.unpairConfirmText'), danger: true }))) return;
+    run(() => api.del(`/api/peers/${peer.id}`), $t('devices.unpaired', { name: peer.name }));
   };
 
   // A game a paired device syncs is tracked by itself only at a folder this
@@ -53,10 +54,8 @@
     const allowed = box.checked;
     if (allowed) {
       const ok = await askConfirm(
-        `Only do this for a device that is yours. When "${peer.name}" syncs a game this device ` +
-          `doesn't recognise, its saves go in the folder "${peer.name}" names, instead of waiting ` +
-          `on Home for you to choose one.`,
-        { title: `Trust "${peer.name}" to choose folders?`, confirmText: 'Trust it' }
+        $t('devices.trustConfirmBody', { name: peer.name }),
+        { title: $t('devices.trustConfirmTitle', { name: peer.name }), confirmText: $t('devices.trustConfirmText') }
       );
       if (!ok) {
         box.checked = false; // as it was: nothing changed
@@ -65,7 +64,7 @@
     }
     run(
       () => api.post(`/api/peers/${peer.id}/choose-folders`, { allowed }),
-      allowed ? `${peer.name} can choose folders here` : `${peer.name} no longer chooses folders here`
+      allowed ? $t('devices.canChooseFolders', { name: peer.name }) : $t('devices.noLongerChooses', { name: peer.name })
     );
   };
 
@@ -75,15 +74,13 @@
   // had fixed it, with two devices that no longer sync at all.
   const repairPairing = async (peer) => {
     const ok = await askConfirm(
-      `Unpair "${peer.name}", then pair the two devices again so they exchange an encryption key. ` +
-        `Their games and saves stay where they are. Nothing syncs between these two devices until ` +
-        `you pair them again.`,
-      { title: 'Unpair, so you can pair again?', confirmText: 'Unpair now' }
+      $t('devices.repairConfirmBody', { name: peer.name }),
+      { title: $t('devices.repairConfirmTitle'), confirmText: $t('devices.repairConfirmText') }
     );
     if (!ok) return;
     run(
       () => api.del(`/api/peers/${peer.id}`),
-      `Unpaired ${peer.name} — pair the two devices again to encrypt what you sync`
+      $t('devices.repairedToast', { name: peer.name })
     );
   };
 
@@ -91,26 +88,26 @@
   // install it here — no manually copying the exe between machines.
   const updateFromPeer = async (peer) => {
     const ok = await askConfirm(
-      `${peer.name} is running a newer OpenSave build (${peer.appVersion}). Download it from ${peer.name} and update this device? OpenSave restarts itself when done.`,
-      { title: 'Update OpenSave?', confirmText: 'Update & restart' }
+      $t('devices.updateConfirmBody', { name: peer.name, version: peer.appVersion }),
+      { title: $t('devices.updateConfirmTitle'), confirmText: $t('devices.updateConfirmText') }
     );
     if (!ok) return;
     const err = await native.installFromPeer(peer.id);
     if (err) toast(err, 'error');
   };
 
-  const fmtTime = (t) => (t ? new Date(t).toLocaleString() : 'never');
+  const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString() : $t('devices.never'));
 </script>
 
 <div class="head">
-  <h2 class="page-title">Devices</h2>
+  <h2 class="page-title">{$t('devices.title')}</h2>
 </div>
 
-<h3 class="section">Paired devices</h3>
+<h3 class="section">{$t('devices.paired')}</h3>
 {#if pairedList.length === 0}
   <div class="empty">
-    <h3>No paired devices</h3>
-    <p>Pair a device below — on your Wi-Fi it appears automatically, or connect over the internet with a room code.</p>
+    <h3>{$t('devices.noPaired')}</h3>
+    <p>{$t('devices.noPairedHint')}</p>
   </div>
 {:else}
   <div class="list">
@@ -121,12 +118,12 @@
           <div class="peer-name">
             {peer.name}
             <span class="badge" class:online={peer.status === 'online'} class:offline={peer.status !== 'online'}>
-              {peer.status}
+              {peer.status === 'online' ? $t('devices.statusOnline') : peer.status === 'offline' ? $t('devices.statusOffline') : peer.status}
             </span>
           </div>
           <div class="peer-meta">
-            {peer.address === 'relay' ? 'internet relay' : `${peer.address}:${peer.port}`}
-            · last synced {fmtTime(peer.lastSynced)}
+            {peer.address === 'relay' ? $t('devices.internetRelay') : `${peer.address}:${peer.port}`}
+            · {$t('devices.lastSynced', { time: fmtTime(peer.lastSynced) })}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
           </div>
           <!-- Per device, next to how it is reached, because that is the
@@ -135,47 +132,47 @@
             <ProtectionBadge {peer} compact />
             {#if protectionState(peer) === 'open'}
               <button class="linkish" disabled={busy} on:click={() => repairPairing(peer)}>
-                Fix this
+                {$t('devices.fixThis')}
               </button>
             {/if}
           </div>
-          <label class="check trust" title="For your own devices: games it syncs go in the folder it names, even one this device doesn't recognise as a save, instead of waiting on Home for you.">
+          <label class="check trust" title={$t('devices.trustTooltip')}>
             <input
               type="checkbox"
               checked={!!peer.choosesFolders}
               disabled={busy}
               on:change={(e) => setChoosesFolders(peer, e.currentTarget)}
             />
-            Trust it to choose folders
+            {$t('devices.trustLabel')}
           </label>
         </div>
         {#if peer.hasNewerBuild && peer.status === 'online'}
           <button class="btn small primary" disabled={busy || !!$appUpdate} on:click={() => updateFromPeer(peer)}>
-            <Download size={14} />Update from this device
+            <Download size={14} />{$t('devices.updateFromThis')}
           </button>
         {/if}
-        <button class="btn small danger" disabled={busy} on:click={() => unpair(peer)}>Unpair</button>
+        <button class="btn small danger" disabled={busy} on:click={() => unpair(peer)}>{$t('devices.unpair')}</button>
       </div>
     {/each}
   </div>
 {/if}
 
-<h3 class="section">Add a device</h3>
+<h3 class="section">{$t('devices.addDevice')}</h3>
 <div class="pill-tabs connect-tabs" use:slidingIndicator={{ inset: 10 }}>
-  <button class:active={connectTab === 'lan'} on:click={() => (connectTab = 'lan')}><Network size={15} />On this network</button>
+  <button class:active={connectTab === 'lan'} on:click={() => (connectTab = 'lan')}><Network size={15} />{$t('devices.onThisNetwork')}</button>
   <button class:active={connectTab === 'wan'} on:click={() => (connectTab = 'wan')}>
-    <Globe size={15} />Over the internet
+    <Globe size={15} />{$t('devices.overInternet')}
     {#if $wanRoom?.connected}<span class="tab-dot"></span>{/if}
   </button>
 </div>
 
 {#if connectTab === 'lan'}
   <p class="quiet lan-intro">
-    Devices running OpenSave on the same Wi-Fi/Ethernet discover each other automatically. No setup needed.
+    {$t('devices.lanIntro')}
   </p>
-  <h4 class="subsection">Found on your network</h4>
+  <h4 class="subsection">{$t('devices.foundOnNetwork')}</h4>
   {#if lanDiscovered.length === 0}
-    <p class="quiet">No unpaired devices found on the local network. Make sure OpenSave is running on the other device.</p>
+    <p class="quiet">{$t('devices.noLanFound')}</p>
   {:else}
     <div class="list">
       {#each lanDiscovered as d (d.id)}
@@ -185,17 +182,17 @@
             <div class="peer-name">{d.deviceName}</div>
             <div class="peer-meta">{d.address}:{d.port}</div>
           </div>
-          <button class="btn small primary" disabled={busy} on:click={() => pairDiscovered(d)}>Pair</button>
+          <button class="btn small primary" disabled={busy} on:click={() => pairDiscovered(d)}>{$t('devices.pair')}</button>
         </div>
       {/each}
     </div>
   {/if}
 
-  <h4 class="subsection">Add by IP address</h4>
+  <h4 class="subsection">{$t('devices.addByIp')}</h4>
   <div class="card manual">
     <input placeholder="192.168.1.42" bind:value={manualIp} />
     <input class="port" type="number" bind:value={manualPort} />
-    <button class="btn primary" disabled={!manualIp || busy} on:click={pairManual}>Send pairing request</button>
+    <button class="btn primary" disabled={!manualIp || busy} on:click={pairManual}>{$t('devices.sendPairing')}</button>
   </div>
 {:else}
   <InternetSync />
