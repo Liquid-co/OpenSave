@@ -1,11 +1,13 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/ignore"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/watcher"
 )
@@ -49,7 +51,7 @@ func TestAdoptExclusionView_CarriesTheLastSnapshotHashOver(t *testing.T) {
 	delta.InvalidateRoot(changed.SavePath)
 
 	d.devMu.Lock()
-	d.dev = devSettingsCache{loaded: true, patterns: map[string][]string{}}
+	d.dev = devSettingsCache{loaded: true, patterns: map[string][]string{}, verdicts: map[string][]store.SettingsFile{}}
 	for _, g := range []store.Game{same, changed} {
 		d.dev.patterns[g.Name+"\x00"+g.AppID+"\x00"+g.SavePath] = []string{"/graphics.xml"}
 	}
@@ -81,4 +83,56 @@ func mustGame(t *testing.T, d *Daemon, id string) store.Game {
 		t.Fatal(err)
 	}
 	return g
+}
+
+// A file taken for settings that another device's copy shows changing with
+// every change of the save is given back to syncing; one that stays put while
+// the save moves stays left out.
+func TestObserveSettings_GivesBackWhatChangesLikeASave(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := t.TempDir()
+	game := store.Game{ID: "g", Name: "g", SavePath: dir, ActiveBranch: "main", MaxSnapshots: 5}
+	if err := d.Store.CreateGame(game); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"progress.cfg", "video.cfg"} {
+		if err := d.Store.SetSettingsFile(store.SettingsFile{GameID: "g", Path: p, Verdict: store.VerdictSettings, Reason: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.devMu.Lock()
+	d.dev = devSettingsCache{loaded: true, patterns: map[string][]string{}, verdicts: map[string][]store.SettingsFile{}}
+	d.devMu.Unlock()
+	excluded := func(p string) bool { return ignore.Parse(d.IgnoreText(game)).Match(p) }
+	if !excluded("progress.cfg") || !excluded("video.cfg") {
+		t.Fatal("setup: the detected files are not left out")
+	}
+
+	manifest := func(i int, video string) delta.Manifest {
+		return delta.Manifest{Files: map[string]delta.FileEntry{
+			"slot1.sav":    {Hash: fmt.Sprint("save", i)},
+			"progress.cfg": {Hash: fmt.Sprint("progress", i)},
+			"video.cfg":    {Hash: video},
+		}}
+	}
+	d.observeSettings(game, "peerA", manifest(0, "1080p"))
+	for i := 1; i <= 2; i++ {
+		d.observeSettings(game, "peerA", manifest(i, "1080p"))
+	}
+	if !excluded("progress.cfg") {
+		t.Fatal("given back after two changes: too eager")
+	}
+	d.observeSettings(game, "peerA", manifest(3, "1080p"))
+	if excluded("progress.cfg") {
+		t.Error("a file that changed with the save three times out of three is still left out")
+	}
+	if !excluded("video.cfg") {
+		t.Error("a settings file that stayed put was given back")
+	}
+	v, _ := d.Store.SettingsFiles("g")
+	for _, f := range v {
+		if f.Path == "progress.cfg" && f.Verdict != store.VerdictSave {
+			t.Errorf("verdict %q, want save", f.Verdict)
+		}
+	}
 }

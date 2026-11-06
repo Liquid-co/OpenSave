@@ -38,6 +38,11 @@ type Options struct {
 	// DisableDiscovery skips UDP LAN discovery (tests pair peers manually
 	// and don't want broadcast traffic).
 	DisableDiscovery bool
+	// SyncEveryChange keeps and syncs every change made here as it comes,
+	// never holding a stretch of changes back as play when no session is seen
+	// (sessions.go, noteActivity). For tests of syncing itself, which change a
+	// save several times a minute and expect each change to travel.
+	SyncEveryChange bool
 }
 
 // Daemon is the assembled core. Access subsystems directly for operations
@@ -193,7 +198,8 @@ func New(opts Options) (*Daemon, error) {
 	d.P2P.Sync.DeviceSettingsFor = d.deviceSettingsFor
 	// A game being played here is synced when its session ends
 	// (syncengine/playing.go).
-	d.P2P.Sync.Playing = func(gameID string) bool { return !d.PlayingSince(gameID).IsZero() }
+	d.P2P.Sync.Playing = d.playingHere
+	d.P2P.Sync.ObserveSettings = d.observeSettings
 
 	// A restore or a branch switch rewrites a save folder; nothing syncing it
 	// may read it half-way (syncengine/settle.go).
@@ -287,6 +293,9 @@ func New(opts Options) (*Daemon, error) {
 		},
 		HoldSnapshot: d.holdSnapshotWhilePlaying,
 		OnChanged: func(gameID string) {
+			// How the files left out as its settings changed with it
+			// (detectsettings.go).
+			d.observeLocalSettings(gameID)
 			// An emptied save is noticed as it happens, and said on screen,
 			// even with no other device online to hold it back from.
 			_, _ = d.P2P.Sync.CheckHold(gameID, false)
@@ -468,6 +477,29 @@ func (d *Daemon) Start() error {
 				return
 			case <-ticker.C:
 				d.Store.Compact()
+			}
+		}
+	})
+
+	// Find each game's settings by what they hold (detectsettings.go): a few
+	// minutes after start, then hourly for whatever is due.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(newGameFirstScan)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.detectSettingsDue(ctx)
+		}
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.detectSettingsDue(ctx)
 			}
 		}
 	})

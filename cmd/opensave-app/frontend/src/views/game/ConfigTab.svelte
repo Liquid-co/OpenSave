@@ -32,7 +32,16 @@
   // The files the game database names as this game's settings rather than its
   // save (graphics, resolution): left out of syncing unless asked for.
   $: deviceSettings = game.deviceSettings ?? [];
+  // Files found by what they hold: suggested, and still syncing, until
+  // answered here. A wrong guess must not quietly stop part of a save syncing.
+  $: suggested = game.suggestedSettings ?? [];
   let locations = [];
+
+  function decide(s, keepHere) {
+    const path = s.pattern.replace(/^\//, '');
+    const done = $t(keepHere ? 'game.config.keptHere' : 'game.config.keptSyncing', { file: path });
+    return run(done, () => api.post(`/api/games/${game.id}/suggested-settings`, { path, keepHere }));
+  }
 
   // Cover preview: a custom URL wins, else the proxied Steam art for the App
   // ID being edited.
@@ -166,12 +175,39 @@
         can't push them out. <strong>0 = keep forever</strong> (the default).
       </span>
     </div>
+    {#if suggested.length > 0}
+      <div class="field device-block">
+        <span class="label">{$t('game.config.suggestedSettings')}</span>
+        <ul class="device-settings">
+          {#each suggested as s (s.pattern)}
+            <li>
+              <code>{s.pattern.replace(/^\//, '')}</code>
+              <span class="source">{s.reason}</span>
+              <span class="decide">
+                <button class="btn small" disabled={$busy} on:click={() => decide(s, true)}>
+                  {$t('game.config.keepHere')}
+                </button>
+                <button class="btn small ghost" disabled={$busy} on:click={() => decide(s, false)}>
+                  {$t('game.config.keepSyncing')}
+                </button>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+      <span class="hint device-hint">{$t('game.config.suggestedHint')}</span>
+    {/if}
     {#if deviceSettings.length > 0}
       <div class="field device-block">
         <label for="c-devsettings">{$t('game.config.deviceSettings')}</label>
         <ul class="device-settings">
-          {#each deviceSettings as p}
-            <li><code>{p.replace(/^\//, '')}</code></li>
+          {#each deviceSettings as s}
+            <li class:given-back={s.source === 'save'}>
+              <code>{s.pattern.replace(/^!?\//, '')}</code>
+              <span class="source">
+                {#if s.source === 'database'}{$t('game.config.sourceDatabase')}{:else if s.source === 'detected'}{$t('game.config.sourceDetected', { reason: s.reason })}{:else}{$t('game.config.sourceSave', { reason: s.reason })}{/if}
+              </span>
+            </li>
           {/each}
         </ul>
       </div>
@@ -180,6 +216,7 @@
         {$t('game.config.syncDeviceSettings')}
       </label>
       <span class="hint device-hint">{$t('game.config.deviceSettingsHint')}</span>
+      <span class="hint device-hint">{$t('game.config.deviceSettingsDetectedHint')}</span>
     {/if}
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
@@ -234,6 +271,25 @@
   }
   .device-settings code {
     font-size: 0.9em;
+  }
+  .device-settings .source {
+    font-size: 0.82em;
+    color: var(--text-faint);
+    margin-left: 6px;
+  }
+  .device-settings .given-back code {
+    text-decoration: line-through;
+  }
+  /* A heading over a list, not a control: styled as the field labels are. */
+  .device-block .label {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .device-settings .decide {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: 8px;
   }
   .device-block {
     margin-bottom: 4px !important;
