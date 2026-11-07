@@ -152,6 +152,11 @@ func isAbsoluteAnyOS(p string) bool {
 // A path that overlaps the game's primary location or another of its
 // locations is refused; see overlaps.
 func (s *Store) AddGameRoot(gameID, name, path string) error {
+	done, err := s.claimLock()
+	if err != nil {
+		return err
+	}
+	defer done()
 	n := NormalizeRootName(name)
 	if n == "" {
 		return fmt.Errorf("a save location needs a name")
