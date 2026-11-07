@@ -497,7 +497,7 @@ func (e *Engine) backfillCover(game store.Game, q manifestGameQuery) store.Game 
 // set to ask before tracking, to record who is waiting; empty is tolerated
 // (an unidentified caller simply produces an offer with no named device).
 // chooser is the device a signature proved made the request, or "": the only
-// one whose naming of a folder may be trusted (Devices, migration 0038).
+// one whose naming of a folder may be trusted (Devices, migration 0044).
 func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, chooser string) (store.Game, error) {
 	if game, err := e.Store.GetGame(gameID); err == nil {
 		return e.backfillCover(game, q), nil
