@@ -4,6 +4,7 @@
   import { navigate, toast, askConfirm, settings } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
+  import { t } from '../../lib/i18n.js';
   import Spinner from '../../components/ui/Spinner.svelte';
   import Cloud from 'lucide-svelte/icons/cloud';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -31,16 +32,16 @@
   load();
 
   const restore = async (snap) => {
-    if (!(await askConfirm(`Download and restore cloud snapshot ${snap.snapshotId} over your current save?`, { title: 'Restore from cloud?', confirmText: 'Download & restore' }))) return;
-    return run('Restored from cloud', async () => {
+    if (!(await askConfirm($t('game.cloud.restoreConfirm', { id: snap.snapshotId }), { title: $t('game.cloud.restoreTitle'), confirmText: $t('game.cloud.downloadRestore') }))) return;
+    return run($t('game.cloud.restored'), async () => {
       await api.post(`/api/cloud/restore/${game.id}`, { fileName: snap.name });
     });
   };
 
   const upload = () =>
-    run('Uploaded to cloud', async () => {
+    run($t('game.cloud.uploaded'), async () => {
       const res = await api.post(`/api/cloud/sync-local/${game.id}`);
-      toast(`Uploaded ${res.uploaded}, skipped ${res.skipped}`, 'success');
+      toast($t('game.cloud.uploadResult', { uploaded: res.uploaded, skipped: res.skipped }), 'success');
       await load();
     });
 </script>
@@ -48,33 +49,32 @@
 <div class="card">
   <div class="head">
     <div>
-      <h3 class="with-icon"><Cloud size={18} /> Cloud snapshots for {game.name}</h3>
-      <p class="sub">Snapshots backed up to your configured cloud provider.</p>
+      <h3 class="with-icon"><Cloud size={18} /> {$t('game.cloud.title', { name: game.name })}</h3>
+      <p class="sub">{$t('game.cloud.sub')}</p>
     </div>
     <div class="actions">
-      <button class="btn small" disabled={$busy} on:click={load}><RefreshCw size={13} />Refresh</button>
-      <button class="btn small primary" disabled={$busy} on:click={upload}><Upload size={13} />Upload local snapshots</button>
+      <button class="btn small" disabled={$busy} on:click={load}><RefreshCw size={13} />{$t('game.cloud.refresh')}</button>
+      <button class="btn small primary" disabled={$busy} on:click={upload}><Upload size={13} />{$t('game.cloud.uploadBtn')}</button>
     </div>
   </div>
 
   {#if loading}
-    <div class="quiet-block"><Spinner size={13} /> Loading cloud snapshots…</div>
+    <div class="quiet-block"><Spinner size={13} /> {$t('game.cloud.loading')}</div>
   {:else if !snaps || snaps.length === 0}
     <div class="quiet-block">
-      <p>No cloud snapshots for this game yet.</p>
+      <p>{$t('game.cloud.empty')}</p>
       {#if $settings?.cloudSync?.ready}
-        <p class="hint">New snapshots are copied up as they are taken. “Upload local snapshots” sends the ones from before.</p>
+        <p class="hint">{$t('game.cloud.readyHint')}</p>
       {:else}
         <p class="hint">
-          Set up a provider in <button class="linklike" on:click={() => navigate('cloud')}>Cloud Backup</button>,
-          then use “Upload local snapshots”.
+          {$t('game.cloud.setupHint1')}<button class="linklike" on:click={() => navigate('cloud')}>{$t('home.cloudBackup')}</button>{$t('game.cloud.setupHint2')}
         </p>
       {/if}
     </div>
   {:else}
     <table>
       <thead>
-        <tr><th>Branch</th><th>Date</th><th>Size</th><th></th></tr>
+        <tr><th>{$t('game.cloud.colBranch')}</th><th>{$t('game.cloud.colDate')}</th><th>{$t('game.cloud.colSize')}</th><th></th></tr>
       </thead>
       <tbody>
         {#each snaps as snap (snap.name)}
@@ -83,7 +83,7 @@
             <td class="mono">{new Date(snap.createdTime).toLocaleString()}</td>
             <td class="mono">{fmtSize(snap.sizeBytes)}</td>
             <td class="right">
-              <button class="btn small primary" disabled={$busy} on:click={() => restore(snap)}>Restore</button>
+              <button class="btn small primary" disabled={$busy} on:click={() => restore(snap)}>{$t('game.snapshots.restore')}</button>
             </td>
           </tr>
         {/each}
