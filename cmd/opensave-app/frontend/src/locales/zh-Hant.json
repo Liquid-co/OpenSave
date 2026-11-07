@@ -608,7 +608,7 @@
   "app.failedToStart": "OpenSave 啟動失敗",
   "app.retrying": "正在重試…",
   "app.retry": "重試",
-  "app.detailsSaved": "Details are saved to .opensave\\opensave.log in your user folder.",
+  "app.detailsSaved": "詳細資訊已儲存到你的使用者資料夾中的 .opensave\\opensave.log。",
   "app.startingOpenSave": "正在啟動 OpenSave…",
   "app.emptiedBody": "{name} 的所有存檔檔案在此處都被刪除了。你的其他裝置會保留它們，直到你做出選擇。",
   "app.choose": "選擇"
