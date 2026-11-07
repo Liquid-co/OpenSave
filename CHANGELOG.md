@@ -161,8 +161,34 @@ All notable changes to OpenSave are documented here. This project adheres to
   when a game is offered, OpenSave now looks for its folder straight away
   rather than at the next hourly scan, so a game you have already played on
   this device starts syncing within seconds.
+- **A game's extra save folders get the same protection as its main one.**
+  A sync no longer overwrites or deletes files in an additional save
+  location without a safety snapshot that holds them first, and resolving a
+  conflict there leaves it open if that snapshot, or the other device, is
+  not available. "Keep theirs" now takes exactly the other device's copy.
+  (#92, #93, issues #82 and #83)
+- **Two games can no longer claim the same save folder.** Tracking or moving
+  a game is refused when the folder, or one inside or above it, already
+  belongs to another game, through a link too; and when OpenSave cannot
+  check, it refuses rather than guessing. (#131, issue #130)
+- **A save folder OpenSave may not write to is said once.** One under Program
+  Files, say, showed the same "access denied" error at every sync. OpenSave
+  now says what to do, and tries again in half an hour; a file the game just
+  has open is retried as usual. (#114)
+- **The "After playing" snapshot is no longer taken twice** when the game
+  saved in the very moment its session began. (#125)
 
 ### Changed
+
+- **A game being played is not synced until you stop.** Its autosaves no
+  longer go to your other devices one by one while you play, and a game
+  running here never has a save written under it. When the session ends,
+  the save as you left it is kept and synced once. (#117)
+- **On Steam Deck, a game starts with its newest save.** The Game Mode
+  plugin holds a game's launch until its save has synced, for up to 30
+  seconds ("Wait for the save before starting", on by default), and tells
+  OpenSave when you start and stop playing, so each session gets its "After
+  playing" snapshot. (#109)
 
 - **Games from your other devices set themselves up again.** 2.4.1 stopped
   another device from choosing folders on this one, and in doing so made
@@ -223,7 +249,9 @@ All notable changes to OpenSave are documented here. This project adheres to
   folder" finds a game by name, by the program you pick, or one that is
   running, and tracks it with its name, cover and save folder. A folder
   inside one that is already tracked is refused, with an offer to link the
-  two instead. (#73)
+  two instead. The games running now are listed first. (#73, #126)
+- **RetroDECK's saves are found by the scan,** wherever RetroDECK is
+  installed, as EmuDeck's are. (#121, #129)
 - **Rename a game.** A pencil beside a game's name on its page — or
   "Rename…" in its menu and Ctrl+K, or `opensave rename` — changes what this
   device calls it. Your other devices keep their own name, and syncing,
