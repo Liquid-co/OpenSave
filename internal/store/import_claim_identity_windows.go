@@ -34,7 +34,7 @@ func nativeDBFileIdentity(path string) (string, error) {
 //
 // A dedicated pinned goroutine owns acquisition and ReleaseMutex. Callers can
 // release from any goroutine and return only after the native lock is released.
-// This is nonblocking: concurrent admissions receive ErrGamePathOwned.
+// This is nonblocking: concurrent admissions receive ErrPathClaimBusy.
 func claimNativeDB(path string) (func(), error) {
 	identity, err := nativeDBFileIdentity(path)
 	if err != nil {
@@ -77,10 +77,10 @@ func claimNativeDB(path string) (func(), error) {
 			// previous owner died while possibly mutating an import. Refuse
 			// to treat that state as an ordinary safe admission.
 			_ = windows.ReleaseMutex(handle)
-			ready <- fmt.Errorf("%w: previous import claim was abandoned", ErrGamePathOwned)
+			ready <- fmt.Errorf("previous import claim was abandoned; inspect import recovery before retrying")
 			return
 		default:
-			ready <- fmt.Errorf("%w: another import or registration is active", ErrGamePathOwned)
+			ready <- ErrPathClaimBusy
 			return
 		}
 

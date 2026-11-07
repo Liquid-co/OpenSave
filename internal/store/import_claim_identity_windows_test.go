@@ -29,11 +29,11 @@ func TestWindowsImportClaimNeverRecursivelyAdmitsAnotherCaller(t *testing.T) {
 		}
 		// In particular, the ordinary same-goroutine caller cannot silently
 		// inherit a recursively owned Windows mutex.
-		if done, err := s.claimLock(); err == nil {
+		if done, err := s.tryClaimLock(); err == nil {
 			done()
 			claim.Release()
 			t.Fatalf("round %d: competing same-goroutine claim was admitted", round)
-		} else if !errors.Is(err, ErrGamePathOwned) {
+		} else if !errors.Is(err, ErrPathClaimBusy) {
 			claim.Release()
 			t.Fatalf("round %d: wrong error from denied claim: %v", round, err)
 		}
@@ -45,7 +45,7 @@ func TestWindowsImportClaimNeverRecursivelyAdmitsAnotherCaller(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				done, err := s.claimLock()
+				done, err := s.tryClaimLock()
 				if err == nil {
 					done()
 					errs <- fmt.Errorf("competing goroutine acquired an active import claim")
@@ -57,7 +57,7 @@ func TestWindowsImportClaimNeverRecursivelyAdmitsAnotherCaller(t *testing.T) {
 		wg.Wait()
 		close(errs)
 		for err := range errs {
-			if !errors.Is(err, ErrGamePathOwned) {
+			if !errors.Is(err, ErrPathClaimBusy) {
 				claim.Release()
 				t.Fatalf("round %d: competing claim was not refused: %v", round, err)
 			}
@@ -75,7 +75,7 @@ func TestWindowsImportClaimNeverRecursivelyAdmitsAnotherCaller(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("round %d: release deadlocked across OS threads", round)
 		}
-		done, err := s.claimLock()
+		done, err := s.tryClaimLock()
 		if err != nil {
 			t.Fatalf("round %d: mutex remained locked after release: %v", round, err)
 		}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Two SQLite handles stand in for independently running native processes.
@@ -24,6 +25,7 @@ func TestImportPathAdmissionSerializesIndependentRegistrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close()
+	b.claimWaitFor = 25 * time.Millisecond
 	owner := filepath.Join(t.TempDir(), "owner")
 	nested := filepath.Join(owner, "config")
 	if err := os.MkdirAll(nested, 0700); err != nil {
@@ -35,10 +37,10 @@ func TestImportPathAdmissionSerializesIndependentRegistrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admission.Release()
-	if err := b.CreateGame(Game{ID: "competing", Name: "Competing", SavePath: owner}); !errors.Is(err, ErrGamePathOwned) {
+	if err := b.CreateGame(Game{ID: "competing", Name: "Competing", SavePath: owner}); !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("concurrent game registration escaped admission: %v", err)
 	}
-	if _, err := b.CreateGameUnlessAliased(Game{ID: "autocreate", Name: "Peer", SavePath: owner}); !errors.Is(err, ErrGamePathOwned) {
+	if _, err := b.CreateGameUnlessAliased(Game{ID: "autocreate", Name: "Peer", SavePath: owner}); !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("concurrent auto-track escaped admission: %v", err)
 	}
 	if err := a.CreateGameAdmitted(Game{ID: "incoming", Name: "Incoming", SavePath: nested}, admission); err != nil {
@@ -83,6 +85,7 @@ func TestImportAdmissionRefusesConcurrentRootRelocationAndWrongToken(t *testing.
 		t.Fatal(err)
 	}
 	defer b.Close()
+	b.claimWaitFor = 25 * time.Millisecond
 	original := filepath.Join(t.TempDir(), "ordinary")
 	target := filepath.Join(t.TempDir(), "target")
 	if err := b.CreateGame(Game{ID: "ordinary", Name: "Ordinary", SavePath: original}); err != nil {
@@ -94,7 +97,7 @@ func TestImportAdmissionRefusesConcurrentRootRelocationAndWrongToken(t *testing.
 	}
 	defer admission.Release()
 
-	if err := b.AddGameRoot("ordinary", "new", target); !errors.Is(err, ErrGamePathOwned) {
+	if err := b.AddGameRoot("ordinary", "new", target); !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("concurrent AddRoot was not excluded: %v", err)
 	}
 	game, err := b.GetGame("ordinary")
@@ -102,7 +105,7 @@ func TestImportAdmissionRefusesConcurrentRootRelocationAndWrongToken(t *testing.
 		t.Fatal(err)
 	}
 	game.SavePath = target
-	if err := b.UpdateGame(game); !errors.Is(err, ErrGamePathOwned) {
+	if err := b.UpdateGame(game); !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("concurrent relocation was not excluded: %v", err)
 	}
 	if err := a.CreateGameAdmitted(Game{ID: "wrong", Name: "Wrong", SavePath: target}, admission); !errors.Is(err, ErrGamePathOwned) {
@@ -114,29 +117,25 @@ func TestImportAdmissionRefusesConcurrentRootRelocationAndWrongToken(t *testing.
 }
 
 // Alternate path spelling of the same DB file must contend for the same lock.
-func TestImportPathAdmissionSameInodeDifferentPath(t *testing.T) {
+func TestImportPathAdmissionSameDatabaseSymlink(t *testing.T) {
 	dir := t.TempDir()
 	db1 := filepath.Join(dir, "native.db")
-	db2 := filepath.Join(dir, "native-hardlink.db")
+	db2 := filepath.Join(dir, "native-symlink.db")
 	a, err := Open(db1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	// Create a hard link so the two paths share the same inode.
-	if err := os.Link(db1, db2); err != nil {
-		t.Skip("hard links not supported on this filesystem")
+	// A symlink resolves to the canonical database and sidecar.
+	if err := os.Symlink(db1, db2); err != nil {
+		t.Skip("symlinks not supported on this filesystem")
 	}
 	b, err := Open(db2)
 	if err != nil {
-		// SQLite WAL names its journal from the path, so two hardlink spellings
-		// cannot be opened in one process. The child-process test covers the lock.
-		if strings.Contains(err.Error(), "disk I/O error") {
-			t.Skip(err.Error())
-		}
 		t.Fatal(err)
 	}
 	defer b.Close()
+	b.claimWaitFor = 25 * time.Millisecond
 
 	target := filepath.Join(t.TempDir(), "claimed")
 	if err := os.MkdirAll(target, 0700); err != nil {
@@ -147,8 +146,8 @@ func TestImportPathAdmissionSameInodeDifferentPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admission.Release()
-	if err := b.CreateGame(Game{ID: "other", Name: "Other", SavePath: target}); !errors.Is(err, ErrGamePathOwned) {
-		t.Fatalf("hard-linked DB path escaped admission: %v", err)
+	if err := b.CreateGame(Game{ID: "other", Name: "Other", SavePath: target}); !errors.Is(err, ErrPathClaimBusy) {
+		t.Fatalf("symlink DB path escaped admission: %v", err)
 	}
 }
 
@@ -163,13 +162,14 @@ func TestImportPathClaimChildProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	s.claimWaitFor = 25 * time.Millisecond
 	err = s.CreateGame(Game{ID: "competing", Name: "Competing", SavePath: filepath.Join(t.TempDir(), "save")})
-	if !errors.Is(err, ErrGamePathOwned) {
+	if !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("cross-process exclusion failed: %v", err)
 	}
 }
 
-func TestImportPathClaimCrossProcessCWDAndHardlink(t *testing.T) {
+func TestImportPathClaimCrossProcessCWDAndSymlink(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "native.db")
 	aliasDir := filepath.Join(dir, "alias")
@@ -185,16 +185,19 @@ func TestImportPathClaimCrossProcessCWDAndHardlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	alias := filepath.Join(aliasDir, "native-hardlink.db")
-	if err := os.Link(db, alias); err != nil {
-		t.Skipf("hardlinks unavailable: %v", err)
+	alias := filepath.Join(aliasDir, "native-symlink.db")
+	paths := []string{db}
+	if err := os.Symlink(db, alias); err != nil {
+		t.Logf("symlink alias unavailable; canonical cross-process case still runs: %v", err)
+	} else {
+		paths = append(paths, alias)
 	}
 	admission, err := s.BeginImportPath(filepath.Join(dir, "target"), "incoming")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer admission.Release()
-	for _, dbPath := range []string{db, alias} {
+	for _, dbPath := range paths {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestImportPathClaimChildProcess$", "-test.v")
 		cmd.Dir = childDir
 		cmd.Env = append(os.Environ(), "OPENSAVE_IMPORT_CLAIM_CHILD=1", "OPENSAVE_IMPORT_CLAIM_DB="+dbPath)
@@ -214,8 +217,9 @@ func TestImportPathClaimChildDifferentHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	s.claimWaitFor = 25 * time.Millisecond
 	err = s.CreateGame(Game{ID: "competing", Name: "Competing", SavePath: filepath.Join(t.TempDir(), "save")})
-	if !errors.Is(err, ErrGamePathOwned) {
+	if !errors.Is(err, ErrPathClaimBusy) {
 		t.Fatalf("cross-home exclusion failed: %v", err)
 	}
 }
