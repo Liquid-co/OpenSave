@@ -6,7 +6,7 @@ import (
 )
 
 // SetPeerChoosesFolders lets a paired device choose the folders of games it
-// syncs to this one, or stops it. See migration 0038.
+// syncs to this one, or stops it. See migration 0044.
 func (s *Store) SetPeerChoosesFolders(peerID string, allowed bool) error {
 	if !allowed {
 		if _, err := s.db.Exec(`DELETE FROM peer_folder_trust WHERE peer_id = ?`, peerID); err != nil {
