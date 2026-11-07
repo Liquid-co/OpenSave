@@ -1,8 +1,11 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 )
 
 // ImportPathAdmission owns the native cross-process path claim throughout
@@ -14,10 +17,60 @@ type ImportPathAdmission struct {
 	release func()
 }
 
-// claimLock protects native registrations of primary/named save roots and
-// untracked backup extraction. The lock is the database file itself, so a
-// different HOME, cwd, or hardlink spelling still contends.
+// ErrPathClaimBusy means admission timed out or another import holds the
+// claim. It is not evidence that any save location overlaps another game.
+var ErrPathClaimBusy = errors.New("save-location changes are busy; try again in a moment")
+
+const pathClaimWait = 30 * time.Second
+const pathClaimPoll = 100 * time.Millisecond
+
+// Ordinary registrations wait for short-lived work, just as native topology
+// edits do. The claim covers preparation AND commit, without holding a SQLite
+// transaction while waiting or resolving filesystem paths.
 func (s *Store) claimLock() (func(), error) {
+	return s.claimLockContext(context.Background())
+}
+
+func (s *Store) claimLockContext(parent context.Context) (func(), error) {
+	limit := s.claimWaitFor
+	if limit <= 0 {
+		limit = pathClaimWait
+	}
+	ctx, cancel := context.WithTimeout(parent, limit)
+	defer cancel()
+	return s.waitClaimLock(ctx)
+}
+
+func (s *Store) waitClaimLock(ctx context.Context) (func(), error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrPathClaimBusy, err)
+		}
+		release, err := s.tryClaimLock()
+		if err == nil {
+			// Cancellation racing acquisition must not admit a new mutation.
+			if err := ctx.Err(); err != nil {
+				release()
+				return nil, fmt.Errorf("%w: %w", ErrPathClaimBusy, err)
+			}
+			return release, nil
+		}
+		if !errors.Is(err, ErrPathClaimBusy) {
+			return nil, err
+		}
+		timer := time.NewTimer(pathClaimPoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, fmt.Errorf("%w: %w", ErrPathClaimBusy, ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+// Imports retain immediate refusal. Resolving symlinks makes aliases share the
+// same sidecar on Unix; HOME and cwd never determine the lock location.
+func (s *Store) tryClaimLock() (func(), error) {
 	canonical, err := filepath.Abs(s.path)
 	if err != nil {
 		return nil, err
@@ -36,7 +89,7 @@ func (s *Store) claimLock() (func(), error) {
 // BeginImportPath reserves ownership through every filesystem effect and the
 // eventual game registration. A read failure always refuses admission.
 func (s *Store) BeginImportPath(path, incomingGameID string) (*ImportPathAdmission, error) {
-	release, err := s.claimLock()
+	release, err := s.tryClaimLock()
 	if err != nil {
 		return nil, err
 	}

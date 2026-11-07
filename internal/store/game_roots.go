@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -152,7 +153,12 @@ func isAbsoluteAnyOS(p string) bool {
 // A path that overlaps the game's primary location or another of its
 // locations is refused; see overlaps.
 func (s *Store) AddGameRoot(gameID, name, path string) error {
-	done, err := s.claimLock()
+	return s.AddGameRootContext(context.Background(), gameID, name, path)
+}
+
+// AddGameRootContext stops waiting for ownership admission when the caller cancels.
+func (s *Store) AddGameRootContext(ctx context.Context, gameID, name, path string) error {
+	done, err := s.claimLockContext(ctx)
 	if err != nil {
 		return err
 	}

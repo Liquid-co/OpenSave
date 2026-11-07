@@ -374,12 +374,12 @@ func (s *Server) handleTrackGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game, err := s.Daemon.TrackGame(store.Game{Name: body.Name, SavePath: body.SavePath, AppID: body.AppID, ExePath: body.ExePath})
+	game, err := s.Daemon.TrackGameContext(r.Context(), store.Game{Name: body.Name, SavePath: body.SavePath, AppID: body.AppID, ExePath: body.ExePath})
 	if err != nil {
 		// Duplicates (id or path) are conflicts; anything else the daemon
 		// rejects is bad input.
 		status := http.StatusBadRequest
-		if errors.Is(err, store.ErrGamePathOwned) || errors.Is(err, store.ErrOwnershipClaimsChanged) ||
+		if errors.Is(err, store.ErrGamePathOwned) || errors.Is(err, store.ErrPathClaimBusy) || errors.Is(err, store.ErrOwnershipClaimsChanged) ||
 			strings.Contains(err.Error(), "already track") ||
 			strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
@@ -489,9 +489,9 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 		game.LastManifestHash = s.Daemon.LastSnapshotHashUnder(game, oldIgnore)
 	}
 
-	if err := s.Daemon.Store.UpdateGame(game); err != nil {
+	if err := s.Daemon.Store.UpdateGameContext(r.Context(), game); err != nil {
 		status := notFoundToStatus(err)
-		if errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
+		if errors.Is(err, store.ErrPathClaimBusy) || errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
 			status = http.StatusConflict
 		}
 		writeError(w, status, err.Error())
