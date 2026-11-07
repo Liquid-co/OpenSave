@@ -87,7 +87,7 @@ var presetDefs = []preset{
 		LinuxPath: []string{"~/.config/PCSX2/memcards", "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards"}},
 	{ID: "rpcs3", Name: "RPCS3 PS3 Emulator", Type: "emulator", Path: "%APPDATA%/rpcs3/dev_hdd0/home/00000001/savedata",
 		LinuxPath: []string{"~/.config/rpcs3/dev_hdd0/home/00000001/savedata", "~/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_hdd0/home/00000001/savedata"}},
-	{ID: "cemu", Name: "Cemu Wii U Emulator", Type: "emulator", Path: "%USERPROFILE%/Documents/Cemu/mlc01/usr/save",
+	{ID: "cemu", Name: "Cemu Wii U Emulator", Type: "emulator", Path: "%APPDATA%/Cemu/mlc01/usr/save",
 		LinuxPath: []string{"~/.local/share/Cemu/mlc01/usr/save", "~/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save"}},
 	{ID: "ppsspp", Name: "PPSSPP PSP Emulator", Type: "emulator", Path: "%USERPROFILE%/Documents/PPSSPP/PSP/SAVEDATA",
 		LinuxPath: []string{"~/.config/ppsspp/PSP/SAVEDATA", "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA"}},
