@@ -121,6 +121,37 @@ class SyncAnswers(unittest.TestCase):
         self.assertEqual(mixed["message"], "Synced 2 games: 1 updated, 1 already in sync — 1 needs a decision")
         self.assertFalse(main.summarize_sync_all({"a": {"status": "error", "error": "boom"}})["success"])
 
+    def test_a_sync_that_did_not_reach_a_device_is_not_called_in_sync(self):
+        cases = {
+            "peer_playing": "being played on PC",
+            "peer_paused": "PC has syncing paused",
+            "unwritable": "can't be written",
+            "something_new": 'PC answered "something_new"',
+        }
+        for status, said in cases.items():
+            stub = StubDaemon({"POST /api/games/hades/sync": (200, {"results": {"p": {"status": status, "peerName": "PC"}}})})
+            try:
+                res = run(main.Plugin().sync_game("hades"))
+            finally:
+                stub.close()
+            self.assertEqual(res["outcome"], "waiting", status)
+            self.assertIn(said, res["detail"])
+
+        stub = StubDaemon({"POST /api/games/hades/sync": (200, {"results": {
+            "p": {"status": "error", "peerName": "PC"}, "q": {"status": "in_sync"}}})})
+        try:
+            res = run(main.Plugin().sync_game("hades"))
+        finally:
+            stub.close()
+        self.assertFalse(res["success"])
+        self.assertEqual(res["reason"], "error")
+
+        summary = main.summarize_sync_all({
+            "a": {"p": {"status": "in_sync"}},
+            "b": {"p": {"status": "peer_playing", "peerName": "PC"}},
+        })
+        self.assertEqual(summary["message"], "Synced 1 game: 1 already in sync — 1 waiting on another device")
+
     def test_sync_all_end_to_end(self):
         stub = StubDaemon({"POST /api/games/sync-all": (200, {"results": {
             "a": {"status": "error", "error": "no online peers available", "reason": "offline"}}})})

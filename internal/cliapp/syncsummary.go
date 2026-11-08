@@ -24,6 +24,9 @@ type syncOutcome struct {
 	// Detail is the error, the device a conflict is with, or what a device
 	// is waiting on.
 	Detail string
+	// Some is whether at least one device took the save, when another did
+	// not (waiting, error).
+	Some bool
 }
 
 type peerSyncResult struct {
@@ -81,7 +84,9 @@ func outcomeFromPeers(gameID string, peers map[string]peerSyncResult) syncOutcom
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	changed, busy, waiting := false, false, ""
+	changed, busy := false, false
+	var waiting, failed, missing []string
+	reached := 0
 	for _, id := range ids {
 		p := peers[id]
 		who := p.PeerName
@@ -91,29 +96,47 @@ func outcomeFromPeers(gameID string, peers map[string]peerSyncResult) syncOutcom
 		switch p.Status {
 		case "conflict":
 			return syncOutcome{Game: gameID, Kind: "conflict", Detail: who}
+		case "in_sync":
+			reached++
 		case "updated", "updated_bidirectional", "deletions_synced", "triggered_peer_pull":
 			changed = true
+			reached++
 		case "peer_busy":
 			// The other device was still applying a sync of its own; the
 			// daemon asks again the moment it has finished.
 			busy = true
 		case "peer_awaiting_folder":
-			waiting = who + " is waiting for a folder to be chosen for it"
+			waiting = append(waiting, who+" is waiting for a folder to be chosen for it")
 		case "peer_holding":
-			waiting = who + " is holding it back: its save was emptied there"
+			waiting = append(waiting, who+" is holding it back: its save was emptied there")
+		case "peer_playing":
+			waiting = append(waiting, "it is being played on "+who+"; its save comes over when that session ends")
+		case "peer_paused":
+			waiting = append(waiting, who+" has syncing paused")
+		case "unwritable":
+			waiting = append(waiting, "its save folder here could not be written to; OpenSave tries again in 30 minutes or after a restart")
 		case "peer_missing":
-			if waiting == "" {
-				waiting = who + " does not track it"
-			}
+			missing = append(missing, who+" does not track it")
+		case "error":
+			failed = append(failed, "the sync with "+who+" failed (opensave activity says why)")
+		default:
+			// A status this CLI does not know yet, from a newer daemon. Not
+			// read as in sync: nothing says it is.
+			waiting = append(waiting, fmt.Sprintf("%s answered %q", who, p.Status))
 		}
 	}
+	some := reached > 0
 	switch {
+	case len(failed) > 0:
+		return syncOutcome{Game: gameID, Kind: "error", Detail: strings.Join(failed, "; "), Some: some}
+	case len(waiting) > 0:
+		return syncOutcome{Game: gameID, Kind: "waiting", Detail: strings.Join(waiting, "; "), Some: some || changed}
 	case changed:
 		return syncOutcome{Game: gameID, Kind: "changed"}
 	case busy:
 		return syncOutcome{Game: gameID, Kind: "queued"}
-	case waiting != "":
-		return syncOutcome{Game: gameID, Kind: "waiting", Detail: waiting}
+	case len(missing) > 0 && !some:
+		return syncOutcome{Game: gameID, Kind: "waiting", Detail: strings.Join(missing, "; ")}
 	default:
 		return syncOutcome{Game: gameID, Kind: "in-sync"}
 	}
