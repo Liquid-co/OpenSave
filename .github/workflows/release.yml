@@ -235,6 +235,17 @@ jobs:
           cp opensave-decky-plugin/package.json decky-pkg/OpenSave/
           cp opensave-decky-plugin/main.py      decky-pkg/OpenSave/
           cp opensave-decky-plugin/dist/index.js decky-pkg/OpenSave/dist/
+          # The zip says the version of the tag it is released under. Plugin
+          # managers compare the two, and a mismatch offers the same update
+          # again and again (#149). A manual run has no tag: it keeps the files'.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            for f in plugin.json package.json; do
+              jq --arg v "$V" '.version = $v' "decky-pkg/OpenSave/$f" > "$f.stamped"
+              mv "$f.stamped" "decky-pkg/OpenSave/$f"
+              test "$(jq -r .version "decky-pkg/OpenSave/$f")" = "$V"
+            done
+          fi
           (cd decky-pkg && zip -r ../OpenSave-decky-plugin.zip OpenSave)
           unzip -l OpenSave-decky-plugin.zip
 

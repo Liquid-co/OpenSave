@@ -71,6 +71,25 @@ func SaveDriveMissing(savePath string) bool {
 // folders constantly.
 const relocateRecheck = time.Hour
 
+// statSaveFolder is os.Stat, replaced by a test that needs a drive that is not
+// ready.
+var statSaveFolder = os.Stat
+
+// saveFolderThere reports whether a save path's folder can be seen to exist.
+// It is not the opposite of SaveFolderMissing, which says "missing" only of a
+// folder plainly not there. A drive with no disk in it, an empty card reader
+// or an unreachable share answers with another error: not missing, and not
+// there either. Taken as there, an empty card reader made a second match for
+// every folder found on another drive, and nothing was ever offered.
+func saveFolderThere(savePath string) bool {
+	folder := savePath
+	if isFile, err := delta.ResolveLocalSaveFilePath(savePath); err == nil && isFile {
+		folder = filepath.Dir(savePath)
+	}
+	_, err := statSaveFolder(folder)
+	return err == nil
+}
+
 // relocateCandidates lists the folders at savePath's exact path under the other
 // drive letters that exist here. Windows drive letters only.
 func relocateCandidates(savePath string) []string {
@@ -87,7 +106,7 @@ func relocateCandidates(savePath string) []string {
 			continue
 		}
 		candidate := letter + ":" + rest
-		if !SaveFolderMissing(candidate) {
+		if saveFolderThere(candidate) {
 			found = append(found, candidate)
 		}
 	}
