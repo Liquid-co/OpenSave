@@ -290,7 +290,7 @@
     {:else}
       <div class="boot-loading">
         <img class="boot-logo pulse" src={logoUrl} alt="OpenSave" />
-        <span>Starting OpenSave…</span>
+        <span>{$t('app.startingOpenSave')}</span>
       </div>
     {/if}
   </div>
