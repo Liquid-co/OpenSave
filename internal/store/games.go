@@ -182,11 +182,6 @@ func (s *Store) UpdateGame(g Game) error {
 
 // UpdateGameContext stops waiting for ownership admission when the caller cancels.
 func (s *Store) UpdateGameContext(ctx context.Context, g Game) error {
-	done, err := s.claimLockContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer done()
 	// Avoid filesystem work for ordinary metadata-only updates. A concurrent
 	// relocation detected inside the transaction must fail closed instead.
 	var observedPath string
@@ -198,6 +193,11 @@ func (s *Store) UpdateGameContext(ctx context.Context, g Game) error {
 	}
 	var prepared *preparedNativePaths
 	if observedPath != g.SavePath {
+		done, err := s.claimLockContext(ctx)
+		if err != nil {
+			return err
+		}
+		defer done()
 		prepared, err = s.prepareNativePaths(g.SavePath)
 		if err != nil {
 			return err
