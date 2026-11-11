@@ -2,6 +2,7 @@ package syncengine
 
 import (
 	"context"
+	"errors"
 
 	"github.com/opensave/opensave/internal/delta"
 )
@@ -30,6 +31,38 @@ type SnapshotInfo struct {
 // ProtoMultiRoot is the protocol revision at which a peer understands games
 // with more than one save location.
 const ProtoMultiRoot = 1
+
+// ProtoBatchFiles is the revision at which a peer serves the blocks of many
+// files in one request (FetchFileBatch). Before it, every file cost its own
+// round trip — ~200ms each in practice, which for a save of a quarter-million
+// small files (Project Zomboid map chunks) meant half a day for 50MB.
+const ProtoBatchFiles = 2
+
+// FileBlocksRequest asks for some blocks of one file, as one entry of a batch.
+type FileBlocksRequest struct {
+	RelPath      string `json:"relPath"`
+	BlockIndices []int  `json:"blockIndices"`
+	BlockSize    int    `json:"blockSize"`
+}
+
+// FileBlocks is one file's answer inside a batch. Error is set, and Blocks
+// empty, when the responder could not read that file.
+type FileBlocks struct {
+	RelPath string      `json:"relPath"`
+	Blocks  []BlockData `json:"blocks"`
+	Error   string      `json:"error,omitempty"`
+}
+
+// BatchFetcher is implemented by transports that can fetch the blocks of
+// many files, all in one save location, in a single request. Optional: the
+// engine checks for it, and for a peer that advertised ProtoBatchFiles.
+type BatchFetcher interface {
+	FetchFileBatch(ctx context.Context, peer Peer, gameID, root string, files []FileBlocksRequest) ([]FileBlocks, error)
+}
+
+// ErrBatchUnsupported is what a transport returns when it cannot batch for
+// this peer (the relay path); the engine then pulls file by file.
+var ErrBatchUnsupported = errors.New("batched file fetch is not supported for this peer")
 
 // ManifestResponse is what a peer returns for a manifest request.
 type ManifestResponse struct {
@@ -60,6 +93,12 @@ type ManifestResponse struct {
 	// HeldYours answers ManifestQuery.Held: a snapshot here holds exactly the
 	// asker's files (heldstate.go). Absent from a peer that predates it.
 	HeldYours bool `json:"heldYours,omitempty"`
+	// Unchanged answers a request that carried ManifestQuery.IfHash: the
+	// responder's save still hashes to exactly that, so Manifest is left
+	// empty. Only ever set when asked; a peer that predates it ignores the
+	// question and sends the full manifest, which is handled as before.
+	Unchanged    bool   `json:"unchanged,omitempty"`
+	ManifestHash string `json:"manifestHash,omitempty"`
 }
 
 // FileRef identifies one file inside one of a game's save locations.
@@ -88,6 +127,9 @@ type ManifestQuery struct {
 	// Held identifies this device's files (heldstate.go heldKey), sent only when it
 	// has no agreed state with the peer: has the peer held this save?
 	Held string
+	// IfHash asks the peer to answer "unchanged" instead of its manifest when
+	// its save still hashes to this — the base both devices last agreed on.
+	IfHash string
 }
 
 // BlockData is one fetched block.
