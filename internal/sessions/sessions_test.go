@@ -105,3 +105,42 @@ func TestListFindsThisProcess(t *testing.T) {
 		t.Errorf("this process (%d, %s) was not found among %d: %v", os.Getpid(), self, len(procs), running)
 	}
 }
+
+// A game protected against tampering keeps its path from everyone; its
+// process is still recognised by name, among its install folder's programs.
+func TestRunning_ProtectedProcessByName(t *testing.T) {
+	target := Target{GameID: "cd", Dirs: []string{`C:\Games\Crimson Desert`}, Programs: []string{"crimsondesert.exe"}}
+	procs := []Proc{{PID: 11, Name: "explorer.exe"}, {PID: 12, Name: "CrimsonDesert.exe"}}
+	if got := Running(procs, []Target{target}); got["cd"] != 12 {
+		t.Errorf("Running = %v, want the protected process recognised by name", got)
+	}
+	if got := Running([]Proc{{PID: 13, Name: "game.exe"}}, []Target{target}); len(got) != 0 {
+		t.Errorf("a program not in the game's folder was taken for it: %v", got)
+	}
+}
+
+// A game installed in a folder no library lists is found by the folder's
+// name, wherever that folder is.
+func TestRunning_ByInstallFolderName(t *testing.T) {
+	// Paths as this system writes them: a process's program is a native path.
+	root := string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		root = `G:\`
+	}
+	games := filepath.Join(root, "Games")
+	target := Target{GameID: "cd", FolderNames: []string{FolderName("Crimson Desert")}}
+	procs := []Proc{
+		{PID: 5, Exe: filepath.Join(root, "Windows", "explorer.exe")},
+		{PID: 6, Exe: filepath.Join(games, "Crimson Desert", "bin64", "CrimsonDesert.exe")},
+	}
+	if got := Running(procs, []Target{target}); got["cd"] != 6 {
+		t.Fatalf("Running = %v, want the game found by its folder", got)
+	}
+	if dir := FolderOf(procs[1], target); dir != filepath.Join(games, "Crimson Desert") {
+		t.Errorf("FolderOf = %q", dir)
+	}
+	other := []Proc{{PID: 7, Exe: filepath.Join(games, "Crimson Desert Tools", "editor.exe")}}
+	if got := Running(other, []Target{target}); len(got) != 0 {
+		t.Errorf("a folder whose name only begins the same was taken for the game: %v", got)
+	}
+}
