@@ -1,4 +1,5 @@
 <script>
+  import { t as i18n } from '../lib/i18n.js';
   import { slidingIndicator } from '../lib/motion.js';
   import { games } from '../lib/stores.js';
   import { createRunner } from '../lib/runner.js';
@@ -22,11 +23,11 @@
   const runner = createRunner();
 
   const tabs = [
-    { id: 'snapshots', label: 'Snapshots', icon: History, component: SnapshotsTab },
-    { id: 'branches', label: 'Branches', icon: GitBranch, component: BranchesTab },
-    { id: 'cloud', label: 'Cloud', icon: Cloud, component: CloudTab },
-    { id: 'config', label: 'Configuration', icon: SlidersHorizontal, component: ConfigTab },
-    { id: 'danger', label: 'Manage', icon: Wrench, component: ManageTab }
+    { id: 'snapshots', label: 'game.tab.snapshots', icon: History, component: SnapshotsTab },
+    { id: 'branches', label: 'game.tab.branches', icon: GitBranch, component: BranchesTab },
+    { id: 'cloud', label: 'game.tab.cloud', icon: Cloud, component: CloudTab },
+    { id: 'config', label: 'game.tab.config', icon: SlidersHorizontal, component: ConfigTab },
+    { id: 'danger', label: 'game.tab.manage', icon: Wrench, component: ManageTab }
   ];
   let tab = 'snapshots';
 
@@ -52,14 +53,14 @@
 </script>
 
 {#if !game}
-  <div class="empty"><h3>Game not found</h3></div>
+  <div class="empty"><h3>{$i18n('game.notFound')}</h3></div>
 {:else}
   {#key params.gameId}
     <GameHeader {game} {runner} renameRequest={params.rename} />
 
     <div class="pill-tabs tabs" use:slidingIndicator={{ inset: 10 }}>
       {#each tabs as t (t.id)}
-        <button class:active={tab === t.id} on:click={() => (tab = t.id)}><svelte:component this={t.icon} size={15} />{t.label}</button>
+        <button class:active={tab === t.id} on:click={() => (tab = t.id)}><svelte:component this={t.icon} size={15} />{$i18n(t.label)}</button>
       {/each}
     </div>
 

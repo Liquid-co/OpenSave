@@ -80,8 +80,8 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
 
-  const syncNow = () => run('Sync triggered', () => api.post(`/api/games/${game.id}/sync`));
-  const launchGame = () => run('Launching…', () => api.post(`/api/games/${game.id}/launch`));
+  const syncNow = () => run($t('game.header.syncTriggered'), () => api.post(`/api/games/${game.id}/sync`));
+  const launchGame = () => run($t('game.header.launching'), () => api.post(`/api/games/${game.id}/launch`));
 
   let editPath = false;
   let pathDraft = '';
@@ -92,18 +92,19 @@
   async function answerEmptied(answer) {
     if (answer === 'delete') {
       const n = game.emptied.files;
-      const ok = await askConfirm(
-        `Delete ${game.name}'s save files on your other devices too? ${n} file${n === 1 ? '' : 's'} there will go; each device keeps a snapshot of them first.`,
-        { title: 'Delete them everywhere?', confirmText: 'Delete them there too', danger: true }
-      );
+      const ok = await askConfirm($t('game.header.deleteEverywhereMsg', { name: game.name, n }), {
+        title: $t('game.header.deleteEverywhereTitle'),
+        confirmText: $t('game.header.deleteEverywhereAction'),
+        danger: true
+      });
       if (!ok) return;
     }
     answering = true;
     try {
       const res = await api.post(`/api/games/${game.id}/emptied`, { answer });
-      if (answer === 'delete') toast(`${game.name}'s save files are deleted on your other devices at the next sync`, 'success');
-      else if (res.fetching > 0) toast(`Putting ${game.name}'s files back — ${res.fetching} come from your other devices`, 'success');
-      else toast(`${game.name}'s files are back`, 'success');
+      if (answer === 'delete') toast($t('game.header.deletedAtNextSync', { name: game.name }), 'success');
+      else if (res.fetching > 0) toast($t('game.header.puttingBackDevices', { name: game.name, n: res.fetching }), 'success');
+      else toast($t('game.header.filesBack', { name: game.name }), 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -119,10 +120,10 @@
     try {
       if (use) {
         await api.post(`/api/games/${game.id}/relocate`, { path: found });
-        toast(`${game.name} now uses ${found}`, 'success');
+        toast($t('game.header.relocated', { name: game.name, path: found }), 'success');
       } else {
         await api.post(`/api/games/${game.id}/relocate/dismiss`);
-        toast(`Not using ${found} for ${game.name}`, 'success');
+        toast($t('game.header.relocateDismissed', { path: found, name: game.name }), 'success');
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -138,13 +139,13 @@
   }
 
   async function savePath() {
-    await run('Save path updated', () => api.patch(`/api/games/${game.id}`, { savePath: pathDraft }));
+    await run($t('game.header.savePathUpdated'), () => api.patch(`/api/games/${game.id}`, { savePath: pathDraft }));
     editPath = false;
   }
 </script>
 
 <div class="head">
-  <button class="btn icon back" on:click={() => navigate('home')} title="Back" aria-label="Back"><ArrowLeft size={18} /></button>
+  <button class="btn icon back" on:click={() => navigate('home')} title={$t('game.header.back')} aria-label={$t('game.header.back')}><ArrowLeft size={18} /></button>
   {#if gameCover(game)}
     <img
       class="head-cover"
@@ -183,8 +184,8 @@
       <button
         class="btn small ghost icon star"
         class:on={isFavourite($collections, game.id)}
-        title={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
-        aria-label={isFavourite($collections, game.id) ? 'Remove from Favourites' : 'Add to Favourites'}
+        title={isFavourite($collections, game.id) ? $t('game.header.removeFavourite') : $t('game.header.addFavourite')}
+        aria-label={isFavourite($collections, game.id) ? $t('game.header.removeFavourite') : $t('game.header.addFavourite')}
         aria-pressed={isFavourite($collections, game.id)}
         on:click={() => toggleFavourite($collections, game)}
       >
@@ -197,29 +198,29 @@
       </div>
     {/if}
     <div class="sub">
-      branch <strong>{game.activeBranch}</strong>
+      {$t('game.header.branch')} <strong>{game.activeBranch}</strong>
       {#if activity?.state === 'running'}
-        · <span class="syncing">syncing {activity.percentage ?? 0}%</span>
+        · <span class="syncing">{$t('game.header.syncing', { n: activity.percentage ?? 0 })}</span>
       {/if}
       {#if game.restoring}
         · <span class="syncing"><Spinner size={11} /> {restoreProgressText(game.restoring, $t)}</span>
       {/if}
       {#if game.playingSince}
-        · <span class="playing">in session since {new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        · <span class="playing">{$t('game.header.inSession', { time: new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</span>
       {:else if game.lastPlayedAt}
-        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>played {timeAgo(game.lastPlayedAt, now)}, {playLength(game.playtimeMs)} in all</span>
+        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>{$t('game.header.played', { when: timeAgo(game.lastPlayedAt, now), length: playLength(game.playtimeMs) })}</span>
       {/if}
       {#if game.installed === 'not-found'}
-        · <span title="Steam on this PC does not have it, and it is in no folder games are kept in. Set its program under Configuration to launch it from somewhere else.">not found on this PC</span>
+        · <span title={$t('game.header.notFoundTitle')}>{$t('game.header.notFound')}</span>
       {/if}
     </div>
     {#if syncedWith.length > 0}
       <div class="sub synced-with">
         {#each syncedWith as d, i (d.id)}
           {#if i > 0}<span class="sep">·</span>{/if}
-          <span class="device" title={d.at ? `${d.name}: last synced ${new Date(d.at).toLocaleString()}` : `${d.name} has never synced this game`}>
+          <span class="device" title={d.at ? $t('game.header.lastSyncedTitle', { name: d.name, when: new Date(d.at).toLocaleString() }) : $t('game.header.neverSyncedTitle', { name: d.name })}>
             {d.name}
-            <span class:never={!d.at}>{d.at ? `synced ${timeAgo(d.at, now)}` : 'never synced'}</span>
+            <span class:never={!d.at}>{d.at ? $t('game.header.syncedAgo', { when: timeAgo(d.at, now) }) : $t('game.header.neverSynced')}</span>
           </span>
         {/each}
       </div>
@@ -227,24 +228,24 @@
   </div>
   <div class="head-actions">
     {#if canLaunch(game)}
-      <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />Launch</button>
+      <button class="btn" disabled={$busy} on:click={launchGame}><Play size={15} />{$t('game.header.launch')}</button>
     {/if}
-    <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />Sync now</button>
+    <button class="btn primary" disabled={$busy} on:click={syncNow}><RefreshCw size={15} />{$t('game.header.syncNow')}</button>
   </div>
 </div>
 
 <div class="path-line">
   {#if editPath}
     <input class="path-input" bind:value={pathDraft} />
-    <button class="btn small" on:click={async () => (pathDraft = (await native.selectDirectory('Select save folder')) || pathDraft)}>Browse</button>
-    <button class="btn small primary" on:click={savePath}>Save</button>
-    <button class="btn small" on:click={() => (editPath = false)}>Cancel</button>
+    <button class="btn small" on:click={async () => (pathDraft = (await native.selectDirectory($t('game.header.selectSaveFolder'))) || pathDraft)}>{$t('game.header.browse')}</button>
+    <button class="btn small primary" on:click={savePath}>{$t('game.header.save')}</button>
+    <button class="btn small" on:click={() => (editPath = false)}>{$t('common.cancel')}</button>
   {:else}
     <span class="path" title={game.savePath}>{game.savePath}</span>
-    <button class="btn small" on:click={openSaveFolder} title="Show this folder in your file manager">
-      <FolderOpen size={14} />Open folder
+    <button class="btn small" on:click={openSaveFolder} title={$t('game.header.openFolderTitle')}>
+      <FolderOpen size={14} />{$t('game.header.openFolder')}
     </button>
-    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />Edit</button>
+    <button class="btn small" on:click={() => { pathDraft = game.savePath; editPath = true; }}><Pencil size={13} />{$t('game.header.edit')}</button>
   {/if}
 </div>
 
@@ -256,23 +257,23 @@
     <TriangleAlert size={16} />
     <div>
       {#if game.emptied.state === 'fetching'}
-        <strong>Putting the files back.</strong>
-        Some are still to come from your other devices; this game syncs as usual once they're all here.
+        <strong>{$t('game.header.emptiedFetchingTitle')}</strong>
+        {$t('game.header.emptiedFetchingBody')}
       {:else}
-        <strong>Every save file in {emptiedWhere(game.emptied.locations)} was deleted on this device.</strong>
-        Your other devices still have theirs, and nothing is synced until you choose.
+        <strong>{$t('game.header.emptiedTitle', { where: emptiedWhere(game.emptied.locations) })}</strong>
+        {$t('game.header.emptiedBody')}
         {#if game.emptied.putBackFrom}
-          Put them back from the snapshot of {whenLabel(game.emptied.putBackFromTime)}, with anything newer from your other devices
+          {$t('game.header.putBackFromSnapshot', { when: whenLabel(game.emptied.putBackFromTime) })}
         {:else}
-          Put them back from your other devices
+          {$t('game.header.putBackFromDevices')}
         {/if}
-        — or, if you meant it, delete them there too; each device keeps a snapshot first.
+        {$t('game.header.orDeleteThere')}
         <div class="emptied-actions">
           <button class="btn small primary" disabled={answering} on:click={() => answerEmptied('restore')}>
-            <RotateCcw size={13} />Put them back
+            <RotateCcw size={13} />{$t('game.header.putBackBtn')}
           </button>
           <button class="btn small" disabled={answering} on:click={() => answerEmptied('delete')}>
-            Delete them on my other devices too
+            {$t('game.header.deleteThereBtn')}
           </button>
         </div>
       {/if}
@@ -286,9 +287,8 @@
   <div class="missing elsewhere" role="status">
     <Info size={16} />
     <div>
-      <strong>This game isn't on this device.</strong>
-      Its saves are on {game.savePath.slice(0, 2)}, which this PC doesn't have, so it's skipped here and keeps syncing
-      between your other devices. If it is installed here, point the game at its save folder with Edit.
+      <strong>{$t('game.header.elsewhereTitle')}</strong>
+      {$t('game.header.elsewhereBody', { drive: game.savePath.slice(0, 2) })}
     </div>
   </div>
 {:else if game.savePathMissing && !editPath}
@@ -298,10 +298,8 @@
   <div class="missing" role="status">
     <TriangleAlert size={16} />
     <div>
-      <strong>This save folder is not there.</strong>
-      It may have been moved or deleted, or be on a drive that isn't connected. Nothing is snapshotted or synced for
-      this game until it's back — OpenSave picks it up again within a minute. If the save lives somewhere else now,
-      point the game at it with Edit.
+      <strong>{$t('game.header.folderMissingTitle')}</strong>
+      {$t('game.header.folderMissingBody')}
     </div>
   </div>
 {/if}
@@ -312,11 +310,11 @@
   <div class="missing relocate" role="status">
     <Info size={16} />
     <div>
-      <strong>The same folder is at {game.relocateSuggestion}.</strong>
-      Is that where this game saves on this device? Only use it if it holds your current saves, not an old copy.
+      <strong>{$t('game.header.relocateTitle', { path: game.relocateSuggestion })}</strong>
+      {$t('game.header.relocateBody')}
       <div class="relocate-actions">
-        <button class="btn small primary" disabled={relocating} on:click={() => answerRelocation(true)}>Use this folder</button>
-        <button class="btn small ghost" disabled={relocating} on:click={() => answerRelocation(false)}>Not this one</button>
+        <button class="btn small primary" disabled={relocating} on:click={() => answerRelocation(true)}>{$t('game.header.relocateUse')}</button>
+        <button class="btn small ghost" disabled={relocating} on:click={() => answerRelocation(false)}>{$t('game.header.relocateNotThis')}</button>
       </div>
     </div>
   </div>

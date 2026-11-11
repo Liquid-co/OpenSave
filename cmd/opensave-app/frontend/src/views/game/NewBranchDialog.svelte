@@ -5,6 +5,7 @@
   import { createEventDispatcher } from 'svelte';
   import GitBranch from 'lucide-svelte/icons/git-branch';
   import History from 'lucide-svelte/icons/history';
+  import { t } from '../../lib/i18n.js';
 
   export let name = '';
   export let activeBranch = '';
@@ -26,17 +27,15 @@
 <div class="overlay" on:click={() => dispatch('cancel')} out:dialogOut|global>
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="modal card" on:click|stopPropagation>
-    <h3 class="with-icon"><GitBranch size={19} /> New branch — {name}</h3>
-    <p class="desc">What should it start from?</p>
+    <h3 class="with-icon"><GitBranch size={19} /> {$t('game.newBranch.title', { name })}</h3>
+    <p class="desc">{$t('game.newBranch.question')}</p>
 
     <label class="choice" class:sel={copySave}>
       <input type="radio" bind:group={copySave} value={true} />
       <span class="c-body">
-        <span class="c-title">A copy of my current save</span>
+        <span class="c-title">{$t('game.newBranch.copyTitle')}</span>
         <span class="c-desc">
-          "{name}" begins exactly where you are now. The two only diverge from the first
-          snapshot you take on it — so this is the one for trying something without losing your
-          place.
+          {$t('game.newBranch.copyDesc', { name })}
         </span>
       </span>
     </label>
@@ -44,22 +43,19 @@
     <label class="choice" class:sel={!copySave}>
       <input type="radio" bind:group={copySave} value={false} />
       <span class="c-body">
-        <span class="c-title">A fresh start — no save</span>
+        <span class="c-title">{$t('game.newBranch.freshTitle')}</span>
         <span class="c-desc">
-          "{name}" begins empty, for a new playthrough from scratch. Switching to it clears
-          your save folder — your current save is snapshotted first and comes straight back when
-          you switch to <strong>{activeBranch}</strong>.
+          {$t('game.newBranch.freshDesc1', { name })}<strong>{activeBranch}</strong>{$t('game.newBranch.freshDesc2')}
         </span>
       </span>
     </label>
 
     <div class="actions">
-      <button class="btn" on:click={() => dispatch('cancel')}>Cancel</button>
-      <button class="btn primary" disabled={busy} on:click={() => dispatch('create', copySave)}>Create branch</button>
+      <button class="btn" on:click={() => dispatch('cancel')}>{$t('common.cancel')}</button>
+      <button class="btn primary" disabled={busy} on:click={() => dispatch('create', copySave)}>{$t('game.branches.create')}</button>
     </div>
     <p class="hint-line">
-      <History size={15} class="inline-icon" /> Either way nothing is lost. Switching between branches snapshots whatever is in your
-      save folder first, and refuses to change anything if that snapshot can't be taken.
+      <History size={15} class="inline-icon" /> {$t('game.newBranch.hint')}
     </p>
   </div>
 </div>
