@@ -80,9 +80,11 @@ interface DaemonStatus {
 /** A sync of one game: what it did, or why it did not happen. */
 interface SyncResult {
   success: boolean;
-  outcome?: "changed" | "in-sync" | "conflict" | "queued" | "timeout";
+  outcome?: "changed" | "in-sync" | "conflict" | "queued" | "waiting" | "timeout";
   reason?: "paused" | "held" | "offline" | "error";
   error?: string;
+  /** For "waiting": what it waits on, said for the person. */
+  detail?: string;
 }
 
 type Done = { success: boolean; error?: string };
@@ -164,6 +166,8 @@ function syncSaid(res: SyncResult): string {
         return "Queued behind a sync already running";
       case "conflict":
         return "Changed here and on another device — choose which to keep";
+      case "waiting":
+        return res.detail || "Not synced yet";
       default:
         return "Already in sync";
     }
@@ -650,6 +654,9 @@ function lifecycleSaid(res: SyncResult, when: "launch" | "exit"): string {
     if (res.outcome === "changed") return when === "launch" ? "Brought the newest save in" : "Save synced";
     if (res.outcome === "conflict") return "Changed here and on another device — open OpenSave to choose";
     if (res.outcome === "timeout") return "Still syncing — started anyway, the save follows";
+    // Not "in sync": at a launch, most often the game is being played on
+    // another device, and this one is about to start on the save it has.
+    if (res.outcome === "waiting") return res.detail || "Not synced yet";
     return when === "exit" ? "Save synced" : "";
   }
   switch (res.reason) {

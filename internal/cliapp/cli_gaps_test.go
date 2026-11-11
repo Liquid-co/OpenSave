@@ -97,10 +97,30 @@ func TestSyncOutcomes(t *testing.T) {
 		`{"p1":{"status":"peer_awaiting_folder","peerName":"Deck"}}`:                "waiting",
 		`{"p1":{"status":"peer_busy","peerName":"Deck"}}`:                           "queued",
 		`{"p1":{"status":"peer_busy"},"p2":{"status":"updated"}}`:                   "changed",
-		`{}`: "in-sync",
+		`{"p1":{"status":"peer_playing","peerName":"Deck"}}`:                        "waiting",
+		`{"p1":{"status":"peer_paused","peerName":"Deck"}}`:                         "waiting",
+		`{"p1":{"status":"unwritable"}}`:                                            "waiting",
+		`{"p1":{"status":"peer_playing"},"p2":{"status":"updated"}}`:                "waiting",
+		`{"p1":{"status":"error","peerName":"Deck"}}`:                               "error",
+		`{"p1":{"status":"error"},"p2":{"status":"in_sync"}}`:                       "error",
+		`{"p1":{"status":"peer_missing"},"p2":{"status":"in_sync"}}`:                "in-sync",
+		`{"p1":{"status":"something_new"}}`:                                         "waiting",
+		`{}`:                                                                        "in-sync",
 	} {
 		if got := syncOutcomeOf("g", json.RawMessage(raw)).Kind; got != want {
 			t.Errorf("%s -> %q, want %q", raw, got, want)
+		}
+	}
+
+	// Whether some device took it, when another did not.
+	for raw, want := range map[string]bool{
+		`{"p1":{"status":"peer_playing"}}`:                           false,
+		`{"p1":{"status":"peer_playing"},"p2":{"status":"updated"}}`: true,
+		`{"p1":{"status":"error"},"p2":{"status":"in_sync"}}`:        true,
+		`{"p1":{"status":"error"}}`:                                  false,
+	} {
+		if got := syncOutcomeOf("g", json.RawMessage(raw)).Some; got != want {
+			t.Errorf("%s: some = %v, want %v", raw, got, want)
 		}
 	}
 
