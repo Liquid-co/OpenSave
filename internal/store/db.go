@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -23,8 +24,9 @@ var migrationsFS embed.FS
 // methods (see settings.go, games.go, branches.go, snapshots.go, peers.go,
 // cloudtokens.go).
 type Store struct {
-	db   *sqlx.DB
-	path string // the database file, for EnableIncrementalVacuum's space check
+	db           *sqlx.DB
+	claimWaitFor time.Duration // test-injectable admission bound; defaults to 30s
+	path         string        // the database file, for EnableIncrementalVacuum's space check
 }
 
 // Open creates (if needed) and opens the SQLite database at path, applying
