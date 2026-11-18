@@ -5,13 +5,40 @@
   import Moon from 'lucide-svelte/icons/moon';
   import Sun from 'lucide-svelte/icons/sun';
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
-  import { appearance, THEMES, ACCENTS, SCALES, onAccent } from '../../lib/appearance.js';
+  import Plus from 'lucide-svelte/icons/plus';
+  import X from 'lucide-svelte/icons/x';
+  import {
+    appearance,
+    THEMES,
+    ACCENTS,
+    SCALES,
+    onAccent,
+    accentHex,
+    withCustomAccent,
+    withoutCustomAccent
+  } from '../../lib/appearance.js';
   import { systemReducesMotion, slidingIndicator } from '../../lib/motion.js';
   import { locale, LOCALES, t, SYSTEM_LOCALE } from '../../lib/i18n.js';
+  import AccentWheel from './AccentWheel.svelte';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
+
+  // The colour wheel, open beside its button until a colour is added or it is
+  // dismissed: Escape, or a click anywhere else.
+  let wheelOpen = false;
+  let pickerEl;
+  const addColour = (e) => {
+    appearance.update((v) => withCustomAccent(v, e.detail));
+    wheelOpen = false;
+  };
+  const removeColour = (hex) => appearance.update((v) => withoutCustomAccent(v, hex));
+  function outside(e) {
+    if (wheelOpen && pickerEl && !pickerEl.contains(e.target)) wheelOpen = false;
+  }
 </script>
+
+<svelte:window on:pointerdown={outside} on:keydown={(e) => wheelOpen && e.key === 'Escape' && (wheelOpen = false)} />
 
 <div class="options">
   <label class="group">
@@ -51,6 +78,40 @@
           {#if $appearance.accent === id}<Check size={14} strokeWidth={3} />{/if}
         </button>
       {/each}
+      {#each $appearance.customAccents as hex (hex)}
+        <span class="custom">
+          <button
+            class="swatch"
+            role="radio"
+            aria-checked={$appearance.accent === hex}
+            aria-label="Your colour {hex}"
+            title="{hex} (Delete removes it)"
+            style="--swatch: {hex}; --swatch-on: {onAccent(hex)}"
+            on:click={() => set({ accent: hex })}
+            on:keydown={(e) => (e.key === 'Delete' || e.key === 'Backspace') && removeColour(hex)}
+          >
+            {#if $appearance.accent === hex}<Check size={14} strokeWidth={3} />{/if}
+          </button>
+          <button class="remove" tabindex="-1" aria-label="Remove {hex}" title="Remove" on:click={() => removeColour(hex)}>
+            <X size={10} strokeWidth={3} />
+          </button>
+        </span>
+      {/each}
+      <span class="picker" bind:this={pickerEl}>
+        <button
+          class="swatch wheel-button"
+          aria-label="Pick any colour"
+          title="Pick any colour"
+          aria-haspopup="dialog"
+          aria-expanded={wheelOpen}
+          on:click={() => (wheelOpen = !wheelOpen)}
+        >
+          <Plus size={14} strokeWidth={3} />
+        </button>
+        {#if wheelOpen}
+          <AccentWheel initial={accentHex($appearance.accent)} on:pick={addColour} on:close={() => (wheelOpen = false)} />
+        {/if}
+      </span>
     </div>
   </div>
 
@@ -166,6 +227,52 @@
     box-shadow:
       0 0 0 2px var(--bg-raised),
       0 0 0 4px var(--swatch);
+  }
+  /* A picked colour: removable from a small cross that shows on hover. */
+  .custom,
+  .picker {
+    position: relative;
+    display: inline-flex;
+  }
+  .remove {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-raised);
+    color: var(--text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .custom:hover .remove,
+  .custom:focus-within .remove {
+    opacity: 1;
+  }
+  .remove:hover {
+    color: var(--text);
+  }
+  /* The wheel's own button: every hue, with a plus over it. */
+  .wheel-button {
+    background:
+      radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0)),
+      conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+    color: #fff;
+  }
+  .wheel-button :global(svg) {
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+    animation: none;
+  }
+  .wheel-button[aria-expanded='true'] {
+    box-shadow:
+      0 0 0 2px var(--bg-raised),
+      0 0 0 4px var(--border-strong);
   }
   select {
     padding: 7px 10px;

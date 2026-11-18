@@ -8,11 +8,12 @@ import { writable } from 'svelte/store';
 
 export const THEMES = { dark: 'Dark', light: 'Light', system: 'Match system' };
 
-// Around the colour wheel, then a grey. Any colour can be offered, the bright
-// yellows and limes included: the text on an accent, and the accent used as
-// text on the page, are each worked out from it to stay readable (onAccent,
-// accentText below). The first six are the ones there have always been, and
-// look exactly as they did.
+// Around the colour wheel. Any colour can be offered, the bright yellows and
+// limes included: the text on an accent, and the accent used as text on the
+// page, are each worked out from it to stay readable (onAccent, accentText
+// below). The first six are the ones there have always been, and look exactly
+// as they did. Beyond these, any colour can be picked (a custom accent, stored
+// as its hex); slate, once the last of these, is now one of those.
 export const ACCENTS = {
   rose: { label: 'Rose', hex: '#e11d48' },
   red: { label: 'Red', hex: '#dc2626' },
@@ -30,29 +31,125 @@ export const ACCENTS = {
   indigo: { label: 'Indigo', hex: '#6366f1' },
   violet: { label: 'Violet', hex: '#8a63f4' },
   purple: { label: 'Purple', hex: '#a855f7' },
-  pink: { label: 'Pink', hex: '#ec4899' },
-  slate: { label: 'Slate', hex: '#64748b' }
+  pink: { label: 'Pink', hex: '#ec4899' }
 };
+
+// Accents that used to be presets, kept as the colour they were: someone who
+// chose slate keeps it, as a picked colour.
+const RETIRED_ACCENTS = { slate: '#64748b' };
+
+// How many picked colours are kept beside the presets: one row of them. A new
+// one past that pushes out the oldest.
+export const MAX_CUSTOM_ACCENTS = 8;
 
 export const SCALES = [0.9, 1, 1.1, 1.25];
 
-export const DEFAULT_APPEARANCE = Object.freeze({ theme: 'dark', accent: 'violet', scale: 1, motion: true, controller: 'auto' });
+export const DEFAULT_APPEARANCE = Object.freeze({
+  theme: 'dark',
+  accent: 'violet',
+  customAccents: Object.freeze([]),
+  scale: 1,
+  motion: true,
+  controller: 'auto'
+});
 
 // Controller navigation (lib/controller.js): on by itself when a controller is
 // used or on a Steam Deck or handheld, or set on or off.
 const CONTROLLER_CHOICES = ['auto', 'on', 'off'];
 
+/** A colour as "#rrggbb" in lower case, or null if it is not one. */
+export function normalizeHex(value) {
+  if (typeof value !== 'string') return null;
+  let s = value.trim().toLowerCase();
+  if (!s.startsWith('#')) s = '#' + s;
+  if (/^#[0-9a-f]{3}$/.test(s)) s = '#' + [...s.slice(1)].map((c) => c + c).join('');
+  return /^#[0-9a-f]{6}$/.test(s) ? s : null;
+}
+
+/** The hex an accent stands for: a preset's colour, or a picked one's own. */
+export function accentHex(accent) {
+  return ACCENTS[accent]?.hex ?? RETIRED_ACCENTS[accent] ?? normalizeHex(accent) ?? ACCENTS[DEFAULT_APPEARANCE.accent].hex;
+}
+
 /** An appearance with every field valid, whatever was stored. */
 export function sanitizeAppearance(raw) {
   const v = raw && typeof raw === 'object' ? raw : {};
   const scale = Number(v.scale);
+  const customAccents = [];
+  for (const c of Array.isArray(v.customAccents) ? v.customAccents : []) {
+    const hex = normalizeHex(c);
+    if (hex && !customAccents.includes(hex)) customAccents.push(hex);
+  }
+  // A preset by name, or a picked colour by its hex. A picked colour is always
+  // among the ones shown, so the one in use can be seen chosen.
+  let accent = DEFAULT_APPEARANCE.accent;
+  if (v.accent in ACCENTS) {
+    accent = v.accent;
+  } else {
+    const hex = RETIRED_ACCENTS[v.accent] ?? normalizeHex(v.accent);
+    if (hex) {
+      accent = hex;
+      if (!customAccents.includes(hex)) customAccents.push(hex);
+    }
+  }
+  while (customAccents.length > MAX_CUSTOM_ACCENTS) {
+    const oldest = customAccents.findIndex((c) => c !== accent);
+    customAccents.splice(oldest, 1);
+  }
   return {
     theme: v.theme in THEMES ? v.theme : DEFAULT_APPEARANCE.theme,
-    accent: v.accent in ACCENTS ? v.accent : DEFAULT_APPEARANCE.accent,
+    accent,
+    customAccents,
     scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
     motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion,
     controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller
   };
+}
+
+/** The appearance with a picked colour added (newest last) and in use. */
+export function withCustomAccent(v, color) {
+  const hex = normalizeHex(color);
+  if (!hex) return sanitizeAppearance(v);
+  const a = sanitizeAppearance(v);
+  const customAccents = [...a.customAccents.filter((c) => c !== hex), hex];
+  while (customAccents.length > MAX_CUSTOM_ACCENTS) customAccents.shift();
+  return { ...a, accent: hex, customAccents };
+}
+
+/** The appearance without a picked colour; if it was in use, back to the
+ *  default accent. */
+export function withoutCustomAccent(v, color) {
+  const a = sanitizeAppearance(v);
+  const hex = normalizeHex(color);
+  return {
+    ...a,
+    accent: a.accent === hex ? DEFAULT_APPEARANCE.accent : a.accent,
+    customAccents: a.customAccents.filter((c) => c !== hex)
+  };
+}
+
+/** Hue (0-360), saturation and value (0-1) as "#rrggbb". */
+export function hsvToHex(h, s, v) {
+  const f = (n) => {
+    const k = (n + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  };
+  return '#' + [f(5), f(3), f(1)].map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
+}
+
+/** "#rrggbb" as hue (0-360), saturation and value (0-1). */
+export function hexToHsv(hex) {
+  const [r, g, b] = hexToRgb(normalizeHex(hex) ?? '#000000').map((c) => c / 255);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+  }
+  return { h, s: max ? d / max : 0, v: max };
 }
 
 /** Whether things may move: chosen here, and never while the system asks
@@ -158,7 +255,7 @@ export function accentText(hex, theme = 'dark') {
 
 /** The CSS variables that carry the accent (see app.css). */
 export function accentVars(accent, theme = 'dark') {
-  const hex = (ACCENTS[accent] ?? ACCENTS[DEFAULT_APPEARANCE.accent]).hex;
+  const hex = accentHex(accent);
   return {
     '--accent': hex,
     '--accent-hover': lighten(hex, 0.12),

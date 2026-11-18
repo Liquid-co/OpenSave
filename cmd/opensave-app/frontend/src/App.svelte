@@ -313,7 +313,9 @@
     flex-direction: column;
     gap: 8px;
     max-width: 760px;
-    margin-bottom: 18px;
+    /* Centred in the page: at the left edge, a narrow card on a wide window
+       looked out of place above the page's own full-width content. */
+    margin: 0 auto 18px;
   }
   .shell {
     display: flex;
