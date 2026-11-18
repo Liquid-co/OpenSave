@@ -810,6 +810,14 @@
   .support-tab {
     margin-left: auto;
   }
+  /* The heart in red, as hearts are; darker in the light theme to read on
+     white. */
+  .support-tab :global(svg) {
+    color: #ef4444;
+  }
+  :global(:root[data-theme='light']) .support-tab :global(svg) {
+    color: #dc2626;
+  }
   /* Discord's own blurple, so it is recognisable at a glance, but kept at
      the same weight as the tabs beside it rather than shouting over them. */
   .pill-tabs .discord-tab {

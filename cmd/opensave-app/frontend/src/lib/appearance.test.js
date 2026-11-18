@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCENTS,
   DEFAULT_APPEARANCE,
+  MAX_CUSTOM_ACCENTS,
   accentVars,
   applyAppearance,
+  hexToHsv,
   hexToRgb,
+  hsvToHex,
   lighten,
   loadAppearance,
+  normalizeHex,
   resolvedTheme,
   sanitizeAppearance,
-  saveAppearance
+  saveAppearance,
+  withCustomAccent,
+  withoutCustomAccent
 } from './appearance.js';
 
 const memoryStorage = (initial = {}) => {
@@ -56,6 +62,7 @@ describe('sanitizeAppearance', () => {
     expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25, motion: false, controller: 'on' })).toEqual({
       theme: 'light',
       accent: 'teal',
+      customAccents: [],
       scale: 1.25,
       motion: false,
       controller: 'on'
@@ -78,11 +85,77 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' });
+    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off' });
+    // A picked colour, and the ones kept beside the presets, come back too.
+    saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
+    expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });
     expect(loadAppearance(memoryStorage({ 'opensave.appearance': '{nope' }))).toEqual(DEFAULT_APPEARANCE);
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
     expect(loadAppearance(broken)).toEqual(DEFAULT_APPEARANCE);
     expect(() => saveAppearance(DEFAULT_APPEARANCE, broken)).not.toThrow();
+  });
+});
+
+describe('picked accent colours', () => {
+  it('takes any colour as an accent, and always shows the one in use', () => {
+    const a = sanitizeAppearance({ accent: '#ABC' });
+    expect(a.accent).toBe('#aabbcc');
+    expect(a.customAccents).toEqual(['#aabbcc']);
+    expect(accentVars(a.accent)['--accent']).toBe('#aabbcc');
+    expect(sanitizeAppearance({ accent: 'not a colour' }).accent).toBe(DEFAULT_APPEARANCE.accent);
+    expect(sanitizeAppearance({ customAccents: ['#ff0000', 'nope', '#FF0000', 7] }).customAccents).toEqual(['#ff0000']);
+  });
+
+  it('keeps slate, once a preset, as the colour it was', () => {
+    const a = sanitizeAppearance({ accent: 'slate' });
+    expect(a.accent).toBe('#64748b');
+    expect(a.customAccents).toEqual(['#64748b']);
+    expect('slate' in ACCENTS).toBe(false);
+  });
+
+  it('adds a picked colour newest last, uses it, and keeps at most a row of them', () => {
+    let v = withCustomAccent(DEFAULT_APPEARANCE, '#ff0000');
+    expect(v.accent).toBe('#ff0000');
+    expect(v.customAccents).toEqual(['#ff0000']);
+    v = withCustomAccent(v, '#00ff00');
+    v = withCustomAccent(v, '#ff0000'); // again: moved to the end, not doubled
+    expect(v.customAccents).toEqual(['#00ff00', '#ff0000']);
+    for (let i = 0; i < MAX_CUSTOM_ACCENTS + 2; i++) v = withCustomAccent(v, hsvToHex(i * 30, 1, 1));
+    expect(v.customAccents).toHaveLength(MAX_CUSTOM_ACCENTS);
+    expect(v.customAccents.at(-1)).toBe(v.accent);
+    expect(withCustomAccent(DEFAULT_APPEARANCE, 'nope').accent).toBe(DEFAULT_APPEARANCE.accent);
+  });
+
+  it('removes a picked colour, going back to the default if it was in use', () => {
+    const v = withCustomAccent(withCustomAccent(DEFAULT_APPEARANCE, '#ff0000'), '#00ff00');
+    expect(withoutCustomAccent(v, '#00ff00')).toMatchObject({ accent: DEFAULT_APPEARANCE.accent, customAccents: ['#ff0000'] });
+    expect(withoutCustomAccent(v, '#ff0000')).toMatchObject({ accent: '#00ff00', customAccents: ['#00ff00'] });
+  });
+
+  it('converts between the wheel and hex', () => {
+    expect(hsvToHex(0, 1, 1)).toBe('#ff0000');
+    expect(hsvToHex(120, 1, 1)).toBe('#00ff00');
+    expect(hsvToHex(240, 1, 0.5)).toBe('#000080');
+    expect(hsvToHex(0, 0, 1)).toBe('#ffffff');
+    for (const hex of ['#8a63f4', '#e11d48', '#0d9488', '#facc15', '#000000', '#ffffff']) {
+      const { h, s, v } = hexToHsv(hex);
+      expect(hsvToHex(h, s, v), hex).toBe(hex);
+    }
+    expect(normalizeHex(' 0F0 ')).toBe('#00ff00');
+    expect(normalizeHex('#12345')).toBe(null);
+  });
+
+  it('keeps any picked colour readable, as the presets are', () => {
+    for (let h = 0; h < 360; h += 20) {
+      for (const [s, v] of [[1, 1], [0.3, 1], [1, 0.4], [0, 0.5]]) {
+        const hex = hsvToHex(h, s, v);
+        for (const theme of ['dark', 'light']) {
+          const vars = accentVars(hex, theme);
+          expect(contrast(hex, vars['--on-accent']), `${hex} button text`).toBeGreaterThanOrEqual(3);
+          expect(contrast(vars['--accent-text'], theme === 'dark' ? '#17171a' : '#ffffff'), `${hex} ${theme}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
   });
 });
 
