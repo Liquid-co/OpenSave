@@ -763,6 +763,95 @@ Ubi Game:
 	}
 }
 
+// A Proton prefix made by another tool and added to Steam can name its user
+// after the account rather than "steamuser".
+func TestLudusavi_ProtonPrefixOtherUser(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	lib := filepath.Join(home, ".local", "share", "Steam")
+	user := filepath.Join(lib, "steamapps", "compatdata", "4400", "pfx", "drive_c", "users", "deck")
+	save := filepath.Join(user, "Documents", "deck", "OtherUserGame")
+	mustMkFile(t, filepath.Join(save, "save.dat"))
+
+	sc := manifestScanner(t, `
+Other User Game:
+  files:
+    <winDocuments>/<osUserName>/OtherUserGame:
+      tags: [save]
+  steam:
+    id: 4400
+`)
+	sc.GOOS = "linux"
+	sc.HomeDir = home
+	sc.SteamRoots = []string{lib}
+
+	found := sc.scanLudusavi(map[string]bool{})
+	if len(found) != 1 || found[0].SavePath != save {
+		t.Fatalf("found %+v, want %s", found, save)
+	}
+}
+
+// Heroic, Lutris and Bottles prefixes are usually named after the game in
+// them. Where the name says which game it is, that game's manifest paths are
+// tried inside the prefix, whatever its user is called, and the precise save
+// folder is found rather than guessed from the usual folders.
+func TestLudusavi_WinePrefixIdentifiedByName(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+
+	heroic := filepath.Join(home, "Games", "Heroic", "Prefixes", "default", "Hollow Knight Silksong")
+	silksong := filepath.Join(heroic, "drive_c", "users", "deck", "AppData", "LocalLow", "Team Cherry", "Hollow Knight Silksong")
+	mustMkFile(t, filepath.Join(silksong, "user1.dat"))
+
+	// Lutris names it by slug, matched against the install folder name.
+	lutris := filepath.Join(home, ".local", "share", "lutris", "prefixes", "cave-story-plus")
+	cave := filepath.Join(lutris, "drive_c", "users", "deck", "AppData", "Roaming", "CaveStory")
+	mustMkFile(t, filepath.Join(cave, "Profile.dat"))
+
+	// A prefix named for some other game is not searched for this one.
+	other := filepath.Join(home, ".local", "share", "lutris", "prefixes", "Unrelated Thing")
+	stray := filepath.Join(other, "drive_c", "users", "deck", "AppData", "Roaming", "StrayGame")
+	mustMkFile(t, filepath.Join(stray, "save.dat"))
+
+	sc := manifestScanner(t, `
+"Hollow Knight: Silksong":
+  files:
+    <winLocalAppDataLow>/Team Cherry/Hollow Knight Silksong:
+      tags: [save]
+      when:
+        - os: windows
+Cave Story+:
+  files:
+    <winAppData>/CaveStory:
+      tags: [save]
+  installDir:
+    Cave Story Plus: {}
+Stray Game:
+  files:
+    <winAppData>/StrayGame:
+      tags: [save]
+`)
+	sc.GOOS = "linux"
+	sc.HomeDir = home
+	sc.SteamRoots = []string{}
+
+	got := map[string]string{}
+	for _, d := range sc.scanLudusavi(map[string]bool{}) {
+		got[d.Name] = d.SavePath
+	}
+	want := map[string]string{"Hollow Knight: Silksong": silksong, "Cave Story+": cave}
+	for name, path := range want {
+		if got[name] != path {
+			t.Errorf("%s: SavePath %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("found %v, want %v", got, want)
+	}
+}
+
 // A glob's matches are capped at four locations, not four files: five saves
 // in one profile folder hid every other profile.
 func TestStatOrGlob_CapCountsLocationsNotFiles(t *testing.T) {

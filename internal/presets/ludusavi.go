@@ -541,11 +541,10 @@ func (sc *Scanner) ludusaviVarSets(g indexedGame, protonIdx map[string][]string)
 	}
 	home := sc.linuxHome()
 	sets := []map[string]string{linuxNativeVars(home)}
-	// Proton: Windows-path templates resolve inside this game's Wine prefix.
-	if g.SteamID != "" {
-		for _, steamUser := range protonIdx[g.SteamID] {
-			sets = append(sets, protonWinVars(steamUser))
-		}
+	// Proton, and the other launchers' Wine prefixes: Windows-path templates
+	// resolve inside this game's prefix.
+	for _, userHome := range prefixHomesFor(g, protonIdx) {
+		sets = append(sets, protonWinVars(userHome))
 	}
 	return sets
 }
@@ -605,26 +604,70 @@ func ownHome(home string) bool {
 	return filepath.Clean(own) == filepath.Clean(home)
 }
 
-// protonWinVars maps Windows placeholders to their location inside a Proton
-// prefix's steamuser home (Wine lays out AppData/Documents there, and maps
-// the user's home to the same profile dir).
-func protonWinVars(steamUser string) map[string]string {
-	driveC := filepath.Dir(filepath.Dir(steamUser)) // …/pfx/drive_c
+// protonWinVars maps Windows placeholders to their location inside a Wine
+// prefix, for one of its users' home folders (drive_c/users/<user>): Wine
+// lays out AppData/Documents there, and maps the user's home to the same
+// profile dir. Proton's user is "steamuser"; Heroic, Lutris and Bottles name
+// it after the account.
+func protonWinVars(userHome string) map[string]string {
+	driveC := filepath.Dir(filepath.Dir(userHome)) // …/pfx/drive_c
 	return map[string]string{
-		"<home>":               steamUser,
-		"<winAppData>":         filepath.Join(steamUser, "AppData", "Roaming"),
-		"<winLocalAppData>":    filepath.Join(steamUser, "AppData", "Local"),
-		"<winLocalAppDataLow>": filepath.Join(steamUser, "AppData", "LocalLow"),
-		"<winDocuments>":       filepath.Join(steamUser, "Documents"),
+		"<home>":               userHome,
+		"<winAppData>":         filepath.Join(userHome, "AppData", "Roaming"),
+		"<winLocalAppData>":    filepath.Join(userHome, "AppData", "Local"),
+		"<winLocalAppDataLow>": filepath.Join(userHome, "AppData", "LocalLow"),
+		"<winDocuments>":       filepath.Join(userHome, "Documents"),
 		"<winPublic>":          filepath.Join(driveC, "users", "Public"),
 		"<winProgramData>":     filepath.Join(driveC, "ProgramData"),
 		"<winDir>":             filepath.Join(driveC, "windows"),
-		"<osUserName>":         "steamuser",
+		"<osUserName>":         filepath.Base(userHome),
 	}
 }
 
-// protonPrefixIndex maps Steam AppID -> the steamuser home dirs of its
-// Proton prefixes across all libraries. Built once per scan.
+// prefixNameKey is the key a non-Steam prefix is indexed under: its folder
+// name, which Heroic and Bottles take from the game's title and Lutris from
+// its slug, compared as install folder names are. "" for a name too short or
+// too generic to say which game it is ("default", a bare ".wine").
+func prefixNameKey(name string) string {
+	n := installKey(name)
+	if len(n) < 4 || genericInstallNames[n] || genericPrefixNames[n] {
+		return ""
+	}
+	return "name:" + n
+}
+
+var genericPrefixNames = map[string]bool{
+	"default": true, "wine": true, "prefix": true, "prefixes": true, "pfx": true,
+	"bottle": true, "wine64": true, "windows": true,
+}
+
+// prefixHomesFor returns the user homes of the prefixes that are this game's:
+// its Proton prefixes, and the other launchers' prefixes named after it or
+// after one of its install folders.
+//
+// A prefix only gets the manifest paths of a game it can be told belongs to.
+// Ludusavi, given a Wine prefix as a root, tries every game in it instead
+// (Store::OtherWine in its src/scan.rs); here that would be tens of thousands
+// of games' paths for each prefix on the machine, every scan.
+func prefixHomesFor(g indexedGame, idx map[string][]string) []string {
+	var out []string
+	if g.SteamID != "" {
+		out = append(out, idx[g.SteamID]...)
+	}
+	keys := map[string]bool{}
+	for _, name := range append([]string{g.Name}, g.Installs...) {
+		if k := prefixNameKey(name); k != "" && !keys[k] {
+			keys[k] = true
+			out = append(out, idx[k]...)
+		}
+	}
+	return out
+}
+
+// protonPrefixIndex maps a game to the user home folders of the Wine prefixes
+// that are its: by Steam AppID for Proton prefixes across all libraries, and
+// by prefixNameKey for the Heroic, Lutris, Bottles and Wine prefixes named
+// after a game (prefixHomesFor). Built once per scan.
 func (sc *Scanner) protonPrefixIndex() map[string][]string {
 	idx := map[string][]string{}
 	for _, lib := range sc.steamLibraryPaths() {
@@ -637,10 +680,18 @@ func (sc *Scanner) protonPrefixIndex() map[string][]string {
 			if !e.IsDir() || !isAppID(e.Name()) {
 				continue
 			}
-			steamUser := filepath.Join(compat, e.Name(), "pfx", "drive_c", "users", "steamuser")
-			if dirExists(steamUser) {
-				idx[e.Name()] = append(idx[e.Name()], steamUser)
-			}
+			// Usually "steamuser", but a prefix made by another tool and
+			// added to Steam can name its user after the account.
+			pfx := filepath.Join(compat, e.Name(), "pfx")
+			idx[e.Name()] = append(idx[e.Name()], prefixUserDirs(pfx)...)
+		}
+	}
+	if sc.goos() != "linux" {
+		return idx
+	}
+	for _, prefix := range sc.winePrefixDirs() {
+		if key := prefixNameKey(filepath.Base(prefix.path)); key != "" {
+			idx[key] = append(idx[key], prefixUserDirs(prefix.path)...)
 		}
 	}
 	return idx
