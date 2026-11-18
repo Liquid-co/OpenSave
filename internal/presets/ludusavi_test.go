@@ -490,6 +490,60 @@ Deep Game:
 	}
 }
 
+// <winDocuments> is wherever Windows says Documents is. OneDrive's folder
+// backup moves it to OneDrive\Documents, games save there, and home\Documents
+// is then empty or absent.
+func TestLudusavi_WinDocumentsFollowsKnownFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	redirected := filepath.Join(home, "OneDrive", "Documents")
+	prev := knownDocumentsDir
+	knownDocumentsDir = func(h string) string {
+		if h != home {
+			t.Errorf("asked about home %q, want %q", h, home)
+		}
+		return redirected
+	}
+	t.Cleanup(func() { knownDocumentsDir = prev })
+
+	save := filepath.Join(redirected, "My Games", "Redirected Game")
+	mustMkFile(t, filepath.Join(save, "save.dat"))
+	// The redirected folder and its My Games are as off limits as the usual ones.
+	mustMkFile(t, filepath.Join(redirected, "My Games", "loose.dat"))
+
+	sc := manifestScanner(t, `
+Redirected Game:
+  files:
+    <winDocuments>/My Games/Redirected Game:
+      tags: [save]
+Greedy Game:
+  files:
+    <winDocuments>/My Games:
+      tags: [save]
+`)
+	found := sc.scanLudusavi(map[string]bool{})
+	if len(found) != 1 || found[0].SavePath != save {
+		t.Fatalf("found %+v, want only %s", found, save)
+	}
+}
+
+// With no Known Folder answer (off Windows, or for a home that is not this
+// account's), <winDocuments> is home\Documents as before.
+func TestWindowsPathVars_DocumentsFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	prev := knownDocumentsDir
+	knownDocumentsDir = func(string) string { return "" }
+	t.Cleanup(func() { knownDocumentsDir = prev })
+
+	if got, want := windowsPathVars()["<winDocuments>"], filepath.Join(home, "Documents"); got != want {
+		t.Errorf("<winDocuments> = %q, want %q", got, want)
+	}
+}
+
 // "<storeUserId>" becomes "*", so "*<storeUserId>" must not turn into "**"
 // and walk every folder below (ported from Ludusavi's parse_paths).
 func TestExpandTemplate_StoreIDsNeverMakeRecursiveWildcard(t *testing.T) {

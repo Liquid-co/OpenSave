@@ -348,6 +348,11 @@ func statOrGlob(pattern string, noWiden func(dir string) bool) []string {
 	return nil
 }
 
+// knownDocumentsDir is where Windows says the Documents folder of the account
+// with this home is, or "" when it cannot say (documentsKnownFolder). A
+// variable so tests can stand in for the shell.
+var knownDocumentsDir = documentsKnownFolder
+
 // windowsPathVars maps manifest placeholders to this machine's paths.
 func windowsPathVars() map[string]string {
 	home, err := os.UserHomeDir()
@@ -358,12 +363,18 @@ func windowsPathVars() map[string]string {
 	if username == "" {
 		username = filepath.Base(home)
 	}
+	// Documents is not always in the home folder: OneDrive's folder backup
+	// moves it, and the games follow it.
+	documents := knownDocumentsDir(home)
+	if documents == "" {
+		documents = filepath.Join(home, "Documents")
+	}
 	return map[string]string{
 		"<home>":               home,
 		"<winAppData>":         ResolvePath("%APPDATA%"),
 		"<winLocalAppData>":    ResolvePath("%LOCALAPPDATA%"),
 		"<winLocalAppDataLow>": filepath.Join(home, "AppData", "LocalLow"),
-		"<winDocuments>":       filepath.Join(home, "Documents"),
+		"<winDocuments>":       documents,
 		"<winPublic>":          ResolvePath("%PUBLIC%"),
 		"<winProgramData>":     ResolvePath("%PROGRAMDATA%"),
 		"<osUserName>":         username,
@@ -539,6 +550,9 @@ func blockedRoots(vars map[string]string) map[string]bool {
 	}
 	home := vars["<home>"]
 	add(filepath.Join(home, "Documents", "My Games"))
+	if docs := vars["<winDocuments>"]; docs != "" {
+		add(filepath.Join(docs, "My Games"))
+	}
 	add(filepath.Join(home, "Saved Games"))
 	add(filepath.Join(home, "Desktop"))
 	add(filepath.Join(home, "Downloads"))
