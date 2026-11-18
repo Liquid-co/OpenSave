@@ -6,6 +6,16 @@
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
+
+  // snapshotKind's fixed titles and tag, said in the reader's language; a
+  // daemon comment has no translation and passes through as text.
+  const kindSay = (k) => {
+    if (k.kind === 'manual')
+      return { title: k.title === 'Snapshot' ? { key: 'snapshots.kind.snapshot' } : { text: k.title }, label: { key: 'activity.event.takenByYou' } };
+    if (k.kind === 'auto') return { title: { key: 'activity.event.saveChanged' }, label: { key: 'snapshots.kind.automatic' } };
+    if (k.kind === 'start') return { title: { key: 'activity.event.trackingStart' }, label: { key: 'snapshots.kind.automatic' } };
+    return { title: { text: k.title }, label: { key: 'snapshots.kind.automatic' } };
+  };
   import { askRestore } from '../../lib/restore.js';
   import { t } from '../../lib/i18n.js';
   import { timeAgoParts } from '../../lib/timeago.js';
@@ -167,6 +177,7 @@
     <div class="list">
       {#each group.snaps as snap (snap.id)}
         {@const k = snapshotKind(snap, now)}
+        {@const said = kindSay(k)}
         {@const w = agoKey(snap.timestamp, now.getTime())}
         <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id} class:flash={flashing === snap.id} data-snap={snap.id}>
           <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
@@ -175,7 +186,7 @@
           </div>
           <div class="info">
             <div class="title">
-              <span class="title-text">{k.title}</span>
+              <span class="title-text">{said.title.text ?? $t(said.title.key, said.title.params)}</span>
               {#if snap.id === latestId}<span class="tag latest">{$t('game.snapshots.latest')}</span>{/if}
               {#if snap.problem}<span class="tag damaged" title={snap.problem}>{$t('game.snapshots.damaged')}</span>{/if}
             </div>
@@ -194,7 +205,7 @@
             {/if}
             <div class="meta">
               {#if snap.pinned}<span class="tag pinned"><Pin size={10} strokeWidth={2.6} />{$t('game.snapshots.pinnedTag')}</span>{/if}
-              <span class="tag kind">{k.label}</span>
+              <span class="tag kind">{said.label.text ?? $t(said.label.key)}</span>
               {#if branchCount > 1}<span class="tag">{snap.branch}</span>{/if}
               <span>{fmtSize(snap.sizeBytes)}</span>
             </div>

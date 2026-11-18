@@ -119,7 +119,7 @@
     <span class="label">{$t('settings.appearance.size')}</span>
     <select value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
       {#each SCALES as s}
-        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ' (default)' : ''}</option>
+        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ` ${$t('settings.appearance.scaleDefault')}` : ''}</option>
       {/each}
     </select>
   </label>

@@ -122,11 +122,9 @@
     update: $availableUpdate
   });
   $: allEvents = [...$exampleEvents, ...happened(items, $games, seenAt, now)];
-  // What is shown, and counted on the bell: what has not been cleared.
-  $: waiting = notCleared(allWaiting, cleared);
-  $: events = notCleared(allEvents, cleared);
   // The same cases, said in the reader's language (lib/notifications.js's
-  // waitingText returns them in waitingOnYou's order).
+  // waitingText returns them in waitingOnYou's order). Bind each item's words
+  // BEFORE filtering, so clearing one cannot shift the pairs out of step.
   $: waitingWords = waitingText(
     {
       games: $games,
@@ -139,7 +137,10 @@
     },
     $t
   );
-  $: waitingShown = waiting.map((w, i) => ({ ...w, line: said(waitingWords[i]?.title), dline: said(waitingWords[i]?.detail) }));
+  $: waitingAll = allWaiting.map((w, i) => ({ ...w, line: said(waitingWords[i]?.title), dline: said(waitingWords[i]?.detail) }));
+  // What is shown, and counted on the bell: what has not been cleared.
+  $: waiting = notCleared(waitingAll, cleared);
+  $: events = notCleared(allEvents, cleared);
   // The raw activity items the bell's entries were built from, by their id
   // (kind:gameId:atMs), so each entry's words can be said again localized.
   $: rawById = new Map(items.map((it) => [`${it.kind}:${it.gameId}:${it.atMs}`, it]));
@@ -225,7 +226,7 @@
       <div class="scroll">
         {#if waiting.length}
           <div class="section">{$t('notifications.needsYou')}</div>
-          {#each waitingShown as w, i (w.id)}
+          {#each waiting as w, i (w.id)}
             <div class="row">
             <button class="item tone-{w.tone}" class:dismissable={canDismiss(w)} style="--i: {i}" on:click={() => go(w)}>
               {#if w.gameId && $games[w.gameId]}
@@ -247,8 +248,8 @@
             <button class="linklike" on:click={clearAll} title={$t('notifications.clearAllTitle')}>{$t('notifications.clearAll')}</button>
           </div>
           {#each eventsShown as e, i (e.id)}
-            <div class="row">
             {@const w = agoKey(iso(e.atMs), now)}
+            <div class="row">
             <button class="item dismissable" class:unread={e.unread} style="--i: {Math.min(waiting.length + i, 10)}" on:click={() => go(e)}>
               {#if e.example}
                 <span class="thumb icon"><Info size={15} /></span>
