@@ -17,6 +17,7 @@
   import FilterTabs from '../../components/ui/FilterTabs.svelte';
   import { api, gameCover } from '../../lib/api.js';
   import { games, navigate, activityTick } from '../../lib/stores.js';
+  import { t } from '../../lib/i18n.js';
   import { timeAgo } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
   import { TIMELINE_FILTERS, byDay, filterItems, playedWhere, runs } from '../../lib/timeline.js';
@@ -88,18 +89,18 @@
 </script>
 
 {#if error}
-  <div class="card"><p class="hint">Couldn't read the activity: {error}</p></div>
+  <div class="card"><p class="hint">{$t('activity.timeline.readError', { error })}</p></div>
 {:else if !report}
   <div class="skeleton" style="height: 220px"></div>
 {:else}
   {#if standing.length}
     <div class="card standing">
       <div class="row header" aria-hidden="true">
-        <span>Game</span><span>Last played</span><span>Last snapshot</span><span>Last synced</span><span>Played here</span>
+        <span>{$t('activity.timeline.colGame')}</span><span>{$t('activity.timeline.colLastPlayed')}</span><span>{$t('activity.timeline.colLastSnapshot')}</span><span>{$t('activity.timeline.colLastSynced')}</span><span>{$t('activity.timeline.colPlayedHere')}</span>
       </div>
       {#each standing as g (g.gameId)}
         {@const game = $games[g.gameId]}
-        <button class="row" on:click={() => navigate('game', { gameId: g.gameId })} title="Open {game.name}">
+        <button class="row" on:click={() => navigate('game', { gameId: g.gameId })} title={$t('activity.timeline.openGameTitle', { name: game.name })}>
           <span class="game">
             <span class="thumb"><span class="initials">{initials(game.name)}</span><CoverImage src={gameCover(game)} alt="" /></span>
             <span class="name">{game.name}</span>
@@ -108,22 +109,22 @@
             {#if g.lastPlayedAt}
               <span class="main">{playedWhere(g, report.device)}</span>
               <span class="sub">{timeAgo(iso(g.lastPlayedAt), now)}</span>
-            {:else if game.installed === 'not-found'}<span class="none" title="Steam on this PC does not have it, and it is in no folder games are kept in">Not found on this PC</span>
+            {:else if game.installed === 'not-found'}<span class="none" title={$t('activity.timeline.notFoundTitle')}>{$t('activity.timeline.notFoundHere')}</span>
             {:else}<span class="none">—</span>{/if}
           </span>
           <span class="cell">
-            {#if g.lastSnapshotAt}<span class="main">{timeAgo(iso(g.lastSnapshotAt), now)}</span>{:else}<span class="none">None yet</span>{/if}
+            {#if g.lastSnapshotAt}<span class="main">{timeAgo(iso(g.lastSnapshotAt), now)}</span>{:else}<span class="none">{$t('home.summary.noneYet')}</span>{/if}
           </span>
           <span class="cell">
             {#if g.lastSyncedAt}
-              <span class="main">{g.lastSyncedWith || 'Another device'}</span>
+              <span class="main">{g.lastSyncedWith || $t('activity.timeline.anotherDevice')}</span>
               <span class="sub">{timeAgo(iso(g.lastSyncedAt), now)}</span>
-            {:else}<span class="none">Not yet</span>{/if}
+            {:else}<span class="none">{$t('activity.timeline.notYet')}</span>{/if}
           </span>
           <span class="cell">
             {#if g.playtimeMs}
               <span class="main">{playLength(g.playtimeMs)}</span>
-              <span class="sub">{g.sessions} session{g.sessions === 1 ? '' : 's'}</span>
+              <span class="sub">{$t('activity.timeline.sessions', { n: g.sessions })}</span>
             {:else}<span class="none">—</span>{/if}
           </span>
         </button>
@@ -133,8 +134,8 @@
 
   <div class="filters">
     <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id, f]) => [id, f.label])} bind:value={filter} />
-    <select bind:value={gameId} aria-label="Show one game">
-      <option value="">Every game</option>
+    <select bind:value={gameId} aria-label={$t('activity.timeline.showOneGameAria')}>
+      <option value="">{$t('activity.timeline.everyGame')}</option>
       {#each Object.values($games).sort((a, b) => a.name.localeCompare(b.name)) as game (game.id)}
         <option value={game.id}>{game.name}</option>
       {/each}
@@ -142,7 +143,7 @@
   </div>
 
   {#if days.length === 0}
-    <div class="card"><div class="empty"><h3>Nothing here yet</h3><p>Syncs, snapshots and play sessions show up here as they happen.</p></div></div>
+    <div class="card"><div class="empty"><h3>{$t('activity.timeline.emptyTitle')}</h3><p>{$t('activity.timeline.emptyBody')}</p></div></div>
   {:else}
     {#each days as day (day.key)}
       <h4 class="day">{day.day}</h4>
@@ -165,7 +166,7 @@
     {/each}
     {#if report.more && filter === 'all' && !gameId}
       <div class="more">
-        <button class="btn small" disabled={loadingMore} on:click={loadMore}>{loadingMore ? 'Loading…' : 'Show older'}</button>
+        <button class="btn small" disabled={loadingMore} on:click={loadMore}>{loadingMore ? $t('activity.timeline.loading') : $t('activity.timeline.showOlder')}</button>
       </div>
     {/if}
   {/if}
