@@ -27,7 +27,7 @@
   <div class="segmented" role="radiogroup" aria-label={$t('settings.general.controller')} use:slidingIndicator={{ mode: 'fill' }}>
     {#each Object.entries(CONTROLLER_MODES) as [id, label]}
       <button role="radio" aria-checked={$appearance.controller === id} class:on={$appearance.controller === id} on:click={() => set({ controller: id })}>
-        {label}
+        {$t('controller.mode.' + id)}
       </button>
     {/each}
   </div>

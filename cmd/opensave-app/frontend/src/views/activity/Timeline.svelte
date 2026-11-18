@@ -18,9 +18,85 @@
   import { api, gameCover } from '../../lib/api.js';
   import { games, navigate, activityTick } from '../../lib/stores.js';
   import { t } from '../../lib/i18n.js';
-  import { timeAgo } from '../../lib/timeago.js';
-  import { playLength } from '../../lib/format.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+  import { playLength, fmtSize } from '../../lib/format.js';
+  import { snapshotKind, whenLabel } from '../../lib/snapshots.js';
   import { TIMELINE_FILTERS, byDay, filterItems, playedWhere, runs } from '../../lib/timeline.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (iso, now = Date.now()) => {
+    const p = timeAgoParts(iso, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
+
+  // The timeline's wording is built in lib/timeline.js's describe(), in
+  // English; the same cases, in the same order, are mapped here to catalog
+  // keys and params (see locales/en.json, "activity.event."), with $t for
+  // the pieces the lib alone knows the words to. icon and tone stay said's.
+  function eventSay(item, now, t) {
+    const loc = item.detail && item.kind !== 'restored' ? /^in its "(.+)" location$/.exec(item.detail) : null;
+    const where = !item.detail || item.kind === 'restored' ? '' : loc ? t('activity.event.inLocation', { root: loc[1] }) : ` ${item.detail}`;
+    const device = item.device ?? '';
+    switch (item.kind) {
+      case 'received':
+        return {
+          title: item.files
+            ? { key: 'activity.event.received', params: { n: item.files, device, where } }
+            : { key: 'activity.event.receivedAny', params: { device, where } },
+          detail: item.bytes ? { text: fmtSize(item.bytes) } : null
+        };
+      case 'sent':
+        return {
+          title: item.files
+            ? { key: 'activity.event.sent', params: { n: item.files, device, where } }
+            : { key: 'activity.event.sentAny', params: { device, where } },
+          detail: null
+        };
+      case 'deleted':
+        return {
+          title: item.files
+            ? { key: 'activity.event.deleted', params: { n: item.files, device, where } }
+            : { key: 'activity.event.deletedAny', params: { device, where } },
+          detail: null
+        };
+      case 'restored': {
+        const at = (item.detail ?? '').split('|')[1];
+        return { title: at ? { key: 'activity.event.restoredWhen', params: { when: whenLabel(at, now) } } : { key: 'activity.event.restored', params: {} }, detail: null };
+      }
+      case 'cloud-pulled':
+        return { title: { key: 'activity.event.cloudPulled', params: { device } }, detail: null };
+      case 'emptied':
+        return {
+          title: { key: 'activity.event.emptied', params: {} },
+          detail: item.files ? { key: 'activity.event.keptElsewhere', params: { n: item.files } } : null
+        };
+      case 'conflict':
+        return { title: { key: 'activity.event.conflict', params: { device, where } }, detail: { key: 'activity.event.neededDecision', params: {} } };
+      case 'played':
+        return {
+          title: item.durationMs ? { key: 'activity.event.playedFor', params: { length: playLength(item.durationMs) } } : { key: 'activity.event.played', params: {} },
+          detail: { key: 'activity.event.onThisDevice', params: {} }
+        };
+      case 'snapshot': {
+        if (item.device) return { title: { key: 'activity.event.keptCopy', params: { device } }, detail: null };
+        const why = snapshotKind({ comment: item.comment, isSystemAuto: item.auto }, now);
+        if (why.kind === 'manual')
+          return {
+            title: { key: 'activity.event.snapshotManual', params: { comment: why.title } },
+            detail: { key: 'activity.event.takenByYou', params: {} }
+          };
+        if (why.kind === 'auto') return { title: { key: 'activity.event.saveChanged', params: {} }, detail: null };
+        if (why.kind === 'start') return { title: { key: 'activity.event.trackingStart', params: {} }, detail: null };
+        // A safety or other kind's title is the daemon's own comment, which
+        // only exists in English: shown as it came.
+        return { title: { text: why.title }, detail: null };
+      }
+      default:
+        return { title: { text: item.kind }, detail: null };
+    }
+  }
 
   const ICONS = {
     down: ArrowDownToLine,
@@ -34,7 +110,9 @@
     dot: Dot
   };
   const initials = (name = '') => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-  const iso = (ms) => new Date(ms).toISOString();
+  // A missing stamp (a game never played or synced) must fall through to
+  // the catalog's "never" rather than throw on toISOString().
+  const iso = (ms) => (ms == null || ms === '' ? null : new Date(ms).toISOString());
 
   let report = null;
   let error = '';
@@ -100,6 +178,9 @@
       </div>
       {#each standing as g (g.gameId)}
         {@const game = $games[g.gameId]}
+        {@const wPlayed = agoKey(iso(g.lastPlayedAt), now)}
+        {@const wSnapshot = agoKey(iso(g.lastSnapshotAt), now)}
+        {@const wSynced = agoKey(iso(g.lastSyncedAt), now)}
         <button class="row" on:click={() => navigate('game', { gameId: g.gameId })} title={$t('activity.timeline.openGameTitle', { name: game.name })}>
           <span class="game">
             <span class="thumb"><span class="initials">{initials(game.name)}</span><CoverImage src={gameCover(game)} alt="" /></span>
@@ -108,17 +189,17 @@
           <span class="cell">
             {#if g.lastPlayedAt}
               <span class="main">{playedWhere(g, report.device)}</span>
-              <span class="sub">{timeAgo(iso(g.lastPlayedAt), now)}</span>
+              <span class="sub">{wPlayed.text ?? $t(wPlayed.key, wPlayed.params)}</span>
             {:else if game.installed === 'not-found'}<span class="none" title={$t('activity.timeline.notFoundTitle')}>{$t('activity.timeline.notFoundHere')}</span>
             {:else}<span class="none">—</span>{/if}
           </span>
           <span class="cell">
-            {#if g.lastSnapshotAt}<span class="main">{timeAgo(iso(g.lastSnapshotAt), now)}</span>{:else}<span class="none">{$t('home.summary.noneYet')}</span>{/if}
+            {#if g.lastSnapshotAt}<span class="main">{wSnapshot.text ?? $t(wSnapshot.key, wSnapshot.params)}</span>{:else}<span class="none">{$t('home.summary.noneYet')}</span>{/if}
           </span>
           <span class="cell">
             {#if g.lastSyncedAt}
               <span class="main">{g.lastSyncedWith || $t('activity.timeline.anotherDevice')}</span>
-              <span class="sub">{timeAgo(iso(g.lastSyncedAt), now)}</span>
+              <span class="sub">{wSynced.text ?? $t(wSynced.key, wSynced.params)}</span>
             {:else}<span class="none">{$t('activity.timeline.notYet')}</span>{/if}
           </span>
           <span class="cell">
@@ -133,7 +214,7 @@
   {/if}
 
   <div class="filters">
-    <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id, f]) => [id, f.label])} bind:value={filter} />
+    <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id]) => [id, $t('activity.filter.' + id)])} bind:value={filter} />
     <select bind:value={gameId} aria-label={$t('activity.timeline.showOneGameAria')}>
       <option value="">{$t('activity.timeline.everyGame')}</option>
       {#each Object.values($games).sort((a, b) => a.name.localeCompare(b.name)) as game (game.id)}
@@ -146,16 +227,17 @@
     <div class="card"><div class="empty"><h3>{$t('activity.timeline.emptyTitle')}</h3><p>{$t('activity.timeline.emptyBody')}</p></div></div>
   {:else}
     {#each days as day (day.key)}
-      <h4 class="day">{day.day}</h4>
+      <h4 class="day">{day.day === 'Today' ? $t('activity.day.today') : day.day === 'Yesterday' ? $t('activity.day.yesterday') : day.day}</h4>
       <div class="card entries">
         {#each day.runs as run}
           {@const game = $games[run.item.gameId]}
+          {@const said = eventSay(run.item, new Date(now), $t)}
           <button class="entry tone-{run.said.tone}" on:click={() => navigate('game', { gameId: run.item.gameId })}>
             <span class="kind"><svelte:component this={ICONS[run.said.icon] ?? Dot} size={15} /></span>
             <span class="thumb"><span class="initials">{initials(game.name)}</span><CoverImage src={gameCover(game)} alt="" /></span>
             <span class="what">
-              <span class="line"><span class="gname">{game.name}</span> {run.said.title}{#if run.count > 1}<span class="count">×{run.count}</span>{/if}</span>
-              {#if run.said.detail}<span class="sub">{run.said.detail}</span>{/if}
+              <span class="line"><span class="gname">{game.name}</span> {said.title.text ?? $t(said.title.key, said.title.params)}{#if run.count > 1}<span class="count">×{run.count}</span>{/if}</span>
+              {#if said.detail}<span class="sub">{said.detail.text ?? $t(said.detail.key, said.detail.params)}</span>{/if}
             </span>
             <span class="clock" title={new Date(run.item.atMs).toLocaleString()}>
               {new Date(run.item.atMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}

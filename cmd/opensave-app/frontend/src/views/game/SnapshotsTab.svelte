@@ -6,9 +6,27 @@
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
+
+  // snapshotKind's fixed titles and tag, said in the reader's language; a
+  // daemon comment has no translation and passes through as text.
+  const kindSay = (k) => {
+    if (k.kind === 'manual')
+      return { title: k.title === 'Snapshot' ? { key: 'snapshots.kind.snapshot' } : { text: k.title }, label: { key: 'activity.event.takenByYou' } };
+    if (k.kind === 'auto') return { title: { key: 'activity.event.saveChanged' }, label: { key: 'snapshots.kind.automatic' } };
+    if (k.kind === 'start') return { title: { key: 'activity.event.trackingStart' }, label: { key: 'snapshots.kind.automatic' } };
+    return { title: { text: k.title }, label: { key: 'snapshots.kind.automatic' } };
+  };
   import { askRestore } from '../../lib/restore.js';
   import { t } from '../../lib/i18n.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
   import Camera from 'lucide-svelte/icons/camera';
   import Pin from 'lucide-svelte/icons/pin';
   import PinOff from 'lucide-svelte/icons/pin-off';
@@ -153,18 +171,22 @@
 {:else}
   <div bind:this={listEl}>
   {#each groups as group (group.day)}
-    <h4 class="day">{group.day}</h4>
+    <!-- dayLabel()'s fixed names, said in the reader's language; the rest is
+         already a date in the OS locale. -->
+    <h4 class="day">{group.day === 'Today' ? $t('snapshots.day.today') : group.day === 'Yesterday' ? $t('snapshots.day.yesterday') : group.day}</h4>
     <div class="list">
       {#each group.snaps as snap (snap.id)}
         {@const k = snapshotKind(snap, now)}
+        {@const said = kindSay(k)}
+        {@const w = agoKey(snap.timestamp, now.getTime())}
         <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id} class:flash={flashing === snap.id} data-snap={snap.id}>
           <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
             <span class="time">{new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
-            <span class="ago">{timeAgo(snap.timestamp, now.getTime())}</span>
+            <span class="ago">{w.text ?? $t(w.key, w.params)}</span>
           </div>
           <div class="info">
             <div class="title">
-              <span class="title-text">{k.title}</span>
+              <span class="title-text">{said.title.text ?? $t(said.title.key, said.title.params)}</span>
               {#if snap.id === latestId}<span class="tag latest">{$t('game.snapshots.latest')}</span>{/if}
               {#if snap.problem}<span class="tag damaged" title={snap.problem}>{$t('game.snapshots.damaged')}</span>{/if}
             </div>
@@ -183,7 +205,7 @@
             {/if}
             <div class="meta">
               {#if snap.pinned}<span class="tag pinned"><Pin size={10} strokeWidth={2.6} />{$t('game.snapshots.pinnedTag')}</span>{/if}
-              <span class="tag kind">{k.label}</span>
+              <span class="tag kind">{said.label.text ?? $t(said.label.key)}</span>
               {#if branchCount > 1}<span class="tag">{snap.branch}</span>{/if}
               <span>{fmtSize(snap.sizeBytes)}</span>
             </div>

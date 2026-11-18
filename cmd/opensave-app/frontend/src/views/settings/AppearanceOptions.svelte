@@ -54,9 +54,9 @@
   <div class="group">
     <span class="label" id="ap-theme">{$t('settings.appearance.theme')}</span>
     <div class="segmented" role="radiogroup" aria-labelledby="ap-theme" use:slidingIndicator={{ mode: 'fill' }}>
-      {#each Object.entries(THEMES) as [id, label]}
+      {#each Object.entries(THEMES) as [id]}
         <button role="radio" aria-checked={$appearance.theme === id} class:on={$appearance.theme === id} on:click={() => set({ theme: id })}>
-          <svelte:component this={themeIcons[id]} size={14} />{label}
+          <svelte:component this={themeIcons[id]} size={14} />{$t('appearance.theme.' + id)}
         </button>
       {/each}
     </div>
@@ -70,8 +70,8 @@
           class="swatch"
           role="radio"
           aria-checked={$appearance.accent === id}
-          aria-label={a.label}
-          title={a.label}
+          aria-label={$t('appearance.accent.' + id)}
+          title={$t('appearance.accent.' + id)}
           style="--swatch: {a.hex}; --swatch-on: {onAccent(a.hex)}"
           on:click={() => set({ accent: id })}
         >
@@ -119,7 +119,7 @@
     <span class="label">{$t('settings.appearance.size')}</span>
     <select value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
       {#each SCALES as s}
-        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ' (default)' : ''}</option>
+        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ` ${$t('settings.appearance.scaleDefault')}` : ''}</option>
       {/each}
     </select>
   </label>

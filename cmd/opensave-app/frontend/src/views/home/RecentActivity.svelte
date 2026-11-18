@@ -17,9 +17,17 @@
   import CoverImage from '../../components/CoverImage.svelte';
   import { games, peers, navigate } from '../../lib/stores.js';
   import { gameCover } from '../../lib/api.js';
-  import { recentEvents } from '../../lib/overview.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { recentEvents, recentText } from '../../lib/overview.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
   import { t } from '../../lib/i18n.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   const MOST = 6;
   const MIN_WIDTH = 210;
@@ -30,7 +38,8 @@
   onDestroy(() => clearInterval(tick));
 
   const ICONS = { manual: Camera, auto: History, start: FolderPlus, safety: ArchiveRestore, session: Gamepad2, other: History, sync: ArrowLeftRight };
-  const iso = (ms) => new Date(ms).toISOString();
+  // Null-safe for the same reason as Timeline's.
+  const iso = (ms) => (ms == null || ms === '' ? null : new Date(ms).toISOString());
   // What shows while a cover loads, or when a game has none — as in the sidebar.
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -39,7 +48,12 @@
   // where the keyboard could still reach it.
   let width = 0;
   $: fit = Math.max(1, Math.min(MOST, Math.floor((width + GAP) / (MIN_WIDTH + GAP))));
-  $: shown = events.slice(0, fit);
+  // What each event says: the lib's kinds (see "overview." in en.json) in
+  // the reader's language; a session's or safety copy's own words stay.
+  $: shown = events.slice(0, fit).map((e) => {
+    const s = recentText(e, $peers, $t);
+    return { ...e, what: s.key ? $t(s.key, s.params) : s.text };
+  });
 </script>
 
 <div class="recent">
@@ -52,14 +66,15 @@
       <p class="empty">{$t('home.recent.empty')}</p>
     {:else}
       {#each shown as e (`${e.game.id}:${e.kind}:${e.at}`)}
+        {@const w = agoKey(iso(e.at), now)}
         <button class="item" on:click={() => navigate('game', { gameId: e.game.id })} title={new Date(e.at).toLocaleString()}>
           <span class="thumb"><span class="initials">{initials(e.game.name)}</span><CoverImage src={gameCover(e.game)} alt="" /></span>
           <span class="text">
             <span class="game">{e.game.name}</span>
             <span class="what">
               <svelte:component this={ICONS[e.kind] ?? History} size={12} />
-              <span class="title">{e.title}{e.count > 1 ? ` ×${e.count}` : ''}</span>
-              <span class="when">· {timeAgo(iso(e.at), now)}</span>
+              <span class="title">{e.what}{e.count > 1 ? ` ×${e.count}` : ''}</span>
+              <span class="when">· {w.text ?? $t(w.key, w.params)}</span>
             </span>
           </span>
         </button>

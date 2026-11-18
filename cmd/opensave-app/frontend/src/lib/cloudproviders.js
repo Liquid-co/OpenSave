@@ -43,6 +43,21 @@ export function providerStatus(id, connected, cfg) {
   return 'Not configured';
 }
 
+// A provider card's status line, structured: providerStatus()'s cases above,
+// as {key, params} for the catalog (see locales/en.json, "cloud.picker.") or
+// {text} for the email, shown as it is — for the call site
+// (views/cloud/ProviderPicker.svelte) to say.
+export function providerStatusText(id, connected, cfg) {
+  if (!cfg) return null;
+  if (id === connected) {
+    const email = cfg.tokens?.userEmail;
+    return isEmail(email) ? { text: email } : { key: 'cloud.picker.connected', params: {} };
+  }
+  if (isOAuth(id)) return { key: 'cloud.picker.clickToSignIn', params: {} };
+  if (id === cfg.provider && cfg.url) return { key: 'cloud.picker.configured', params: {} };
+  return { key: 'cloud.picker.notConfigured', params: {} };
+}
+
 /** Tracked games and games only in the cloud, one tile each, so the cloud
  *  browser can both show what is up there and upload what isn't yet.
  *
