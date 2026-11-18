@@ -27,6 +27,14 @@ const (
 // does, with "**" as a whole path element matching any number of folders.
 // Matches come shallowest first. Links to folders are not followed.
 func globPaths(pattern string) []string {
+	budget := maxGlobWalkDirs
+	return globWithin(pattern, &budget)
+}
+
+// globWithin is globPaths drawing on one folder budget for the whole pattern,
+// however many roots a wildcard before "**" gives it and however many "**"
+// it holds.
+func globWithin(pattern string, budget *int) []string {
 	sep := string(filepath.Separator)
 	parts := strings.Split(pattern, sep)
 	star := -1
@@ -76,8 +84,8 @@ func globPaths(pattern string) []string {
 			continue
 		}
 		tail := strings.Join(rest, sep)
-		for _, dir := range walkDirs(root) {
-			for _, m := range globPaths(filepath.Join(dir, tail)) {
+		for _, dir := range walkDirs(root, budget) {
+			for _, m := range globWithin(filepath.Join(dir, tail), budget) {
 				if !seen[m] {
 					seen[m] = true
 					out = append(out, m)
@@ -88,10 +96,15 @@ func globPaths(pattern string) []string {
 	return out
 }
 
-// walkDirs lists root and the folders below it, breadth first, within the
-// walk limits. Links are left alone: a link to a folder is not a folder here,
-// so a walk never leaves the tree it was asked about or goes round in a loop.
-func walkDirs(root string) []string {
+// walkDirs lists root and the folders below it, breadth first, taking each
+// from budget and stopping when it runs out or at the depth limit. Links are
+// left alone: a link to a folder is not a folder here, so a walk never leaves
+// the tree it was asked about or goes round in a loop.
+func walkDirs(root string, budget *int) []string {
+	if *budget <= 0 {
+		return nil
+	}
+	*budget--
 	out := []string{root}
 	level := []string{root}
 	for depth := 0; depth < maxGlobWalkDepth && len(level) > 0; depth++ {
@@ -105,9 +118,10 @@ func walkDirs(root string) []string {
 				if !e.IsDir() {
 					continue
 				}
-				if len(out) >= maxGlobWalkDirs {
+				if *budget <= 0 {
 					return out
 				}
+				*budget--
 				p := filepath.Join(dir, e.Name())
 				out = append(out, p)
 				next = append(next, p)
