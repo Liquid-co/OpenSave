@@ -32,7 +32,7 @@ type Proc struct {
 	PID int
 	// Exe is the program's full path, where the system says.
 	Exe string
-	// Args is the command line, where the system says (Linux).
+	// Args is the command line, where the system says (Linux, macOS).
 	Args []string
 	// Measured says CPU was read (Windows): the processor time the program has
 	// used so far. A game being played uses some all the time; what a game
@@ -42,7 +42,7 @@ type Proc struct {
 	CPU      time.Duration
 	// SteamAppID is the Steam app the process was started for, where Steam
 	// tagged it (Linux: SteamAppId in the environment, or AppId=… on the
-	// command line of Steam's launcher).
+	// command line of Steam's launcher; macOS: SteamAppId, where it is set).
 	SteamAppID string
 }
 
