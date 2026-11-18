@@ -163,19 +163,19 @@
           class:invalid={!!nameProblem}
           bind:value={nameDraft}
           maxlength={MAX_GAME_NAME + 20}
-          aria-label="Game name"
+          aria-label={$t('game.header.renameNameLabel')}
           aria-invalid={!!nameProblem}
           use:focusSelect
           on:keydown={nameKeys}
         />
-        <button class="btn small primary" disabled={!!nameProblem || nameSaving} on:click={saveName}>Save</button>
-        <button class="btn small" on:click={() => (editName = false)}>Cancel</button>
+        <button class="btn small primary" disabled={!!nameProblem || nameSaving} on:click={saveName}>{$t('game.header.renameSave')}</button>
+        <button class="btn small" on:click={() => (editName = false)}>{$t('common.cancel')}</button>
       {:else}
         {game.name}
         <button
           class="btn small ghost icon rename"
-          title="Rename (only on this device; syncing is unaffected)"
-          aria-label="Rename"
+          title={$t('game.header.renameHint')}
+          aria-label={$t('common.rename')}
           on:click={startRename}
         >
           <Pencil size={14} />
