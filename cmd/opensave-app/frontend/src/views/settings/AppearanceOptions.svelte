@@ -52,7 +52,7 @@
   </label>
 
   <div class="group">
-    <span class="label" id="ap-theme">Theme</span>
+    <span class="label" id="ap-theme">{$t('settings.appearance.theme')}</span>
     <div class="segmented" role="radiogroup" aria-labelledby="ap-theme" use:slidingIndicator={{ mode: 'fill' }}>
       {#each Object.entries(THEMES) as [id, label]}
         <button role="radio" aria-checked={$appearance.theme === id} class:on={$appearance.theme === id} on:click={() => set({ theme: id })}>
@@ -63,7 +63,7 @@
   </div>
 
   <div class="group">
-    <span class="label" id="ap-accent">Accent colour</span>
+    <span class="label" id="ap-accent">{$t('settings.appearance.accent')}</span>
     <div class="swatches" role="radiogroup" aria-labelledby="ap-accent">
       {#each Object.entries(ACCENTS) as [id, a]}
         <button
@@ -84,15 +84,15 @@
             class="swatch"
             role="radio"
             aria-checked={$appearance.accent === hex}
-            aria-label="Your colour {hex}"
-            title="{hex} (Delete removes it)"
+            aria-label={$t('settings.appearance.yourColour', { hex })}
+            title={$t('settings.appearance.colourDeleteHint', { hex })}
             style="--swatch: {hex}; --swatch-on: {onAccent(hex)}"
             on:click={() => set({ accent: hex })}
             on:keydown={(e) => (e.key === 'Delete' || e.key === 'Backspace') && removeColour(hex)}
           >
             {#if $appearance.accent === hex}<Check size={14} strokeWidth={3} />{/if}
           </button>
-          <button class="remove" tabindex="-1" aria-label="Remove {hex}" title="Remove" on:click={() => removeColour(hex)}>
+          <button class="remove" tabindex="-1" aria-label={$t('settings.appearance.removeColour', { hex })} title={$t('settings.appearance.remove')} on:click={() => removeColour(hex)}>
             <X size={10} strokeWidth={3} />
           </button>
         </span>
@@ -100,8 +100,8 @@
       <span class="picker" bind:this={pickerEl}>
         <button
           class="swatch wheel-button"
-          aria-label="Pick any colour"
-          title="Pick any colour"
+          aria-label={$t('settings.appearance.pickAnyColour')}
+          title={$t('settings.appearance.pickAnyColour')}
           aria-haspopup="dialog"
           aria-expanded={wheelOpen}
           on:click={() => (wheelOpen = !wheelOpen)}
@@ -116,7 +116,7 @@
   </div>
 
   <label class="group">
-    <span class="label">Size</span>
+    <span class="label">{$t('settings.appearance.size')}</span>
     <select value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
       {#each SCALES as s}
         <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ' (default)' : ''}</option>
@@ -127,12 +127,12 @@
 
 <label class="check motion">
   <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
-  Animations
+  {$t('settings.appearance.animations')}
 </label>
 <p class="hint">
-  Small movements as pages, dialogs and your library come into view, and as you point at a game.
+  {$t('settings.appearance.animationsHint')}
   {#if $systemReducesMotion}
-    Off for now whatever this says: Windows is asking apps to reduce motion.
+    {$t('settings.appearance.reducedMotion')}
   {/if}
 </p>
 

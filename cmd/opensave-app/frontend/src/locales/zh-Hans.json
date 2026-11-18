@@ -1213,5 +1213,16 @@
   "restore.unplaced": "它还包含 {names} 的文件——这台设备上没有对应的文件夹，这些文件会被跳过。",
   "restore.safe": "你当前的存档会先保存为一份快照，因此这一操作可以撤销。",
   "restore.anyway": "仍然恢复",
-  "restore.restore": "恢复"
+  "restore.restore": "恢复",
+  "settings.appearance.theme": "主题",
+  "settings.appearance.accent": "强调色",
+  "settings.appearance.size": "大小",
+  "settings.appearance.animations": "动画",
+  "settings.appearance.animationsHint": "页面、对话框和游戏库进入视野时的细微移动效果，以及指向游戏时的反馈。",
+  "settings.appearance.reducedMotion": "暂时不会播放：Windows 正在要求应用减少动态效果。",
+  "settings.appearance.yourColour": "你的颜色 {hex}",
+  "settings.appearance.colourDeleteHint": "{hex}（按 Delete 删除）",
+  "settings.appearance.removeColour": "删除 {hex}",
+  "settings.appearance.remove": "删除",
+  "settings.appearance.pickAnyColour": "任选颜色"
 }
