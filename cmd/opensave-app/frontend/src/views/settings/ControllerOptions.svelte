@@ -6,24 +6,25 @@
   import { appearance } from '../../lib/appearance.js';
   import { CONTROLLER_MODES, controllerOn, padUsed } from '../../lib/controller.js';
   import { settings } from '../../lib/stores.js';
+  import { t } from '../../lib/i18n.js';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
 
   // What each button does, in the order someone reaches for them.
-  const BUTTONS = [
-    { keys: ['D-pad', 'Left stick'], does: 'Move between games, buttons and fields' },
-    { keys: ['A'], does: 'Press what is highlighted' },
-    { keys: ['B'], does: 'Close what is open, or go back' },
-    { keys: ['X'], does: "Open the highlighted game's menu" },
-    { keys: ['Y', 'Start'], does: 'Quick switcher (Ctrl+K)' },
-    { keys: ['LB', 'RB'], does: 'Previous or next page' }
+  $: BUTTONS = [
+    { keys: ['D-pad', 'Left stick'], does: $t('settings.controller.move') },
+    { keys: ['A'], does: $t('settings.controller.press') },
+    { keys: ['B'], does: $t('settings.controller.close') },
+    { keys: ['X'], does: $t('settings.controller.menu') },
+    { keys: ['Y', 'Start'], does: $t('settings.controller.quickSwitcher') },
+    { keys: ['LB', 'RB'], does: $t('settings.controller.page') }
   ];
 
   $: active = controllerOn($appearance.controller, { deviceType: $settings?.deviceType, used: $padUsed });
 </script>
 
 <div class="row">
-  <div class="segmented" role="radiogroup" aria-label="Controller" use:slidingIndicator={{ mode: 'fill' }}>
+  <div class="segmented" role="radiogroup" aria-label={$t('settings.general.controller')} use:slidingIndicator={{ mode: 'fill' }}>
     {#each Object.entries(CONTROLLER_MODES) as [id, label]}
       <button role="radio" aria-checked={$appearance.controller === id} class:on={$appearance.controller === id} on:click={() => set({ controller: id })}>
         {label}
@@ -31,22 +32,22 @@
     {/each}
   </div>
   <span class="state" class:is-on={active}>
-    {#if $appearance.controller === 'on'}On
-    {:else if $appearance.controller === 'off'}Off — the arrow keys scroll as usual
-    {:else if active}On now — a controller was used, or this is a Steam Deck or handheld
-    {:else}Turns on when a controller is used, and on a Steam Deck or handheld{/if}
+    {#if $appearance.controller === 'on'}{$t('settings.controller.on')}
+    {:else if $appearance.controller === 'off'}{$t('settings.controller.off')}
+    {:else if active}{$t('settings.controller.onNow')}
+    {:else}{$t('settings.controller.auto')}{/if}
   </span>
 </div>
 
-<dl class="buttons" aria-label="What the buttons do">
+<dl class="buttons" aria-label={$t('settings.controller.buttonsAria')}>
   {#each BUTTONS as b}
     <dt>
-      {#each b.keys as k, i}{#if i > 0}<span class="or">or</span>{/if}<kbd>{k}</kbd>{/each}
+      {#each b.keys as k, i}{#if i > 0}<span class="or">{$t('settings.controller.or')}</span>{/if}<kbd>{k}</kbd>{/each}
     </dt>
     <dd>{b.does}</dd>
   {/each}
 </dl>
-<p class="hint">The arrow keys do the same while it's on — a Steam Deck in desktop mode sends them for the D-pad.</p>
+<p class="hint">{$t('settings.controller.hint')}</p>
 
 <style>
   .row {
