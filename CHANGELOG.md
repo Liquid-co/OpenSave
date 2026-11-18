@@ -3,7 +3,13 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.5.0-beta.1] — 2026-11-19
+
+The first beta of 2.5.0. On a Steam Deck a game now starts with its newest
+save, and a game is not synced while it is being played. Games from your other
+devices set themselves up again, and your own devices can be trusted to choose
+folders. Saves of many files are much faster, OpenSave is in Chinese, and
+dozens of fixes make syncing safer. Please try it, and tell us what breaks.
 
 ### Fixed
 
@@ -177,6 +183,29 @@ All notable changes to OpenSave are documented here. This project adheres to
   has open is retried as usual. (#114)
 - **The "After playing" snapshot is no longer taken twice** when the game
   saved in the very moment its session began. (#125)
+- **Importing a backup no longer overwrites another game's save.** A backup
+  of a game this device doesn't track could be extracted into a folder that
+  belongs to another tracked game, replacing its files before the import was
+  refused. The folder is now checked first, and if another game owns it,
+  nothing is written. (#141, issue #138)
+- **Removing a save location waits for a sync that is writing into it.**
+  Removing or moving one of a game's save locations during a sync could
+  leave that sync writing into a folder no longer tracked. The change now
+  waits up to 30 seconds for the sync to finish, and says so if it is still
+  busy. (#139, issue #136)
+- **A game offered for a folder is said once.** While it waited on Home, the
+  log repeated the same warning at every sync from the other device. (#150)
+- **Cemu is found on Windows.** The scan looked in Documents\Cemu, where Cemu
+  never keeps its saves; a default install keeps them in %APPDATA%\Cemu.
+  (#151, issue #148)
+- **The Deck plugin says the version it was released as.** The 2.4.1
+  download said 2.4.0, so plugin managers offered the same update again and
+  again. (#151, issue #149)
+- **A sync that did not reach a device is no longer called "already in
+  sync".** `opensave sync` and the Deck plugin now say when another device is
+  playing the game, has syncing paused, or the sync with it failed. At a
+  launch on the Deck, a game being played on another device says so instead
+  of starting quietly. (#154)
 
 ### Changed
 
@@ -239,12 +268,16 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
-- **Chinese, Simplified and Traditional,** for the Home screen, the sidebar,
-  the title bar, the status bar, notifications, banners, the command palette
-  and the Transfers panel, and a Language
-  choice in Settings → Appearance, which follows the system by default:
-  Taiwan, Hong Kong and Macau get Traditional, the rest Simplified. (#48,
-  #77, #112, from #19 and #20)
+- **Chinese, Simplified and Traditional,** throughout the app, with a
+  Language choice in Settings → Appearance, which follows the system by
+  default: Taiwan, Hong Kong and Macau get Traditional, the rest Simplified.
+  Messages from the background service, such as the notes on automatic
+  snapshots, are still in English. (#48, #77, #112, #124, #145, #152, #153,
+  #158, #159, #160, #161, from #19 and #20)
+- **Any accent colour.** The last swatch in Settings → Appearance opens a
+  colour wheel. A colour you pick joins the swatches, up to eight of them,
+  and text on it stays readable. Slate, which the wheel replaces, stays for
+  anyone using it. (#157)
 - **Track a game from the save catalogue.** "Track game" beside "Track
   folder" finds a game by name, by the program you pick, or one that is
   running, and tracks it with its name, cover and save folder. A folder
