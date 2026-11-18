@@ -135,7 +135,7 @@
   {/if}
 
   <div class="filters">
-    <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id, f]) => [id, f.label])} bind:value={filter} />
+    <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id]) => [id, $t('activity.filter.' + id)])} bind:value={filter} />
     <select bind:value={gameId} aria-label={$t('activity.timeline.showOneGameAria')}>
       <option value="">{$t('activity.timeline.everyGame')}</option>
       {#each Object.values($games).sort((a, b) => a.name.localeCompare(b.name)) as game (game.id)}

@@ -50,18 +50,18 @@
   <button class="btn small" disabled={showing} on:click={showMe}><BellRing size={14} />{$t('settings.notifications.showMe')}</button>
 </div>
 <p class="lead">{$t('settings.notifications.chimeLead')}</p>
-{#each attention as [key, e]}
+{#each attention as [key]}
   <label class="check">
     <input type="checkbox" checked={$notifyPrefs[key]} on:change={() => toggle(key)} />
-    {e.label}
+    {$t('notifyPrefs.event.' + key)}
   </label>
 {/each}
 
 <p class="lead">{$t('settings.notifications.messageLead')}</p>
-{#each messages as [key, e]}
+{#each messages as [key]}
   <label class="check">
     <input type="checkbox" checked={$notifyPrefs[key]} on:change={() => toggle(key)} />
-    {e.label}
+    {$t('notifyPrefs.event.' + key)}
   </label>
 {/each}
 

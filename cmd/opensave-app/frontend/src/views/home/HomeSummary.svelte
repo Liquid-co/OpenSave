@@ -59,6 +59,59 @@
   const ICONS = { ok: Save, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
 
   $: summary = librarySummary(rows);
+
+  // The headline's wording is built in lib/gamestatus.js, in English; the
+  // same cases, in the same order, are mapped here to translated sentences.
+  const by = (state) => rows.filter((r) => r.status.state === state);
+  function headlineFor() {
+    const missing = by('missing');
+    const emptied = by('emptied');
+    const conflict = by('conflict');
+    const syncing = by('syncing');
+    const failed = by('error');
+    // From the snapshots, not the state — see librarySummary.
+    const empty = rows.filter((r) => latestSnapshotAt(r.game) === null);
+    const damaged = rows.flatMap((r) =>
+      Object.values(r.game.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem).map(() => r.game))
+    );
+    const paused = by('paused');
+    if (missing.length > 0)
+      return missing.length === 1
+        ? { key: 'home.summaryLine.missingOne', params: { name: missing[0].game.name } }
+        : { key: 'home.summaryLine.missingMany', params: { count: missing.length } };
+    if (emptied.length > 0)
+      return emptied.length === 1
+        ? { key: 'home.summaryLine.emptiedOne', params: { name: emptied[0].game.name } }
+        : { key: 'home.summaryLine.emptiedMany', params: { count: emptied.length } };
+    if (conflict.length > 0)
+      return conflict.length === 1
+        ? { key: 'home.summaryLine.conflictOne', params: { name: conflict[0].game.name } }
+        : { key: 'home.summaryLine.conflictMany', params: { count: conflict.length } };
+    if (syncing.length > 0)
+      return syncing.length === 1
+        ? { key: 'home.summaryLine.syncingOne', params: { name: syncing[0].game.name } }
+        : { key: 'home.summaryLine.syncingMany', params: { count: syncing.length } };
+    if (failed.length > 0)
+      return failed.length === 1
+        ? { key: 'home.summaryLine.failedOne', params: { name: failed[0].game.name } }
+        : { key: 'home.summaryLine.failedMany', params: { count: failed.length } };
+    if (damaged.length > 0)
+      return damaged.length === 1
+        ? { key: 'home.summaryLine.damagedOne', params: { name: damaged[0].name } }
+        : { key: 'home.summaryLine.damagedMany', params: { count: damaged.length } };
+    if (empty.length > 0)
+      return empty.length === 1
+        ? { key: 'home.summaryLine.emptyOne', params: { count: empty.length } }
+        : { key: 'home.summaryLine.emptyMany', params: { count: empty.length } };
+    if (paused.length > 0)
+      return paused.length === 1
+        ? { key: 'home.summaryLine.pausedOne', params: { count: paused.length } }
+        : { key: 'home.summaryLine.pausedMany', params: { count: paused.length } };
+    return rows.length === 1
+      ? { key: 'home.summaryLine.backedUpOne', params: {} }
+      : { key: 'home.summaryLine.backedUpMany', params: { count: rows.length } };
+  }
+  $: headline = headlineFor(rows);
   // The pause's countdown starts from the moment it changes.
   $: if ($syncPause) now = Date.now();
   // A pause outranks the quiet states, not a decision waiting or a sync in
@@ -98,7 +151,7 @@
   <div class="state">
     <div class="state-icon" class:spin={tone === 'busy'}><svelte:component this={icon} size={20} strokeWidth={2} /></div>
     <div class="state-text">
-      <p class="headline" role="status">{summary.headline}</p>
+      <p class="headline" role="status">{$t(headline.key, headline.params)}</p>
       {#if lowSpace !== null}
         <p class="detail warn">
           {$t('home.summary.lowSpace', { size: fmtSize(lowSpace) })}

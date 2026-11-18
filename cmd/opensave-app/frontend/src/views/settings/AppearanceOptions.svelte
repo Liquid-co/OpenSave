@@ -54,9 +54,9 @@
   <div class="group">
     <span class="label" id="ap-theme">{$t('settings.appearance.theme')}</span>
     <div class="segmented" role="radiogroup" aria-labelledby="ap-theme" use:slidingIndicator={{ mode: 'fill' }}>
-      {#each Object.entries(THEMES) as [id, label]}
+      {#each Object.entries(THEMES) as [id]}
         <button role="radio" aria-checked={$appearance.theme === id} class:on={$appearance.theme === id} on:click={() => set({ theme: id })}>
-          <svelte:component this={themeIcons[id]} size={14} />{label}
+          <svelte:component this={themeIcons[id]} size={14} />{$t('appearance.theme.' + id)}
         </button>
       {/each}
     </div>
