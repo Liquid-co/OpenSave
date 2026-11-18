@@ -98,9 +98,9 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 			continue
 		}
 		for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
-			// A Wine prefix's own broad folders (its Documents, its windows
-			// folder) are known only to its var set, as in a scan.
-			if varSetOS(vars) == "windows" && blockedRoots(vars)[strings.ToLower(filepath.Clean(path))] {
+			// A Wine prefix's windows folder is known only to its var set,
+			// as in a scan.
+			if windowsDirRoots(vars)[strings.ToLower(filepath.Clean(path))] {
 				continue
 			}
 			for _, p := range g.pathsFor(vars) {

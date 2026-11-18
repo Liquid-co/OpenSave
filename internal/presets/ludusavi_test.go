@@ -527,10 +527,22 @@ Greedy Game:
   files:
     <winDocuments>/My Games:
       tags: [save]
+Old Game:
+  files:
+    <home>/Documents/old.sav:
+      tags: [save]
 `)
-	found := sc.scanLudusavi(map[string]bool{})
-	if len(found) != 1 || found[0].SavePath != save {
-		t.Fatalf("found %+v, want only %s", found, save)
+	// home\Documents is still no save location once Documents has moved.
+	old := filepath.Join(home, "Documents", "old.sav")
+	mustMkFile(t, old)
+
+	got := map[string]string{}
+	for _, d := range sc.scanLudusavi(map[string]bool{}) {
+		got[d.Name] = d.SavePath
+	}
+	want := map[string]string{"Redirected Game": save, "Old Game": old}
+	if len(got) != len(want) || got["Redirected Game"] != save || got["Old Game"] != old {
+		t.Fatalf("found %v, want %v", got, want)
 	}
 }
 

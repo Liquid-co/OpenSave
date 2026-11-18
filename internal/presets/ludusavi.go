@@ -236,7 +236,7 @@ func (sc *Scanner) scanLudusavi(seen map[string]bool) []DiscoveredSave {
 		blocked = blockedRoots(wv)
 	} else {
 		blocked = linuxBlockedRoots(sc.linuxHome())
-		protonIdx = sc.protonPrefixIndex()
+		protonIdx = sc.prefixIndex()
 	}
 	baseDirs := sc.installBaseCandidates()
 
@@ -303,8 +303,8 @@ func expandGamePaths(g indexedGame, varSets []map[string]string, baseDirs func([
 	for _, b := range installBases {
 		installRoots[strings.ToLower(filepath.Clean(b))] = true
 	}
-	// A Wine prefix's profile folders, and its windows folder, are as broad
-	// as the real ones, and only its own var set knows where they are.
+	// A Wine prefix's windows folder is as broad as the real one, and only
+	// its own var set knows where it is.
 	var setBlocked map[string]bool
 	noWiden := func(dir string) bool {
 		l := strings.ToLower(filepath.Clean(dir))
@@ -327,10 +327,7 @@ func expandGamePaths(g indexedGame, varSets []map[string]string, baseDirs func([
 	}
 
 	for _, vars := range varSets {
-		setBlocked = nil
-		if varSetOS(vars) == "windows" {
-			setBlocked = blockedRoots(vars)
-		}
+		setBlocked = windowsDirRoots(vars)
 		for _, p := range g.pathsFor(vars) {
 			for _, expanded := range expandTemplate(p.tpl, p.vars, installBases, g.SteamID) {
 				for _, hit := range statOrGlob(expanded, noWiden) {
@@ -518,6 +515,21 @@ func windowsDir() string {
 	return `C:\Windows`
 }
 
+// windowsDirRoots are the Windows folder of a var set (the real one, or a Wine
+// prefix's drive_c/windows) and the system folders in it, lower-cased: never a
+// save location, whatever a <winDir> template matches. Nil without one.
+func windowsDirRoots(vars map[string]string) map[string]bool {
+	win := vars["<winDir>"]
+	if win == "" {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, p := range []string{win, filepath.Join(win, "System32"), filepath.Join(win, "SysWOW64")} {
+		out[strings.ToLower(filepath.Clean(p))] = true
+	}
+	return out
+}
+
 // ludusaviVarSets returns the placeholder→path maps to try for one game on
 // the scanner's target OS.
 func (sc *Scanner) ludusaviVarSets(g indexedGame, protonIdx map[string][]string) []map[string]string {
@@ -664,10 +676,8 @@ func prefixHomesFor(g indexedGame, idx map[string][]string) []string {
 	return out
 }
 
-// protonPrefixIndex maps a game to the user home folders of the Wine prefixes
-// that are its: by Steam AppID for Proton prefixes across all libraries, and
-// by prefixNameKey for the Heroic, Lutris, Bottles and Wine prefixes named
-// after a game (prefixHomesFor). Built once per scan.
+// protonPrefixIndex maps Steam AppID -> the user home dirs of its Proton
+// prefixes across all libraries. Built once per scan.
 func (sc *Scanner) protonPrefixIndex() map[string][]string {
 	idx := map[string][]string{}
 	for _, lib := range sc.steamLibraryPaths() {
@@ -686,6 +696,16 @@ func (sc *Scanner) protonPrefixIndex() map[string][]string {
 			idx[e.Name()] = append(idx[e.Name()], prefixUserDirs(pfx)...)
 		}
 	}
+	return idx
+}
+
+// prefixIndex is protonPrefixIndex plus, on Linux, the Heroic, Lutris,
+// Bottles and Wine prefixes named after a game, by prefixNameKey (see
+// prefixHomesFor). Finding those reads every launcher's folders and settings,
+// so it is for a scan and a game lookup, not for the check made while a peer
+// waits (CatalogueSaveLocation), which keeps to Proton.
+func (sc *Scanner) prefixIndex() map[string][]string {
+	idx := sc.protonPrefixIndex()
 	if sc.goos() != "linux" {
 		return idx
 	}
@@ -738,6 +758,7 @@ func blockedRoots(vars map[string]string) map[string]bool {
 		add(v)
 	}
 	home := vars["<home>"]
+	add(filepath.Join(home, "Documents")) // still too broad when Documents is elsewhere
 	add(filepath.Join(home, "Documents", "My Games"))
 	if docs := vars["<winDocuments>"]; docs != "" {
 		add(filepath.Join(docs, "My Games"))
@@ -746,9 +767,8 @@ func blockedRoots(vars map[string]string) map[string]bool {
 	add(filepath.Join(home, "Desktop"))
 	add(filepath.Join(home, "Downloads"))
 	add(filepath.Join(vars["<winPublic>"], "Documents"))
-	if win := vars["<winDir>"]; win != "" {
-		add(filepath.Join(win, "System32"))
-		add(filepath.Join(win, "SysWOW64"))
+	for p := range windowsDirRoots(vars) {
+		add(p)
 	}
 	add(filepath.Join(vars["<winLocalAppData>"], "Programs"))
 	add(filepath.Join(vars["<winLocalAppData>"], "Packages"))

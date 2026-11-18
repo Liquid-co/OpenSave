@@ -42,7 +42,7 @@ func (sc *Scanner) GameDB() *GameDB {
 		}
 	}
 	if sc.goos() == "linux" {
-		ds.protonIx = sc.protonPrefixIndex()
+		ds.protonIx = sc.prefixIndex()
 	}
 	if sc.goos() == "windows" {
 		ds.blocked = blockedRoots(windowsPathVars())
