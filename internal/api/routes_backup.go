@@ -173,13 +173,13 @@ func extractSingleFile(zipPath, entryName, destRel, savePath string) error {
 		}
 		// Written beside the file and renamed over it, never truncated in
 		// place: a copy that fails part-way (disk full, archive read error)
-		// otherwise leaves the save cut short, and the safety snapshot taken
-		// before this is then the only good copy of it.
-		tmp, err := os.CreateTemp(filepath.Dir(destPath), ".restore-*")
+		// otherwise leaves the save cut short. The temporary name is the one
+		// a sync uses, which manifests and snapshots already leave out.
+		tmpName := destPath + delta.TmpSuffix
+		tmp, err := os.OpenFile(tmpName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
 		if err != nil {
 			return err
 		}
-		tmpName := tmp.Name()
 		if _, err := io.Copy(tmp, src); err != nil {
 			tmp.Close()
 			os.Remove(tmpName)
@@ -194,8 +194,7 @@ func extractSingleFile(zipPath, entryName, destRel, savePath string) error {
 			os.Remove(tmpName)
 			return err
 		}
-		_ = os.Chmod(destPath, 0o666)
-		if err := os.Rename(tmpName, destPath); err != nil {
+		if err := delta.ReplaceFile(tmpName, destPath); err != nil {
 			os.Remove(tmpName)
 			return err
 		}

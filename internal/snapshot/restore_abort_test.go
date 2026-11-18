@@ -112,3 +112,32 @@ func TestRestore_SafetyCopyCoversOtherLocations(t *testing.T) {
 		t.Fatalf("snapshots %d → %d: no safety copy of the mods folder was taken before it was emptied", len(before), len(after))
 	}
 }
+
+// A save whose main folder is gone altogether still restores, with its other
+// locations backed up first.
+func TestRestore_MainFolderDeleted(t *testing.T) {
+	env := setup(t)
+	mods := filepath.Join(filepath.Dir(env.saveDir), "mods")
+	if err := os.MkdirAll(mods, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.AddGameRoot("game1", "mods", mods); err != nil {
+		t.Fatal(err)
+	}
+	writeSave(t, env.saveDir, "slot1.sav", "progress")
+	old, err := env.mgr.Create("game1", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(env.saveDir); err != nil {
+		t.Fatal(err)
+	}
+	writeSave(t, mods, "config.ini", "hours of tuning")
+
+	if _, err := env.mgr.Restore("game1", old.ID); err != nil {
+		t.Fatalf("restoring over a deleted save folder: %v", err)
+	}
+	if got := readSave(t, filepath.Join(env.saveDir, "slot1.sav")); got != "progress" {
+		t.Errorf("slot1.sav = %q, want the snapshot's", got)
+	}
+}
