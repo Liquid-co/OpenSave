@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -411,5 +412,98 @@ Elden Ring:
 	}
 	if found[0].AppID != "1245620" {
 		t.Errorf("AppID = %q, want 1245620", found[0].AppID)
+	}
+}
+
+// The manifest writes "**" for "any number of folders" (2,070 templates), as
+// Ludusavi's globbing does. filepath.Glob reads it as a single "*", so a save
+// one folder deeper or shallower than that was never found.
+func TestGlobPaths_RecursiveWildcard(t *testing.T) {
+	root := t.TempDir()
+	mustMkFile(t, filepath.Join(root, "SaveGames", "top.sav"))
+	mustMkFile(t, filepath.Join(root, "SaveGames", "Profile1", "slot.sav"))
+	mustMkFile(t, filepath.Join(root, "SaveGames", "Profile1", "Deep", "Deeper", "auto.sav"))
+	mustMkFile(t, filepath.Join(root, "SaveGames", "Profile1", "notes.txt"))
+	mustMkFile(t, filepath.Join(root, "Other", "x.sav"))
+
+	j := func(parts ...string) string { return filepath.Join(append([]string{root}, parts...)...) }
+	cases := []struct {
+		name    string
+		pattern string
+		want    []string
+	}{
+		{"zero folders", j("SaveGames", "**", "top.sav"), []string{j("SaveGames", "top.sav")}},
+		{"any depth", j("SaveGames", "**", "*.sav"), []string{
+			j("SaveGames", "top.sav"),
+			j("SaveGames", "Profile1", "slot.sav"),
+			j("SaveGames", "Profile1", "Deep", "Deeper", "auto.sav"),
+		}},
+		{"wildcard before", j("*", "**", "x.sav"), []string{j("Other", "x.sav")}},
+		{"trailing", j("SaveGames", "**"), []string{j("SaveGames")}},
+		{"no match", j("SaveGames", "**", "*.dat"), nil},
+		{"plain glob unchanged", j("SaveGames", "*.sav"), []string{j("SaveGames", "top.sav")}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := globPaths(c.pattern)
+			if strings.Join(got, "|") != strings.Join(c.want, "|") {
+				t.Errorf("globPaths(%q)\n got  %v\n want %v", c.pattern, got, c.want)
+			}
+		})
+	}
+}
+
+// A "**" walk never follows a link out of the folder it was asked about.
+func TestGlobPaths_RecursiveSkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	mustMkFile(t, filepath.Join(outside, "elsewhere.sav"))
+	if err := os.MkdirAll(filepath.Join(root, "Saves"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "Saves", "link")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if got := globPaths(filepath.Join(root, "Saves", "**", "*.sav")); len(got) != 0 {
+		t.Errorf("followed a link: %v", got)
+	}
+}
+
+func TestLudusavi_RecursiveGlob(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+
+	save := filepath.Join(home, "AppData", "Local", "XV83", "Saved", "SaveGames", "76561198000000000")
+	mustMkFile(t, filepath.Join(save, "slot1.sav"))
+
+	sc := manifestScanner(t, `
+Deep Game:
+  files:
+    <winLocalAppData>/XV83/Saved/SaveGames/**/*.sav:
+      tags: [save]
+`)
+	found := sc.scanLudusavi(map[string]bool{})
+	if len(found) != 1 || found[0].SavePath != save {
+		t.Fatalf("found %+v, want one save at %s", found, save)
+	}
+}
+
+// "<storeUserId>" becomes "*", so "*<storeUserId>" must not turn into "**"
+// and walk every folder below (ported from Ludusavi's parse_paths).
+func TestExpandTemplate_StoreIDsNeverMakeRecursiveWildcard(t *testing.T) {
+	root := t.TempDir()
+	vars := map[string]string{"<home>": root}
+	for _, tpl := range []string{
+		"<home>/Game/*<storeUserId>/save",
+		"<home>/Game/<storeUserId>*/save",
+		"<home>/Game/<storeGameId>*/save",
+	} {
+		for _, got := range expandTemplate(tpl, vars, nil, "") {
+			if strings.Contains(got, "**") {
+				t.Errorf("expandTemplate(%q) = %q: a recursive wildcard", tpl, got)
+			}
+		}
 	}
 }

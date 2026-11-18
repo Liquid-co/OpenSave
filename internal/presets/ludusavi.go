@@ -250,7 +250,19 @@ func isSubPath(parent, child string) bool {
 // several concrete patterns (one per install-dir candidate). Templates
 // with leftover placeholders are dropped.
 func expandTemplate(tpl string, vars map[string]string, installBases []string, steamID string) []string {
+	// A store id that becomes "*" below would, next to a "*" written beside
+	// it, make "**": a walk of every folder underneath rather than one
+	// folder. Ludusavi folds <storeUserId> the same way (parse_paths in its
+	// src/scan.rs); <storeGameId> is "*" too when the Steam id is unknown.
 	s := tpl
+	wild := []string{"<storeUserId>"}
+	if steamID == "" {
+		wild = append(wild, "<storeGameId>")
+	}
+	for _, id := range wild {
+		s = strings.ReplaceAll(s, "*"+id, id)
+		s = strings.ReplaceAll(s, id+"*", id)
+	}
 	for k, v := range vars {
 		s = strings.ReplaceAll(s, k, v)
 	}
@@ -310,8 +322,8 @@ func statOrGlob(pattern string, noWiden func(dir string) bool) []string {
 	}
 
 	if strings.ContainsAny(pattern, "*?[") {
-		matches, err := filepath.Glob(pattern)
-		if err != nil || len(matches) == 0 {
+		matches := globPaths(pattern)
+		if len(matches) == 0 {
 			return nil
 		}
 		var dirs []string
