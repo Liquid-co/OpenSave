@@ -116,7 +116,7 @@ func (d *Daemon) RunningGames() []RunningGame {
 	seen := map[string]bool{}
 	out := []RunningGame{}
 	for _, p := range procs {
-		if p.Exe == "" {
+		if p.Exe == "" || neverAGame(p.Exe) {
 			continue
 		}
 		if winDir != "" && strings.HasPrefix(strings.ToLower(p.Exe), winDir+string(filepath.Separator)) {
@@ -132,4 +132,21 @@ func (d *Daemon) RunningGames() []RunningGame {
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out
+}
+
+// nonGamePrograms are programs that are never the game being played, however
+// their folders are named: web browsers, open on most desktops, and one of
+// them ("Google\Chrome") shares its folder name with a game.
+var nonGamePrograms = map[string]bool{
+	"chrome": true, "google chrome": true, "google-chrome": true, "chromium": true, "msedge": true,
+	"firefox": true, "brave": true, "opera": true, "opera_gx": true, "vivaldi": true, "iexplore": true,
+	"arc": true, "safari": true,
+}
+
+// neverAGame reports whether a running program is one the running games list
+// leaves out by name: a browser, or OpenSave itself.
+func neverAGame(exe string) bool {
+	base := filepath.Base(strings.ReplaceAll(exe, `\`, "/"))
+	name := strings.ToLower(strings.TrimSuffix(base, filepath.Ext(base)))
+	return nonGamePrograms[name] || strings.HasPrefix(name, "opensave")
 }
