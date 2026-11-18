@@ -22,10 +22,18 @@
   import { spaceUsed } from '../../lib/overview.js';
   import { fmtSize } from '../../lib/format.js';
   import { api } from '../../lib/api.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
   import { libraryView } from '../../lib/libraryview.js';
   import { t } from '../../lib/i18n.js';
   import RecentActivity from './RecentActivity.svelte';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   /** [{game, status}] for every tracked game, from the library. */
   export let rows = [];
@@ -145,6 +153,7 @@
     const at = latestSnapshotAt(r.game);
     return at && (!best || at > best.at) ? { at, name: r.game.name } : best;
   }, null);
+  $: newestAgo = newest ? agoKey(newest.at, now) : null;
 </script>
 
 <section class="summary tone-{tone}">
@@ -181,7 +190,7 @@
       title={newest ? $t('home.summary.lastSnapshotTitle', { name: newest.name, when: new Date(newest.at).toLocaleString() }) : ''}
     >
       <span class="label">{$t('home.summary.lastSnapshot')}</span>
-      <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : $t('home.summary.noneYet')}</span></span>
+      <span class="value" class:quiet={!newest}><span class="v">{newestAgo ? (newestAgo.text ?? $t(newestAgo.key, newestAgo.params)) : $t('home.summary.noneYet')}</span></span>
     </div>
     <button
       class="fact link"

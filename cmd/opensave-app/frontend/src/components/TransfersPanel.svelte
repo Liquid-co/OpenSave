@@ -9,9 +9,19 @@
   import X from 'lucide-svelte/icons/x';
   import { api } from '../lib/api.js';
   import { games, syncActivity, navigate } from '../lib/stores.js';
-  import { timeAgo } from '../lib/timeago.js';
+  import { timeAgoParts } from '../lib/timeago.js';
   import { amountLabel, peerLabel, speedLabel, withNames } from '../lib/transfers.js';
-  import { t } from '../lib/i18n.js';
+  // Aliased: each recent transfer below is also named t, which would
+  // shadow the store and break $t inside the list.
+  import { t as i18n } from '../lib/i18n.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $i18n.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   const dispatch = createEventDispatcher();
   let data = null;
@@ -77,6 +87,7 @@
     {#if shown.recent.length}
       <h4>{$i18n('transfers.recently')}</h4>
       {#each shown.recent.slice(0, 20) as t}
+        {@const w = agoKey(t.endedAt, now)}
         <button class="row" on:click={() => open(t)} title={t.error || ''}>
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
           <span class="main">
@@ -85,7 +96,7 @@
           </span>
           <span class="end">
             {#if t.state === 'error'}<span class="bad"><CircleX size={13} /></span>{:else}<span class="good"><CircleCheck size={13} /></span>{/if}
-            <span class="when">{t.endedAt ? timeAgo(t.endedAt, now) : ''}</span>
+            <span class="when">{t.endedAt ? (w.text ?? $i18n(w.key, w.params)) : ''}</span>
           </span>
         </button>
       {/each}

@@ -25,8 +25,16 @@
     dismissOne,
     clearAllHappened
   } from '../lib/notifications.js';
-  import { timeAgo } from '../lib/timeago.js';
+  import { timeAgoParts } from '../lib/timeago.js';
   import { t } from '../lib/i18n.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   let open = false;
   let items = [];
@@ -110,7 +118,7 @@
     if (open && !panel?.contains(e.target) && !bell?.contains(e.target)) close();
   }
   const initials = (name = '') => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-  const iso = (ms) => new Date(ms).toISOString();
+  const iso = (ms) => (ms == null ? '' : new Date(ms).toISOString());
 </script>
 
 <svelte:window on:mousedown={outside} on:keydown={(e) => open && e.key === 'Escape' && close()} />
@@ -164,6 +172,7 @@
           </div>
           {#each events as e, i (e.id)}
             <div class="row">
+            {@const w = agoKey(iso(e.atMs), now)}
             <button class="item dismissable" class:unread={e.unread} style="--i: {Math.min(waiting.length + i, 10)}" on:click={() => go(e)}>
               {#if e.example}
                 <span class="thumb icon"><Info size={15} /></span>
@@ -172,7 +181,7 @@
               {/if}
               <span class="text">
                 <span class="t">{e.title}</span>
-                <span class="d">{e.detail ? `${e.detail} · ` : ''}{timeAgo(iso(e.atMs), now)}</span>
+                <span class="d">{e.detail ? `${e.detail} · ` : ''}{w.text ?? $t(w.key, w.params)}</span>
               </span>
               {#if e.unread}<span class="dot" aria-label={$t('notifications.unread')}></span>{/if}
             </button>

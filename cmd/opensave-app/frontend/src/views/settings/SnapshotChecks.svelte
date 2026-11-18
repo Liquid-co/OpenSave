@@ -9,7 +9,15 @@
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import { api } from '../../lib/api.js';
   import { games, navigate, toast, askConfirm, settings } from '../../lib/stores.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
   import { whenLabel } from '../../lib/snapshots.js';
   import { t } from '../../lib/i18n.js';
 
@@ -140,10 +148,11 @@
           {$t('settings.snapshotChecks.damagedBody')}
         </span>
       {:else if summary.lastCheckedMs}
+        {@const w = agoKey(iso(summary.lastCheckedMs))}
         <FileCheck size={18} />
         <span>
           <strong>{$t('settings.snapshotChecks.okStrong')}</strong>
-          {$t('settings.snapshotChecks.okBody', { checked: summary.checked, total: summary.total, when: timeAgo(iso(summary.lastCheckedMs)) })}
+          {$t('settings.snapshotChecks.okBody', { checked: summary.checked, total: summary.total, when: w.text ?? $t(w.key, w.params) })}
         </span>
       {:else}
         <FileCheck size={18} />

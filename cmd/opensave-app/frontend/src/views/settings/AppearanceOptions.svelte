@@ -70,8 +70,8 @@
           class="swatch"
           role="radio"
           aria-checked={$appearance.accent === id}
-          aria-label={a.label}
-          title={a.label}
+          aria-label={$t('appearance.accent.' + id)}
+          title={$t('appearance.accent.' + id)}
           style="--swatch: {a.hex}; --swatch-on: {onAccent(a.hex)}"
           on:click={() => set({ accent: id })}
         >

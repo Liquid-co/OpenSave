@@ -8,7 +8,15 @@
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
   import { askRestore } from '../../lib/restore.js';
   import { t } from '../../lib/i18n.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
   import Camera from 'lucide-svelte/icons/camera';
   import Pin from 'lucide-svelte/icons/pin';
   import PinOff from 'lucide-svelte/icons/pin-off';
@@ -157,10 +165,11 @@
     <div class="list">
       {#each group.snaps as snap (snap.id)}
         {@const k = snapshotKind(snap, now)}
+        {@const w = agoKey(snap.timestamp, now.getTime())}
         <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id} class:flash={flashing === snap.id} data-snap={snap.id}>
           <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
             <span class="time">{new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
-            <span class="ago">{timeAgo(snap.timestamp, now.getTime())}</span>
+            <span class="ago">{w.text ?? $t(w.key, w.params)}</span>
           </div>
           <div class="info">
             <div class="title">

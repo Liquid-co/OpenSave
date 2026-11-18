@@ -7,7 +7,15 @@
   import { whenLabel } from '../../lib/snapshots.js';
   import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
   import { api, native, gameCover } from '../../lib/api.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
   import { playLength } from '../../lib/format.js';
   import { canLaunch, cleanGameName, renameGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
   import Spinner from '../../components/ui/Spinner.svelte';
@@ -208,7 +216,8 @@
       {#if game.playingSince}
         · <span class="playing">{$t('game.header.inSession', { time: new Date(game.playingSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</span>
       {:else if game.lastPlayedAt}
-        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>{$t('game.header.played', { when: timeAgo(game.lastPlayedAt, now), length: playLength(game.playtimeMs) })}</span>
+        {@const w = agoKey(game.lastPlayedAt, now)}
+        · <span title={new Date(game.lastPlayedAt).toLocaleString()}>{$t('game.header.played', { when: w.text ?? $t(w.key, w.params), length: playLength(game.playtimeMs) })}</span>
       {/if}
       {#if game.installed === 'not-found'}
         · <span title={$t('game.header.notFoundTitle')}>{$t('game.header.notFound')}</span>
@@ -217,10 +226,11 @@
     {#if syncedWith.length > 0}
       <div class="sub synced-with">
         {#each syncedWith as d, i (d.id)}
+          {@const w = agoKey(d.at, now)}
           {#if i > 0}<span class="sep">·</span>{/if}
           <span class="device" title={d.at ? $t('game.header.lastSyncedTitle', { name: d.name, when: new Date(d.at).toLocaleString() }) : $t('game.header.neverSyncedTitle', { name: d.name })}>
             {d.name}
-            <span class:never={!d.at}>{d.at ? $t('game.header.syncedAgo', { when: timeAgo(d.at, now) }) : $t('game.header.neverSynced')}</span>
+            <span class:never={!d.at}>{d.at ? $t('game.header.syncedAgo', { when: w.text ?? $t(w.key, w.params) }) : $t('game.header.neverSynced')}</span>
           </span>
         {/each}
       </div>

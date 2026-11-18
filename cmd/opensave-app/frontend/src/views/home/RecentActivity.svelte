@@ -18,8 +18,16 @@
   import { games, peers, navigate } from '../../lib/stores.js';
   import { gameCover } from '../../lib/api.js';
   import { recentEvents } from '../../lib/overview.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
   import { t } from '../../lib/i18n.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   const MOST = 6;
   const MIN_WIDTH = 210;
@@ -53,6 +61,7 @@
       <p class="empty">{$t('home.recent.empty')}</p>
     {:else}
       {#each shown as e (`${e.game.id}:${e.kind}:${e.at}`)}
+        {@const w = agoKey(iso(e.at), now)}
         <button class="item" on:click={() => navigate('game', { gameId: e.game.id })} title={new Date(e.at).toLocaleString()}>
           <span class="thumb"><span class="initials">{initials(e.game.name)}</span><CoverImage src={gameCover(e.game)} alt="" /></span>
           <span class="text">
@@ -60,7 +69,7 @@
             <span class="what">
               <svelte:component this={ICONS[e.kind] ?? History} size={12} />
               <span class="title">{e.title}{e.count > 1 ? ` ×${e.count}` : ''}</span>
-              <span class="when">· {timeAgo(iso(e.at), now)}</span>
+              <span class="when">· {w.text ?? $t(w.key, w.params)}</span>
             </span>
           </span>
         </button>
