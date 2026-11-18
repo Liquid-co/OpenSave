@@ -161,7 +161,9 @@
 {:else}
   <div bind:this={listEl}>
   {#each groups as group (group.day)}
-    <h4 class="day">{group.day}</h4>
+    <!-- dayLabel()'s fixed names, said in the reader's language; the rest is
+         already a date in the OS locale. -->
+    <h4 class="day">{group.day === 'Today' ? $t('snapshots.day.today') : group.day === 'Yesterday' ? $t('snapshots.day.yesterday') : group.day}</h4>
     <div class="list">
       {#each group.snaps as snap (snap.id)}
         {@const k = snapshotKind(snap, now)}

@@ -17,7 +17,7 @@
   import CoverImage from '../../components/CoverImage.svelte';
   import { games, peers, navigate } from '../../lib/stores.js';
   import { gameCover } from '../../lib/api.js';
-  import { recentEvents } from '../../lib/overview.js';
+  import { recentEvents, recentText } from '../../lib/overview.js';
   import { timeAgoParts } from '../../lib/timeago.js';
   import { t } from '../../lib/i18n.js';
 
@@ -48,7 +48,12 @@
   // where the keyboard could still reach it.
   let width = 0;
   $: fit = Math.max(1, Math.min(MOST, Math.floor((width + GAP) / (MIN_WIDTH + GAP))));
-  $: shown = events.slice(0, fit);
+  // What each event says: the lib's kinds (see "overview." in en.json) in
+  // the reader's language; a session's or safety copy's own words stay.
+  $: shown = events.slice(0, fit).map((e) => {
+    const s = recentText(e, $peers, $t);
+    return { ...e, what: s.key ? $t(s.key, s.params) : s.text };
+  });
 </script>
 
 <div class="recent">
@@ -68,7 +73,7 @@
             <span class="game">{e.game.name}</span>
             <span class="what">
               <svelte:component this={ICONS[e.kind] ?? History} size={12} />
-              <span class="title">{e.title}{e.count > 1 ? ` ×${e.count}` : ''}</span>
+              <span class="title">{e.what}{e.count > 1 ? ` ×${e.count}` : ''}</span>
               <span class="when">· {w.text ?? $t(w.key, w.params)}</span>
             </span>
           </span>

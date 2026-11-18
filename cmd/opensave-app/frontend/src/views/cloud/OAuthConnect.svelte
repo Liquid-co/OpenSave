@@ -97,7 +97,7 @@
     <div class="acct">
       <div class="acct-icon"><ProviderIcon provider={current} size={26} /></div>
       <div class="acct-info">
-        <div class="acct-title">{$t('cloud.connect.connectedTo', { provider: current?.label })}</div>
+        <div class="acct-title">{$t('cloud.connect.connectedTo', { provider: current ? $t('cloud.provider.' + current.id) : '' })}</div>
         <div class="acct-sub">
           <span class="acct-dot"></span>
           {isEmail(config.tokens.userEmail) ? config.tokens.userEmail : $t('cloud.connect.signedInAuto')}
@@ -108,12 +108,12 @@
   {:else}
     {#if connected}
       <p class="quiet" style="margin-bottom: 10px;">
-        {$t('cloud.connect.replaceWarning', { provider: providerById(connected)?.label })}
+        {$t('cloud.connect.replaceWarning', { provider: providerById(connected) ? $t('cloud.provider.' + connected) : '' })}
       </p>
     {/if}
     {#if !authInProgress}
       <button class="btn primary" disabled={$busy} on:click={startAuth}>
-        {$t('cloud.connect.signInWith', { provider: current?.label })}
+        {$t('cloud.connect.signInWith', { provider: current ? $t('cloud.provider.' + current.id) : '' })}
       </button>
       {#if config.provider === 'google_drive'}
         <p class="quiet" style="margin-top: 10px;">

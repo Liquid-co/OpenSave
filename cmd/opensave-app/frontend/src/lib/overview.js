@@ -60,3 +60,22 @@ export function recentEvents(games, peers = {}, { limit = 5, now = new Date() } 
 export function spaceUsed(games) {
   return everySnapshot(games).reduce((sum, { snap }) => sum + (Number(snap.sizeBytes) || 0), 0);
 }
+
+// One recent event's words, structured. recentEvents() above titles its
+// events in English; this returns the same cases as {key, params} for the
+// catalog (see locales/en.json, "overview.") or {text} for words that are a
+// comment's own — for the call site (views/home/RecentActivity.svelte) to
+// say. A sync line's device comes from the same peers map the event was
+// built from; one whose name the lib did not know is said with
+// overview.aDevice.
+// @param t the translate function, for the pieces the catalog alone knows.
+export function recentText(e, peers = {}, t) {
+  if (e.kind === 'sync') {
+    const peer = Object.values(peers).find((p) => e.title === `Synced with ${p.name ?? 'a device'}`);
+    return { key: 'overview.sync', params: { device: peer?.name ?? t('overview.aDevice') } };
+  }
+  if (e.kind === 'auto') return { key: 'overview.auto', params: {} };
+  if (e.kind === 'start') return { key: 'overview.start', params: {} };
+  if (e.kind === 'manual' && e.title === 'Snapshot') return { key: 'overview.manual', params: {} };
+  return { text: e.title };
+}

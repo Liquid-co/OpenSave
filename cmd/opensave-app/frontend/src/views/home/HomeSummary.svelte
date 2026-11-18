@@ -141,8 +141,10 @@
   // Set up, not just switched on: a fresh install has backup on with no
   // folder chosen, which backs up nothing.
   $: cloudOn = !!$settings?.cloudSync?.ready;
+  // The provider's name in the reader's language ("cloud.provider." keys;
+  // see lib/cloudproviders.js for the ids).
   $: cloud = cloudOn
-    ? (providerById($settings.cloudSync.provider)?.label ?? $t('home.summary.cloudOn'))
+    ? ($settings?.cloudSync?.provider && providerById($settings.cloudSync.provider) ? $t('cloud.provider.' + $settings.cloudSync.provider) : $t('home.summary.cloudOn'))
     : $settings?.cloudSync?.enabled
       ? $t('home.summary.cloudNotSetUp')
       : $t('home.summary.cloudOff');
