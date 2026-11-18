@@ -30,7 +30,8 @@
   onDestroy(() => clearInterval(tick));
 
   const ICONS = { manual: Camera, auto: History, start: FolderPlus, safety: ArchiveRestore, session: Gamepad2, other: History, sync: ArrowLeftRight };
-  const iso = (ms) => new Date(ms).toISOString();
+  // Null-safe for the same reason as Timeline's.
+  const iso = (ms) => (ms == null || ms === '' ? null : new Date(ms).toISOString());
   // What shows while a cover loads, or when a game has none — as in the sidebar.
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 

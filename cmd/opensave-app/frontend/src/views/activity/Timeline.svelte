@@ -34,7 +34,9 @@
     dot: Dot
   };
   const initials = (name = '') => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-  const iso = (ms) => new Date(ms).toISOString();
+  // A missing stamp (a game never played or synced) must fall through to
+  // the catalog's "never" rather than throw on toISOString().
+  const iso = (ms) => (ms == null || ms === '' ? null : new Date(ms).toISOString());
 
   let report = null;
   let error = '';
