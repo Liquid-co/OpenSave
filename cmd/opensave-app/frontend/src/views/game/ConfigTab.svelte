@@ -48,7 +48,7 @@
   async function save() {
     const appId = (cfg.appId ?? '').trim();
     if (appId !== '' && !/^\d+$/.test(appId)) {
-      appIdError = 'A Steam App ID is digits only — the number in the store URL.';
+      appIdError = $t('game.config.appIdError');
       return;
     }
     appIdError = '';
@@ -60,15 +60,13 @@
     const savePath = savePathChange(game.savePath, cfg.savePath);
     if (savePath) {
       const ok = await askConfirm(
-        `Track “${game.name}” at ${savePath} from now on?\n\n` +
-          `Files in the old folder are left exactly where they are, but they stop syncing ` +
-          `and stop being snapshotted. Existing snapshots are kept and still restore.`,
-        { title: 'Move tracking to a new folder?', confirmText: 'Move tracking' }
+        $t('game.config.moveTrackConfirm', { name: game.name, path: savePath }),
+        { title: $t('game.config.moveTrackTitle'), confirmText: $t('game.config.moveTrackConfirmBtn') }
       );
       if (!ok) return;
     }
 
-    await run('Configuration saved', () =>
+    await run($t('game.config.saved'), () =>
       api.patch(`/api/games/${game.id}`, {
         appId,
         // Omitted unless it actually changed: the PATCH decodes into the
@@ -88,12 +86,12 @@
   }
 
   async function browseSavePath() {
-    const dir = await native.selectDirectory(`Save folder for “${game.name}”`);
+    const dir = await native.selectDirectory($t('game.config.saveFolderDialog', { name: game.name }));
     if (dir) cfg.savePath = dir;
   }
 
   async function browseExe() {
-    const file = await native.selectFile('Select the game executable');
+    const file = await native.selectFile($t('game.config.selectExe'));
     if (file) cfg.exePath = file;
   }
 </script>
@@ -107,63 +105,57 @@
     {/if}
   </div>
   <div class="fields">
-    <h3>Launch &amp; sync configuration</h3>
+    <h3>{$t('game.config.title')}</h3>
     <div class="field">
-      <label for="c-savepath">Save folder</label>
+      <label for="c-savepath">{$t('game.config.saveFolder')}</label>
       <div class="path-row">
-        <input id="c-savepath" placeholder="Folder holding this game's saves" bind:value={cfg.savePath} />
-        <button class="btn" on:click={browseSavePath}>Browse</button>
+        <input id="c-savepath" placeholder={$t('game.config.saveFolderPlaceholder')} bind:value={cfg.savePath} />
+        <button class="btn" on:click={browseSavePath}>{$t('game.header.browse')}</button>
       </div>
       <span class="hint">
-        The folder OpenSave treats as this game's save.
+        {$t('game.config.saveFolderHint')}
         <MoreInfo>
-          Files sync by their position <em>inside</em> this folder, so each device can point at
-          a different path and still end up with the same files — useful when a game keeps saves
-          in a per-account folder named after your Steam or Epic ID, which differs on every
-          machine. Point each device at its own such folder and saves land where that copy of
-          the game looks for them.
+          {$t('game.config.saveFolderMore1')}<em>{$t('game.config.saveFolderMoreEm')}</em>{$t('game.config.saveFolderMore2')}
         </MoreInfo>
       </span>
       {#if savePathChange(game.savePath, cfg.savePath)}
         <span class="hint hint-warn">
-          Not saved yet. The old folder keeps its files but stops syncing and being
-          snapshotted.
+          {$t('game.config.saveFolderNotSaved')}
         </span>
       {/if}
     </div>
     <AppIdField bind:value={cfg.appId} error={appIdError} />
     <div class="field">
-      <label for="c-exe">Executable path</label>
+      <label for="c-exe">{$t('game.config.exePath')}</label>
       <div class="path-row">
-        <input id="c-exe" placeholder="Browse to the game .exe" bind:value={cfg.exePath} />
-        <button class="btn" on:click={browseExe}>Browse</button>
+        <input id="c-exe" placeholder={$t('game.config.exePathPlaceholder')} bind:value={cfg.exePath} />
+        <button class="btn" on:click={browseExe}>{$t('game.header.browse')}</button>
       </div>
       <span class="hint">
-        Launch starts this, even for a Steam game. Leave it empty to launch through Steam.
+        {$t('game.config.exePathHint')}
       </span>
     </div>
     <div class="field">
-      <label for="c-cover">Custom cover image URL</label>
-      <input id="c-cover" placeholder="https://…  (great for emulator games)" bind:value={cfg.coverUrl} />
-      <span class="hint">Leave blank to auto-use Steam art from the App ID. Paste any image URL for emulators.</span>
+      <label for="c-cover">{$t('game.config.coverUrl')}</label>
+      <input id="c-cover" placeholder={$t('game.config.coverUrlPlaceholder')} bind:value={cfg.coverUrl} />
+      <span class="hint">{$t('game.config.coverUrlHint')}</span>
     </div>
     <label class="check">
       <input type="checkbox" bind:checked={cfg.autoSync} />
-      Auto-sync saves when changes are detected
+      {$t('game.config.autoSync')}
     </label>
     <div class="field" style="margin-top: 12px;">
-      <label for="c-max">Automatic snapshot limit</label>
+      <label for="c-max">{$t('game.config.maxSnapshots')}</label>
       <input id="c-max" type="number" min="0" bind:value={cfg.maxSnapshots} />
       <span class="hint">
-        Max <em>automatic</em> snapshots kept per branch (0 = unlimited). Oldest are pruned first.
+        {$t('game.config.maxHint1')}<em>{$t('game.config.maxHintEm')}</em>{$t('game.config.maxHint2')}
       </span>
     </div>
     <div class="field">
-      <label for="c-max-manual">Manual snapshot limit</label>
+      <label for="c-max-manual">{$t('game.config.maxManualSnapshots')}</label>
       <input id="c-max-manual" type="number" min="0" bind:value={cfg.maxManualSnapshots} />
       <span class="hint">
-        Snapshots you took yourself get their own budget, so a game that auto-saves often
-        can't push them out. <strong>0 = keep forever</strong> (the default).
+        {$t('game.config.manualHint1')}<strong>{$t('game.config.manualHintStrong')}</strong>{$t('game.config.manualHint2')}
       </span>
     </div>
     {#if deviceSettings.length > 0}
@@ -184,7 +176,7 @@
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
     <div class="save">
-      <button class="btn primary" disabled={$busy} on:click={save}>Save configuration</button>
+      <button class="btn primary" disabled={$busy} on:click={save}>{$t('game.config.saveBtn')}</button>
     </div>
   </div>
 </div>
