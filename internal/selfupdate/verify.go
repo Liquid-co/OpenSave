@@ -146,3 +146,29 @@ func VerifyDownload(assetURL, downloadedPath string) error {
 	}
 	return nil
 }
+
+// PeerBuildAssetURL is the release asset a paired device's running executable
+// has to match before it may be installed as an update from that device.
+//
+// An update from a peer arrives over plain HTTP on a LAN, or through a relay,
+// with a checksum supplied by the same response. That proves the bytes were
+// not damaged in transit, not that they are OpenSave: anyone able to answer
+// as the peer — or to alter LAN traffic — could hand over a program of their
+// own with a matching checksum, and it would be installed and run. Checking it
+// against the checksums published with the release the peer says it runs
+// means only a build the project published can be installed this way.
+//
+// Only Windows publishes the bare executable a device runs (OpenSave.exe);
+// elsewhere it ships inside an archive or package whose checksum says nothing
+// about the binary inside, so there is nothing to check a peer's copy
+// against, and this fails closed.
+func PeerBuildAssetURL(repo, goos, appVersion string) (string, error) {
+	v := strings.TrimPrefix(strings.TrimSpace(appVersion), "v")
+	if v == "" || strings.Trim(v, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-+") != "" {
+		return "", fmt.Errorf("the other device reports no usable version (%q), so its build cannot be checked against a release", appVersion)
+	}
+	if goos != "windows" {
+		return "", fmt.Errorf("updates from another device can only be verified on Windows, where the release publishes the executable itself; update from GitHub instead")
+	}
+	return "https://github.com/" + repo + "/releases/download/v" + v + "/OpenSave.exe", nil
+}
