@@ -1378,5 +1378,16 @@
   "restore.unplaced": "It also has files for {names}, which has no folder on this device; they are left out.",
   "restore.safe": "Your current save is kept as a snapshot first, so this can be undone.",
   "restore.anyway": "Restore anyway",
-  "restore.restore": "Restore"
+  "restore.restore": "Restore",
+  "settings.appearance.theme": "Theme",
+  "settings.appearance.accent": "Accent colour",
+  "settings.appearance.size": "Size",
+  "settings.appearance.animations": "Animations",
+  "settings.appearance.animationsHint": "Small movements as pages, dialogs and your library come into view, and as you point at a game.",
+  "settings.appearance.reducedMotion": "Off for now whatever this says: Windows is asking apps to reduce motion.",
+  "settings.appearance.yourColour": "Your colour {hex}",
+  "settings.appearance.colourDeleteHint": "{hex} (Delete removes it)",
+  "settings.appearance.removeColour": "Remove {hex}",
+  "settings.appearance.remove": "Remove",
+  "settings.appearance.pickAnyColour": "Pick any colour"
 }
