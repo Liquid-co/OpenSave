@@ -278,11 +278,15 @@ func TestGenerateEmbeddedIndex(t *testing.T) {
 	if os.Getenv("GEN_EMBED") == "" {
 		t.Skip("set GEN_EMBED=1 to regenerate the embedded index")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
+	// GEN_EMBED_MANIFEST names another copy of the manifest to build from.
+	yamlPath := os.Getenv("GEN_EMBED_MANIFEST")
+	if yamlPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		yamlPath = filepath.Join(home, ".opensave", "ludusavi-manifest.yaml")
 	}
-	yamlPath := filepath.Join(home, ".opensave", "ludusavi-manifest.yaml")
 	games := buildManifestIndex(yamlPath)
 	if len(games) < 10000 {
 		t.Fatalf("suspiciously small index (%d games) — refusing to embed", len(games))
@@ -330,8 +334,8 @@ func TestEntryIsSaveEntry(t *testing.T) {
 		{"<xdgConfig>/X", manifestFileEntry{Tags: []string{"save"}}, true},               // Linux save now kept
 		{"<xdgData>/X", manifestFileEntry{Tags: []string{"save"}}, true},                 // Linux save now kept
 		{"<winAppData>/X", manifestFileEntry{Tags: []string{"save"}, When: linux}, true}, // resolves under Proton
-		{"<winDir>/X", manifestFileEntry{Tags: []string{"save"}}, false},                 // unresolvable everywhere
-		{"<dataDrive>/X", manifestFileEntry{Tags: []string{"save"}}, false},              // unresolvable everywhere
+		{"<winDir>/X", manifestFileEntry{Tags: []string{"save"}}, true},                  // %WINDIR%, or a prefix's drive_c/windows
+		{"<dataDrive>/X", manifestFileEntry{Tags: []string{"save"}}, false},              // not a placeholder Ludusavi knows
 		{"relative/path", manifestFileEntry{Tags: []string{"save"}}, false},              // no resolvable base
 	}
 	for i, c := range cases {
@@ -541,6 +545,220 @@ func TestWindowsPathVars_DocumentsFallback(t *testing.T) {
 
 	if got, want := windowsPathVars()["<winDocuments>"], filepath.Join(home, "Documents"); got != want {
 		t.Errorf("<winDocuments> = %q, want %q", got, want)
+	}
+}
+
+// <winDir> is the Windows folder: 53 manifest entries, mostly old games that
+// keep an .ini there. The file is the save; the Windows folder never is.
+func TestLudusavi_WinDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	winDir := filepath.Join(t.TempDir(), "Windows")
+	t.Setenv("SystemRoot", winDir)
+	t.Setenv("WINDIR", winDir)
+
+	ini := filepath.Join(winDir, "AsphaltDuell.ini")
+	mustMkFile(t, ini)
+	saveDir := filepath.Join(winDir, "System32", "hegames")
+	mustMkFile(t, filepath.Join(saveDir, "slot.sav"))
+	mustMkFile(t, filepath.Join(winDir, "System32", "other.dll"))
+
+	sc := manifestScanner(t, `
+Asphalt Duell:
+  files:
+    <winDir>/AsphaltDuell.ini:
+      tags: [save]
+HE Games:
+  files:
+    <winDir>/System32/hegames:
+      tags: [save]
+Greedy Game:
+  files:
+    <winDir>/System32/other.dll:
+      tags: [save]
+`)
+	got := map[string]string{}
+	for _, d := range sc.scanLudusavi(map[string]bool{}) {
+		got[d.Name] = d.SavePath
+	}
+	want := map[string]string{
+		"Asphalt Duell": ini,
+		"HE Games":      saveDir,
+		"Greedy Game":   filepath.Join(winDir, "System32", "other.dll"),
+	}
+	for name, path := range want {
+		if got[name] != path {
+			t.Errorf("%s: SavePath %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("found %v, want %v", got, want)
+	}
+}
+
+// Inside a Proton prefix <winDir> is drive_c/windows, and that folder is as
+// off limits as the real one.
+func TestLudusavi_WinDirInProtonPrefix(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	lib := filepath.Join(home, ".local", "share", "Steam")
+	driveC := filepath.Join(lib, "steamapps", "compatdata", "4100", "pfx", "drive_c")
+	if err := os.MkdirAll(filepath.Join(driveC, "users", "steamuser"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	ini := filepath.Join(driveC, "windows", "MiniCarRacing.ini")
+	mustMkFile(t, ini)
+
+	sc := manifestScanner(t, `
+Mini Car Racing:
+  files:
+    <winDir>/MiniCarRacing.ini:
+      tags: [save]
+  steam:
+    id: 4100
+`)
+	sc.GOOS = "linux"
+	sc.HomeDir = home
+	sc.SteamRoots = []string{lib}
+
+	found := sc.scanLudusavi(map[string]bool{})
+	if len(found) != 1 || found[0].SavePath != ini {
+		t.Fatalf("found %+v, want the file %s", found, ini)
+	}
+	// Nor will the catalogue vouch for the prefix's windows folder when a
+	// peer offers it.
+	if sc.CatalogueSaveLocation("Mini Car Racing", "4100", filepath.Join(driveC, "windows")) {
+		t.Error("the prefix's windows folder was vouched for as a save location")
+	}
+}
+
+// The drive-wide placeholders in a prefix are on its drive_c. They were one
+// folder too high, in pfx, where nothing is.
+func TestProtonWinVars_DriveC(t *testing.T) {
+	driveC := filepath.Join(t.TempDir(), "pfx", "drive_c")
+	vars := protonWinVars(filepath.Join(driveC, "users", "steamuser"))
+	for key, want := range map[string]string{
+		"<winProgramData>": filepath.Join(driveC, "ProgramData"),
+		"<winPublic>":      filepath.Join(driveC, "users", "Public"),
+		"<winDir>":         filepath.Join(driveC, "windows"),
+	} {
+		if vars[key] != want {
+			t.Errorf("%s = %q, want %q", key, vars[key], want)
+		}
+	}
+}
+
+// A template the manifest restricts to one OS is tried only where that OS's
+// folders are: natively on that OS, or inside a Wine prefix for Windows.
+// Templates under the game's install folder are tried everywhere, as a Windows
+// build run through Wine writes into its install folder the same.
+func TestLudusavi_WhenOSAppliesPerPath(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	lib := filepath.Join(home, ".local", "share", "Steam")
+	steamUser := filepath.Join(lib, "steamapps", "compatdata", "4200", "pfx", "drive_c", "users", "steamuser")
+
+	// Windows-only, but sitting in the Linux home: not this game's save here.
+	mustMkFile(t, filepath.Join(home, "Saved Games", "WinOnly", "save.dat"))
+	// Linux-only, but sitting in the prefix's home: not a save either.
+	mustMkFile(t, filepath.Join(steamUser, ".local", "share", "LinOnly", "save.dat"))
+	// Windows-only under the install folder of a game with no prefix: kept.
+	install := filepath.Join(lib, "steamapps", "common", "Install Game")
+	installSave := filepath.Join(install, "SavesDir")
+	mustMkFile(t, filepath.Join(installSave, "1.sav"))
+	// Unrestricted: found in both.
+	nativeAny := filepath.Join(home, "AnyGame")
+	mustMkFile(t, filepath.Join(nativeAny, "save.dat"))
+	prefixAny := filepath.Join(steamUser, "AnyGame")
+	mustMkFile(t, filepath.Join(prefixAny, "save.dat"))
+
+	sc := manifestScanner(t, `
+Win Only:
+  files:
+    <home>/Saved Games/WinOnly:
+      tags: [save]
+      when:
+        - os: windows
+  steam:
+    id: 4200
+Lin Only:
+  files:
+    <home>/.local/share/LinOnly:
+      tags: [save]
+      when:
+        - os: linux
+  steam:
+    id: 4200
+Install Game:
+  files:
+    <base>/SavesDir/*.sav:
+      tags: [save]
+      when:
+        - os: windows
+  installDir:
+    Install Game: {}
+Any Game:
+  files:
+    <home>/AnyGame:
+      tags: [save]
+  steam:
+    id: 4200
+`)
+	sc.GOOS = "linux"
+	sc.HomeDir = home
+	sc.SteamRoots = []string{lib}
+
+	got := map[string]bool{}
+	for _, d := range sc.scanLudusavi(map[string]bool{}) {
+		got[d.SavePath] = true
+	}
+	for _, want := range []string{installSave, nativeAny, prefixAny} {
+		if !got[want] {
+			t.Errorf("missing %s (got %v)", want, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("found %d locations, want 3: %v", len(got), got)
+	}
+}
+
+// A Ubisoft Connect save is under the launcher's own folder, which is what
+// <root> means for an entry the manifest gives to that store (as Ludusavi
+// resolves it inside a Proton prefix, src/scan.rs).
+func TestLudusavi_UplayRootInProtonPrefix(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	lib := filepath.Join(home, ".local", "share", "Steam")
+	driveC := filepath.Join(lib, "steamapps", "compatdata", "4300", "pfx", "drive_c")
+	if err := os.MkdirAll(filepath.Join(driveC, "users", "steamuser"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	save := filepath.Join(driveC, "Program Files (x86)", "Ubisoft", "Ubisoft Game Launcher",
+		"savegames", "0a1b2c3d", "857")
+	mustMkFile(t, filepath.Join(save, "1.save"))
+
+	sc := manifestScanner(t, `
+Ubi Game:
+  files:
+    <root>/savegames/<storeUserId>/857:
+      tags: [save]
+      when:
+        - store: uplay
+  steam:
+    id: 4300
+`)
+	sc.GOOS = "linux"
+	sc.HomeDir = home
+	sc.SteamRoots = []string{lib}
+
+	found := sc.scanLudusavi(map[string]bool{})
+	if len(found) != 1 || found[0].SavePath != save {
+		t.Fatalf("found %+v, want %s", found, save)
 	}
 }
 

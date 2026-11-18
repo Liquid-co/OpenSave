@@ -73,6 +73,116 @@ type indexedGame struct {
 	// settings among them; inside a tracked save folder they are left out of
 	// syncing (DeviceSettingsPatterns).
 	Config []string `json:"c,omitempty"`
+	// When holds the manifest's conditions on the templates in Paths that
+	// have any, by template: the OS a save path is for, and the store. See
+	// pathsFor.
+	When map[string][]pathWhen `json:"w,omitempty"`
+}
+
+// pathWhen is one of a template's conditions; it applies when any one of
+// them holds.
+type pathWhen struct {
+	OS    string `json:"o,omitempty"`
+	Store string `json:"t,omitempty"`
+}
+
+// gamePath is one of a game's templates with the placeholder values to
+// expand it with.
+type gamePath struct {
+	tpl  string
+	vars map[string]string
+}
+
+// pathsFor returns the game's templates that apply under one var set, each
+// with the vars to expand it with.
+//
+// The manifest gives many templates an OS (when: os). A var set stands for one
+// OS's folders, and a template for another OS is not tried there: a
+// Windows-only "<home>/Saved Games/X" is not looked for in a Linux home, nor a
+// Linux-only "<home>/.local/share/X" inside a Proton prefix. Templates in the
+// game's install folder are tried under every var set all the same, since a
+// Windows build run through Wine writes there just as it does on Windows.
+//
+// The store (when: store) does not decide whether a template is tried — a
+// copy of a game from anywhere keeps its saves where the manifest says, which
+// is how Ludusavi treats it too — with one exception taken from Ludusavi
+// (src/scan.rs): for Ubisoft Connect, <root> is that launcher's own folder.
+func (g indexedGame) pathsFor(vars map[string]string) []gamePath {
+	target := varSetOS(vars)
+	var uplay map[string]string
+	out := make([]gamePath, 0, len(g.Paths))
+	for _, tpl := range g.Paths {
+		when := g.When[tpl]
+		if !installRelative(tpl) && !whenAllowsOS(when, target) {
+			continue
+		}
+		v := vars
+		if whenHasStore(when, "uplay") && strings.Contains(tpl, "<root>") {
+			if uplay == nil {
+				uplay = withUplayRoot(vars)
+			}
+			if uplay != nil {
+				v = uplay
+			}
+		}
+		out = append(out, gamePath{tpl, v})
+	}
+	return out
+}
+
+// varSetOS names the OS whose folders a var set holds, in the manifest's
+// terms: the Windows placeholders (Windows itself, or a Wine prefix), the XDG
+// ones (Linux), or <home> alone (macOS).
+func varSetOS(vars map[string]string) string {
+	switch {
+	case vars["<winAppData>"] != "":
+		return "windows"
+	case vars["<xdgData>"] != "":
+		return "linux"
+	}
+	return "mac"
+}
+
+// installRelative reports whether a template is in the game's install folder.
+func installRelative(tpl string) bool {
+	return strings.Contains(tpl, "<base>") || strings.Contains(tpl, "<root>") || strings.Contains(tpl, "<game>")
+}
+
+func whenAllowsOS(when []pathWhen, target string) bool {
+	if len(when) == 0 {
+		return true
+	}
+	for _, w := range when {
+		if w.OS == "" || w.OS == target {
+			return true
+		}
+	}
+	return false
+}
+
+func whenHasStore(when []pathWhen, store string) bool {
+	for _, w := range when {
+		if w.Store == store {
+			return true
+		}
+	}
+	return false
+}
+
+// withUplayRoot returns vars with <root> at Ubisoft Connect's install folder on
+// the same drive as ProgramData — C:\ on Windows, drive_c in a prefix — or nil
+// when vars have no Windows drive.
+func withUplayRoot(vars map[string]string) map[string]string {
+	pd := vars["<winProgramData>"]
+	if pd == "" {
+		return nil
+	}
+	out := make(map[string]string, len(vars)+1)
+	for k, v := range vars {
+		out[k] = v
+	}
+	out["<root>"] = filepath.Join(filepath.Dir(pd), "Program Files (x86)", "Ubisoft", "Ubisoft Game Launcher")
+	return out
 }
 
 // manifestPaths derives the manifest + index locations from the scanner's
@@ -93,8 +203,10 @@ func (sc *Scanner) manifestPaths() (yamlPath, indexPath string) {
 // A new name rather than a version field inside the file. An older build keeps
 // reading the file it knows and a newer one builds its own, so a user moving
 // between the two is never handed an index whose shape their code predates.
-// Bump this whenever indexedGame gains or loses a field that a scan depends on.
-const indexFileName = "ludusavi-index-v3.json"
+// Bump this whenever indexedGame gains or loses a field that a scan depends on,
+// or the rule for which templates it keeps changes: v4 keeps <winDir>
+// templates, and adds each template's conditions (When).
+const indexFileName = "ludusavi-index-v4.json"
 
 // scanLudusavi expands the manifest's save-path templates and returns the
 // locations that actually exist on this machine.
@@ -191,14 +303,17 @@ func expandGamePaths(g indexedGame, varSets []map[string]string, baseDirs func([
 	for _, b := range installBases {
 		installRoots[strings.ToLower(filepath.Clean(b))] = true
 	}
+	// A Wine prefix's profile folders, and its windows folder, are as broad
+	// as the real ones, and only its own var set knows where they are.
+	var setBlocked map[string]bool
 	noWiden := func(dir string) bool {
 		l := strings.ToLower(filepath.Clean(dir))
-		return installRoots[l] || blocked[l]
+		return installRoots[l] || blocked[l] || setBlocked[l]
 	}
 
 	var hits []string
 	push := func(dir string) {
-		if dir == "" || blocked[strings.ToLower(dir)] || installRoots[strings.ToLower(filepath.Clean(dir))] {
+		if dir == "" || noWiden(dir) {
 			return
 		}
 		for _, d := range hits {
@@ -212,8 +327,12 @@ func expandGamePaths(g indexedGame, varSets []map[string]string, baseDirs func([
 	}
 
 	for _, vars := range varSets {
-		for _, tpl := range g.Paths {
-			for _, expanded := range expandTemplate(tpl, vars, installBases, g.SteamID) {
+		setBlocked = nil
+		if varSetOS(vars) == "windows" {
+			setBlocked = blockedRoots(vars)
+		}
+		for _, p := range g.pathsFor(vars) {
+			for _, expanded := range expandTemplate(p.tpl, p.vars, installBases, g.SteamID) {
 				for _, hit := range statOrGlob(expanded, noWiden) {
 					push(hit)
 				}
@@ -377,8 +496,19 @@ func windowsPathVars() map[string]string {
 		"<winDocuments>":       documents,
 		"<winPublic>":          ResolvePath("%PUBLIC%"),
 		"<winProgramData>":     ResolvePath("%PROGRAMDATA%"),
+		"<winDir>":             windowsDir(),
 		"<osUserName>":         username,
 	}
+}
+
+// windowsDir is the Windows folder, for <winDir>.
+func windowsDir() string {
+	for _, env := range []string{"SystemRoot", "WINDIR"} {
+		if v := os.Getenv(env); v != "" {
+			return v
+		}
+	}
+	return `C:\Windows`
 }
 
 // ludusaviVarSets returns the placeholder→path maps to try for one game on
@@ -472,7 +602,7 @@ func ownHome(home string) bool {
 // prefix's steamuser home (Wine lays out AppData/Documents there, and maps
 // the user's home to the same profile dir).
 func protonWinVars(steamUser string) map[string]string {
-	driveC := filepath.Dir(filepath.Dir(filepath.Dir(steamUser))) // …/pfx/drive_c
+	driveC := filepath.Dir(filepath.Dir(steamUser)) // …/pfx/drive_c
 	return map[string]string{
 		"<home>":               steamUser,
 		"<winAppData>":         filepath.Join(steamUser, "AppData", "Roaming"),
@@ -481,6 +611,7 @@ func protonWinVars(steamUser string) map[string]string {
 		"<winDocuments>":       filepath.Join(steamUser, "Documents"),
 		"<winPublic>":          filepath.Join(driveC, "users", "Public"),
 		"<winProgramData>":     filepath.Join(driveC, "ProgramData"),
+		"<winDir>":             filepath.Join(driveC, "windows"),
 		"<osUserName>":         "steamuser",
 	}
 }
@@ -557,6 +688,10 @@ func blockedRoots(vars map[string]string) map[string]bool {
 	add(filepath.Join(home, "Desktop"))
 	add(filepath.Join(home, "Downloads"))
 	add(filepath.Join(vars["<winPublic>"], "Documents"))
+	if win := vars["<winDir>"]; win != "" {
+		add(filepath.Join(win, "System32"))
+		add(filepath.Join(win, "SysWOW64"))
+	}
 	add(filepath.Join(vars["<winLocalAppData>"], "Programs"))
 	add(filepath.Join(vars["<winLocalAppData>"], "Packages"))
 	add(filepath.Join(vars["<winLocalAppData>"], "User Data"))
@@ -929,6 +1064,7 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 	games := make([]indexedGame, 0, len(manifest))
 	for name, mg := range manifest {
 		var paths, config []string
+		var when map[string][]pathWhen
 		for tpl, entry := range mg.Files {
 			if entryIsConfigEntry(tpl, entry) {
 				config = append(config, tpl)
@@ -937,6 +1073,12 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 				continue
 			}
 			paths = append(paths, tpl)
+			if w := scanConditions(tpl, entry); w != nil {
+				if when == nil {
+					when = map[string][]pathWhen{}
+				}
+				when[tpl] = w
+			}
 		}
 		sort.Strings(config)
 		var regKeys []string
@@ -967,13 +1109,30 @@ func buildManifestIndex(yamlPath string) []indexedGame {
 			continue
 		}
 		sort.Strings(regKeys) // stable index across rebuilds
-		g := indexedGame{Name: name, Paths: paths, Registry: regKeys, SteamID: steamID, Config: config}
+		g := indexedGame{Name: name, Paths: paths, Registry: regKeys, SteamID: steamID, Config: config, When: when}
 		for dir := range mg.InstallDir {
 			g.Installs = append(g.Installs, dir)
 		}
 		games = append(games, g)
 	}
 	return games
+}
+
+// scanConditions returns an entry's conditions when pathsFor would act on
+// them, else nil: most of the manifest's conditions change nothing a scan
+// does, and the index is shipped in the binary.
+func scanConditions(tpl string, entry manifestFileEntry) []pathWhen {
+	var out []pathWhen
+	for _, w := range entry.When {
+		out = append(out, pathWhen{OS: w.OS, Store: w.Store})
+	}
+	if whenHasStore(out, "uplay") && strings.Contains(tpl, "<root>") {
+		return out
+	}
+	if installRelative(tpl) || whenAllowsOS(out, "") {
+		return nil
+	}
+	return out
 }
 
 // entryIsSaveEntry keeps manifest file entries that are save data and whose
@@ -1031,8 +1190,9 @@ func hasTag(entry manifestFileEntry, tag string) bool {
 // entryResolvable reports whether a file template can plausibly resolve on
 // a platform this app runs on.
 func entryResolvable(tpl string, entry manifestFileEntry) bool {
-	// Placeholders no supported platform can resolve.
-	if strings.Contains(tpl, "<winDir>") || strings.Contains(tpl, "<dataDrive>") {
+	// <dataDrive> is not among Ludusavi's placeholders (src/resource/
+	// manifest.rs) nor in the manifest today; nothing says what it would be.
+	if strings.Contains(tpl, "<dataDrive>") {
 		return false
 	}
 	// Must reference a base we know how to expand (Windows, XDG, or home).
