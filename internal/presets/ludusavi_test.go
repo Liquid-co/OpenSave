@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -759,6 +760,22 @@ Ubi Game:
 	found := sc.scanLudusavi(map[string]bool{})
 	if len(found) != 1 || found[0].SavePath != save {
 		t.Fatalf("found %+v, want %s", found, save)
+	}
+}
+
+// A glob's matches are capped at four locations, not four files: five saves
+// in one profile folder hid every other profile.
+func TestStatOrGlob_CapCountsLocationsNotFiles(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 5; i++ {
+		mustMkFile(t, filepath.Join(root, "A-profile", "slot"+strconv.Itoa(i)+".sav"))
+	}
+	mustMkFile(t, filepath.Join(root, "B-profile", "slot0.sav"))
+
+	got := statOrGlob(filepath.Join(root, "*", "*.sav"), func(string) bool { return false })
+	want := []string{filepath.Join(root, "A-profile"), filepath.Join(root, "B-profile")}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("statOrGlob = %v, want %v", got, want)
 	}
 }
 

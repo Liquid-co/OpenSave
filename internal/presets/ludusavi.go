@@ -342,7 +342,9 @@ func expandGamePaths(g indexedGame, varSets []map[string]string, baseDirs func([
 
 	// Collapse nesting: when one hit contains another (game dir plus its
 	// profile subdir plus Screenshots…), tracking the ancestor covers all
-	// of it — keep only the outermost dirs.
+	// of it — keep only the outermost dirs. At most three rows per game:
+	// more is a loose template matching unrelated folders, and a row's id is
+	// its position here, so the order is kept as it was.
 	var out []string
 	for _, cand := range hits {
 		nested := false
@@ -445,9 +447,14 @@ func statOrGlob(pattern string, noWiden func(dir string) bool) []string {
 		if len(matches) == 0 {
 			return nil
 		}
+		// At most four locations from one pattern, so a loose one cannot
+		// flood a game with rows. Counted after mapping files to their
+		// folder: counting files, five saves in one folder hid the rest.
 		var dirs []string
+		seen := map[string]bool{}
 		for _, m := range matches {
-			if d := toCandidate(m); d != "" {
+			if d := toCandidate(m); d != "" && !seen[d] {
+				seen[d] = true
 				dirs = append(dirs, d)
 			}
 			if len(dirs) >= 4 {
