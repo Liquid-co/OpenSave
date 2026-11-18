@@ -28,6 +28,21 @@ Pearl Game:
     Pearl Game: {}
   steam:
     id: 3321460
+BUILD:
+  installDir:
+    BUILD: {}
+  steam:
+    id: 1077530
+Chrome:
+  installDir:
+    Chrome: {}
+  steam:
+    id: 46420
+Root (2020):
+  installDir:
+    root: {}
+  steam:
+    id: 965580
 `
 	if err := os.WriteFile(filepath.Join(dir, "ludusavi-manifest.yaml"), []byte(manifest), 0o666); err != nil {
 		t.Fatal(err)
@@ -40,6 +55,13 @@ Pearl Game:
 			{PID: 11, Exe: `G:\Games\Pearl Game\bin64\crashreporter.exe`},
 			{PID: 12, Exe: `C:\Windows\System32\svchost.exe`},
 			{PID: 13, Exe: `C:\Tools\editor.exe`},
+			// Seen on a real PC as the games "Chrome", "Root (2020)" and
+			// "BUILD": a browser, Office, and programs in a build folder,
+			// OpenSave's own among them.
+			{PID: 14, Exe: `C:\Program Files\Google\Chrome\Application\chrome.exe`},
+			{PID: 15, Exe: `C:\Program Files\Microsoft Office\root\Office16\SDXHelper.exe`},
+			{PID: 16, Exe: `D:\Projects\Tool\build\bin\tool.exe`},
+			{PID: 17, Exe: `D:\Projects\OpenSave\build\bin\OpenSave-test.exe`},
 		}, nil
 	}
 

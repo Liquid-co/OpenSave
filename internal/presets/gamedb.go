@@ -281,9 +281,19 @@ func (ds *GameDB) installNameIndex() map[string][]indexedGame {
 	return ds.byInstall
 }
 
+// genericInstallNames are folder names too common to say which game a
+// program is: a game whose install folder is called one of these is still
+// found by its Steam install folder, just not by the name alone. Found the
+// hard way: Office runs from "Microsoft Office\root", which named it the game
+// "Root", and anything built into a "build" folder became the game "BUILD".
 var genericInstallNames = map[string]bool{
 	"game": true, "games": true, "data": true, "bin": true, "binaries": true, "launcher": true,
 	"client": true, "common": true, "steam": true, "app": true,
+	"build": true, "builds": true, "root": true, "dist": true, "release": true, "releases": true,
+	"debug": true, "win32": true, "win64": true, "bin32": true, "bin64": true,
+	"application": true, "applications": true, "program": true, "programs": true, "tools": true,
+	"current": true, "latest": true, "shipping": true, "runtime": true, "system": true,
+	"update": true, "updates": true, "setup": true, "install": true, "installer": true,
 }
 
 // installKey is a folder name as compared with the game database's install
