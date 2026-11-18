@@ -115,7 +115,8 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 
 	safetyComment := fmt.Sprintf("Safety snapshot before restoring file %q from %s", body.RelPath, snapshotID)
 	if _, err := s.Daemon.Snapshots.CreateBeforeReplacing(gameID, safetyComment); err != nil {
-		s.Daemon.Log.Log("warn", "safety snapshot before file restore failed: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "could not back up the current save before restoring the file, so nothing was changed: "+err.Error())
+		return
 	}
 
 	if err := extractSingleFile(archive, body.RelPath, snapshot.ArchiveEntryRelPath(body.RelPath), target); err != nil {
@@ -170,14 +171,35 @@ func extractSingleFile(zipPath, entryName, destRel, savePath string) error {
 		if err := os.MkdirAll(filepath.Dir(destPath), 0o777); err != nil {
 			return err
 		}
-		_ = os.Chmod(destPath, 0o666)
-		dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
+		// Written beside the file and renamed over it, never truncated in
+		// place: a copy that fails part-way (disk full, archive read error)
+		// otherwise leaves the save cut short, and the safety snapshot taken
+		// before this is then the only good copy of it.
+		tmp, err := os.CreateTemp(filepath.Dir(destPath), ".restore-*")
 		if err != nil {
 			return err
 		}
-		defer dst.Close()
-		_, err = io.Copy(dst, src)
-		return err
+		tmpName := tmp.Name()
+		if _, err := io.Copy(tmp, src); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return err
+		}
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpName)
+			return err
+		}
+		_ = os.Chmod(destPath, 0o666)
+		if err := os.Rename(tmpName, destPath); err != nil {
+			os.Remove(tmpName)
+			return err
+		}
+		return nil
 	}
 	return fmt.Errorf("file %q not found in snapshot", entryName)
 }

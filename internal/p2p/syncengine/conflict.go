@@ -67,8 +67,10 @@ func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution
 		// Non-destructive: snapshot the local version first so "keep theirs"
 		// can always be undone from the Snapshots tab. (merge-branch never
 		// replaces this device's save, so needs no such copy.)
+		// A copy that could not be made stops the overwrite: "can always be
+		// undone" is the promise that makes keep-remote safe to offer.
 		if _, err := e.Snapshots.CreateBeforeReplacing(gameID, fmt.Sprintf("This device's version (before keeping %s's)", peer.Name)); err != nil {
-			e.Log("warn", fmt.Sprintf("safety snapshot before keep-remote failed: %v", err))
+			return "", fmt.Errorf("could not back up this device's version before keeping %s's, so nothing was changed: %w", peer.Name, err)
 		}
 		if err := e.overwriteLocalWithRemote(ctx, gameID, peer, remoteData, "Resolved conflict: Overwrite with remote"); err != nil {
 			return "", err
