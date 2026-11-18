@@ -675,6 +675,12 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 	// so it stays a candidate: that is the pre-existing behaviour, and
 	// treating unknowns as protected would make cloud storage grow without
 	// bound.
+	//
+	// Safety copies upload too, and are not candidates either: counted here a
+	// run of syncs would thin out the cloud's history the way it once did the
+	// local one. They need no budget of their own here — local retention
+	// already holds them to theirs, and once one is pruned locally its remote
+	// file is an unknown and falls back into this one.
 	prefix := fmt.Sprintf("%s__%s__", gameID, branch)
 	_, _ = d.Cloud.PruneGameBranch(func(name string) bool {
 		if !strings.HasPrefix(name, prefix) {
@@ -684,8 +690,8 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 		if !parsed {
 			return false
 		}
-		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && !snap.IsSystemAuto {
-			return false // a manual snapshot: not the automatic budget's to spend
+		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && (!snap.IsSystemAuto || snap.Safety) {
+			return false // manual, or a safety copy: not the automatic budget's to spend
 		}
 		return true
 	}, game.MaxSnapshots)
