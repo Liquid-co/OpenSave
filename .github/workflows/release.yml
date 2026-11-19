@@ -186,8 +186,10 @@ jobs:
             echo "::error::OpenSave.exe not found inside OpenSave.Setup.exe"
             exit 1
           fi
-          want=$(sha256sum cmd/opensave-app/build/bin/OpenSave.exe | cut -d' ' -f1)
-          got=$(sha256sum "$out/OpenSave.exe" | cut -d' ' -f1)
+          # From stdin: given a path with backslashes ($RUNNER_TEMP), Git
+          # Bash's sha256sum puts a "\" in front of the hash.
+          want=$(sha256sum < cmd/opensave-app/build/bin/OpenSave.exe | cut -d' ' -f1)
+          got=$(sha256sum < "$out/OpenSave.exe" | cut -d' ' -f1)
           echo "OpenSave.exe $want; installed by OpenSave.Setup.exe $got"
           if [ "$want" != "$got" ]; then
             echo "::error::OpenSave.Setup.exe installs a different OpenSave.exe from the one released"
