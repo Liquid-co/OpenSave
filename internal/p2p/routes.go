@@ -276,14 +276,21 @@ func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := clientIP(r)
 
-	_, alreadyPaired := func() (store.Peer, bool) {
-		p, err := e.Store.GetPeer(body.PeerID)
-		return p, err == nil
-	}()
+	existing, err := e.Store.GetPeer(body.PeerID)
+	alreadyPaired := err == nil
 
-	if !e.Pairing.ValidateConfirm(body.PeerID, ip, body.Port, alreadyPaired) {
-		e.Log("warn", fmt.Sprintf("blocked unsolicited approve-confirm from %s (peer %s)", ip, body.PeerID))
-		jsonError(w, http.StatusBadRequest, "Pairing confirmation rejected: no matching handshake initiated.")
+	if !e.Pairing.ValidateConfirm(body.PeerID, ip, body.Port, false) {
+		if !alreadyPaired {
+			e.Log("warn", fmt.Sprintf("blocked unsolicited approve-confirm from %s (peer %s)", ip, body.PeerID))
+			jsonError(w, http.StatusBadRequest, "Pairing confirmation rejected: no matching handshake initiated.")
+			return
+		}
+		status, msg := e.reconfirmWithoutHandshake(existing, body.PublicKey, ip)
+		if status != http.StatusOK {
+			jsonError(w, status, msg)
+			return
+		}
+		jsonOK(w, map[string]any{"success": true, "message": msg})
 		return
 	}
 
@@ -1170,4 +1177,29 @@ func (e *Engine) holdingBack(game store.Game) bool {
 	}
 	held, err := e.Sync.CheckHold(game.ID, true)
 	return err == nil && held
+}
+
+// reconfirmWithoutHandshake answers an approve-confirm from a device that is
+// already paired, when this device started no handshake for it to confirm.
+//
+// That message proves nothing about who sent it. It is unauthenticated by
+// design — it is how a public key is delivered — and the peer id it names is
+// published to every device in a relay room. It used to be accepted as an
+// "idempotent re-confirm" that rewrote the peer's address and pinned whatever
+// key it carried, so anyone who knew a paired device's id could swap in a key
+// of their own, with the verified latch still set, and from then on sync with
+// this device as that one: reading its saves and writing to them.
+//
+// It now changes nothing. A repeat of a confirm already applied carries the
+// key already pinned and is answered as before; a different key is refused.
+// A device that really did get a new key pairs again, through a handshake the
+// user approves.
+func (e *Engine) reconfirmWithoutHandshake(existing store.Peer, publicKey, from string) (int, string) {
+	if publicKey != "" && existing.PublicKey != "" && publicKey != existing.PublicKey {
+		e.Log("warn", fmt.Sprintf(
+			"refused an approve-confirm from %s claiming to be %q with a different encryption key; pair again to change it",
+			from, existing.Name))
+		return http.StatusForbidden, "Pairing confirmation rejected: this device is paired with a different key. Pair again to replace it."
+	}
+	return http.StatusOK, "Already paired."
 }
