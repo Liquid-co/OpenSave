@@ -804,7 +804,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 			delete(deleted, path)
 		}
 	}
-	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, agreedHash, deleted)
+	//
+	// The base goes in as the conflict check above read it: a save here that
+	// differs from it only by the deletions the peer asked for is the side
+	// that has not moved (directionBase).
+	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, directionBase(agreedHash, judged, localManifest), deleted)
 
 	// The peer asked this device to pull, and this device would answer by
 	// asking it to pull again, with neither side changed since: the two

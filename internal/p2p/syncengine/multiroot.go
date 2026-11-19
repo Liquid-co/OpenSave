@@ -188,13 +188,13 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 			base = remote.RootHash(delta.PrimaryRoot)
 		}
 	}
-	decision := ComputeWithDeletions(local, remote, lineageFiles, lineageDirs, base, deleted)
+	judged := e.unchangedButForPeerDeletions(gameID, sr.root.Name, local, base)
+	decision := ComputeWithDeletions(local, remote, lineageFiles, lineageDirs, directionBase(base, judged, local), deleted)
 	if !decision.HasChanges() {
 		e.persistRootLineage(gameID, peer.ID, sr.root.Name, local, remote)
 		_ = e.Store.SetAgreedHashForRoot(gameID, peer.ID, sr.root.Name, local.RootHash(delta.PrimaryRoot))
 		return nil
 	}
-	judged := e.unchangedButForPeerDeletions(gameID, sr.root.Name, local, base)
 	if DetectConflict(judged, remote, e.lastSyncTimeMs(peer.ID), base) &&
 		!OnlyBehind(judged, remote, lineageFiles) {
 		// Neither side is touched. There is no per-location resolution screen

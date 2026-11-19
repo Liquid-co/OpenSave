@@ -44,6 +44,20 @@ func (playingErr) Is(target error) bool { return target == ErrHeld || target == 
 // ErrPlayingHere is SyncGame declining to sync a game being played here.
 var ErrPlayingHere error = playingErr{}
 
+// keepRemoteWhilePlaying is a conflict resolution declining to replace the
+// save of a game being played here. Keeping the other device's version writes
+// it over this one, which is the very thing a sync waits for the session to
+// end to do; a choice made in the conflict window is no different. It is not
+// ErrHeld: the person asked for it, and is told why it did not happen. The
+// conflict stays, to be resolved once the game is closed.
+type keepRemoteWhilePlaying struct{}
+
+func (keepRemoteWhilePlaying) Error() string {
+	return "this game is being played on this device — close it, then keep the other device's version"
+}
+
+func (keepRemoteWhilePlaying) Is(target error) bool { return target == ErrPlayingHere }
+
 // PlayingHere reports whether a game is being played on this device.
 func (e *Engine) PlayingHere(gameID string) bool {
 	return e.Playing != nil && e.Playing(gameID)
