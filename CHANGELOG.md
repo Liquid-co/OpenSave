@@ -206,9 +206,37 @@ dozens of fixes make syncing safer. Please try it, and tell us what breaks.
   playing the game, has syncing paused, or the sync with it failed. At a
   launch on the Deck, a game being played on another device says so instead
   of starting quietly. (#154)
+- **Copies kept before a save is replaced no longer push out its history.**
+  The copy taken before a restore, a sync that replaces files, "keep theirs"
+  or a branch switch counted against the game's limit of automatic
+  snapshots, so a device that syncs often, or a few restores in a row,
+  pruned the real ones. These copies now have a limit of their own: five
+  per branch, never more than the automatic limit, here and in cloud
+  backup. (#164)
+- **A game played on a Mac is not synced while it runs.** OpenSave could not
+  see running programs on macOS, so nothing held a game's sync back there.
+  (#165)
+- **"Keep theirs" waits until you close the game.** Chosen while the game ran
+  on this device, it wrote the other device's save under the running game.
+  It now asks you to close the game first, and the conflict stays open.
+  (#165)
+- **An untouched save no longer overwrites the other device's edit.** When
+  the only difference from the last agreed save was files the other device
+  had asked to delete, the direction of the sync fell back to file dates,
+  and a copy here with a later date could be sent over the edit made there.
+  (#165)
+- **"Running now" in Track game lists games, not browsers or build tools.**
+  A browser, an Office program, or a program in a folder named like build or
+  root could be listed as a game being played, because its folder name
+  matched a game in the catalogue. (#162)
 
 ### Changed
 
+- **The scan finds more games.** It reads more of the save catalogue: a
+  `**` in a save path matches folders at any depth, Documents is found where
+  Windows keeps it (in OneDrive, for example), Heroic, Lutris and Bottles
+  prefixes named after a game are searched, and so is Steam's library on a
+  Mac. The catalogue built into the app is from November 18. (#166)
 - **A game being played is not synced until you stop.** Its autosaves no
   longer go to your other devices one by one while you play, and a game
   running here never has a save written under it. When the session ends,
