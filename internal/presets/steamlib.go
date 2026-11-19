@@ -44,6 +44,8 @@ func (sc *Scanner) steamRootDirs() []string {
 		filepath.Join(home, ".local/share/Steam"),
 		filepath.Join(home, ".steam/steam"),
 		filepath.Join(home, ".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+		// macOS.
+		filepath.Join(home, "Library", "Application Support", "Steam"),
 	)
 	return dedupePaths(roots)
 }

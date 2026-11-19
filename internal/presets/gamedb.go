@@ -42,7 +42,7 @@ func (sc *Scanner) GameDB() *GameDB {
 		}
 	}
 	if sc.goos() == "linux" {
-		ds.protonIx = sc.protonPrefixIndex()
+		ds.protonIx = sc.prefixIndex()
 	}
 	if sc.goos() == "windows" {
 		ds.blocked = blockedRoots(windowsPathVars())
@@ -170,8 +170,8 @@ func (ds *GameDB) IdentifyFolder(folder string) (GameMatch, bool) {
 			}
 		}
 		for _, vars := range ds.sc.ludusaviVarSets(g, ds.protonIx) {
-			for _, tpl := range g.Paths {
-				for _, expanded := range expandTemplate(tpl, vars, bases(g.Installs), g.SteamID) {
+			for _, p := range g.pathsFor(vars) {
+				for _, expanded := range expandTemplate(p.tpl, p.vars, bases(g.Installs), g.SteamID) {
 					score := 0
 					switch {
 					case sameUnder(folder, expanded):
