@@ -2,7 +2,9 @@
   import { onDestroy } from 'svelte';
   import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast, syncPause } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
-  import { gameStatus, conflictedIds } from '../lib/gamestatus.js';
+  import { gameStatusParts, conflictedIds } from '../lib/gamestatus.js';
+  import { timeAgoParts } from '../lib/timeago.js';
+  import { playLength } from '../lib/format.js';
   import OfferedGames from './home/OfferedGames.svelte';
   import AddGameCard from './home/AddGameCard.svelte';
   import TrackGameDialog from './home/TrackGameDialog.svelte';
@@ -84,6 +86,49 @@
   const tick = setInterval(() => (now = Date.now()), 30_000);
   onDestroy(() => clearInterval(tick));
   $: conflicted = conflictedIds($conflicts, $locationConflicts);
+
+  // timeAgo's facts as the catalog words for it.
+  function agoLine(at, now, say) {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return p.text;
+    const { kind, ...params } = p;
+    return say('timeAgo.' + kind, params);
+  }
+  // Each status line's wording is built in lib/gamestatus.js, in English;
+  // the same states map here to catalog keys (see locales/en.json,
+  // "gameStatus."), with the time the line is about — gameStatusParts'
+  // `when` — said the catalog's way.
+  function statusLine(parts, now, say) {
+    const when = parts.when ? agoLine(parts.when, now, say) : '';
+    switch (parts.state) {
+      case 'elsewhere': return say('gameStatus.elsewhere');
+      case 'missing': return say('gameStatus.missing');
+      case 'emptied': return say('gameStatus.emptied');
+      case 'restoring': return say('gameStatus.restoring');
+      case 'conflict': return say('gameStatus.conflict');
+      case 'playing': {
+        const ms = parts.when == null ? NaN : now - Date.parse(parts.when);
+        return Number.isFinite(ms) && ms >= 60_000 ? say('gameStatus.inSessionFor', { length: playLength(ms) }) : say('gameStatus.inSession');
+      }
+      case 'syncing': return say('gameStatus.syncing', { pct: parts.pct ?? 0 });
+      case 'error': return say('gameStatus.error');
+      case 'paused': return say('gameStatus.paused');
+      case 'synced': return say('gameStatus.synced', { when });
+      case 'unsynced': return say('gameStatus.unsynced');
+      case 'local': return say('gameStatus.local', { when });
+      case 'empty': return say('gameStatus.empty');
+      default: return parts.label;
+    }
+  }
+  $: rows = $visibleGames.map((game) => {
+    const parts = gameStatusParts(game, {
+      peers: $peers,
+      activity: $syncActivity[game.id],
+      conflicted: conflicted.has(game.id),
+      now
+    });
+    return { game, status: { ...parts, label: statusLine(parts, now, $t) } };
+  });
   // The setup guide, until everything in it is done or skipped, or it is put
   // away. Games are counted as tracked, not as shown, so a game on its way out
   // does not bring the guide back for a moment.
@@ -92,16 +137,6 @@
     $setupState.seen &&
     !$setupState.dismissed &&
     !setupSteps({ games: $gameList.length, peers: Object.keys($peers).length, cloud: $settings?.cloudSync?.ready, skipped: $setupState.skipped }).finished;
-
-  $: rows = $visibleGames.map((game) => ({
-    game,
-    status: gameStatus(game, {
-      peers: $peers,
-      activity: $syncActivity[game.id],
-      conflicted: conflicted.has(game.id),
-      now
-    })
-  }));
 </script>
 
 <div class="head">

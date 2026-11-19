@@ -83,8 +83,8 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 				continue
 			}
 			for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
-				for _, tpl := range g.Paths {
-					for _, pattern := range expandTemplate(tpl, vars, installBases, g.SteamID) {
+				for _, p := range g.pathsFor(vars) {
+					for _, pattern := range expandTemplate(p.tpl, p.vars, installBases, g.SteamID) {
 						if !hasWildcard(pattern) && locationMatches(pattern, target) {
 							return true
 						}
@@ -98,8 +98,13 @@ func (sc *Scanner) CatalogueSaveLocation(name, appID, path string) bool {
 			continue
 		}
 		for _, vars := range sc.ludusaviVarSets(g, protonIdx) {
-			for _, tpl := range g.Paths {
-				for _, pattern := range expandTemplate(tpl, vars, installBases, g.SteamID) {
+			// A Wine prefix's windows folder is known only to its var set,
+			// as in a scan.
+			if windowsDirRoots(vars)[strings.ToLower(filepath.Clean(path))] {
+				continue
+			}
+			for _, p := range g.pathsFor(vars) {
+				for _, pattern := range expandTemplate(p.tpl, p.vars, installBases, g.SteamID) {
 					if !wholeFolderWildcard(pattern) && locationMatches(pattern, target) {
 						return true
 					}

@@ -84,9 +84,9 @@ func (s *Server) handleAddGameRoot(w http.ResponseWriter, r *http.Request) {
 	// to hear about rather than a server fault: "that folder is already
 	// covered by the main save" is a sentence, not a 500.
 	oldRoots, _ := s.Daemon.Store.GameRootPaths(gameID)
-	if err := s.Daemon.Store.AddGameRoot(gameID, body.Name, path); err != nil {
+	if err := s.Daemon.Store.AddGameRootContext(r.Context(), gameID, body.Name, path); err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
+		if errors.Is(err, store.ErrPathClaimBusy) || errors.Is(err, store.ErrOwnershipClaimsChanged) || errors.Is(err, store.ErrGamePathOwned) {
 			status = http.StatusConflict
 		}
 		writeError(w, status, err.Error())

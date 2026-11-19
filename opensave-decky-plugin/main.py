@@ -105,23 +105,68 @@ def reason_of(message: str, reason: str = "") -> str:
 CHANGED = ("updated", "updated_bidirectional", "deletions_synced", "triggered_peer_pull")
 
 
-def game_outcome(entry) -> str:
-    """One game's outcome in a sync-all answer: changed, in-sync, conflict,
-    queued, skipped, or why it did not sync (paused, held, offline, error)."""
+# What a device answered that means the save did not go over to it, or come
+# from it, yet: why, in a few words. Anything not known here is said too,
+# rather than read as in sync.
+WAITING = {
+    "peer_awaiting_folder": "{who} is waiting for a folder to be chosen for it",
+    "peer_holding": "{who} is holding it back: its save was emptied there",
+    "peer_playing": "It's being played on {who} — its save comes over when that session ends",
+    "peer_paused": "{who} has syncing paused",
+    "unwritable": "Its save folder here can't be written to",
+}
+
+
+def game_result(entry):
+    """One game's outcome in a sync answer, and what explains it: changed,
+    in-sync, conflict, waiting (detail says on what), queued, skipped, or why
+    it did not sync (paused, held, offline, error)."""
     if not isinstance(entry, dict):
-        return "error"
+        return "error", ""
     status = entry.get("status")
     if isinstance(status, str):
         if status == "error":
-            return reason_of(entry.get("error", ""), entry.get("reason", ""))
+            return reason_of(entry.get("error", ""), entry.get("reason", "")), entry.get("error", "")
         if status in ("queued", "skipped"):
-            return status
-    peers = [p for p in entry.values() if isinstance(p, dict)]
-    if any(p.get("status") == "conflict" for p in peers):
-        return "conflict"
-    if any(p.get("status") in CHANGED for p in peers):
-        return "changed"
-    return "in-sync"
+            return status, ""
+    peers = sorted((k, p) for k, p in entry.items() if isinstance(p, dict))
+    changed = busy = False
+    reached = 0
+    waiting, failed, missing = [], [], []
+    for _, p in peers:
+        who = p.get("peerName") or "the other device"
+        st = p.get("status")
+        if st == "conflict":
+            return "conflict", who
+        if st == "in_sync":
+            reached += 1
+        elif st in CHANGED:
+            changed = True
+            reached += 1
+        elif st == "peer_busy":
+            busy = True
+        elif st == "peer_missing":
+            missing.append(f"{who} does not track it")
+        elif st == "error":
+            failed.append(f"The sync with {who} failed")
+        else:
+            waiting.append(WAITING.get(st, '{who} answered "' + str(st) + '"').format(who=who))
+    if failed:
+        return "error", "; ".join(failed)
+    if waiting:
+        return "waiting", "; ".join(waiting)
+    if changed:
+        return "changed", ""
+    if busy:
+        return "queued", ""
+    if missing and not reached:
+        return "waiting", "; ".join(missing)
+    return "in-sync", ""
+
+
+def game_outcome(entry) -> str:
+    """One game's outcome in a sync answer (game_result, without its detail)."""
+    return game_result(entry)[0]
 
 
 def summarize_sync_all(results: dict) -> dict:
@@ -157,6 +202,8 @@ def summarize_sync_all(results: dict) -> dict:
             extra.append(n(counts["conflict"], "needs a decision", "need a decision"))
         if counts.get("held"):
             extra.append(n(counts["held"], "held back", "held back"))
+        if counts.get("waiting"):
+            extra.append(n(counts["waiting"], "waiting on another device", "waiting on another device"))
         if counts.get("error"):
             extra.append(n(counts["error"], "failed", "failed"))
         if extra:
@@ -235,7 +282,13 @@ class Plugin:
             answer = _request(f"/api/games/{game_id}/sync", method="POST", body={}, timeout=120) or {}
             if answer.get("queued"):
                 return {"success": True, "outcome": "queued"}
-            return {"success": True, "outcome": game_outcome(answer.get("results") or {})}
+            outcome, detail = game_result(answer.get("results") or {})
+            if outcome == "error":
+                decky.logger.error(f"sync_game({game_id}): {detail}")
+                return {"success": False, "reason": "error", "error": detail}
+            if outcome == "waiting":
+                return {"success": True, "outcome": "waiting", "detail": detail}
+            return {"success": True, "outcome": outcome}
         except DaemonRefused as e:
             reason = reason_of(str(e), e.reason)
             if reason == "error":

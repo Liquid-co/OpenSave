@@ -675,6 +675,12 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 	// so it stays a candidate: that is the pre-existing behaviour, and
 	// treating unknowns as protected would make cloud storage grow without
 	// bound.
+	//
+	// Safety copies upload too, and are not candidates either: counted here a
+	// run of syncs would thin out the cloud's history the way it once did the
+	// local one. They need no budget of their own here — local retention
+	// already holds them to theirs, and once one is pruned locally its remote
+	// file is an unknown and falls back into this one.
 	prefix := fmt.Sprintf("%s__%s__", gameID, branch)
 	_, _ = d.Cloud.PruneGameBranch(func(name string) bool {
 		if !strings.HasPrefix(name, prefix) {
@@ -684,8 +690,8 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 		if !parsed {
 			return false
 		}
-		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && !snap.IsSystemAuto {
-			return false // a manual snapshot: not the automatic budget's to spend
+		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && (!snap.IsSystemAuto || snap.Safety) {
+			return false // manual, or a safety copy: not the automatic budget's to spend
 		}
 		return true
 	}, game.MaxSnapshots)
@@ -817,6 +823,25 @@ func (d *Daemon) withRootTopology(gameID string, fn func() error) error {
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
+	return d.TrackGameContext(context.Background(), game)
+}
+
+// TrackGameContext allows an abandoned interactive request to cancel while
+// waiting for another process's save-path claim.
+func (d *Daemon) TrackGameContext(ctx context.Context, game store.Game) (store.Game, error) {
+	return d.trackGameAdmitted(ctx, game, nil)
+}
+
+// TrackImportedGame reuses native tracking while retaining the cross-process
+// ownership admission acquired before the backup was extracted.
+func (d *Daemon) TrackImportedGame(game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
+	if admission == nil {
+		return store.Game{}, fmt.Errorf("missing import admission")
+	}
+	return d.trackGameAdmitted(context.Background(), game, admission)
+}
+
+func (d *Daemon) trackGameAdmitted(ctx context.Context, game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
 	abs, err := d.ValidateSavePath(game.SavePath)
 	if err != nil {
 		return store.Game{}, err
@@ -892,7 +917,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		game.CoverURL = SteamCoverURL(game.AppID)
 	}
 
-	if err := d.Store.CreateGame(game); err != nil {
+	var createErr error
+	if admission != nil {
+		createErr = d.Store.CreateGameAdmitted(game, admission)
+	} else {
+		createErr = d.Store.CreateGameContext(ctx, game)
+	}
+	if err := createErr; err != nil {
 		// The id was free a moment ago. If it is taken now, a paired device
 		// that syncs this same game reached us in between and auto-tracked
 		// it — the two sides create the game concurrently when both people

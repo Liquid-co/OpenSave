@@ -119,3 +119,31 @@ SomeGame:
 		t.Fatalf("the linux-only save was not found; got %d rows: %+v", len(found), found)
 	}
 }
+
+// Steam on a Mac lives in ~/Library/Application Support/Steam. Without it among
+// the roots, a Mac had no Steam library at all: no installed games, no install
+// folders for <base> templates, and HasSteam said no.
+func TestMacSteamRootIsALibrary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	root := filepath.Join(home, "Library", "Application Support", "Steam")
+	if err := os.MkdirAll(filepath.Join(root, "steamapps"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	sc := &Scanner{GOOS: "darwin"}
+	want, _ := filepath.Abs(root)
+	found := false
+	for _, lib := range sc.steamLibraryPaths() {
+		if lib == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("steamLibraryPaths() = %v, want it to include %s", sc.steamLibraryPaths(), want)
+	}
+	if !sc.HasSteam() {
+		t.Error("HasSteam() = false with a Mac Steam library present")
+	}
+}

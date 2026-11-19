@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -82,6 +83,20 @@ type Game struct {
 // CreateGame inserts a new game and its default "main" branch in one
 // transaction.
 func (s *Store) CreateGame(g Game) error {
+	return s.CreateGameContext(context.Background(), g)
+}
+
+// CreateGameContext stops waiting for ownership admission when the caller cancels.
+func (s *Store) CreateGameContext(ctx context.Context, g Game) error {
+	done, err := s.claimLockContext(ctx)
+	if err != nil {
+		return err
+	}
+	defer done()
+	return s.createGameWithoutClaimLock(g)
+}
+
+func (s *Store) createGameWithoutClaimLock(g Game) error {
 	if g.ActiveBranch == "" {
 		g.ActiveBranch = "main"
 	}
@@ -162,6 +177,11 @@ func (s *Store) ListGames() ([]Game, error) {
 // update — id, save_path are updatable too since the UI allows relocating
 // a tracked save folder).
 func (s *Store) UpdateGame(g Game) error {
+	return s.UpdateGameContext(context.Background(), g)
+}
+
+// UpdateGameContext stops waiting for ownership admission when the caller cancels.
+func (s *Store) UpdateGameContext(ctx context.Context, g Game) error {
 	// Avoid filesystem work for ordinary metadata-only updates. A concurrent
 	// relocation detected inside the transaction must fail closed instead.
 	var observedPath string
@@ -172,8 +192,12 @@ func (s *Store) UpdateGame(g Game) error {
 		return fmt.Errorf("inspect game path before update %s: %w", g.ID, err)
 	}
 	var prepared *preparedNativePaths
-	var err error
 	if observedPath != g.SavePath {
+		done, err := s.claimLockContext(ctx)
+		if err != nil {
+			return err
+		}
+		defer done()
 		prepared, err = s.prepareNativePaths(g.SavePath)
 		if err != nil {
 			return err

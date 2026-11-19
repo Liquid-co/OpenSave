@@ -105,6 +105,10 @@ func (m *Manager) RecordSent(keys ...string) {
 // OR they're already paired (idempotent re-confirm). alreadyPaired is
 // supplied by the caller from the store. Valid confirms consume the sent
 // entries.
+//
+// The approve-confirm handlers pass alreadyPaired=false: being paired is
+// not, on its own, grounds to apply a confirm (see
+// reconfirmWithoutHandshake in package p2p).
 func (m *Manager) ValidateConfirm(peerID, clientIP string, port int, alreadyPaired bool) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

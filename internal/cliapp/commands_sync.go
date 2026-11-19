@@ -61,8 +61,23 @@ func cmdSync(args []string) int {
 		hint("opensave conflicts")
 		return 1
 	case "waiting":
-		success("Synced %s with the devices that could take it.", bold(gameID))
+		if o.Some {
+			success("Synced %s with the devices that could take it.", bold(gameID))
+		} else {
+			warning("%s was not synced.", bold(gameID))
+		}
 		note(o.Detail)
+	case "error":
+		if o.Some {
+			warning("Synced %s with some devices, but not all.", bold(gameID))
+		} else {
+			warning("%s was not synced.", bold(gameID))
+		}
+		note(o.Detail)
+		hint("opensave activity")
+		return 1
+	case "queued":
+		success("Queued %s: another device was still applying a sync of it, and it is asked again when done.", bold(gameID))
 	default:
 		success("%s is already in sync.", bold(gameID))
 	}

@@ -9,9 +9,19 @@
   import X from 'lucide-svelte/icons/x';
   import { api } from '../lib/api.js';
   import { games, syncActivity, navigate } from '../lib/stores.js';
-  import { timeAgo } from '../lib/timeago.js';
+  import { timeAgoParts } from '../lib/timeago.js';
   import { amountLabel, peerLabel, speedLabel, withNames } from '../lib/transfers.js';
-  import { t } from '../lib/i18n.js';
+  // Aliased: each recent transfer below is also named t, which would
+  // shadow the store and break $t inside the list.
+  import { t as i18n } from '../lib/i18n.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $i18n.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   const dispatch = createEventDispatcher();
   let data = null;
@@ -47,21 +57,21 @@
   }
 </script>
 
-<div class="panel" role="dialog" aria-label={$t('transfers.title')}>
+<div class="panel" role="dialog" aria-label={$i18n('transfers.title')}>
   <div class="head">
-    <h3>{$t('transfers.title')}</h3>
-    <button class="btn small ghost icon" aria-label={$t('common.close')} title={$t('common.close')} on:click={() => dispatch('close')}><X size={14} /></button>
+    <h3>{$i18n('transfers.title')}</h3>
+    <button class="btn small ghost icon" aria-label={$i18n('common.close')} title={$i18n('common.close')} on:click={() => dispatch('close')}><X size={14} /></button>
   </div>
 
   {#if error}
-    <p class="empty">{$t('transfers.readError', { error })}</p>
+    <p class="empty">{$i18n('transfers.readError', { error })}</p>
   {:else if !data}
     <div class="skeleton" style="height: 44px; margin: 10px 14px"></div>
   {:else if shown.active.length === 0 && shown.recent.length === 0}
-    <p class="empty">{$t('transfers.empty')}</p>
+    <p class="empty">{$i18n('transfers.empty')}</p>
   {:else}
     {#if shown.active.length}
-      <h4>{$t('transfers.now')}</h4>
+      <h4>{$i18n('transfers.now')}</h4>
       {#each shown.active as t}
         <button class="row" on:click={() => open(t)}>
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
@@ -75,8 +85,9 @@
       {/each}
     {/if}
     {#if shown.recent.length}
-      <h4>{$t('transfers.recently')}</h4>
+      <h4>{$i18n('transfers.recently')}</h4>
       {#each shown.recent.slice(0, 20) as t}
+        {@const w = agoKey(t.endedAt, now)}
         <button class="row" on:click={() => open(t)} title={t.error || ''}>
           <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
           <span class="main">
@@ -85,7 +96,7 @@
           </span>
           <span class="end">
             {#if t.state === 'error'}<span class="bad"><CircleX size={13} /></span>{:else}<span class="good"><CircleCheck size={13} /></span>{/if}
-            <span class="when">{t.endedAt ? timeAgo(t.endedAt, now) : ''}</span>
+            <span class="when">{t.endedAt ? (w.text ?? $i18n(w.key, w.params)) : ''}</span>
           </span>
         </button>
       {/each}

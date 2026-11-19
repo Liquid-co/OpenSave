@@ -1,0 +1,20 @@
+-- Mark the copies kept before a save is replaced.
+--
+-- A restore keeps a safety restore point first, a sync keeps the save it is
+-- about to overwrite, a conflict keeps this device's side, a branch switch
+-- keeps the branch being left. Each was recorded as an ordinary automatic
+-- snapshot and counted against max_snapshots, so a device that syncs often,
+-- or someone trying one restore after another, filled the automatic budget
+-- with copies of saves on their way out — and the watcher's real history was
+-- what got pruned to make room.
+--
+--   safety  a copy kept before replacing (Manager.CreateBeforeReplacing).
+--           Still is_system_auto = 1, so the age rule and everything else
+--           that reads that is unchanged; retention gives these a small
+--           budget of their own (store.SafetySnapshotLimit) instead of the
+--           automatic one.
+--
+-- Existing rows are not guessed at from their comments, which have changed
+-- wording over time and can be edited: they stay counted as automatic and
+-- age out with the history as they always would have.
+ALTER TABLE snapshots ADD COLUMN safety INTEGER NOT NULL DEFAULT 0;
