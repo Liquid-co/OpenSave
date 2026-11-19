@@ -223,7 +223,10 @@ func (e *Engine) downloadPeerBinaryLAN(ctx context.Context, address string, port
 	if err := out.Close(); err != nil {
 		return PeerBuild{}, err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); wantSHA != "" && got != wantSHA {
+	if wantSHA == "" {
+		return PeerBuild{}, fmt.Errorf("the other device sent no checksum for its build, so the transfer cannot be checked")
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != wantSHA {
 		return PeerBuild{}, fmt.Errorf("transfer corrupted: checksum mismatch")
 	}
 	return build, nil
@@ -279,7 +282,10 @@ func (e *Engine) downloadPeerBinaryWAN(ctx context.Context, peerID, destPath str
 			break
 		}
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); wantSHA != "" && got != wantSHA {
+	if wantSHA == "" {
+		return PeerBuild{}, fmt.Errorf("the other device sent no checksum for its build, so the transfer cannot be checked")
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != wantSHA {
 		return PeerBuild{}, fmt.Errorf("transfer corrupted: checksum mismatch")
 	}
 	return build, nil
