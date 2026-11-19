@@ -58,6 +58,10 @@ up:
   [images.weserv.nl](https://images.weserv.nl), which fetches the same public
   cover image on your behalf — so the App ID is visible to that proxy in that
   case. Cover art is not your save data.
+- **Public IP (self-hosted relay)** — with *Host a WAN relay server on this
+  device* turned on, clicking *Show my addresses to share* asks
+  [api.ipify.org](https://www.ipify.org) for this network's public address so
+  it can be shown to you. Sends nothing but the request itself.
 
 These happen while you scan for games or view your library, not continuously
 in the background, and results are cached so they aren't repeated.
@@ -67,8 +71,21 @@ in the background, and results are cached so they aren't repeated.
 If you turn on Cloud Backup, snapshots are uploaded to the provider you choose
 (Google Drive, Dropbox, OneDrive, WebDAV, a webhook, or a local/NAS folder)
 using credentials you authorize. OAuth tokens are stored locally on your
-device and are never sent to the OpenSave project. Disconnecting a provider
-removes its stored tokens.
+device. Disconnecting a provider removes its stored tokens.
+
+One exception: Google Drive with the **built-in** sign-in. Its client secret
+cannot ship inside the app, so the token exchange — and every later token
+refresh — goes through the OpenSave relay's OAuth proxy
+(`relay.opensave.org`, or your own relay if you set one), which adds the secret
+and passes the request on to Google. That relay therefore handles your Google
+refresh and access tokens in transit (the relay code in `relay/` passes them
+through without storing or logging them). To keep them off the relay
+entirely, enter your own Google OAuth client ID and secret on the Cloud Backup
+page, under *Use your own OAuth app*: requests then go straight to Google. Dropbox, OneDrive and WebDAV never
+use the proxy.
+
+Snapshots are uploaded as they are, not encrypted by OpenSave: the provider
+can read them like any other file you store there.
 
 ## Pairing & trust
 

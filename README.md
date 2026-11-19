@@ -173,7 +173,7 @@ Need to undo something? Open a game's **history** and roll back a snapshot — t
 ```
 
 1. **Watch** — a filesystem watcher notices a save was written (safe-write and file-lock aware, so it never grabs a half-flushed file).
-2. **Delta** — the save is chunked into content-defined blocks and SHA-256 hashed. A manifest diff finds exactly which blocks changed.
+2. **Delta** — the save is split into fixed-size blocks (64 KB, 512 KB or 2 MB, depending on the file's size) and SHA-256 hashed. A manifest diff finds exactly which blocks changed. Because the blocks are fixed-size, an edit that inserts or removes bytes near the start of a file changes every block after it.
 3. **Snapshot** — the new state is recorded as an immutable, versioned snapshot on a branch.
 4. **Sync** — only the changed blocks travel to paired peers, over LAN when possible or through a stateless relay room otherwise. Lineage metadata lets the receiver detect a genuine conflict versus a fast-forward.
 
