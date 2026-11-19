@@ -249,6 +249,67 @@ func TestTrustNeedsTheProvenDevice(t *testing.T) {
 	}
 }
 
+// A folder this device knows as a save can still hold the game's own program,
+// when the game keeps its save beside it. A peer's game is never tracked by
+// itself there: it is offered, for the user to place.
+func TestCVE_2026_103398_AKnownSaveFolderHoldingProgramsIsOffered(t *testing.T) {
+	c := newCVEFixture(t)
+	folder := programFolder(t, c.home)
+	same := func(a, b string) bool { return strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) }
+	c.engine.KnownSaveLocation = func(_, _, p string) bool { return same(p, folder) }
+
+	q := manifestGameQuery{Name: "Some Game", SavePath: `C:\Users\alice\Games\Some Game\Binaries\Win32`}
+	if _, err := c.engine.ensureManifestGame("some-game", q, c.peer.ID, c.peer.ID); err == nil {
+		t.Fatal("a folder holding a program was tracked for a peer")
+	}
+	expectOffered(t, c, "some-game")
+}
+
+// Not even for a device the user lets choose folders: their own device naming
+// a folder of programs is still offered, not tracked there.
+func TestCVE_2026_103398_AProgramFolderIsOfferedEvenToATrustedDevice(t *testing.T) {
+	c := newCVEFixture(t)
+	programFolder(t, c.home)
+	if err := c.store.SetPeerChoosesFolders(c.peer.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	q := manifestGameQuery{Name: "Some Game", SavePath: `C:\Users\alice\Games\Some Game\Binaries\Win32`}
+	if _, err := c.engine.ensureManifestGame("some-game", q, c.peer.ID, c.peer.ID); err == nil {
+		t.Fatal("a folder holding a program was tracked for a trusted device")
+	}
+	expectOffered(t, c, "some-game")
+}
+
+// programFolder makes, under home, a game's program folder that also holds
+// its save, as some games keep it.
+func programFolder(t *testing.T, home string) string {
+	t.Helper()
+	folder := filepath.Join(home, "Games", "Some Game", "Binaries", "Win32")
+	if err := os.MkdirAll(folder, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Game.exe", "SavedGame.bin"} {
+		if err := os.WriteFile(filepath.Join(folder, name), []byte("x"), 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return folder
+}
+
+func expectOffered(t *testing.T, c *cveFixture, gameID string) {
+	t.Helper()
+	if g, err := c.store.GetGame(gameID); err == nil {
+		t.Fatalf("tracked at %s", g.SavePath)
+	}
+	offered, err := c.store.ListOfferedGames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(offered) != 1 || offered[0].GameID != gameID {
+		t.Errorf("offered games = %+v, want the one asked for", offered)
+	}
+}
+
 // A folder this device cannot vouch for is offered, and said so once: the
 // other device asks at every sync, and the log was one warning every few
 // seconds for as long as the offer stood.
