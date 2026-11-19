@@ -1520,8 +1520,8 @@
   "timeAgo.justNow": "just now",
   "timeAgo.aMinuteAgo": "a minute ago",
   "timeAgo.minutesAgo": {
-    "one": "1 minute ago",
-    "other": "{n} minutes ago"
+    "one": "1 min ago",
+    "other": "{n} min ago"
   },
   "timeAgo.anHourAgo": "an hour ago",
   "timeAgo.hoursAgo": {
