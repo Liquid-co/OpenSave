@@ -833,20 +833,28 @@ func (m *Manager) Restore(gameID, snapshotID string) (store.Snapshot, error) {
 	// delete this very snapshot's archive before we extract it. Restore from
 	// a temporary copy so the content survives that pruning. A rebuilt
 	// archive is one already.
+	//
+	// Every save location counts, not just the main one: the restore below
+	// empties them all, and a settings or mods folder may be the only one
+	// with anything in it. And a safety copy that could not be made stops the
+	// restore, as it does a branch switch — carrying on would empty the save
+	// with nothing to go back to, in exactly the case (full disk, locked
+	// file, database error) where the copy mattered most.
 	restoreZip := archive
 	var safety store.Snapshot
-	if savePathHasContent(game.SavePath) {
+	if m.anySaveContent(gameID, game.SavePath) {
 		if archive == snap.ZipPath {
-			if tmp, err := copyToTempZip(archive); err == nil {
-				restoreZip = tmp
-				defer os.Remove(tmp)
+			tmp, err := copyToTempZip(archive)
+			if err != nil {
+				return store.Snapshot{}, fmt.Errorf("could not stage snapshot %s for restore, so nothing was changed: %w", snapshotID, err)
 			}
+			restoreZip = tmp
+			defer os.Remove(tmp)
 		}
 		safetyComment := fmt.Sprintf("Pre-rollback safety restore point (before restoring %s)", snapshotID)
 		var err error
 		if safety, err = m.CreateBeforeReplacing(gameID, safetyComment); err != nil {
-			// Non-fatal, same as JS: warn and continue the restore.
-			fmt.Fprintf(os.Stderr, "[snapshot] safety snapshot before restore failed: %v\n", err)
+			return store.Snapshot{}, fmt.Errorf("could not back up the current save before restoring, so nothing was changed: %w", err)
 		}
 	}
 
@@ -1100,23 +1108,8 @@ func (m *Manager) SwitchBranch(gameID, targetBranch string) error {
 	// disk, a locked file, a database error, and the save folder was emptied
 	// anyway with nothing to go back to. A switch that cannot be undone is not
 	// a switch worth making automatically.
-	hasContent := savePathHasContent(game.SavePath)
-	if !hasContent {
-		// A game whose main save is empty may still have a settings or mods
-		// folder full of work, and the switch below clears those too. Backing
-		// up only when the main folder has something in it would skip the
-		// backup in exactly the case where it is the only copy.
-		if paths, err := m.Store.GameRootPaths(gameID); err == nil {
-			for _, p := range paths {
-				if savePathHasContent(p) {
-					hasContent = true
-					break
-				}
-			}
-		}
-	}
 	var backup store.Snapshot
-	if hasContent {
+	if m.anySaveContent(gameID, game.SavePath) {
 		comment := fmt.Sprintf("Auto backup before switching to branch %q", targetBranch)
 		if backup, err = m.CreateBeforeReplacing(gameID, comment); err != nil {
 			return fmt.Errorf("could not back up the current save before switching, so nothing was changed: %w", err)
@@ -1207,6 +1200,27 @@ func ensureSavePathExists(savePath string) error {
 		return os.MkdirAll(filepath.Dir(savePath), 0o777)
 	}
 	return os.MkdirAll(savePath, 0o777)
+}
+
+// anySaveContent reports whether the game's main save or any of its other
+// save locations holds anything. A game whose main save is empty may still
+// have a settings or mods folder full of work, and every restore clears those
+// too — backing up only when the main folder has something in it would skip
+// the backup in exactly the case where it is the only copy.
+func (m *Manager) anySaveContent(gameID, savePath string) bool {
+	if savePathHasContent(savePath) {
+		return true
+	}
+	paths, err := m.Store.GameRootPaths(gameID)
+	if err != nil {
+		return false
+	}
+	for _, p := range paths {
+		if savePathHasContent(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // savePathHasContent reports whether there is anything at the save path

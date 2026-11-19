@@ -162,3 +162,11 @@ func ReadBlocks(filePath string, blockIndices []int, blockSize int) ([]BlockSour
 func clearReadOnlyIfSet(path string) {
 	_ = os.Chmod(path, 0o666)
 }
+
+// ReplaceFile renames tmpPath over filePath the way a sync does: retried
+// while antivirus holds the file, clearing a read-only flag, and marked as
+// OpenSave's own change for the watcher. tmpPath should be filePath +
+// TmpSuffix, which manifests and snapshots already leave out.
+func ReplaceFile(tmpPath, filePath string) error {
+	return replaceWithRetry(tmpPath, filePath)
+}

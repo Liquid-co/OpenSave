@@ -6,6 +6,7 @@ import (
 	"compress/flate"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -107,6 +108,9 @@ func zipPathCapturing(sourcePath, outPath string, reuse *reuseSource) (skipped [
 			return nil
 		}
 		hash, addErr := reuse.addFileEntry(w, path, rel, info)
+		if errors.Is(addErr, errEntryCutShort) {
+			return addErr
+		}
 		if addErr != nil {
 			skipped = append(skipped, path)
 			return nil
@@ -171,11 +175,22 @@ func addFileEntry(w *zip.Writer, filePath, entryName string) (string, error) {
 		return "", err
 	}
 	sum := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(entry, sum), io.MultiReader(bytes.NewReader(head), f)); err != nil {
-		return "", err
+	if _, err := io.Copy(io.MultiWriter(entry, sum), archiveSource(io.MultiReader(bytes.NewReader(head), f))); err != nil {
+		return "", fmt.Errorf("%w: %s: %v", errEntryCutShort, filePath, err)
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
+
+// errEntryCutShort is a file that failed part-way through being written into
+// the archive. Unlike one that could not be opened, it cannot be skipped: a
+// zip entry cannot be taken back once started, so the archive would hold the
+// file cut short, and restoring it would put that short file back as the
+// save. The whole archive is abandoned instead.
+var errEntryCutShort = errors.New("file could not be read in full")
+
+// archiveSource is the bytes of a file on their way into the archive; a test
+// replaces it to have a read fail part-way.
+var archiveSource = func(r io.Reader) io.Reader { return r }
 
 // Snapshots used to store every file uncompressed, on the grounds that saves
 // are usually compressed already or small. Many are neither — JSON, XML, a

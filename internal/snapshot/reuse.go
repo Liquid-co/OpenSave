@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"archive/zip"
+	"fmt"
 	"os"
 	"sync/atomic"
 
@@ -89,7 +90,7 @@ func (r *reuseSource) addFileEntry(w *zip.Writer, filePath, entryName string, in
 	if r != nil {
 		if hash, ok := r.reusable(filePath, entryName, info); ok {
 			if err := w.Copy(r.files[entryName]); err != nil {
-				return "", err
+				return "", fmt.Errorf("%w: %s: %v", errEntryCutShort, filePath, err)
 			}
 			r.reused++
 			return hash, nil

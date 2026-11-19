@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -155,6 +156,9 @@ func archiveInto(w *zip.Writer, sourcePath, prefix, root string, reuse *reuseSou
 			return nil
 		}
 		hash, addErr := reuse.addFileEntry(w, path, prefix+rel, info)
+		if errors.Is(addErr, errEntryCutShort) {
+			return addErr // see errEntryCutShort
+		}
 		if addErr != nil {
 			skipped = append(skipped, path)
 			return nil
