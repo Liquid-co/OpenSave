@@ -641,6 +641,25 @@ jobs:
             -exec sha256sum {} + | sed 's| .*/| |' > SHA256SUMS
           cat SHA256SUMS
 
+      # The release description is kept short: the Discord invitation and a
+      # link to everything between the previous tag and this one. GitHub's
+      # generated notes listed every merged PR, which for a release built up
+      # over weeks ran to pages; CHANGELOG.md and the app's "What's new" are
+      # where the changes are told.
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          fetch-depth: 0
+      - name: Find the previous release tag
+        id: prev
+        run: |
+          prev=$(git -C src describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            echo "changes=https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -650,12 +669,7 @@ jobs:
           # are offered these: either the user ticked Settings -> Updates, or
           # they are already running a pre-release (see selfupdate).
           prerelease: ${{ contains(github.ref_name, '-') }}
-          # Note: re-publishing the same tag appends another generated-notes
-          # block; if a tag is ever re-cut, tidy the release body by hand.
-          generate_release_notes: true
-          # `body` is placed above the generated notes, so the invitation is
-          # the first thing in every release rather than buried under a
-          # commit list.
+          generate_release_notes: false
           body: |
             ### 💬 Questions, bug reports, or just want to say hello?
 
@@ -665,6 +679,9 @@ jobs:
             discussed before they ship.
 
             ---
+
+
+            **Full Changelog**: ${{ steps.prev.outputs.changes }}
           fail_on_unmatched_files: false
           files: |
             windows/**/*.exe
