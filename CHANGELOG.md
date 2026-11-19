@@ -9,7 +9,36 @@ The first beta of 2.5.0. On a Steam Deck a game now starts with its newest
 save, and a game is not synced while it is being played. Games from your other
 devices set themselves up again, and your own devices can be trusted to choose
 folders. Saves of many files are much faster, OpenSave is in Chinese, and
-dozens of fixes make syncing safer. Please try it, and tell us what breaks.
+dozens of fixes make syncing safer, four of them security issues. Please try
+it, and tell us what breaks.
+
+### Security
+
+- **A sync can no longer reach outside a save folder through a link.** A
+  symbolic link or Windows junction inside a tracked save folder was
+  followed, so files outside the folder could be read, overwritten or
+  deleted by a sync with another device. Links inside a save folder are now
+  refused. Reported by Seagulls.
+- **A game from another device is never tracked at a folder holding
+  programs.** A save that sits beside a game's executable made the scan
+  note that folder, and a game arriving from another device, or chosen by a
+  device trusted to choose folders, could be tracked there, with that
+  device's files written among the game's own. Such a folder is now always
+  offered for you to place instead.
+- **A paired device's key can no longer be replaced without pairing again.**
+  A pairing confirmation this device had not asked for was accepted from
+  any device already paired, and it replaced that device's key and address.
+  Anyone in the same relay room, or running the relay, could then sync as
+  that device: read this device's saves and overwrite them. A device whose
+  key really changed now pairs again. Reported by GeneBO98. (#169)
+- **An update from another device is installed only if it is a release.**
+  An update taken from a paired device was checked only against a checksum
+  sent by that same device, so anyone able to answer as it could have their
+  own program installed. The download is now checked against the checksums
+  published with the release, and refused without one. This works on
+  Windows only; elsewhere, update from GitHub. The Windows installer now
+  installs exactly the released OpenSave.exe, so installed copies can pass
+  this check. Reported by GeneBO98. (#170, #172)
 
 ### Fixed
 
