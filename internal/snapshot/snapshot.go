@@ -1197,8 +1197,6 @@ func ensureSavePathExists(savePath string) error {
 	return os.MkdirAll(savePath, 0o777)
 }
 
-// savePathHasContent reports whether there is anything at the save path
-// worth safety-snapshotting: an existing file, or a non-empty directory.
 // anySaveContent reports whether the game's main save or any of its other
 // save locations holds anything. A game whose main save is empty may still
 // have a settings or mods folder full of work, and every restore clears those
@@ -1220,6 +1218,8 @@ func (m *Manager) anySaveContent(gameID, savePath string) bool {
 	return false
 }
 
+// savePathHasContent reports whether there is anything at the save path
+// worth safety-snapshotting: an existing file, or a non-empty directory.
 func savePathHasContent(savePath string) bool {
 	info, err := os.Stat(savePath)
 	if err != nil {
