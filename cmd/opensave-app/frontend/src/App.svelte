@@ -312,10 +312,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-width: 760px;
-    /* Centred in the page: at the left edge, a narrow card on a wide window
-       looked out of place above the page's own full-width content. */
-    margin: 0 auto 18px;
+    /* As wide as the page below it. A narrower card, at the left edge or
+       centred, did not line up with anything on a wide window. */
+    margin-bottom: 18px;
   }
   .shell {
     display: flex;
