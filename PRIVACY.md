@@ -80,8 +80,8 @@ refresh — goes through the OpenSave relay's OAuth proxy
 and passes the request on to Google. That relay therefore handles your Google
 refresh and access tokens in transit (the relay code in `relay/` passes them
 through without storing or logging them). To keep them off the relay
-entirely, enter your own Google OAuth client ID and secret under Settings →
-Cloud Backup: requests then go straight to Google. Dropbox, OneDrive and WebDAV never
+entirely, enter your own Google OAuth client ID and secret on the Cloud Backup
+page, under *Use your own OAuth app*: requests then go straight to Google. Dropbox, OneDrive and WebDAV never
 use the proxy.
 
 Snapshots are uploaded as they are, not encrypted by OpenSave: the provider
