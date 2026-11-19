@@ -1182,7 +1182,7 @@
   "cloud.connect.waitingSubAuto": "Approve access in your browser — OpenSave connects by itself.",
   "cloud.connect.waitingSubManual": "Approve access in your browser, then paste below where it lands.",
   "cloud.connect.codeHelpAuto": "If your browser shows an error page instead, copy the whole address from its address bar and paste it here:",
-  "cloud.connect.codeHelpManual": "After approving access, the browser lands on a localhost page. copy the whole address from its address bar and paste it here:",
+  "cloud.connect.codeHelpManual": "After approving access, the browser lands on a localhost page. Copy the whole address from its address bar and paste it here:",
   "cloud.connect.addressAria": "Address or code from the browser",
   "cloud.connect.connectBtn": "Connect",
   "cloud.fields.selectFolderDialog": "Select backup destination folder",
