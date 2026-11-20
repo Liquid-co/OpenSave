@@ -7,6 +7,7 @@
 // its element on screen for the length of the animation.
 import { derived, get, readable } from 'svelte/store';
 import { cubicIn, cubicOut } from 'svelte/easing';
+import { flip } from 'svelte/animate';
 import { appearance, motionAllowed } from './appearance.js';
 
 const query = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -154,3 +155,50 @@ export function slidingIndicator(node, { mode = 'underline', inset = 0, offsetX 
     }
   };
 }
+
+// ── The Library's movements ─────────────────────────────────────────────
+
+/** Games finding their new places when the order or a filter changes:
+ *  Svelte's flip, gated like the rest. Past `limit` items it is skipped —
+ *  measuring hundreds of tiles every change costs more than it shows. */
+export function gatedFlip(node, fromTo, { limit = Infinity, count = 0, ...params } = {}) {
+  if (!get(motionOn) || count > limit) return { duration: 0 };
+  return flip(node, fromTo, { duration: 260, easing: cubicOut, ...params });
+}
+
+/** Something arriving from just below, as the page itself does. */
+export const rise = gated((node, { duration = 220, y = 8, delay = 0 } = {}) => ({
+  duration,
+  delay,
+  easing: cubicOut,
+  css: (t, u) => `opacity: ${t}; transform: translateY(${u * y}px);`
+}));
+
+/** A strip opening its height and closing it again, rather than pushing
+ *  everything below it in one jump. */
+export const collapse = gated((node, { duration = 200 } = {}) => {
+  const h = node.offsetHeight;
+  return {
+    duration,
+    easing: cubicOut,
+    css: (t) => `opacity: ${t}; height: ${t * h}px; overflow: hidden;`
+  };
+});
+
+/** The sidebar coming and going (Ctrl+B): its width, from nothing. */
+export const sidebarSlide = gated((node, { duration = 200 } = {}) => {
+  const w = node.offsetWidth;
+  return {
+    duration,
+    easing: cubicOut,
+    css: (t) => `width: ${t * w}px; min-width: 0; overflow: hidden; opacity: ${0.4 + 0.6 * t};`
+  };
+});
+
+/** A tile or a bar appearing in place: from a touch smaller, fading up. */
+export const pop = gated((node, { duration = 200, delay = 0, start = 0.94 } = {}) => ({
+  duration,
+  delay,
+  easing: cubicOut,
+  css: (t) => `opacity: ${t}; transform: scale(${start + (1 - start) * t});`
+}));

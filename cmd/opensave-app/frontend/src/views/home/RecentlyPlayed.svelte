@@ -1,3 +1,9 @@
+<script context="module">
+  // The tiles come in one after another the first time in a session, as the
+  // library's do; coming back to the Library is not made to wait.
+  let shownBefore = false;
+</script>
+
 <script>
   // The games played lately, as wide tiles: the one being played first, then
   // the rest newest first, each saying where and when (lib/libraryhome.js
@@ -11,6 +17,10 @@
   import { playLength } from '../../lib/format.js';
   import { t } from '../../lib/i18n.js';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
+  import { gatedFlip, pop } from '../../lib/motion.js';
+
+  const firstShow = !shownBefore;
+  shownBefore = true;
 
   /** [{game, playing, at, on}] */
   export let items = [];
@@ -48,9 +58,13 @@
 <section class="recent" aria-labelledby="recent-title">
   <h2 id="recent-title" class="section-title">{$t('home.recent.title')}</h2>
   <div class="row">
-    {#each items as item (item.game.id)}
+    {#each items as item, i (item.game.id)}
       <button
         class="tile"
+        class:first={firstShow}
+        style="--i: {i}"
+        animate:gatedFlip
+        in:pop={{ start: 0.96, delay: firstShow ? 0 : 60 }}
         class:playing={item.playing}
         on:click={() => navigate('game', { gameId: item.game.id })}
         on:contextmenu={(e) => openGameMenu(e, item.game)}
@@ -109,8 +123,38 @@
       inset 0 0 0 1px rgba(255, 255, 255, 0.16),
       var(--shadow-lift);
   }
-  .tile.playing {
+  .tile.first {
+    animation: tile-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 60ms);
+  }
+  @keyframes tile-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+  /* The one being played: a green outline that breathes, slowly — it is
+     live, and the only thing on the page that is. */
+  .tile.playing::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
     box-shadow: inset 0 0 0 2px var(--success);
+    pointer-events: none;
+    animation: breathe 2.8s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  .art :global(img) {
+    transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .tile:hover .art :global(img),
+  .tile:focus-visible .art :global(img) {
+    transform: scale(1.05);
   }
   .art {
     position: absolute;

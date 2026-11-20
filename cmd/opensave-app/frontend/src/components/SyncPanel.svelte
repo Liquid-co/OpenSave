@@ -17,7 +17,7 @@
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import Monitor from 'lucide-svelte/icons/monitor';
   import { isHandheld } from '../lib/devices.js';
-  import { unfold } from '../lib/motion.js';
+  import { unfold, pop, rise } from '../lib/motion.js';
   import { peers, syncActivity, syncPause, settings, gameList, navigate, toast } from '../lib/stores.js';
   import { syncState } from '../lib/libraryhome.js';
   import { syncPanelOpen } from '../lib/shell.js';
@@ -120,9 +120,11 @@
     on:click={() => syncPanelOpen.update((o) => !o)}
     title={detail}
   >
-    <span class="icon" class:spin={state.kind === 'syncing'}><svelte:component this={ICONS[state.kind]} size={15} /></span>
-    <span class="label">{label}</span>
-    <ChevronDown size={13} class="chev" />
+    {#key state.kind}
+      <span class="icon" class:spin={state.kind === 'syncing'} in:pop={{ start: 0.6, duration: 220 }}><svelte:component this={ICONS[state.kind]} size={15} /></span>
+    {/key}
+    <span class="label">{#key label}<span class="swap" in:rise={{ y: 4, duration: 180 }}>{label}</span>{/key}</span>
+    <span class="chev"><ChevronDown size={13} /></span>
   </button>
 
   {#if $syncPanelOpen}
@@ -136,17 +138,17 @@
       </div>
 
       <ul class="devices">
-        <li>
+        <li style="--i: 0">
           <span class="dtile here"><svelte:component this={isHandheld($settings?.deviceType) ? Gamepad2 : Monitor} size={17} /></span>
           <span class="dtext"><span class="dname">{$settings?.deviceName ?? '…'}</span><span class="dline">{$t('shell.sync.thisDevice', { n: $gameList.length })}</span></span>
         </li>
-        {#each devices as d (d.id)}
-          <li class:offline={!d.online}>
+        {#each devices as d, i (d.id)}
+          <li class:offline={!d.online} style="--i: {i + 1}">
             <span class="dtile"><svelte:component this={isHandheld(d.type) ? Gamepad2 : Monitor} size={17} /></span>
             <span class="dtext"><span class="dname">{d.name}</span><span class="dline">{d.line}</span></span>
           </li>
         {/each}
-        <li class:offline={!cloudReady}>
+        <li class:offline={!cloudReady} style="--i: {devices.length + 1}">
           <span class="dtile"><Cloud size={17} /></span>
           <span class="dtext"><span class="dname">{$t('shell.sync.cloud')}</span><span class="dline">{cloudLine}</span></span>
           {#if !cloudReady}<button class="btn small ghost" on:click={() => go('cloud')}>{$t('shell.sync.setUp')}</button>{/if}
@@ -195,8 +197,36 @@
     background: var(--bg-hover);
     border-color: var(--border-strong);
   }
-  .sync-btn :global(.chev) {
+  .sync-btn {
+    transition:
+      background 0.12s,
+      border-color 0.12s;
+  }
+  .chev {
+    display: inline-flex;
     color: var(--text-faint);
+    transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .open .chev {
+    transform: rotate(180deg);
+  }
+  .label,
+  .swap {
+    display: inline-block;
+  }
+  .icon {
+    transition: color 0.2s;
+  }
+  /* Opening, the rows come in one after another. */
+  .devices li {
+    animation: row-in 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(40ms + var(--i) * 35ms);
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
   }
   .icon {
     display: inline-flex;

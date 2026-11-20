@@ -21,7 +21,9 @@
   import ArrowUpNarrowWide from 'lucide-svelte/icons/arrow-up-narrow-wide';
   import { libraryView, gridColumns, filterRows, offeredFilters } from '../../lib/libraryview.js';
   import { backdropClose } from '../../lib/backdrop.js';
-  import { openMenu } from '../../lib/contextmenu.js';
+  import Dropdown from '../../components/ui/Dropdown.svelte';
+  import { gatedFlip, pop, slidingIndicator } from '../../lib/motion.js';
+  import { fade } from 'svelte/transition';
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
   import { untrackGames } from '../../lib/gameactions.js';
@@ -30,7 +32,6 @@
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
   import Search from 'lucide-svelte/icons/search';
-  import Check from 'lucide-svelte/icons/check';
   import ChevronDown from 'lucide-svelte/icons/chevron-down';
   import X from 'lucide-svelte/icons/x';
 
@@ -63,23 +64,29 @@
 
   // The order, as a menu rather than a list box: each way to sort, the one in
   // use ticked, and reversing it at the foot.
-  function sortMenu(e) {
-    const r = e.currentTarget.getBoundingClientRect();
-    openMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom + 6, currentTarget: e.currentTarget }, [
-      ...Object.keys(SORTS).map((id) => ({
-        label: $t('game.sort.' + id),
-        icon: $libraryView.sort === id ? Check : null,
-        run: () => libraryView.update((v) => ({ ...v, sort: id }))
-      })),
-      null,
-      {
-        label: $t('home.library.reverseTitle'),
-        icon: $libraryView.reverse ? Check : null,
-        run: () => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))
-      }
-    ]);
-    e.stopPropagation();
-  }
+  let sortOpen = false;
+  let sortAnchor;
+  let sortWidth = 0;
+  $: sortItems = [
+    ...Object.keys(SORTS).map((id) => ({
+      label: $t('game.sort.' + id),
+      checked: $libraryView.sort === id,
+      run: () => libraryView.update((v) => ({ ...v, sort: id }))
+    })),
+    null,
+    {
+      label: $t('home.library.reverseTitle'),
+      checked: $libraryView.reverse,
+      run: () => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))
+    }
+  ];
+  const sortOutside = (e) => {
+    if (sortOpen && !sortAnchor?.contains(e.target)) sortOpen = false;
+  };
+
+  // Moving tiles to their new places is measured per tile; past this many it
+  // is skipped and the grid simply redraws.
+  const FLIP_LIMIT = 150;
 
   let selectMode = false;
   let libSelected = new Set();
@@ -204,6 +211,7 @@
 </script>
 
 <svelte:window
+  on:mousedown={sortOutside}
   on:keydown={(e) => {
     if (e.key !== 'Escape') return;
     if (viewOpen) viewOpen = false;
@@ -217,27 +225,31 @@
   <!-- Which games: by where their save stands, then by collection. One row
        of pills, the collections after a rule. -->
   <div class="tabs" role="group" aria-label={$t('home.library.filterLabel')}>
-    {#each filters as f (f.id)}
-      <button class="tab" class:on={status === f.id} aria-pressed={status === f.id} on:click={() => (status = f.id)}>
-        {$t('game.statusFilter.' + f.id)}<span class="n">{f.count}</span>
-      </button>
-    {/each}
-    {#if chips.length}
-      <span class="rule" aria-hidden="true"></span>
-      {#each chips as c (c.id)}
-        <button class="tab" class:on={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
-          {#if c.builtin}<Star size={12} class="star" />{/if}{c.label}<span class="n">{c.count}</span>
+    <div class="pills" use:slidingIndicator={{ mode: 'fill', className: 'pill-mark' }}>
+      {#each filters as f (f.id)}
+        <button class="tab" class:on={status === f.id} aria-pressed={status === f.id} on:click={() => (status = f.id)}>
+          {$t('game.statusFilter.' + f.id)}<span class="n">{f.count}</span>
         </button>
       {/each}
+    </div>
+    {#if chips.length}
+      <span class="rule" aria-hidden="true"></span>
+      <div class="pills" use:slidingIndicator={{ mode: 'fill', className: 'pill-mark' }}>
+        {#each chips as c (c.id)}
+          <button class="tab" class:on={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
+            {#if c.builtin}<Star size={12} class="star" />{/if}{c.label}<span class="n">{c.count}</span>
+          </button>
+        {/each}
+      </div>
     {/if}
   </div>
 
   <span class="spacer"></span>
 
   {#if selectMode}
-    <div class="selection" role="group" aria-label={$t('home.library.selectedCount', { n: libSelected.size })}>
+    <div class="selection" role="group" aria-label={$t('home.library.selectedCount', { n: libSelected.size })} in:pop={{ start: 0.97 }}>
       <button class="tool" on:click={stopSelecting} title={$t('common.cancel')} aria-label={$t('common.cancel')}><X size={15} /></button>
-      <span class="count-sel">{$t('home.library.selectedCount', { n: libSelected.size })}</span>
+      <span class="count-sel">{#key libSelected.size}<span class="num" in:pop={{ start: 0.8, duration: 160 }}>{$t('home.library.selectedCount', { n: libSelected.size })}</span>{/key}</span>
       <button class="tool" on:click={toggleSelectAll}>
         {allSelected ? $t('home.library.unselectAll') : $t('home.library.selectAll', { count: shown.length })}
       </button>
@@ -256,20 +268,26 @@
       </button>
     </div>
   {:else}
+    <div class="tools" in:fade={{ duration: 140 }}>
     <label class="find">
       <Search size={14} />
       <input type="search" data-find placeholder={$t('home.library.searchPlaceholder')} bind:value={query} aria-label={$t('home.library.searchLabel')} />
     </label>
-    <button
-      class="tool"
-      on:click={sortMenu}
-      title="{$t('home.library.sort')}: {$t('game.sort.' + $libraryView.sort)}"
-      aria-haspopup="menu"
-    >
-      <svelte:component this={$libraryView.reverse ? ArrowUpNarrowWide : ArrowDownWideNarrow} size={15} />
-      {$t('game.sort.' + $libraryView.sort)}
-      <ChevronDown size={13} class="chev" />
-    </button>
+    <div class="anchor" bind:this={sortAnchor} bind:clientWidth={sortWidth}>
+      <button
+        class="tool"
+        class:on={sortOpen}
+        on:click={() => (sortOpen = !sortOpen)}
+        title="{$t('home.library.sort')}: {$t('game.sort.' + $libraryView.sort)}"
+        aria-haspopup="menu"
+        aria-expanded={sortOpen}
+      >
+        <svelte:component this={$libraryView.reverse ? ArrowUpNarrowWide : ArrowDownWideNarrow} size={15} />
+        {$t('game.sort.' + $libraryView.sort)}
+        <span class="chev"><ChevronDown size={13} /></span>
+      </button>
+      <Dropdown items={sortItems} bind:open={sortOpen} minWidth={sortWidth} label={$t('home.library.sort')} />
+    </div>
     <div class="view-anchor">
       <button class="tool" class:on={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
         <LayoutGrid size={15} />{$t('home.library.view')}
@@ -283,6 +301,7 @@
       {/if}
     </div>
     <button class="tool" on:click={toggleSelectMode}><SquareCheckBig size={15} />{$t('home.library.select')}</button>
+    </div>
   {/if}
 </div>
 
@@ -298,16 +317,18 @@
 {:else}
   <div class="grid" style="grid-template-columns: {gridColumns($libraryView)}" on:keydown={gridKeys} role="presentation">
     {#each shown as { game, status: s }, i (game.id)}
-      <LibraryTile
-        {game}
-        status={s}
-        enter={firstShow ? i : -1}
-        cover={$libraryView.cover}
-        selecting={selectMode}
-        selected={libSelected.has(game.id)}
-        on:open={(e) => tileOpen(game.id, e.detail)}
-        on:longpress={() => tileLongPress(game.id)}
-      />
+      <div class="cell" animate:gatedFlip={{ count: shown.length, limit: FLIP_LIMIT }} in:pop={{ delay: 40 }} out:pop={{ duration: 120 }}>
+        <LibraryTile
+          {game}
+          status={s}
+          enter={firstShow ? i : -1}
+          cover={$libraryView.cover}
+          selecting={selectMode}
+          selected={libSelected.has(game.id)}
+          on:open={(e) => tileOpen(game.id, e.detail)}
+          on:longpress={() => tileLongPress(game.id)}
+        />
+      </div>
     {/each}
   </div>
   {#if filtering}
@@ -367,6 +388,31 @@
     border-color: var(--border-strong);
     color: var(--text);
     font-weight: 600;
+  }
+  /* With the marker sliding (slidingIndicator), it draws the chosen pill
+     and moves between them; the pills put their own fill away. */
+  .pills {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .pills:global(.slides) .tab {
+    position: relative;
+    z-index: 1;
+  }
+  .pills:global(.slides) .tab.on {
+    background: transparent;
+    border-color: transparent;
+  }
+  .pills :global(.pill-mark) {
+    background: var(--bg-active);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+  }
+  .tab {
+    transition:
+      background 0.12s,
+      color 0.12s;
   }
   .n {
     font-size: var(--text-sm);
@@ -439,9 +485,31 @@
     opacity: 0.45;
     cursor: default;
   }
-  .tool :global(.chev) {
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 8px 10px;
+    flex-wrap: wrap;
+  }
+  .anchor {
+    position: relative;
+  }
+  .chev {
+    display: inline-flex;
     color: var(--text-faint);
     margin-left: -2px;
+    transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .tool.on .chev {
+    transform: rotate(180deg);
+  }
+  .tool {
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  .count-sel .num {
+    display: inline-block;
   }
   .tool.danger {
     color: var(--danger-text);
@@ -504,6 +572,11 @@
   .grid {
     display: grid;
     gap: 12px;
+  }
+  /* Each tile's own cell, so it can be moved and faded as one. */
+  .cell {
+    display: grid;
+    min-width: 0;
   }
   .none {
     text-align: center;

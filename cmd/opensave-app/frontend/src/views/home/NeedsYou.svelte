@@ -15,6 +15,7 @@
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { t } from '../../lib/i18n.js';
+  import { collapse } from '../../lib/motion.js';
 
   const ELSEWHERE = new Set(['new', 'offer', 'pair']);
 
@@ -42,12 +43,12 @@
 </script>
 
 {#if total > 0}
-  <section class="strip" aria-label={$t('home.needs.label')}>
+  <section class="strip" aria-label={$t('home.needs.label')} transition:collapse>
     <TriangleAlert size={16} class="mark" />
     <span class="head">{$t('home.needs.title', { n: total })}</span>
     <span class="kinds">
       {#each kinds as k (k.kind)}
-        <span class="kind"><b>{k.n}</b>{$t('home.needs.kind.' + k.kind, { n: k.n })}</span>
+        <span class="kind"><b>{#key k.n}<span class="num">{k.n}</span>{/key}</b>{$t('home.needs.kind.' + k.kind, { n: k.n })}</span>
       {/each}
     </span>
     <span class="grow"></span>
@@ -55,7 +56,7 @@
   </section>
 {/if}
 {#if lowSpace !== null}
-  <section class="strip" aria-label={$t('home.needs.spaceLabel')}>
+  <section class="strip" aria-label={$t('home.needs.spaceLabel')} transition:collapse>
     <HardDrive size={16} class="mark" />
     <span class="head">{$t('home.summary.lowSpace', { size: fmtSize(lowSpace) })}</span>
     <span class="grow"></span>
@@ -100,6 +101,17 @@
   }
   .kind b {
     font-weight: 700;
+  }
+  /* A count that changes ticks over rather than just being different. */
+  .num {
+    display: inline-block;
+    animation: num-in 0.24s cubic-bezier(0.2, 0.7, 0.2, 1.4) backwards;
+  }
+  @keyframes num-in {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
   }
   .grow {
     flex: 1;

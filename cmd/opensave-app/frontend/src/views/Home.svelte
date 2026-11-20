@@ -17,6 +17,7 @@
   import { recentlyPlayed, backdropGame, playedFromReport } from '../lib/libraryhome.js';
   import { libraryHeadline } from '../lib/headline.js';
   import { libraryView } from '../lib/libraryview.js';
+  import { rise, collapse } from '../lib/motion.js';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import { visibleGames, syncAllGames } from '../lib/gameactions.js';
   import SetupGuide from './home/SetupGuide.svelte';
@@ -179,7 +180,9 @@
 <div class="head">
   <div class="title-block">
     <h1 class="page-title">{$t('home.title')}</h1>
-    {#if $stateLoaded && $visibleGames.length > 0}<p class="sub" role="status">{$t(headline.key, headline.params)}</p>{/if}
+    {#if $stateLoaded && $visibleGames.length > 0}
+      <p class="sub" role="status">{#key headline.key + JSON.stringify(headline.params)}<span class="swap" in:rise={{ y: 4, duration: 200 }}>{$t(headline.key, headline.params)}</span>{/key}</p>
+    {/if}
   </div>
   <div class="head-actions">
     <SplitButton
@@ -242,7 +245,7 @@
   <div class="top">
     <NeedsYou />
     {#if $libraryView.overview && recent.length}
-      <RecentlyPlayed items={recent} />
+      <div transition:collapse><RecentlyPlayed items={recent} /></div>
     {/if}
   </div>
   <LibraryGrid {rows} bind:this={grid} />
@@ -274,6 +277,9 @@
     font-size: var(--text-2xl);
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+  .swap {
+    display: inline-block;
   }
   .sub {
     margin-top: 2px;

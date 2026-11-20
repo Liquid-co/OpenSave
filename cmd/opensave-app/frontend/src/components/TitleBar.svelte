@@ -9,6 +9,7 @@
   import { paletteOpen } from '../lib/shortcuts.js';
   import { sidebar, pressSidebarButton, chooseSidebar } from '../lib/shell.js';
   import { openMenu } from '../lib/contextmenu.js';
+  import { pop } from '../lib/motion.js';
   import NotificationHub from './NotificationHub.svelte';
   import SyncPanel from './SyncPanel.svelte';
   import PanelLeft from 'lucide-svelte/icons/panel-left';
@@ -47,7 +48,9 @@
       aria-label={$t('shell.sidebar.button', { key: modKey })}
       aria-pressed={$sidebar.mode !== 'hidden'}
     >
-      <svelte:component this={$sidebar.mode === 'full' ? PanelLeftClose : PanelLeft} size={16} />
+      {#key $sidebar.mode}
+        <span class="tog-icon" in:pop={{ start: 0.7, duration: 180 }}><svelte:component this={$sidebar.mode === 'full' ? PanelLeftClose : PanelLeft} size={16} /></span>
+      {/key}
     </button>
     <div class="brand">
       <img class="logo" src={logoUrl} alt="" draggable="false" />
@@ -115,6 +118,16 @@
   .tog:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  .tog,
+  .search {
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+  }
+  .tog-icon {
+    display: inline-flex;
   }
   .brand {
     display: flex;

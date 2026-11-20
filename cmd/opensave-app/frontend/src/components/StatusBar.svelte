@@ -22,6 +22,7 @@
   import { native } from '../lib/api.js';
   import AboutModal from './AboutModal.svelte';
   import { t } from '../lib/i18n.js';
+  import { rise, pop } from '../lib/motion.js';
 
   let transfersOpen = false;
 
@@ -82,7 +83,7 @@
       <button class="bar-btn" on:click={resumeSync} title={$t('statusBar.resumeTitle')}><Play size={11} />{$t('statusBar.resume')}</button>
     {:else}
       {#if lead}
-        <button class="item link" on:click={() => navigate('game', { gameId: lead.id })} title={$t('shell.status.playingTitle')}>
+        <button class="item link" on:click={() => navigate('game', { gameId: lead.id })} title={$t('shell.status.playingTitle')} in:rise={{ y: 10 }}>
           <span class="thumb"><CoverImage src={gameCover(lead, true)} alt="" revealed={false} /></span>
           <Gamepad2 size={14} class="pad" />
           <b>{$t('shell.status.playing', { name: lead.name })}</b>
@@ -92,7 +93,7 @@
         </button>
       {/if}
       {#if running.length}
-        <span class="item">
+        <span class="item" in:rise={{ y: 10 }}>
           <RefreshCw size={12} class="turning" />
           {$t('statusBar.syncing', { n: running.length })}
           {#if running[0][1].percentage != null}<span class="pct">{running[0][1].percentage}%</span>{/if}
@@ -107,6 +108,7 @@
         {#each chips as p (p.id)}
           <button
             class="chip"
+            in:pop={{ start: 0.85 }}
             class:offline={p.status !== 'online'}
             role="listitem"
             on:click={() => navigate('devices')}
@@ -272,6 +274,19 @@
   }
   .chip:hover {
     border-color: var(--border-strong);
+  }
+  .chip,
+  .chip :global(svg) {
+    transition:
+      background 0.3s,
+      border-color 0.3s,
+      color 0.3s;
+  }
+  .bar-item,
+  .item.link {
+    transition:
+      background 0.12s,
+      color 0.12s;
   }
   .sep {
     width: 1px;

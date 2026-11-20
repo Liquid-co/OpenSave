@@ -22,7 +22,7 @@
       revealed = next;
     }
   };
-  import { slidingIndicator } from '../lib/motion.js';
+  import { slidingIndicator, sidebarSlide, gatedFlip, pop } from '../lib/motion.js';
   import { view, navigate, settings, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
   import CoverImage from './CoverImage.svelte';
@@ -72,11 +72,11 @@
 <svelte:window bind:innerWidth={width} />
 
 {#if shown !== 'hidden'}
-  <aside class:icons={!full} aria-label={$t('shell.sidebar.label')}>
+  <aside class:icons={!full} aria-label={$t('shell.sidebar.label')} transition:sidebarSlide>
     <div class="profile" title={full ? '' : `${deviceName}, ${$t('sidebar.thisDevice')}`}>
       <div class="avatar">{initials(deviceName)}</div>
       {#if full}
-        <div class="who">
+        <div class="who lbl">
           <div class="name">{deviceName}</div>
           <div class="sub">{$t('sidebar.thisDevice')}</div>
         </div>
@@ -93,7 +93,7 @@
           aria-current={$view.name === item.id ? 'page' : null}
         >
           <svelte:component this={item.icon} size={17} strokeWidth={1.8} />
-          {#if full}<span>{$t(PAGE_LABEL_KEYS[item.id])}</span>{/if}
+          {#if full}<span class="lbl">{$t(PAGE_LABEL_KEYS[item.id])}</span>{/if}
           {#if badgeFor(item.id)}
             <span class="nav-badge">{badgeFor(item.id)}</span>
           {/if}
@@ -103,12 +103,15 @@
 
     <section class="favourites" aria-label={$t('shell.sidebar.favourites')}>
       {#if full}
-        <div class="section-head"><Star size={12} />{$t('shell.sidebar.favourites')}</div>
+        <div class="section-head lbl"><Star size={12} />{$t('shell.sidebar.favourites')}</div>
       {/if}
       <div class="list">
         {#each favourites as game (game.id)}
           <button
             class="game"
+            animate:gatedFlip
+            in:pop={{ start: 0.9 }}
+            out:pop={{ duration: 120, start: 0.9 }}
             class:active={$view.name === 'game' && $view.params.gameId === game.id}
             class:insession={!!game.playingSince}
             on:click={() => navigate('game', { gameId: game.id })}
@@ -127,7 +130,7 @@
               <CoverImage src={gameCover(game, true)} alt="" revealed={revealed.has(game.id)} />
             </span>
             {#if full}
-              <span class="game-name">{game.name}</span>
+              <span class="game-name lbl">{game.name}</span>
               {#if game.playingSince}
                 <span class="session" title={$t('sidebar.inSession')}><Gamepad2 size={13} /></span>
               {:else if $syncActivity[game.id]?.state === 'running'}
@@ -146,7 +149,7 @@
     <div class="foot">
       <button class="whatsnew" class:active={$view.name === 'changelog'} on:click={() => navigate('changelog')} title={full ? '' : $t(PAGE_LABEL_KEYS.changelog)} aria-label={full ? null : $t(PAGE_LABEL_KEYS.changelog)}>
         <Sparkles size={15} strokeWidth={1.8} />
-        {#if full}<span>{$t(PAGE_LABEL_KEYS.changelog)}</span>{/if}
+        {#if full}<span class="lbl">{$t(PAGE_LABEL_KEYS.changelog)}</span>{/if}
       </button>
     </div>
   </aside>
@@ -163,9 +166,43 @@
     flex-shrink: 0;
     min-height: 0;
     padding: 16px 0 10px;
+    overflow: hidden;
+    /* Folding to icons and back eases the width; the words fade in once
+       there is room for them (.lbl). */
+    transition: width 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   aside.icons {
     width: var(--sidebar-w-icons);
+  }
+  .lbl {
+    animation: lbl-in 0.2s 0.08s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  @keyframes lbl-in {
+    from {
+      opacity: 0;
+      transform: translateX(-4px);
+    }
+  }
+  nav button,
+  .game,
+  .whatsnew {
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  nav button :global(svg),
+  .whatsnew :global(svg) {
+    transition: transform 0.16s cubic-bezier(0.2, 0.7, 0.2, 1.4);
+  }
+  nav button:hover :global(svg),
+  .whatsnew:hover :global(svg) {
+    transform: scale(1.1);
+  }
+  .thumb {
+    transition: transform 0.16s cubic-bezier(0.2, 0.7, 0.2, 1.4);
+  }
+  .game:hover .thumb {
+    transform: scale(1.08);
   }
   .profile {
     display: flex;
