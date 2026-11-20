@@ -77,6 +77,9 @@
   --device-3: #c98500;
   --device-4: #d55181;
   --device-other: #6b6b75;
+  /* Something on its way that needs nothing from you: an upload waiting. */
+  --info: #7cc4ff;
+  --info-rgb: 124, 196, 255;
 }
 
 :root[data-theme='light'] {
@@ -110,6 +113,8 @@
   --device-3: #eda100;
   --device-4: #e87ba4;
   --device-other: #a1a1aa;
+  --info: #1d6fb8;
+  --info-rgb: 29, 111, 184;
 }
 
 * {

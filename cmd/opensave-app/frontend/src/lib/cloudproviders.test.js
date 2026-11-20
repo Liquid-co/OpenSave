@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudTiles, connectedProviderOf, isEmail, providerStatus } from './cloudproviders.js';
+import { cloudTiles, connectedProviderOf, isEmail, providerStatus, providerConfigured } from './cloudproviders.js';
 
 describe('connectedProviderOf', () => {
   it('is the OAuth provider the tokens were issued for', () => {
@@ -65,5 +65,19 @@ describe('cloudTiles', () => {
     const cover = (g) => `art:${g.id ?? '-'}:${g.name}`;
     const tiles = cloudTiles([{ gameId: 'b', gameName: 'Beta' }, { gameId: 'z', gameName: 'Zed' }], local, cover);
     expect(tiles.map((t) => t.coverUrl)).toEqual(['art:b:Beta', 'art:-:Zed', 'art:a:Alpha']);
+  });
+});
+
+describe('providerConfigured', () => {
+  it('needs the sign-in for the provider chosen', () => {
+    expect(providerConfigured({ provider: 'dropbox', tokens: { userEmail: 'a@b.co' } })).toBe(true);
+    // Tokens kept from Drive do not make Dropbox ready.
+    expect(providerConfigured({ provider: 'onedrive', tokens: {} })).toBe(false);
+  });
+  it('needs a folder or address for the others', () => {
+    expect(providerConfigured({ provider: 'local', url: 'D:/Backups' })).toBe(true);
+    expect(providerConfigured({ provider: 'local', url: '  ' })).toBe(false);
+    expect(providerConfigured({ provider: 'webdav', url: '' })).toBe(false);
+    expect(providerConfigured(null)).toBe(false);
   });
 });

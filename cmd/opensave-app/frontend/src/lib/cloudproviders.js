@@ -31,6 +31,14 @@ export function connectedProviderOf(cfg) {
   return cfg?.tokens?.userEmail && isOAuth(cfg.provider) ? cfg.provider : null;
 }
 
+/** Whether the provider chosen has somewhere to send backups: its sign-in,
+ *  or a folder or address. On or off is a separate matter (`enabled`). */
+export function providerConfigured(cfg) {
+  if (!cfg?.provider) return false;
+  if (isOAuth(cfg.provider)) return connectedProviderOf(cfg) === cfg.provider;
+  return !!String(cfg.url ?? '').trim();
+}
+
 /** The line under a provider's card. */
 export function providerStatus(id, connected, cfg) {
   if (!cfg) return '';
@@ -46,7 +54,7 @@ export function providerStatus(id, connected, cfg) {
 // A provider card's status line, structured: providerStatus()'s cases above,
 // as {key, params} for the catalog (see locales/en.json, "cloud.picker.") or
 // {text} for the email, shown as it is — for the call site
-// (views/cloud/ProviderPicker.svelte) to say.
+// to say.
 export function providerStatusText(id, connected, cfg) {
   if (!cfg) return null;
   if (id === connected) {

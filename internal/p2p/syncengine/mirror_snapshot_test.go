@@ -28,3 +28,25 @@ func TestSync_TheSnapshotAfterAPullRecordsItsFiles(t *testing.T) {
 		t.Errorf("the snapshot after the pull records %d file(s), want 2: %+v", len(files), files)
 	}
 }
+
+// The snapshot recorded after a pull is the save as it now stands here, and
+// goes to the cloud like any new snapshot. It used not to, so a device that
+// took its save from another by syncing never had it backed up.
+func TestSync_TheSnapshotAfterAPullIsUploaded(t *testing.T) {
+	env := setupEngine(t)
+	var sent []string
+	env.engine.Snapshots.OnUpload = func(zipPath, remoteName string) { sent = append(sent, remoteName) }
+	write(t, env.remoteDir, "save.dat", "remote progress")
+	env.transport.latestSnap = &SnapshotInfo{ID: "snap_778", Timestamp: "2026-06-01T00:00:00.000Z", Comment: "peer snap"}
+
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	want := "game1__main__snap_778.zip"
+	for _, n := range sent {
+		if n == want {
+			return
+		}
+	}
+	t.Fatalf("uploads %v, want %s among them", sent, want)
+}

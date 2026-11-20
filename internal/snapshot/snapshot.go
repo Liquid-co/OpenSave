@@ -380,6 +380,25 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 	return snap, nil
 }
 
+// Mirrored sends a snapshot this manager did not write to the cloud, as it
+// sends every snapshot it writes: the copy a sync records of the paired
+// device's snapshot, which is the save as it stands after the sync. Without
+// it "Back up each new snapshot" skipped exactly that one, and a device that
+// takes its saves from another by syncing never backed them up.
+//
+// Only the upload. OnCreated is not called: what moving the cloud record to
+// another device's snapshot would mean for the cloud's own offers is not
+// settled here. An empty archive is not sent, as in create.
+func (m *Manager) Mirrored(gameID, branch, snapshotID, zipPath string) {
+	if m.OnUpload == nil {
+		return
+	}
+	if n, err := zipFileCount(zipPath); err != nil || n == 0 {
+		return
+	}
+	m.OnUpload(zipPath, fmt.Sprintf("%s__%s__%s.zip", gameID, branch, snapshotID))
+}
+
 // zipFileCount returns the number of regular-file entries in a zip.
 func zipFileCount(zipPath string) (int, error) {
 	r, err := zip.OpenReader(zipPath)

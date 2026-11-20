@@ -75,6 +75,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/games/{gameId}/relocate/dismiss", s.handleDismissRelocation)
 
 	r.Post("/api/backup/export", s.handleBackupExport)
+	r.Get("/api/backup/last-file", s.handleLastBackupFile)
 	r.Post("/api/backup/restore", s.handleBackupRestore)
 
 	r.Post("/api/snapshots/prune", s.handlePruneSnapshots)

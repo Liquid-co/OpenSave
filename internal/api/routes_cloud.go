@@ -31,6 +31,7 @@ func (s *Server) cloudRoutes(r chi.Router) {
 	r.Post("/api/auth/disconnect", s.handleAuthDisconnect)
 
 	r.Get("/api/cloud/browse", s.handleCloudBrowse)
+	r.Get("/api/cloud/overview", s.handleCloudOverview)
 	r.Get("/api/cloud/snapshots/{gameId}", s.handleCloudSnapshots)
 	r.Post("/api/cloud/restore/{gameId}", s.handleCloudRestore)
 	r.Post("/api/cloud/delete/{gameId}", s.handleCloudDelete)

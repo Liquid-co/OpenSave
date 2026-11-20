@@ -2133,6 +2133,10 @@ func (e *Engine) recordMirrorSnapshot(gameID string, game store.Game, peer Peer,
 		// What it holds, as for any snapshot: without it the next snapshot
 		// here could not reuse this one either.
 		_ = e.Store.RecordSnapshotFiles(remoteSnap.ID, captured)
+		// And up to the cloud, as any new snapshot here goes.
+		if e.Snapshots != nil {
+			e.Snapshots.Mirrored(gameID, game.ActiveBranch, remoteSnap.ID, zipPath)
+		}
 	}
 }
 

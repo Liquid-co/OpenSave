@@ -104,13 +104,12 @@
 
   <div class="right">
     {#if chips.length}
-      <div class="chips" role="list" aria-label={$t('home.devices')}>
+      <div class="chips" role="group" aria-label={$t('home.devices')}>
         {#each chips as p (p.id)}
           <button
             class="chip"
             in:pop={{ start: 0.85 }}
             class:offline={p.status !== 'online'}
-            role="listitem"
             on:click={() => navigate('devices')}
             title={p.status === 'online' ? $t('shell.status.deviceOnline', { name: p.name }) : $t('shell.status.deviceOffline', { name: p.name })}
           >

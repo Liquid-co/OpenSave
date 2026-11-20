@@ -325,9 +325,25 @@ func (s *Server) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Daemon.Log.Log("success", fmt.Sprintf("exported the saves of %d game(s) to %s (%d skipped)", len(exported), outPath, len(skipped)))
+	if len(exported) > 0 {
+		if err := s.Daemon.Store.NoteBackupFileMade(time.Now().UnixMilli(), len(exported)); err != nil {
+			s.Daemon.Log.Log("warn", err.Error())
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path": outPath, "exported": len(exported), "skipped": skipped, "fromSnapshot": fromSnapshot,
 	})
+}
+
+// handleLastBackupFile says when this device last made a backup file:
+// {"madeMs": 0} when it never has.
+func (s *Server) handleLastBackupFile(w http.ResponseWriter, r *http.Request) {
+	b, _, err := s.Daemon.Store.LastBackupFile()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
 }
 
 // exportSelectedSaves zips each game's live save and writes the v2
