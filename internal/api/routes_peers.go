@@ -103,6 +103,10 @@ func (s *Server) handleRelayIPs(w http.ResponseWriter, r *http.Request) {
 		"publicIp":  publicIP,
 		"relayPort": settings.RelayPort,
 		"syncCode":  settings.SyncCode,
+		// Whether a relay is being hosted here now, and on which port: the
+		// Devices page says so instead of trusting the setting alone, which
+		// stays ticked when the port could not be opened.
+		"hosting": s.Daemon.P2P.RelayHost.Status(),
 	})
 }
 

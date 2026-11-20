@@ -177,10 +177,10 @@
   .lbl {
     animation: lbl-in 0.2s 0.08s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   }
+  /* Movement only: a word is never invisible waiting on a frame. */
   @keyframes lbl-in {
     from {
-      opacity: 0;
-      transform: translateX(-4px);
+      transform: translateX(-6px);
     }
   }
   nav button,

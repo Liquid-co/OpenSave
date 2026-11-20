@@ -153,6 +153,26 @@ func (h *RelayHost) Running() (bool, int) {
 	return h.server != nil, h.port
 }
 
+// HostStatus is what the app shows of a relay hosted here: whether it is
+// running and on which port, and whether the router was asked to open that
+// port and agreed.
+type HostStatus struct {
+	Running      bool   `json:"running"`
+	Port         int    `json:"port,omitempty"`
+	RouterOpened bool   `json:"routerOpened"`
+	ExternalIP   string `json:"externalIp,omitempty"`
+}
+
+// Status reports the hosted relay as it stands now.
+func (h *RelayHost) Status() HostStatus {
+	if h == nil {
+		return HostStatus{}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return HostStatus{Running: h.server != nil, Port: h.port, RouterOpened: h.mapped != 0, ExternalIP: h.ExternalIP}
+}
+
 // startRenewLocked keeps the router mapping alive while hosting continues.
 //
 // The mapping is leased rather than permanent, so it now has to be renewed or
