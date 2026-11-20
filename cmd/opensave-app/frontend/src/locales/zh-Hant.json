@@ -1469,5 +1469,6 @@
   "settings.appearance.sidebar": "側邊欄",
   "appearance.backdrop.cover": "封面圖",
   "appearance.backdrop.accent": "強調色光暈",
-  "appearance.backdrop.off": "關閉"
+  "appearance.backdrop.off": "關閉",
+  "home.library.filterLabel": "顯示"
 }

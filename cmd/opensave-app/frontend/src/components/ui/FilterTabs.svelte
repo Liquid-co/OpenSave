@@ -17,30 +17,40 @@
 </div>
 
 <style>
+  /* Pills, as on the Library: quiet until chosen. */
   .tabs {
     display: flex;
-    gap: 6px;
+    gap: 4px;
+    flex-wrap: wrap;
   }
   .tabs button {
-    padding: 7px 13px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     background: transparent;
     color: var(--text-dim);
-    font-size: 0.85rem;
+    font: inherit;
+    font-size: var(--text-md);
+    white-space: nowrap;
     cursor: pointer;
   }
   .tabs button:hover {
     background: var(--bg-hover);
+    color: var(--text);
   }
   .tabs button.active {
     background: var(--bg-active);
     color: var(--text);
     border-color: var(--border-strong);
+    font-weight: 600;
   }
   .count {
     color: var(--text-faint);
-    font-size: 0.75rem;
-    margin-left: 2px;
+    font-size: var(--text-sm);
+    font-weight: 400;
   }
 </style>

@@ -1469,5 +1469,6 @@
   "settings.appearance.sidebar": "侧边栏",
   "appearance.backdrop.cover": "封面图",
   "appearance.backdrop.accent": "强调色光晕",
-  "appearance.backdrop.off": "关闭"
+  "appearance.backdrop.off": "关闭",
+  "home.library.filterLabel": "显示"
 }

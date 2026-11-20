@@ -21,7 +21,7 @@
   import ArrowUpNarrowWide from 'lucide-svelte/icons/arrow-up-narrow-wide';
   import { libraryView, gridColumns, filterRows, offeredFilters } from '../../lib/libraryview.js';
   import { backdropClose } from '../../lib/backdrop.js';
-  import FilterTabs from '../../components/ui/FilterTabs.svelte';
+  import { openMenu } from '../../lib/contextmenu.js';
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
   import { untrackGames } from '../../lib/gameactions.js';
@@ -29,6 +29,10 @@
   import Star from 'lucide-svelte/icons/star';
   import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
+  import Search from 'lucide-svelte/icons/search';
+  import Check from 'lucide-svelte/icons/check';
+  import ChevronDown from 'lucide-svelte/icons/chevron-down';
+  import X from 'lucide-svelte/icons/x';
 
   /** [{game, status}] for every tracked game. */
   export let rows = [];
@@ -56,6 +60,26 @@
   const toggleCollection = (id) => collectionFilter.set($collectionFilter === id ? '' : id);
 
   let viewOpen = false;
+
+  // The order, as a menu rather than a list box: each way to sort, the one in
+  // use ticked, and reversing it at the foot.
+  function sortMenu(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    openMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom + 6, currentTarget: e.currentTarget }, [
+      ...Object.keys(SORTS).map((id) => ({
+        label: $t('game.sort.' + id),
+        icon: $libraryView.sort === id ? Check : null,
+        run: () => libraryView.update((v) => ({ ...v, sort: id }))
+      })),
+      null,
+      {
+        label: $t('home.library.reverseTitle'),
+        icon: $libraryView.reverse ? Check : null,
+        run: () => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))
+      }
+    ]);
+    e.stopPropagation();
+  }
 
   let selectMode = false;
   let libSelected = new Set();
@@ -189,69 +213,66 @@
 
 <div class="toolbar" bind:this={toolbar}>
   <h2 class="section-title">{$t('home.library.allGames')}</h2>
-  <input
-    class="search"
-    type="search"
-    data-find
-    placeholder={$t('home.library.searchPlaceholder')}
-    bind:value={query}
-    aria-label={$t('home.library.searchLabel')}
-  />
-  <div class="spacer"></div>
+
+  <!-- Which games: by where their save stands, then by collection. One row
+       of pills, the collections after a rule. -->
+  <div class="tabs" role="group" aria-label={$t('home.library.filterLabel')}>
+    {#each filters as f (f.id)}
+      <button class="tab" class:on={status === f.id} aria-pressed={status === f.id} on:click={() => (status = f.id)}>
+        {$t('game.statusFilter.' + f.id)}<span class="n">{f.count}</span>
+      </button>
+    {/each}
+    {#if chips.length}
+      <span class="rule" aria-hidden="true"></span>
+      {#each chips as c (c.id)}
+        <button class="tab" class:on={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
+          {#if c.builtin}<Star size={12} class="star" />{/if}{c.label}<span class="n">{c.count}</span>
+        </button>
+      {/each}
+    {/if}
+  </div>
+
+  <span class="spacer"></span>
+
   {#if selectMode}
-    <span class="select-count">{$t('home.library.selectedCount', { n: libSelected.size })}</span>
-    <button class="btn small" on:click={toggleSelectAll}>
-      {allSelected ? $t('home.library.unselectAll') : $t('home.library.selectAll', { count: shown.length })}
-    </button>
-    <button
-      class="btn small"
-      disabled={libSelected.size === 0 || bulkBusy}
-      on:click={snapshotPicked}
-      title={$t('home.library.snapshotTitle')}
-    >
-      <Camera size={14} />{$t('home.library.snapshot')}
-    </button>
-    <button
-      class="btn small"
-      disabled={libSelected.size === 0 || bulkBusy}
-      on:click={syncPicked}
-      title={$t('home.library.syncTitle')}
-    >
-      <RefreshCw size={14} />{$t('home.library.sync')}
-    </button>
-    <button
-      class="btn small"
-      disabled={libSelected.size === 0 || bulkBusy}
-      on:click={favouritePicked}
-      title={$t('home.library.favouriteTitle')}
-    >
-      <Star size={14} />{$t('home.library.favourite')}
-    </button>
-    <button class="btn small danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
-      {$t('home.library.untrackSelected')}
-    </button>
-    <button class="btn small" on:click={stopSelecting}>{$t('common.cancel')}</button>
+    <div class="selection" role="group" aria-label={$t('home.library.selectedCount', { n: libSelected.size })}>
+      <button class="tool" on:click={stopSelecting} title={$t('common.cancel')} aria-label={$t('common.cancel')}><X size={15} /></button>
+      <span class="count-sel">{$t('home.library.selectedCount', { n: libSelected.size })}</span>
+      <button class="tool" on:click={toggleSelectAll}>
+        {allSelected ? $t('home.library.unselectAll') : $t('home.library.selectAll', { count: shown.length })}
+      </button>
+      <span class="rule" aria-hidden="true"></span>
+      <button class="tool" disabled={libSelected.size === 0 || bulkBusy} on:click={syncPicked} title={$t('home.library.syncTitle')}>
+        <RefreshCw size={15} />{$t('home.library.sync')}
+      </button>
+      <button class="tool" disabled={libSelected.size === 0 || bulkBusy} on:click={snapshotPicked} title={$t('home.library.snapshotTitle')}>
+        <Camera size={15} />{$t('home.library.snapshot')}
+      </button>
+      <button class="tool" disabled={libSelected.size === 0 || bulkBusy} on:click={favouritePicked} title={$t('home.library.favouriteTitle')}>
+        <Star size={15} />{$t('home.library.favourite')}
+      </button>
+      <button class="tool danger" disabled={libSelected.size === 0} on:click={untrackSelected}>
+        {$t('home.library.untrackSelected')}
+      </button>
+    </div>
   {:else}
-    <label class="sort">
-      <span>{$t('home.library.sort')}</span>
-      <select bind:value={$libraryView.sort}>
-        {#each Object.entries(SORTS) as [id]}
-          <option value={id}>{$t('game.sort.' + id)}</option>
-        {/each}
-      </select>
+    <label class="find">
+      <Search size={14} />
+      <input type="search" data-find placeholder={$t('home.library.searchPlaceholder')} bind:value={query} aria-label={$t('home.library.searchLabel')} />
     </label>
     <button
-      class="btn small icon order"
-      on:click={() => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))}
-      title={$libraryView.reverse ? $t('home.library.reversedTitle') : $t('home.library.reverseTitle')}
-      aria-label={$t('home.library.reverseTitle')}
-      aria-pressed={$libraryView.reverse}
+      class="tool"
+      on:click={sortMenu}
+      title="{$t('home.library.sort')}: {$t('game.sort.' + $libraryView.sort)}"
+      aria-haspopup="menu"
     >
       <svelte:component this={$libraryView.reverse ? ArrowUpNarrowWide : ArrowDownWideNarrow} size={15} />
+      {$t('game.sort.' + $libraryView.sort)}
+      <ChevronDown size={13} class="chev" />
     </button>
     <div class="view-anchor">
-      <button class="btn small" class:active={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
-        <LayoutGrid size={14} />{$t('home.library.view')}
+      <button class="tool" class:on={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
+        <LayoutGrid size={15} />{$t('home.library.view')}
       </button>
       {#if viewOpen}
         <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
@@ -261,27 +282,9 @@
         </div>
       {/if}
     </div>
-    <button class="btn small" on:click={toggleSelectMode}><SquareCheckBig size={14} />{$t('home.library.select')}</button>
+    <button class="tool" on:click={toggleSelectMode}><SquareCheckBig size={15} />{$t('home.library.select')}</button>
   {/if}
 </div>
-
-{#if filters.length > 1 || chips.length}
-  <div class="chips">
-    {#if filters.length > 1}
-      <FilterTabs options={filters.map((f) => [f.id, $t('game.statusFilter.' + f.id)])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
-    {/if}
-    {#if chips.length}
-      {#if filters.length > 1}<span class="chip-sep" aria-hidden="true"></span>{/if}
-      <div class="collection-chips" role="group" aria-label={$t('home.library.collectionsLabel')}>
-        {#each chips as c}
-          <button class="collection-chip" class:active={$collectionFilter === c.id} aria-pressed={$collectionFilter === c.id} on:click={() => toggleCollection(c.id)}>
-            {#if c.builtin}<Star size={12} />{/if}{c.label}<span class="count">{c.count}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-{/if}
 
 {#if shown.length === 0}
   <div class="none">
@@ -319,60 +322,164 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
+    gap: 8px 10px;
+    margin-bottom: 16px;
     flex-wrap: wrap;
-  }
-  .toolbar {
     scroll-margin-top: 12px;
   }
   .section-title {
     font-size: var(--text-lg);
     font-weight: 600;
-    margin-right: 6px;
-  }
-  .search {
-    width: 220px;
-    padding: 6px 11px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.86rem;
-    outline: none;
-  }
-  .search:focus {
-    border-color: var(--accent);
+    margin-right: 4px;
   }
   .spacer {
     flex: 1;
   }
-  .select-count {
-    color: var(--text-dim);
-    font-size: 0.85rem;
-  }
-  .sort {
+
+  /* The filter pills, the same look as FilterTabs. */
+  .tabs {
     display: flex;
     align-items: center;
-    gap: 7px;
-    font-size: 0.82rem;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--text-md);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tab:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .tab.on {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .n {
+    font-size: var(--text-sm);
+    font-weight: 400;
     color: var(--text-faint);
   }
-  .sort select {
-    height: 28px;
-    padding: 0 8px 0 10px;
-    background-color: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.85rem;
+  .tab :global(.star) {
+    color: var(--warn);
   }
+  .rule {
+    width: 1px;
+    height: 18px;
+    margin: 0 6px;
+    background: var(--border-strong);
+  }
+
+  /* The tools on the right: quiet until used. */
+  .find {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 190px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    color: var(--text-faint);
+    cursor: text;
+    transition: width 0.15s ease;
+  }
+  .find:focus-within {
+    width: 240px;
+    border-color: var(--border-strong);
+    color: var(--text-dim);
+  }
+  .find input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--text-md);
+  }
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--text-md);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tool:hover:not(:disabled),
+  .tool.on,
+  .tool:global([data-menu-open]) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .tool:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .tool :global(.chev) {
+    color: var(--text-faint);
+    margin-left: -2px;
+  }
+  .tool.danger {
+    color: var(--danger-text);
+  }
+  .tool.danger:hover:not(:disabled) {
+    background: rgba(var(--danger-rgb), 0.14);
+  }
+
+  /* Selecting: the tools give way to what can be done to the games picked,
+     on a tinted bar, so it is plain the grid is in another mode. */
+  .selection {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 6px 3px 3px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(var(--accent-rgb), 0.35);
+    flex-wrap: wrap;
+  }
+  .selection .tool {
+    color: var(--text);
+  }
+  .selection .tool:hover:not(:disabled) {
+    background: rgba(var(--accent-rgb), 0.18);
+  }
+  .count-sel {
+    padding: 0 8px 0 4px;
+    font-weight: 600;
+    font-size: var(--text-md);
+  }
+  .selection .rule {
+    background: rgba(var(--accent-rgb), 0.35);
+    margin: 0 4px;
+  }
+
   .view-anchor {
     position: relative;
-  }
-  .btn.active {
-    background: var(--accent-soft);
-    border-color: rgba(var(--accent-rgb), 0.45);
   }
   .view-backdrop {
     position: fixed;
@@ -391,11 +498,8 @@
   }
   .view-hint {
     margin-top: 12px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-faint);
-  }
-  .chips {
-    margin: -2px 0 14px;
   }
   .grid {
     display: grid;
@@ -422,49 +526,5 @@
     font: inherit;
     color: var(--accent-text);
     cursor: pointer;
-  }
-  .chips {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .chip-sep {
-    width: 1px;
-    height: 20px;
-    background: var(--border-strong);
-  }
-  .collection-chips {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .collection-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 7px 13px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--text-dim);
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-  .collection-chip:hover {
-    background: var(--bg-hover);
-  }
-  .collection-chip.active {
-    background: var(--accent-soft);
-    border-color: rgba(var(--accent-rgb), 0.45);
-    color: var(--text);
-  }
-  .collection-chip :global(svg) {
-    color: var(--warn);
-  }
-  .collection-chip .count {
-    font-size: 0.75rem;
-    color: var(--text-faint);
   }
 </style>
