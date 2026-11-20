@@ -21,7 +21,7 @@
   import { timeAgoParts } from '../../lib/timeago.js';
   import { playLength, fmtSize } from '../../lib/format.js';
   import { snapshotKind, whenLabel } from '../../lib/snapshots.js';
-  import { TIMELINE_FILTERS, byDay, filterItems, playedWhere, runs } from '../../lib/timeline.js';
+  import { TIMELINE_FILTERS, byDay, filterItems, runs } from '../../lib/timeline.js';
 
   // timeAgo's facts as a catalog key and its params, ready for $t.
   const agoKey = (iso, now = Date.now()) => {
@@ -77,7 +77,7 @@
       case 'played':
         return {
           title: item.durationMs ? { key: 'activity.event.playedFor', params: { length: playLength(item.durationMs) } } : { key: 'activity.event.played', params: {} },
-          detail: { key: 'activity.event.onThisDevice', params: {} }
+          detail: device ? { key: 'activity.event.onDevice', params: { device } } : { key: 'activity.event.onThisDevice', params: {} }
         };
       case 'snapshot': {
         if (item.device) return { title: { key: 'activity.event.keptCopy', params: { device } }, detail: null };
@@ -113,6 +113,9 @@
   // A missing stamp (a game never played or synced) must fall through to
   // the catalog's "never" rather than throw on toISOString().
   const iso = (ms) => (ms == null || ms === '' ? null : new Date(ms).toISOString());
+
+  /** One device's name, or '' for every device (the page's filter). */
+  export let device = '';
 
   let report = null;
   let error = '';
@@ -159,10 +162,14 @@
     clearInterval(tick);
   });
 
-  $: standing = (report?.games ?? [])
-    .filter((g) => $games[g.gameId])
-    .sort((a, b) => (b.lastPlayedAt || b.lastSnapshotAt || 0) - (a.lastPlayedAt || a.lastSnapshotAt || 0));
-  $: shown = filterItems((report?.items ?? []).filter((it) => $games[it.gameId]), filter, gameId);
+  // One device's events, or every device's: an event with no device of its
+  // own happened here.
+  $: here = report?.device ?? '';
+  $: shown = filterItems(
+    (report?.items ?? []).filter((it) => $games[it.gameId] && (!device || (it.device || here) === device)),
+    filter,
+    gameId
+  );
   $: days = byDay(runs(shown, new Date(now)), new Date(now));
 </script>
 
@@ -171,48 +178,6 @@
 {:else if !report}
   <div class="skeleton" style="height: 220px"></div>
 {:else}
-  {#if standing.length}
-    <div class="card standing">
-      <div class="row header" aria-hidden="true">
-        <span>{$t('activity.timeline.colGame')}</span><span>{$t('activity.timeline.colLastPlayed')}</span><span>{$t('activity.timeline.colLastSnapshot')}</span><span>{$t('activity.timeline.colLastSynced')}</span><span>{$t('activity.timeline.colPlayedHere')}</span>
-      </div>
-      {#each standing as g (g.gameId)}
-        {@const game = $games[g.gameId]}
-        {@const wPlayed = agoKey(iso(g.lastPlayedAt), now)}
-        {@const wSnapshot = agoKey(iso(g.lastSnapshotAt), now)}
-        {@const wSynced = agoKey(iso(g.lastSyncedAt), now)}
-        <button class="row" on:click={() => navigate('game', { gameId: g.gameId })} title={$t('activity.timeline.openGameTitle', { name: game.name })}>
-          <span class="game">
-            <span class="thumb"><span class="initials">{initials(game.name)}</span><CoverImage src={gameCover(game)} alt="" /></span>
-            <span class="name">{game.name}</span>
-          </span>
-          <span class="cell">
-            {#if g.lastPlayedAt}
-              <span class="main">{playedWhere(g, report.device)}</span>
-              <span class="sub">{wPlayed.text ?? $t(wPlayed.key, wPlayed.params)}</span>
-            {:else if game.installed === 'not-found'}<span class="none" title={$t('activity.timeline.notFoundTitle')}>{$t('activity.timeline.notFoundHere')}</span>
-            {:else}<span class="none">—</span>{/if}
-          </span>
-          <span class="cell">
-            {#if g.lastSnapshotAt}<span class="main">{wSnapshot.text ?? $t(wSnapshot.key, wSnapshot.params)}</span>{:else}<span class="none">{$t('home.summary.noneYet')}</span>{/if}
-          </span>
-          <span class="cell">
-            {#if g.lastSyncedAt}
-              <span class="main">{g.lastSyncedWith || $t('activity.timeline.anotherDevice')}</span>
-              <span class="sub">{wSynced.text ?? $t(wSynced.key, wSynced.params)}</span>
-            {:else}<span class="none">{$t('activity.timeline.notYet')}</span>{/if}
-          </span>
-          <span class="cell">
-            {#if g.playtimeMs}
-              <span class="main">{playLength(g.playtimeMs)}</span>
-              <span class="sub">{$t('activity.timeline.sessions', { n: g.sessions })}</span>
-            {:else}<span class="none">—</span>{/if}
-          </span>
-        </button>
-      {/each}
-    </div>
-  {/if}
-
   <div class="filters">
     <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id]) => [id, $t('activity.filter.' + id)])} bind:value={filter} />
     <select bind:value={gameId} aria-label={$t('activity.timeline.showOneGameAria')}>
@@ -255,68 +220,8 @@
 {/if}
 
 <style>
-  .standing {
-    padding: 6px 8px;
-    margin-bottom: 18px;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: minmax(180px, 1.4fr) 1fr 0.8fr 1fr 0.8fr;
-    gap: 12px;
-    align-items: center;
-    width: 100%;
-    padding: 8px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .row:not(.header):hover {
-    background: var(--bg-hover);
-  }
-  .row.header {
-    cursor: default;
-    padding-top: 6px;
-    padding-bottom: 4px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-  }
-  .game {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-  .name {
-    font-weight: 600;
-    font-size: 0.88rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cell {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .main {
-    font-size: 0.84rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .sub {
     font-size: 0.76rem;
-    color: var(--text-faint);
-  }
-  .none {
-    font-size: 0.82rem;
     color: var(--text-faint);
   }
   .thumb {

@@ -154,9 +154,6 @@
     gap: 7px;
     margin: 0;
   }
-  .grow {
-    flex: 1;
-  }
   .label,
   label {
     font-size: var(--text-md);

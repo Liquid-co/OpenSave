@@ -356,27 +356,6 @@
     border-color: var(--border-strong);
     color: var(--text);
   }
-  .known {
-    align-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--text);
-    font-size: var(--text-sm);
-    animation: known-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1.3) backwards;
-  }
-  .known :global(svg) {
-    color: var(--accent-text);
-  }
-  @keyframes known-in {
-    from {
-      opacity: 0;
-      transform: scale(0.9);
-    }
-  }
   .hint {
     margin: 0;
   }

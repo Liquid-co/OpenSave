@@ -69,6 +69,14 @@
   --shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   --shadow-lift: 0 18px 34px -14px rgba(0, 0, 0, 0.9);
   --overlay: rgba(0, 0, 0, 0.62);
+  /* Which device is which, in Activity's bars and dots: a fixed order,
+     checked for colour-blind separation on the card (#17171a). */
+  --device-0: #3987e5;
+  --device-1: #d95926;
+  --device-2: #199e70;
+  --device-3: #c98500;
+  --device-4: #d55181;
+  --device-other: #6b6b75;
 }
 
 :root[data-theme='light'] {
@@ -96,6 +104,12 @@
   --shadow: 0 16px 40px rgba(20, 20, 40, 0.16);
   --shadow-lift: 0 16px 30px -14px rgba(20, 20, 40, 0.35);
   --overlay: rgba(20, 20, 30, 0.38);
+  --device-0: #2a78d6;
+  --device-1: #eb6834;
+  --device-2: #1baf7a;
+  --device-3: #eda100;
+  --device-4: #e87ba4;
+  --device-other: #a1a1aa;
 }
 
 * {
