@@ -472,6 +472,30 @@ func (d *Daemon) Start() error {
 		}
 	})
 
+	// Ask the paired devices for the play sessions they have ended since
+	// last asked, so Activity can say how long a game was played on each
+	// (p2p/playsessions.go): soon after start, then every few minutes.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(playSessionsFirstPull)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.P2P.PullPlaySessions(ctx)
+		}
+		ticker := time.NewTicker(playSessionsPullInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.P2P.PullPlaySessions(ctx)
+			}
+		}
+	})
+
 	// Look for newly installed games: a few minutes after start, then every
 	// hour. See newgames.go.
 	d.P2P.GoSync(func(ctx context.Context) {

@@ -39,6 +39,7 @@ func (e *Engine) RegisterRoutes(r chi.Router) {
 		r.Post("/api/p2p/untrack", e.handlePeerUntrack)
 		r.Post("/api/p2p/retrack", e.handlePeerRetrack)
 		r.Get("/api/p2p/games", e.handlePeerGameList)
+		r.Post("/api/p2p/play-sessions", e.handlePlaySessions)
 		r.Post("/api/p2p/sync-event/{gameId}", e.handleSyncEvent)
 		r.Get("/api/p2p/app-binary", e.handleAppBinary)
 

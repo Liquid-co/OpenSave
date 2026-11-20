@@ -379,6 +379,7 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		strings.HasPrefix(route, "/sync/trigger/") ||
 		strings.HasPrefix(route, "/delete-file/") ||
 		route == "/games" ||
+		route == playSessionsRoute ||
 		route == "/unpair" ||
 		route == "/untrack" ||
 		route == "/retrack"
@@ -553,6 +554,19 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 
 	case route == "/games":
 		return 200, w.engine.PeerGameList()
+
+	case route == playSessionsRoute:
+		var body playSessionsRequest
+		if len(msg.Body) > 0 {
+			if err := json.Unmarshal(msg.Body, &body); err != nil {
+				return 400, map[string]string{"error": "since is required"}
+			}
+		}
+		reply, err := w.engine.playSessionsSince(body.Since)
+		if err != nil {
+			return 500, map[string]string{"error": "play sessions could not be read"}
+		}
+		return 200, reply
 
 	case strings.HasPrefix(route, "/manifest/"):
 		return w.serveManifest(route, msg.Body, msg.From)

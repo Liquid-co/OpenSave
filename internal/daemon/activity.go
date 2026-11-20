@@ -54,6 +54,20 @@ type GameActivity struct {
 	// Played here, in all.
 	PlaytimeMs int64 `json:"playtimeMs,omitempty"`
 	Sessions   int   `json:"sessions,omitempty"`
+	// Time played on each device, this one first, as each recorded it: this
+	// device's own sessions and those its paired devices told it of
+	// (p2p/playsessions.go). A device that has told nothing is absent, which
+	// is not the same as not having played.
+	Devices []DevicePlay `json:"devices,omitempty"`
+}
+
+// DevicePlay is one game's play on one device.
+type DevicePlay struct {
+	Device       string `json:"device"`
+	Here         bool   `json:"here,omitempty"`
+	PlaytimeMs   int64  `json:"playtimeMs"`
+	Sessions     int    `json:"sessions"`
+	LastPlayedAt int64  `json:"lastPlayedAt"`
 }
 
 // ActivityReport is the activity page's data.
@@ -148,13 +162,31 @@ func (d *Daemon) Activity(beforeMs int64, gameID string, limit int) (ActivityRep
 		}
 	}
 
+	// Sessions on the devices paired with this one, as they told it.
+	peerSessions, err := d.Store.RecentPeerPlaySessions(beforeMs, (limit+1)*4)
+	if err != nil {
+		return report, err
+	}
+	names := d.peerNames()
+	n = 0
+	for _, s := range peerSessions {
+		if gameID != "" && s.GameID != gameID {
+			continue
+		}
+		report.Items = append(report.Items, ActivityItem{AtMs: s.EndedMs, GameID: s.GameID, Kind: "played",
+			Device: names[s.PeerID], DurationMs: s.EndedMs - s.StartedMs})
+		if n++; n > limit {
+			break
+		}
+	}
+
 	sort.SliceStable(report.Items, func(i, j int) bool { return report.Items[i].AtMs > report.Items[j].AtMs })
 	if len(report.Items) > limit {
 		report.Items = report.Items[:limit]
 		report.More = true
 	}
 
-	games, err := d.gameActivity(gameID)
+	games, err := d.gameActivity(gameID, report.Device)
 	if err != nil {
 		return report, err
 	}
@@ -162,19 +194,26 @@ func (d *Daemon) Activity(beforeMs int64, gameID string, limit int) (ActivityRep
 	return report, nil
 }
 
-// gameActivity is where each game stands.
-func (d *Daemon) gameActivity(only string) ([]GameActivity, error) {
+// peerNames is each paired device's name, by id.
+func (d *Daemon) peerNames() map[string]string {
+	peers, _ := d.Store.ListPeers()
+	names := make(map[string]string, len(peers))
+	for _, p := range peers {
+		names[p.ID] = p.Name
+	}
+	return names
+}
+
+// gameActivity is where each game stands. here is this device's name.
+func (d *Daemon) gameActivity(only, here string) ([]GameActivity, error) {
 	games, err := d.Store.ListGames()
 	if err != nil {
 		return nil, err
 	}
 	play, _ := d.Store.PlayStatsByGame()
+	peerPlay, _ := d.Store.PeerPlayStatsByGame()
 	arrived, _ := d.Store.LatestActivity(store.ActivityReceived, store.ActivityCloudPulled)
-	peers, _ := d.Store.ListPeers()
-	names := map[string]string{}
-	for _, p := range peers {
-		names[p.ID] = p.Name
-	}
+	names := d.peerNames()
 
 	out := []GameActivity{}
 	for _, g := range games {
@@ -185,7 +224,31 @@ func (d *Daemon) gameActivity(only string) ([]GameActivity, error) {
 		if st, ok := play[g.ID]; ok {
 			ga.PlaytimeMs, ga.Sessions = st.PlaytimeMs, st.Sessions
 			ga.LastPlayedAt = st.LastPlayedMs
+			ga.Devices = append(ga.Devices, DevicePlay{Device: here, Here: true,
+				PlaytimeMs: st.PlaytimeMs, Sessions: st.Sessions, LastPlayedAt: st.LastPlayedMs})
 		}
+		// What each paired device played, as it told this one: real
+		// sessions, so when one ended later than anything here, that device
+		// is where the game was last played.
+		var others []DevicePlay
+		for peerID, st := range peerPlay[g.ID] {
+			name, ok := names[peerID]
+			if !ok {
+				continue
+			}
+			others = append(others, DevicePlay{Device: name, PlaytimeMs: st.PlaytimeMs,
+				Sessions: st.Sessions, LastPlayedAt: st.LastPlayedMs})
+			if st.LastPlayedMs > ga.LastPlayedAt {
+				ga.LastPlayedAt, ga.LastPlayedOn = st.LastPlayedMs, name
+			}
+		}
+		sort.Slice(others, func(i, j int) bool {
+			if others[i].PlaytimeMs != others[j].PlaytimeMs {
+				return others[i].PlaytimeMs > others[j].PlaytimeMs
+			}
+			return others[i].Device < others[j].Device
+		})
+		ga.Devices = append(ga.Devices, others...)
 		// A save that came from another device later than the last session
 		// here was made there.
 		if ev, ok := arrived[g.ID]; ok && ev.AtMs > ga.LastPlayedAt {
@@ -224,3 +287,12 @@ func (d *Daemon) gameActivity(only string) ([]GameActivity, error) {
 	}
 	return out, nil
 }
+
+// How soon after start the paired devices are first asked for their play
+// sessions, and how often after (p2p/playsessions.go). Each ask is one small
+// request per device online; a session shows on the other devices within
+// this long of ending. Variables so tests can drive them.
+var (
+	playSessionsFirstPull    = 45 * time.Second
+	playSessionsPullInterval = 5 * time.Minute
+)
