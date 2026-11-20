@@ -1,6 +1,5 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { pageOut } from './lib/motion.js';
   import { initApi, connectWS, native } from './lib/api.js';
   import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings, games, availableUpdate } from './lib/stores.js';
   import { startController, controllerOn, padUsed, pageStep } from './lib/controller.js';
@@ -276,12 +275,12 @@
         {/if}
         <!-- Keyed by page, so arriving somewhere new plays the short rise in
              app.css (still, with animations off); moving between two games
-             is the same page and does not. The page being left fades as the
-             next rises, both in one grid cell so neither pushes the other
-             down while they overlap. -->
+             is the same page and does not. The page being left goes at once
+             and the next is there at once: nothing waits on an animation to
+             be seen, so a click answers even when frames come slowly. -->
         <div class="views">
           {#key $view.name}
-            <div class="view" out:pageOut>
+            <div class="view">
               <svelte:component this={views[$view.name] ?? Home} params={$view.params} />
             </div>
           {/key}

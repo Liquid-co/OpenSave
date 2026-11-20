@@ -637,10 +637,11 @@ h2.page-title {
 }
 
 /* A page arriving: a short rise, so the change of place is felt. */
+/* Movement only, no fade: the page is readable from its first frame, so a
+   slow frame never leaves the new page blank. */
 @keyframes arrive {
   from {
-    opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
 }
 

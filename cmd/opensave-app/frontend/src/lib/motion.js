@@ -62,14 +62,6 @@ export const slideAway = gated((node, { duration = 160, x = 36 } = {}) => ({
   css: (t, u) => `opacity: ${t}; transform: translateX(${u * x}px);`
 }));
 
-/** A page leaving as the next arrives: a quick fade, out of the pointer's way,
- *  while the new page plays its rise (arrive in app.css). */
-export const pageOut = gated((node, { duration = 110 } = {}) => ({
-  duration,
-  easing: cubicIn,
-  css: (t) => `opacity: ${t}; pointer-events: none;`
-}));
-
 // The selected child of a tab bar or segmented control, whatever marks it.
 const SELECTED = '.active, .on, [aria-selected="true"], [aria-checked="true"], [aria-current="page"]';
 
