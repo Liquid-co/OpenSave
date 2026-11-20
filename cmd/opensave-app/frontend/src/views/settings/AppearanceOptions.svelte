@@ -12,6 +12,7 @@
     THEMES,
     ACCENTS,
     SCALES,
+    BACKDROPS,
     onAccent,
     accentHex,
     withCustomAccent,
@@ -20,6 +21,7 @@
   import { systemReducesMotion, slidingIndicator } from '../../lib/motion.js';
   import { locale, LOCALES, t, SYSTEM_LOCALE } from '../../lib/i18n.js';
   import AccentWheel from './AccentWheel.svelte';
+  import { sidebar, chooseSidebar, SIDEBAR_MODES } from '../../lib/shell.js';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
@@ -112,6 +114,28 @@
           <AccentWheel initial={accentHex($appearance.accent)} on:pick={addColour} on:close={() => (wheelOpen = false)} />
         {/if}
       </span>
+    </div>
+  </div>
+
+  <div class="group">
+    <span class="label" id="ap-backdrop">{$t('settings.appearance.backdrop')}</span>
+    <div class="segmented" role="radiogroup" aria-labelledby="ap-backdrop" use:slidingIndicator={{ mode: 'fill' }}>
+      {#each Object.keys(BACKDROPS) as id}
+        <button role="radio" aria-checked={$appearance.backdrop === id} class:on={$appearance.backdrop === id} on:click={() => set({ backdrop: id })}>
+          {$t('appearance.backdrop.' + id)}
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <div class="group">
+    <span class="label" id="ap-sidebar">{$t('settings.appearance.sidebar')}</span>
+    <div class="segmented" role="radiogroup" aria-labelledby="ap-sidebar" use:slidingIndicator={{ mode: 'fill' }}>
+      {#each SIDEBAR_MODES as id}
+        <button role="radio" aria-checked={$sidebar.mode === id} class:on={$sidebar.mode === id} on:click={() => sidebar.update((v) => chooseSidebar(v, id))}>
+          {$t('shell.sidebar.' + id)}
+        </button>
+      {/each}
     </div>
   </div>
 

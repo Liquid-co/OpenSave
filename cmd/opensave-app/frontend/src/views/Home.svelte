@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast, syncPause } from '../lib/stores.js';
+  import { stateLoaded, gameList, peers, syncActivity, conflicts, locationConflicts, toast, syncPause, activityTick } from '../lib/stores.js';
   import { api, native } from '../lib/api.js';
   import { gameStatusParts, conflictedIds } from '../lib/gamestatus.js';
   import { timeAgoParts } from '../lib/timeago.js';
@@ -9,12 +9,17 @@
   import AddGameCard from './home/AddGameCard.svelte';
   import TrackGameDialog from './home/TrackGameDialog.svelte';
   import ScanDialog from './home/ScanDialog.svelte';
-  import HomeSummary from './home/HomeSummary.svelte';
   import LibraryGrid from './home/LibraryGrid.svelte';
+  import LibraryBackdrop from './home/LibraryBackdrop.svelte';
+  import RecentlyPlayed from './home/RecentlyPlayed.svelte';
+  import NeedsYou from './home/NeedsYou.svelte';
+  import SplitButton from '../components/ui/SplitButton.svelte';
+  import { recentlyPlayed, backdropGame, playedFromReport } from '../lib/libraryhome.js';
+  import { libraryHeadline } from '../lib/headline.js';
+  import { libraryView } from '../lib/libraryview.js';
   import Skeleton from '../components/ui/Skeleton.svelte';
-  import { visibleGames } from '../lib/gameactions.js';
+  import { visibleGames, syncAllGames } from '../lib/gameactions.js';
   import SetupGuide from './home/SetupGuide.svelte';
-  import PauseButton from '../components/PauseButton.svelte';
   import { setupState, setupSteps, decideSetupFor } from '../lib/setup.js';
   import { settings } from '../lib/stores.js';
   import { t, segments } from '../lib/i18n.js';
@@ -22,6 +27,8 @@
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
+  import Plus from 'lucide-svelte/icons/plus';
+  import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
 
   export let params = {};
 
@@ -72,12 +79,39 @@
     scanner.start();
   }
 
-  async function syncAll() {
-    for (const g of $gameList) {
-      api.post(`/api/games/${g.id}/sync`).catch(() => {});
-    }
+  function syncAll() {
+    syncAllGames();
     toast($t('home.syncAllToast'));
   }
+
+  // The Library's two buttons. Each does the usual thing; its arrow offers
+  // the rest. Choosing games to sync is the grid's own selecting, which has
+  // Sync among what it does to the games picked.
+  let grid;
+  $: addItems = [
+    { label: $t('home.scanSaves'), icon: ScanSearch, run: () => scanner.start(), disabled: scanning, hint: $t('home.add.scanHint') },
+    { label: $t('home.trackGame'), icon: Gamepad2, run: () => (showTrackGame = true), hint: $t('home.add.trackGameHint') },
+    { label: $t('home.trackFolder'), icon: FolderPlus, run: trackFolder, hint: $t('home.add.trackFolderHint') }
+  ];
+  $: syncItems = [
+    { label: $t('home.sync.all'), icon: RefreshCw, run: syncAll, disabled: $gameList.length === 0 || $syncPause.paused },
+    { label: $t('home.sync.choose'), icon: SquareCheckBig, run: () => grid?.chooseToSync(), disabled: $gameList.length === 0 }
+  ];
+
+  // Who played what, and where, from the activity report: it knows another
+  // device's play from its save arriving here. Asked again as things happen.
+  let played = {};
+  async function loadPlayed() {
+    try {
+      played = playedFromReport(await api.get('/api/activity?limit=1'));
+    } catch {
+      // The tiles fall back on this device's own record.
+    }
+  }
+  $: $activityTick, loadPlayed();
+  $: recent = recentlyPlayed($visibleGames, played, 4);
+  $: lit = backdropGame($visibleGames, played);
+  $: headline = libraryHeadline(rows);
 
   // Where each game's save stands — the summary and the cards read the same
   // answer, so the two can never disagree. "4 min ago" must not freeze at
@@ -139,19 +173,35 @@
     !setupSteps({ games: $gameList.length, peers: Object.keys($peers).length, cloud: $settings?.cloudSync?.ready, skipped: $setupState.skipped }).finished;
 </script>
 
+<div class="library">
+<LibraryBackdrop game={lit} />
+
 <div class="head">
-  <h2 class="page-title">{$t('home.title')}</h2>
+  <div class="title-block">
+    <h1 class="page-title">{$t('home.title')}</h1>
+    {#if $stateLoaded && $visibleGames.length > 0}<p class="sub" role="status">{$t(headline.key, headline.params)}</p>{/if}
+  </div>
   <div class="head-actions">
-    <button class="btn primary" on:click={() => scanner.start()} disabled={scanning} title={$t('home.scanSavesTitle')}>
-      <ScanSearch size={16} />{scanning ? $t('home.scanning') : $t('home.scanSaves')}
-    </button>
-    <button class="btn" on:click={syncAll} disabled={$gameList.length === 0 || $syncPause.paused} title={$syncPause.paused ? $t('home.syncPaused') : ''}><RefreshCw size={15} />{$t('home.syncAll')}</button>
-    <PauseButton />
-    <button class="btn" on:click={() => (showTrackGame = true)} title={$t('home.trackGameHint')}><Gamepad2 size={16} />{$t('home.trackGame')}</button>
-    <button class="btn" on:click={trackFolder} title={$t('home.trackFolderTitle')}><FolderPlus size={16} />{$t('home.trackFolder')}</button>
+    <SplitButton
+      label={$t('home.sync.button')}
+      icon={RefreshCw}
+      disabled={$gameList.length === 0 || $syncPause.paused}
+      title={$syncPause.paused ? $t('home.syncPaused') : $t('home.sync.allTitle')}
+      items={syncItems}
+      menuLabel={$t('home.sync.more')}
+      on:click={syncAll}
+    />
+    <SplitButton
+      primary
+      label={$t('home.add.button')}
+      icon={Plus}
+      title={$t('home.scanSavesTitle')}
+      items={addItems}
+      menuLabel={$t('home.add.more')}
+      on:click={() => scanner.start()}
+    />
   </div>
 </div>
-
 <OfferedGames />
 
 {#if showAdd}
@@ -190,16 +240,26 @@
     <SetupGuide {scanning} on:scan={() => scanner.start()} on:add={trackFolder} />
   {/if}
   <div class="top">
-    <HomeSummary {rows} />
+    <NeedsYou />
+    {#if $libraryView.overview && recent.length}
+      <RecentlyPlayed items={recent} />
+    {/if}
   </div>
-  <LibraryGrid {rows} />
+  <LibraryGrid {rows} bind:this={grid} />
 {/if}
+</div>
 
 <style>
+  /* Its own stacking context, so the backdrop (z-index -1) sits behind the
+     page's content and nowhere else. */
+  .library {
+    position: relative;
+    isolation: isolate;
+  }
   .top {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 20px;
     margin-bottom: 26px;
   }
   .head {
@@ -207,12 +267,22 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
-    gap: 12px;
+    gap: 12px 16px;
     flex-wrap: wrap;
+  }
+  .page-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    margin-top: 2px;
+    font-size: var(--text-md);
+    color: var(--text-dim);
   }
   .head-actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
   }
 
   .welcome {

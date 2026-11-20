@@ -9,18 +9,30 @@ export const shortcutsOpen = writable(false);
 
 // Pages in the order of the sidebar, for Ctrl+1 … Ctrl+6.
 export const PAGES = [
-  { id: 'home', label: 'Home' },
-  { id: 'devices', label: 'Devices' },
-  { id: 'cloud', label: 'Cloud Backup' },
+  { id: 'home', label: 'Library' },
   { id: 'activity', label: 'Activity' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'cloud', label: 'Backups' },
   { id: 'settings', label: 'Settings' },
-  { id: 'changelog', label: 'Changelog' }
+  { id: 'changelog', label: "What's new" }
 ];
+
+/** Each page's name, as the catalog key the sidebar, the palette and the
+ *  shortcuts list all say it by. */
+export const PAGE_LABEL_KEYS = {
+  home: 'home.title',
+  activity: 'sidebar.nav.activity',
+  devices: 'home.devices',
+  cloud: 'sidebar.nav.backups',
+  settings: 'sidebar.nav.settings',
+  changelog: 'sidebar.nav.whatsNew'
+};
 
 /** For the sheet: [keys, what they do], in the order shown. */
 export const SHORTCUTS = [
   ['Ctrl K', 'Jump to a game, a page or an action'],
   ['Ctrl F', 'Search the page you are on'],
+  ['Ctrl B', 'Hide or show the sidebar'],
   ...PAGES.map((p, i) => [`Ctrl ${i + 1}`, `Go to ${p.label}`]),
   ['Ctrl ,', 'Settings'],
   ['← → ↑ ↓', 'Move between games in the library'],
@@ -48,6 +60,7 @@ export function matchShortcut(e) {
     if (k === 'k') return 'palette';
     if (k === 'f') return 'find';
     if (k === ',') return 'go:settings';
+    if (k === 'b' && !e.shiftKey) return 'sidebar';
     const n = Number(e.key);
     if (Number.isInteger(n) && n >= 1 && n <= PAGES.length && !e.shiftKey) return `go:${PAGES[n - 1].id}`;
     return null;

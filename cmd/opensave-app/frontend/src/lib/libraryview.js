@@ -29,7 +29,7 @@ export const COLUMN_CHOICES = ['auto', 2, 3, 4, 5, 6, 7, 8];
 
 export const SORT_IDS = ['name', 'recent', 'played', 'synced', 'attention', 'snapshots', 'size', 'added'];
 
-export const DEFAULT_VIEW = Object.freeze({ cover: 'wide', columns: 'auto', size: 'medium', sort: 'name', reverse: false, overview: true });
+export const DEFAULT_VIEW = Object.freeze({ cover: 'tall', columns: 'auto', size: 'medium', sort: 'name', reverse: false, overview: true });
 
 /** A view with every field valid, whatever was stored. */
 export function sanitizeView(raw) {
@@ -41,7 +41,7 @@ export function sanitizeView(raw) {
     size: v.size in TILE_SIZES ? v.size : DEFAULT_VIEW.size,
     sort: SORT_IDS.includes(v.sort) ? v.sort : DEFAULT_VIEW.sort,
     reverse: typeof v.reverse === 'boolean' ? v.reverse : DEFAULT_VIEW.reverse,
-    // Recent activity, along the foot of the summary card on Home.
+    // The row of games played lately, at the top of the Library.
     overview: typeof v.overview === 'boolean' ? v.overview : DEFAULT_VIEW.overview
   };
 }

@@ -11,7 +11,9 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key('f', { ctrlKey: true }))).toBe('find');
     expect(matchShortcut(key(',', { ctrlKey: true }))).toBe('go:settings');
     expect(matchShortcut(key('1', { ctrlKey: true }))).toBe('go:home');
-    expect(matchShortcut(key('4', { ctrlKey: true }))).toBe('go:activity');
+    expect(matchShortcut(key('2', { ctrlKey: true }))).toBe('go:activity');
+    expect(matchShortcut(key('b', { ctrlKey: true }))).toBe('sidebar');
+    expect(matchShortcut(key('b', { ctrlKey: true, shiftKey: true }))).toBeNull();
   });
 
   it('leaves alone what it does not know, and Ctrl+Alt (AltGr on many keyboards)', () => {

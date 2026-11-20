@@ -21,6 +21,9 @@ export const NOTIFY_DAYS = 14;
 
 const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
+/** Asks the bell to open its panel: the Library's "Review" does this. */
+export const openBell = writable(false);
+
 /**
  * The things waiting on you, most pressing first.
  * @returns {{id: string, tone: 'warn'|'info', title: string, detail: string, go: {view: string, params?: object}|null, gameId?: string}[]}

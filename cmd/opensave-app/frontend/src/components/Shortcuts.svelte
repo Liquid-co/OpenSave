@@ -3,6 +3,7 @@
   // two things they open, the Ctrl+K palette and the list of shortcuts.
   import { navigate } from '../lib/stores.js';
   import { matchShortcut, paletteOpen, shortcutsOpen } from '../lib/shortcuts.js';
+  import { sidebar, toggleSidebarHidden } from '../lib/shell.js';
   import { contextMenu } from '../lib/contextmenu.js';
   import CommandPalette from './CommandPalette.svelte';
   import ShortcutsSheet from './ShortcutsSheet.svelte';
@@ -29,6 +30,7 @@
     if (action === 'palette') paletteOpen.update((open) => !open);
     else if (action === 'help') shortcutsOpen.set(true);
     else if (action === 'find') find();
+    else if (action === 'sidebar') sidebar.update(toggleSidebarHidden);
     else if (action.startsWith('go:')) navigate(action.slice(3));
   }
 </script>

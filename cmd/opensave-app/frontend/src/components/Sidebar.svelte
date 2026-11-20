@@ -1,10 +1,14 @@
 <script>
+  // The sidebar: this device, the pages, and the games you starred. Not every
+  // game: the Library is the list of everything; this is the few you go back
+  // to. Three sizes (lib/shell.js): full, icons only, or put away, chosen
+  // with the title bar's button or Ctrl+B. A full one folds to icons in a
+  // narrow window, so the page keeps its room.
+  //
   // Which games' explicit covers are currently revealed. Held per-game rather
   // than as one "show everything" flag: revealing one cover should not uncover
-  // the rest of the shelf.
-  //
-  // A Set in a plain variable would not re-render — Svelte tracks assignment,
-  // so both helpers reassign.
+  // the rest of the shelf. A Set in a plain variable would not re-render —
+  // Svelte tracks assignment, so both helpers reassign.
   let revealed = new Set();
   const reveal = (game) => {
     if (game?.coverExplicit && !revealed.has(game.id)) {
@@ -19,36 +23,40 @@
     }
   };
   import { slidingIndicator } from '../lib/motion.js';
-  import { view, navigate, settings, stateLoaded, gameList, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
+  import { view, navigate, settings, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
   import CoverImage from './CoverImage.svelte';
   import { visibleGames } from '../lib/gameactions.js';
   import { openGameMenu } from '../lib/contextmenu.js';
+  import { collections, FAVOURITES } from '../lib/collections.js';
+  import { sidebar, sidebarShown } from '../lib/shell.js';
+  import { PAGE_LABEL_KEYS } from '../lib/shortcuts.js';
   import { t } from '../lib/i18n.js';
-  import House from 'lucide-svelte/icons/house';
+  import LayoutGrid from 'lucide-svelte/icons/layout-grid';
   import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
   import Cloud from 'lucide-svelte/icons/cloud';
   import Activity from 'lucide-svelte/icons/activity';
   import Settings from 'lucide-svelte/icons/settings';
-  import ScrollText from 'lucide-svelte/icons/scroll-text';
-  import Plus from 'lucide-svelte/icons/plus';
-  import Search from 'lucide-svelte/icons/search';
+  import Sparkles from 'lucide-svelte/icons/sparkles';
+  import Star from 'lucide-svelte/icons/star';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
 
-  let filter = '';
-
+  // In the order of Ctrl+1 … Ctrl+5 (lib/shortcuts.js PAGES).
   const nav = [
-    { id: 'home', key: 'home.title', icon: House },
-    { id: 'devices', key: 'home.devices', icon: MonitorSmartphone },
-    { id: 'cloud', key: 'home.cloudBackup', icon: Cloud },
-    { id: 'activity', key: 'sidebar.nav.activity', icon: Activity },
-    { id: 'settings', key: 'sidebar.nav.settings', icon: Settings },
-    { id: 'changelog', key: 'about.changelog', icon: ScrollText }
+    { id: 'home', icon: LayoutGrid },
+    { id: 'activity', icon: Activity },
+    { id: 'devices', icon: MonitorSmartphone },
+    { id: 'cloud', icon: Cloud },
+    { id: 'settings', icon: Settings }
   ];
 
+  let width = globalThis.innerWidth ?? 1440;
+  $: shown = sidebarShown($sidebar, width);
+  $: full = shown === 'full';
+
   $: deviceName = $settings?.deviceName ?? '…';
-  $: filteredGames = $visibleGames.filter((g) => g.name.toLowerCase().includes(filter.toLowerCase()));
-  $: activeSyncs = Object.values($syncActivity).filter((s) => s.state === 'running').length;
+  $: favouriteIds = new Set($collections.find((c) => c.id === FAVOURITES)?.gameIds ?? []);
+  $: favourites = $visibleGames.filter((g) => favouriteIds.has(g.id)).sort((a, b) => a.name.localeCompare(b.name));
 
   function badgeFor(id) {
     if (id === 'devices' && $pairingRequests.length > 0) return $pairingRequests.length;
@@ -61,117 +69,118 @@
   }
 </script>
 
-<aside>
-  <div class="profile">
-    <div class="avatar">{initials(deviceName)}</div>
-    <div class="who">
-      <div class="name">{deviceName}</div>
-      <div class="sub">{$t('sidebar.thisDevice')}</div>
-    </div>
-  </div>
+<svelte:window bind:innerWidth={width} />
 
-  <nav use:slidingIndicator={{ mode: 'fill', className: 'slide-nav' }}>
-    {#each nav as item}
-      <button class:active={$view.name === item.id} on:click={() => navigate(item.id)}>
-        <svelte:component this={item.icon} size={17} strokeWidth={1.8} />
-        <span>{$t(item.key)}</span>
-        {#if badgeFor(item.id)}
-          <span class="nav-badge">{badgeFor(item.id)}</span>
-        {/if}
-      </button>
-    {/each}
-  </nav>
-
-  <div class="library-head">
-    <span>{$t('sidebar.myLibrary')}</span>
-    <button class="add" title={$t('home.addGame.title')} aria-label={$t('home.addGame.title')} on:click={() => navigate('home', { add: true })}><Plus size={15} /></button>
-  </div>
-
-  <label class="filter">
-    <Search size={14} />
-    <input placeholder={$t('sidebar.filterLibrary')} aria-label={$t('sidebar.filterLibrary')} data-find-fallback bind:value={filter} />
-  </label>
-
-  <div class="library">
-    {#each filteredGames as game (game.id)}
-      <button
-        class="game"
-        class:active={$view.name === 'game' && $view.params.gameId === game.id}
-        class:insession={!!game.playingSince}
-        on:click={() => navigate('game', { gameId: game.id })}
-        on:contextmenu={(e) => openGameMenu(e, game)}
-        on:mouseenter={() => reveal(game)}
-        on:mouseleave={() => unreveal(game)}
-        on:focus={() => reveal(game)}
-        on:blur={() => unreveal(game)}
-      >
-        <span class="thumb">
-          <span class="cover-fallback">{initials(game.name)}</span>
-          <!--
-            Through the daemon, not the stored URL. game.coverUrl is empty for a
-            game with no App ID, so this rendered no image at all for exactly the
-            titles the name lookup was added to cover; and when it was set it
-            pointed straight at Steam's CDN, which the embedded webview cannot
-            reliably reach. gameCover asks the local daemon, which caches, falls
-            back to an image proxy, and knows whether what it returned is explicit.
-          -->
-          <CoverImage
-            src={gameCover(game)}
-            alt=""
-            revealed={revealed.has(game.id)}
-          />
-        </span>
-        <span class="game-name">{game.name}</span>
-        {#if game.playingSince}
-          <span class="session" title={$t('sidebar.inSession')}><Gamepad2 size={13} /></span>
-        {/if}
-        {#if $syncActivity[game.id]?.state === 'running'}
-          <span class="spin" title={$t('sidebar.syncing')}></span>
-        {/if}
-      </button>
-    {:else}
-      {#if $stateLoaded}
-        <div class="library-empty">
-          {$gameList.length === 0 ? $t('sidebar.noGamesYet') : $t('sidebar.noMatches')}
+{#if shown !== 'hidden'}
+  <aside class:icons={!full} aria-label={$t('shell.sidebar.label')}>
+    <div class="profile" title={full ? '' : `${deviceName}, ${$t('sidebar.thisDevice')}`}>
+      <div class="avatar">{initials(deviceName)}</div>
+      {#if full}
+        <div class="who">
+          <div class="name">{deviceName}</div>
+          <div class="sub">{$t('sidebar.thisDevice')}</div>
         </div>
       {/if}
-    {/each}
-  </div>
-
-  {#if activeSyncs > 0}
-    <div class="sync-note">
-      <span class="spin"></span>
-      {$t('sidebar.syncsInProgress', { n: activeSyncs })}
     </div>
-  {/if}
-</aside>
+
+    <nav use:slidingIndicator={{ mode: 'fill', className: 'slide-nav' }} aria-label={$t('shell.sidebar.pages')}>
+      {#each nav as item}
+        <button
+          class:active={$view.name === item.id}
+          on:click={() => navigate(item.id)}
+          title={full ? '' : $t(PAGE_LABEL_KEYS[item.id])}
+          aria-label={full ? null : $t(PAGE_LABEL_KEYS[item.id])}
+          aria-current={$view.name === item.id ? 'page' : null}
+        >
+          <svelte:component this={item.icon} size={17} strokeWidth={1.8} />
+          {#if full}<span>{$t(PAGE_LABEL_KEYS[item.id])}</span>{/if}
+          {#if badgeFor(item.id)}
+            <span class="nav-badge">{badgeFor(item.id)}</span>
+          {/if}
+        </button>
+      {/each}
+    </nav>
+
+    <section class="favourites" aria-label={$t('shell.sidebar.favourites')}>
+      {#if full}
+        <div class="section-head"><Star size={12} />{$t('shell.sidebar.favourites')}</div>
+      {/if}
+      <div class="list">
+        {#each favourites as game (game.id)}
+          <button
+            class="game"
+            class:active={$view.name === 'game' && $view.params.gameId === game.id}
+            class:insession={!!game.playingSince}
+            on:click={() => navigate('game', { gameId: game.id })}
+            on:contextmenu={(e) => openGameMenu(e, game)}
+            on:mouseenter={() => reveal(game)}
+            on:mouseleave={() => unreveal(game)}
+            on:focus={() => reveal(game)}
+            on:blur={() => unreveal(game)}
+            title={full ? '' : game.name}
+            aria-label={full ? null : game.name}
+          >
+            <span class="thumb">
+              <span class="cover-fallback">{initials(game.name)}</span>
+              <!-- Through the daemon, which caches and knows whether the art
+                   is explicit (see gameCover in lib/api.js). -->
+              <CoverImage src={gameCover(game, true)} alt="" revealed={revealed.has(game.id)} />
+            </span>
+            {#if full}
+              <span class="game-name">{game.name}</span>
+              {#if game.playingSince}
+                <span class="session" title={$t('sidebar.inSession')}><Gamepad2 size={13} /></span>
+              {:else if $syncActivity[game.id]?.state === 'running'}
+                <span class="spin" title={$t('sidebar.syncing')}></span>
+              {/if}
+            {/if}
+          </button>
+        {:else}
+          {#if full}
+            <p class="empty">{$t('shell.sidebar.noFavourites')}</p>
+          {/if}
+        {/each}
+      </div>
+    </section>
+
+    <div class="foot">
+      <button class="whatsnew" class:active={$view.name === 'changelog'} on:click={() => navigate('changelog')} title={full ? '' : $t(PAGE_LABEL_KEYS.changelog)} aria-label={full ? null : $t(PAGE_LABEL_KEYS.changelog)}>
+        <Sparkles size={15} strokeWidth={1.8} />
+        {#if full}<span>{$t(PAGE_LABEL_KEYS.changelog)}</span>{/if}
+      </button>
+    </div>
+  </aside>
+{/if}
 
 <style>
-  .thumb {
-    overflow: hidden;
-    border-radius: 6px;
-  }
-  .thumb :global(img) {
-    transition: filter 120ms ease, transform 120ms ease;
-  }
   aside {
     width: var(--sidebar-w);
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    gap: 18px;
     flex-shrink: 0;
     min-height: 0;
+    padding: 16px 0 10px;
+  }
+  aside.icons {
+    width: var(--sidebar-w-icons);
   }
   .profile {
     display: flex;
     align-items: center;
     gap: 11px;
-    padding: 16px 16px 12px;
+    padding: 0 18px;
+  }
+  .icons .profile {
+    justify-content: center;
+    padding: 0;
   }
   .avatar {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
     border-radius: 10px;
     background: var(--accent-soft);
     color: var(--accent-text);
@@ -179,18 +188,20 @@
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
+  }
+  .who {
+    min-width: 0;
   }
   .who .name {
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: var(--text-base);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 150px;
   }
   .who .sub {
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     color: var(--text-faint);
   }
 
@@ -198,154 +209,135 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 4px 10px;
+    padding: 0 10px;
   }
-  nav button {
+  nav button,
+  .whatsnew {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 11px;
-    padding: 9px 12px;
+    gap: 12px;
+    height: 36px;
+    padding: 0 12px;
     border: none;
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-dim);
-    font-size: 0.93rem;
-    font-weight: 500;
+    font: inherit;
+    font-size: var(--text-base);
     cursor: pointer;
     text-align: left;
+    white-space: nowrap;
   }
-  nav button:hover {
+  .icons nav button,
+  .icons .whatsnew {
+    justify-content: center;
+    padding: 0;
+  }
+  nav button:hover,
+  .whatsnew:hover {
     background: var(--bg-hover);
     color: var(--text);
   }
-  nav button {
-    position: relative;
-  }
-  nav button.active {
+  nav button.active,
+  .whatsnew.active {
     background: var(--bg-active);
     color: var(--text);
-  }
-  nav button.active::before {
-    content: '';
-    position: absolute;
-    left: -10px;
-    top: 9px;
-    bottom: 9px;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: var(--accent);
+    font-weight: 600;
   }
   /* With the selection sliding (slidingIndicator, lib/motion.js), one marker
-     draws the active fill and its accent bar, and moves between items; the
-     buttons put theirs away and sit over it. */
+     draws the active fill and moves between items; the buttons put theirs
+     away and sit over it. */
   nav:global(.slides) button {
     z-index: 1;
   }
   nav:global(.slides) button.active {
     background: transparent;
   }
-  nav:global(.slides) button.active::before {
-    display: none;
-  }
   nav :global(.slide-nav) {
     background: var(--bg-active);
-    border-radius: var(--radius);
-  }
-  nav :global(.slide-nav)::before {
-    content: '';
-    position: absolute;
-    left: -10px;
-    top: 9px;
-    bottom: 9px;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: var(--accent);
+    border-radius: var(--radius-sm);
   }
   nav button.active :global(svg) {
     color: var(--accent-text);
   }
   .nav-badge {
     margin-left: auto;
-    background: var(--accent);
+    background: var(--accent-fill);
     color: var(--on-accent);
     border-radius: 999px;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     padding: 1px 7px;
   }
-
-  .library-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 18px 8px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--text-faint);
-  }
-  .library-head .add {
-    display: grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    border: none;
-    background: transparent;
-    color: var(--text-dim);
-    cursor: pointer;
-    border-radius: 6px;
-  }
-  .library-head .add:hover {
-    background: var(--bg-hover);
-    color: var(--text);
+  .icons .nav-badge {
+    position: absolute;
+    top: 3px;
+    right: 6px;
+    padding: 0 5px;
+    font-size: 0.65rem;
   }
 
-  .filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 14px 8px;
-    padding: 0 11px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-faint);
-    cursor: text;
-  }
-  .filter:focus-within {
-    border-color: var(--border-strong);
-  }
-  .filter input {
+  .favourites {
     flex: 1;
-    min-width: 0;
-    padding: 7px 0;
-    border: none;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.85rem;
-    outline: none;
-  }
-
-  .library {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0 10px 10px;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .icons .favourites {
+    border-top: 1px solid var(--border);
+    margin: 0 12px;
+    padding-top: 14px;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 22px 4px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-faint);
+  }
+  .section-head :global(svg) {
+    color: var(--warn);
+  }
+  .list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .icons .list {
+    padding: 0;
+    align-items: center;
+    gap: 6px;
   }
   .game {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 6px 8px;
+    height: 36px;
+    padding: 0 10px;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-dim);
-    font-size: 0.88rem;
+    font: inherit;
+    font-size: var(--text-md);
     cursor: pointer;
     text-align: left;
+    flex-shrink: 0;
+  }
+  .icons .game {
+    width: 40px;
+    height: 48px;
+    padding: 0;
+    justify-content: center;
   }
   .game:hover {
     background: var(--bg-hover);
@@ -364,28 +356,34 @@
   }
   .thumb {
     position: relative;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 27px;
     flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 3px;
+  }
+  .icons .thumb {
+    width: 28px;
+    height: 38px;
+    border-radius: 4px;
   }
   .thumb :global(img) {
     position: absolute;
     inset: 0;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    transition: filter 120ms ease, transform 120ms ease;
   }
   .cover-fallback {
     position: absolute;
     inset: 0;
-    border-radius: 6px;
     background: var(--bg-active);
     color: var(--text-faint);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.62rem;
+    font-size: 0.6rem;
     font-weight: 700;
   }
   .game-name {
@@ -397,27 +395,27 @@
   .game.insession .game-name {
     color: var(--success);
   }
+  .icons .game.insession .thumb {
+    box-shadow: 0 0 0 2px var(--success);
+  }
   .session {
     display: inline-flex;
     margin-left: auto;
     flex-shrink: 0;
     color: var(--success);
   }
-  .library-empty {
-    padding: 18px 10px;
+  .empty {
+    padding: 4px 12px;
     color: var(--text-faint);
-    font-size: 0.82rem;
-    text-align: center;
+    font-size: var(--text-sm);
+    line-height: 1.45;
   }
-
-  .sync-note {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
-    border-top: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 0.8rem;
+  .foot {
+    padding: 0 10px;
+  }
+  .whatsnew {
+    width: 100%;
+    font-size: var(--text-md);
   }
   .spin {
     width: 11px;
@@ -428,9 +426,6 @@
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;
     margin-left: auto;
-  }
-  .sync-note .spin {
-    margin-left: 0;
   }
   @keyframes spin {
     to {

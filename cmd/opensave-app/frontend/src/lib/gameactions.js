@@ -19,6 +19,13 @@ export const collectionsDialog = writable(null);
 /** The library as shown: without games on their way out (see undo.js). */
 export const visibleGames = derived([gameList, hiddenKeys], ([$games, $hidden]) => $games.filter((g) => !$hidden.has(g.id)));
 
+/** Asks for every game in the library to be synced now: the Library's Sync
+ *  button, the sync panel and the palette all mean this. A game being played
+ *  answers that it syncs when the session ends, which is not a failure. */
+export function syncAllGames() {
+  for (const g of get(visibleGames)) api.post(`/api/games/${g.id}/sync`).catch(() => {});
+}
+
 /** The newest snapshot on the branch being played, or null. */
 export function latestSnapshot(game) {
   const snaps = game?.branches?.[game.activeBranch]?.snapshots ?? [];

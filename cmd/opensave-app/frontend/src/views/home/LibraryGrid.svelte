@@ -123,6 +123,16 @@
     tiles[j].scrollIntoView({ block: 'nearest' });
   }
 
+  // From the Library's Sync button: "Choose games to sync" starts selecting
+  // with nothing picked yet, and brings the grid's toolbar into view.
+  let toolbar;
+  export function chooseToSync() {
+    selectMode = true;
+    libSelected = new Set();
+    anchor = null;
+    toolbar?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
   function stopSelecting() {
     selectMode = false;
     libSelected = new Set();
@@ -177,8 +187,8 @@
   }}
 />
 
-<div class="toolbar">
-  <h3>{$t('home.library.title')}</h3>
+<div class="toolbar" bind:this={toolbar}>
+  <h2 class="section-title">{$t('home.library.allGames')}</h2>
   <input
     class="search"
     type="search"
@@ -313,7 +323,12 @@
     margin-bottom: 12px;
     flex-wrap: wrap;
   }
-  .toolbar h3 {
+  .toolbar {
+    scroll-margin-top: 12px;
+  }
+  .section-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
     margin-right: 6px;
   }
   .search {

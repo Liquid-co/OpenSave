@@ -2,7 +2,7 @@
   // "?": every keyboard shortcut, from the same list the handler uses.
   import Keyboard from 'lucide-svelte/icons/keyboard';
   import Modal from './ui/Modal.svelte';
-  import { SHORTCUTS, PAGES } from '../lib/shortcuts.js';
+  import { SHORTCUTS, PAGES, PAGE_LABEL_KEYS } from '../lib/shortcuts.js';
   import { t as i18n } from '../lib/i18n.js';
 
   export let onClose = () => {};
@@ -12,17 +12,10 @@
   // The entries' wording is written in lib/shortcuts.js, in English; the same
   // entries are said here from their keys, translated. The Ctrl 1…6 entries
   // name pages, by the same keys the sidebar shows them by.
-  const PAGE_LABEL_KEYS = {
-    home: 'home.title',
-    devices: 'home.devices',
-    cloud: 'home.cloudBackup',
-    activity: 'sidebar.nav.activity',
-    settings: 'sidebar.nav.settings',
-    changelog: 'about.changelog'
-  };
   const WHAT = {
     'Ctrl K': 'shortcuts.jumpTo',
     'Ctrl F': 'shortcuts.searchPage',
+    'Ctrl B': 'shortcuts.sidebar',
     'Ctrl ,': 'shortcuts.openSettings',
     '← → ↑ ↓': 'shortcuts.moveGames',
     'Shift F10': 'shortcuts.actionsForGame',

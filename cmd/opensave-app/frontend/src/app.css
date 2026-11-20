@@ -16,12 +16,27 @@
      included (lib/appearance.js). These are the violet's. */
   --on-accent: #fff;
   --accent-text: var(--accent);
+  /* A primary button's fill: the accent, moved just enough that its label
+     reads at 4.5:1 (lib/appearance.js accentFill). These are the violet's. */
+  --accent-fill: #825de5;
+  --accent-fill-hover: #7554ce;
 
+  --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;
-  --sidebar-w: 252px;
-  --titlebar-h: 36px;
-  --statusbar-h: 28px;
+  --radius-xl: 20px;
+  --sidebar-w: 224px;
+  --sidebar-w-icons: 64px;
+  --titlebar-h: 44px;
+  --statusbar-h: 34px;
+  /* The type scale every redesigned page draws from: no size in between. */
+  --text-xs: 0.786rem; /* 11px */
+  --text-sm: 0.857rem; /* 12px */
+  --text-md: 0.929rem; /* 13px */
+  --text-base: 1rem; /* 14px */
+  --text-lg: 1.143rem; /* 16px */
+  --text-xl: 1.429rem; /* 20px */
+  --text-2xl: 2rem; /* 28px */
   font-size: 14px;
 }
 
@@ -296,7 +311,7 @@ input[type='radio']:disabled {
   flex-shrink: 0;
 }
 .btn.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: transparent;
   color: var(--on-accent);
   box-shadow:
@@ -304,7 +319,7 @@ input[type='radio']:disabled {
     0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .btn.primary:hover {
-  background: var(--accent-hover);
+  background: var(--accent-fill-hover);
 }
 .btn.danger {
   background: rgba(var(--danger-rgb), 0.14);

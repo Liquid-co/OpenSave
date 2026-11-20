@@ -44,13 +44,18 @@ export const MAX_CUSTOM_ACCENTS = 8;
 
 export const SCALES = [0.9, 1, 1.1, 1.25];
 
+// What lights the top of the Library: the cover of the game you play (or
+// played last), a glow in the accent colour, or nothing.
+export const BACKDROPS = { cover: 'Cover art', accent: 'Accent glow', off: 'Off' };
+
 export const DEFAULT_APPEARANCE = Object.freeze({
   theme: 'dark',
   accent: 'violet',
   customAccents: Object.freeze([]),
   scale: 1,
   motion: true,
-  controller: 'auto'
+  controller: 'auto',
+  backdrop: 'cover'
 });
 
 // Controller navigation (lib/controller.js): on by itself when a controller is
@@ -102,7 +107,8 @@ export function sanitizeAppearance(raw) {
     customAccents,
     scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
     motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion,
-    controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller
+    controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller,
+    backdrop: v.backdrop in BACKDROPS ? v.backdrop : DEFAULT_APPEARANCE.backdrop
   };
 }
 
@@ -236,6 +242,24 @@ export function onAccent(hex) {
   return contrast(hex, '#ffffff') >= MIN_CONTRAST ? '#ffffff' : DARK_INK;
 }
 
+// What a button's label needs against its fill: WCAG's figure for ordinary
+// text. A label at 13px is not "large", so the 3:1 that is enough for a badge
+// or a tick is not enough for the words on a primary button.
+export const TEXT_CONTRAST = 4.5;
+
+/** The fill of a primary button: the accent itself where its label reads at
+ *  4.5:1, and otherwise darkened (white label) or lightened (dark label) just
+ *  enough. The violet's white label was 4.1:1 on it; this makes it 4.5:1. */
+export function accentFill(hex) {
+  const ink = onAccent(hex);
+  const shift = ink === '#ffffff' ? darken : lighten;
+  for (let amount = 0; amount <= 1; amount += 0.02) {
+    const c = amount === 0 ? hex : shift(hex, amount);
+    if (contrast(c, ink) >= TEXT_CONTRAST) return c;
+  }
+  return ink === '#ffffff' ? '#000000' : '#ffffff';
+}
+
 // The surface accent-coloured text is judged against in each theme: the
 // palest one it is drawn on — the raised card in either.
 const TEXT_SURFACE = { dark: '#17171a', light: '#ffffff' };
@@ -261,7 +285,11 @@ export function accentVars(accent, theme = 'dark') {
     '--accent-hover': lighten(hex, 0.12),
     '--accent-rgb': hexToRgb(hex).join(', '),
     '--on-accent': onAccent(hex),
-    '--accent-text': accentText(hex, theme)
+    '--accent-text': accentText(hex, theme),
+    '--accent-fill': accentFill(hex),
+    // Hovering moves the fill away from its label, never towards it, so the
+    // label reads at least as well under the pointer.
+    '--accent-fill-hover': onAccent(hex) === '#ffffff' ? darken(accentFill(hex), 0.1) : lighten(accentFill(hex), 0.1)
   };
 }
 

@@ -4,6 +4,7 @@ import {
   DEFAULT_APPEARANCE,
   MAX_CUSTOM_ACCENTS,
   accentVars,
+  accentFill,
   applyAppearance,
   hexToHsv,
   hexToRgb,
@@ -65,9 +66,12 @@ describe('sanitizeAppearance', () => {
       customAccents: [],
       scale: 1.25,
       motion: false,
-      controller: 'on'
+      controller: 'on',
+      backdrop: 'cover'
     });
     expect(sanitizeAppearance({ controller: 'sometimes' }).controller).toBe('auto');
+    expect(sanitizeAppearance({ backdrop: 'accent' }).backdrop).toBe('accent');
+    expect(sanitizeAppearance({ backdrop: 'video' }).backdrop).toBe('cover');
     expect(sanitizeAppearance({ theme: 'sepia', accent: 'teal', scale: 3 })).toEqual({ ...DEFAULT_APPEARANCE, accent: 'teal' });
     expect(sanitizeAppearance({ scale: '1.1' }).scale).toBe(1.1);
     expect(sanitizeAppearance(null)).toEqual(DEFAULT_APPEARANCE);
@@ -85,7 +89,7 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off' });
+    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover' });
     // A picked colour, and the ones kept beside the presets, come back too.
     saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
     expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });
@@ -181,6 +185,19 @@ describe('accent colours', () => {
     }
     // The point of the change: a yellow can be offered at all.
     expect(accentVars('yellow')['--on-accent']).not.toBe('#ffffff');
+  });
+
+  it('fills primary buttons so their label reads at 4.5:1, for every accent', () => {
+    for (const [id, a] of Object.entries(ACCENTS)) {
+      const v = accentVars(id);
+      expect(contrast(v['--accent-fill'], v['--on-accent']), id).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(v['--accent-fill-hover'], v['--on-accent']), id + ' hover').toBeGreaterThanOrEqual(4.5);
+    }
+    // The violet's white label was 4.1:1 on the violet itself.
+    expect(contrast(ACCENTS.violet.hex, '#ffffff')).toBeLessThan(4.5);
+    expect(accentVars('violet')['--accent-fill']).not.toBe(ACCENTS.violet.hex);
+    // An accent that already reads is left as it is.
+    expect(accentFill('#5b21b6')).toBe('#5b21b6');
   });
 
   it('keeps the accent readable as text on the page, in either theme', () => {

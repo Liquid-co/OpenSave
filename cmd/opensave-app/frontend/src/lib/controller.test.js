@@ -15,10 +15,10 @@ describe('controllerOn', () => {
 
 describe('pageStep', () => {
   it('goes round the sidebar either way', () => {
-    expect(pageStep('home', 1)).toBe('devices');
+    expect(pageStep('home', 1)).toBe('activity');
     expect(pageStep('home', -1)).toBe('changelog');
     expect(pageStep('changelog', 1)).toBe('home');
     // From a page not in the sidebar (a game's), as if from Home.
-    expect(pageStep('game', 1)).toBe('devices');
+    expect(pageStep('game', 1)).toBe('activity');
   });
 });

@@ -24,7 +24,8 @@
     canDismiss,
     notCleared,
     dismissOne,
-    clearAllHappened
+    clearAllHappened,
+    openBell
   } from '../lib/notifications.js';
   import { whenLabel } from '../lib/snapshots.js';
   import { fmtSize } from '../lib/format.js';
@@ -176,6 +177,11 @@
   function toggle() {
     if (open) close();
     else open = true;
+  }
+  // Opened from elsewhere: the Library's "needs you" strip.
+  $: if ($openBell) {
+    open = true;
+    openBell.set(false);
   }
   function close() {
     open = false;

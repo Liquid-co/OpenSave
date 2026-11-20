@@ -55,7 +55,7 @@ describe('translate', () => {
   });
 
   it('falls back to English when the locale lacks the key', () => {
-    expect(translate({ other: 'x' }, 'home.title', undefined, rules)).toBe('Home');
+    expect(translate({ other: 'x' }, 'home.title', undefined, rules)).toBe('Library');
   });
 
   it('fills {params}', () => {

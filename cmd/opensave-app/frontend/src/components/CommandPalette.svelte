@@ -9,23 +9,15 @@
   import { PAUSE_CHOICES, pauseSync, resumeSync } from '../lib/syncpause.js';
   import { collections, collectionFilter } from '../lib/collections.js';
   import { api } from '../lib/api.js';
-  import { visibleGames, runGameAction, canLaunch } from '../lib/gameactions.js';
+  import { visibleGames, runGameAction, canLaunch, syncAllGames } from '../lib/gameactions.js';
   import { showSetupAgain } from '../lib/setup.js';
   import { appearance, resolvedTheme } from '../lib/appearance.js';
-  import { PAGES } from '../lib/shortcuts.js';
+  import { PAGES, PAGE_LABEL_KEYS } from '../lib/shortcuts.js';
   import { t } from '../lib/i18n.js';
   import { rank, snapshotEntries } from '../lib/palette.js';
 
   // Page names, from the same keys the sidebar shows them by. PAGES in
   // lib/shortcuts.js carries its labels in English; the ids map here.
-  const PAGE_LABEL_KEYS = {
-    home: 'home.title',
-    devices: 'home.devices',
-    cloud: 'home.cloudBackup',
-    activity: 'sidebar.nav.activity',
-    settings: 'sidebar.nav.settings',
-    changelog: 'about.changelog'
-  };
 
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
@@ -113,7 +105,7 @@
   }
 
   async function syncAll() {
-    for (const g of $visibleGames) api.post(`/api/games/${g.id}/sync`).catch(() => {});
+    syncAllGames();
     toast($t('home.syncAllToast'));
   }
 
