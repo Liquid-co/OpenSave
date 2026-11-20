@@ -9,6 +9,13 @@
   // opens the game's page.
   import { createEventDispatcher, onDestroy } from 'svelte';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
+  import Folder from 'lucide-svelte/icons/folder';
+  import FolderOpen from 'lucide-svelte/icons/folder-open';
+  import AppWindow from 'lucide-svelte/icons/app-window';
+  import Search from 'lucide-svelte/icons/search';
+  import ArrowLeft from 'lucide-svelte/icons/arrow-left';
+  import Play from 'lucide-svelte/icons/play';
+  import { rise } from '../../lib/motion.js';
   import Modal from '../../components/ui/Modal.svelte';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import Spinner from '../../components/ui/Spinner.svelte';
@@ -157,11 +164,14 @@
           <p class="hint">{$t('home.findGame.nothingRunning')}</p>
         {:else}
           <div class="list">
-            {#each running as g (g.exe)}
-              <button class="row" on:click={() => choose(g, g.exe)}>
+            {#each running as g, i (g.exe)}
+              <button class="row" style="--i: {i}" on:click={() => choose(g, g.exe)}>
+                <span class="art live"><Play size={14} /></span>
+                <span class="row-text">
                 <span class="row-name">{g.name}</span>
                 <span class="row-sub">
                   {g.trackedName ? $t('home.findGame.trackedAs', { name: g.trackedName }) : g.exe}
+                </span>
                 </span>
               </button>
             {/each}
@@ -170,13 +180,20 @@
       </div>
       <div class="field">
         <label for="tg-search">{$t('home.findGame.findByName')}</label>
-        <input id="tg-search" placeholder={$t('home.findGame.searchPlaceholder')} bind:value={query} />
+        <div class="find">
+          <Search size={15} />
+          <input id="tg-search" placeholder={$t('home.findGame.searchPlaceholder')} bind:value={query} />
+        </div>
         {#if searching}
           <p class="hint"><Spinner size={13} /> {$t('home.findGame.searching')}</p>
         {:else if results.length > 0}
           <div class="list">
-            {#each results as g (g.name)}
-              <button class="row" on:click={() => choose(g)}>
+            {#each results as g, i (g.name)}
+              <button class="row" style="--i: {i}" on:click={() => choose(g)}>
+                <span class="art">
+                  {#if g.appId}<img src={coverURL(g.appId, true, g.name)} alt="" loading="lazy" on:error={(e) => (e.currentTarget.style.display = 'none')} />{/if}
+                </span>
+                <span class="row-text">
                 <span class="row-name">{g.name}</span>
                 <span class="row-sub">
                   {g.trackedName
@@ -184,6 +201,7 @@
                     : g.savePaths?.length
                       ? g.savePaths[0]
                       : $t('home.findGame.noSavesHere')}
+                </span>
                 </span>
               </button>
             {/each}
@@ -195,12 +213,12 @@
 
       {#if canPick}
         <div class="alt">
-          <button class="linklike" on:click={pickProgram}>{$t('home.findGame.chooseProgram')}</button>
-          <button class="linklike" on:click={pickFolder}>{$t('home.findGame.chooseSaveFolder')}</button>
+          <button class="mini" on:click={pickProgram}><AppWindow size={14} />{$t('home.findGame.chooseProgram')}</button>
+          <button class="mini" on:click={pickFolder}><FolderOpen size={14} />{$t('home.findGame.chooseSaveFolder')}</button>
         </div>
       {/if}
     {:else}
-      <div class="chosen">
+      <div class="chosen" in:rise={{ y: 6 }}>
         {#if picked.appId}
           <img class="cover" src={coverURL(picked.appId)} alt="" on:error={(e) => (e.currentTarget.style.display = 'none')} />
         {/if}
@@ -226,21 +244,21 @@
             <label class="check"><input type="radio" bind:group={savePath} value={p} /> <bdi>{p}</bdi></label>
           {/each}
         {:else if savePath}
-          <div class="picked" title={savePath}><bdi>{savePath}</bdi></div>
+          <div class="folder"><span class="ftile"><Folder size={18} /></span><div class="picked" title={savePath}><bdi>{savePath}</bdi></div></div>
         {:else}
           <p class="hint">{$t('home.findGame.noSavesYet')}</p>
         {/if}
         {#if canPick}
-          <div class="alt"><button class="linklike" on:click={pickSaveFolder}>{$t('home.findGame.otherSaveFolder')}</button></div>
+          <div class="alt"><button class="mini" on:click={pickSaveFolder}><FolderOpen size={14} />{$t('home.findGame.otherSaveFolder')}</button></div>
         {/if}
       </div>
       {#if exePath}
         <div class="field">
           <span class="label">{$t('home.findGame.program')}</span>
-          <div class="picked" title={exePath}><bdi>{exePath}</bdi></div>
+          <div class="folder"><span class="ftile"><AppWindow size={18} /></span><div class="picked" title={exePath}><bdi>{exePath}</bdi></div></div>
         </div>
       {/if}
-      <div class="alt"><button class="linklike" on:click={() => (picked = null)}>{$t('home.findGame.pickAnother')}</button></div>
+      <div class="alt"><button class="mini" on:click={() => (picked = null)}><ArrowLeft size={14} />{$t('home.findGame.pickAnother')}</button></div>
     {/if}
   </div>
   <ModalFoot>
@@ -256,84 +274,54 @@
 
 <style>
   .body {
-    padding: 18px 22px 20px;
+    padding: 20px 22px 22px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
   }
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
+    margin: 0;
   }
   .grow {
     flex: 1;
   }
   .label,
   label {
-    font-size: 0.82rem;
+    font-size: var(--text-md);
+    font-weight: 600;
     color: var(--text-dim);
   }
-  .list {
+  /* A folder or program picked: its icon, then the path, the end of which
+     names the game, so a long one keeps its end. */
+  .folder {
     display: flex;
-    flex-direction: column;
-    max-height: 220px;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    padding: 8px 10px;
-    background: none;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .row:last-child {
-    border-bottom: none;
-  }
-  .row:hover:not(:disabled) {
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px 8px 8px;
     background: var(--bg);
-  }
-  .row:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-  .row-sub {
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
-  .chosen {
-    display: flex;
-    gap: 14px;
-    align-items: flex-end;
-  }
-  .cover {
-    width: 140px;
-    aspect-ratio: 460 / 215;
-    object-fit: cover;
-    border-radius: 8px;
     border: 1px solid var(--border);
+    border-radius: 12px;
+    min-width: 0;
+  }
+  .ftile {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent-text);
   }
   .picked {
+    flex: 1;
+    min-width: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -342,35 +330,196 @@
   }
   .alt {
     display: flex;
-    gap: 16px;
+    gap: 6px;
+    flex-wrap: wrap;
   }
-  .linklike {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.8rem;
+  .mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
     color: var(--text-dim);
-    text-decoration: underline;
+    font: inherit;
+    font-size: var(--text-sm);
     cursor: pointer;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      border-color 0.12s;
   }
-  .linklike:hover {
+  .mini:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
     color: var(--text);
+  }
+  .known {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: var(--text-sm);
+    animation: known-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1.3) backwards;
+  }
+  .known :global(svg) {
+    color: var(--accent-text);
+  }
+  @keyframes known-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
   }
   .hint {
     margin: 0;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
+  .find {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 38px;
+    padding: 0 12px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    color: var(--text-faint);
+    transition:
+      border-color 0.12s,
+      box-shadow 0.12s;
+  }
+  .find:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
+  }
+  .find input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--text-base);
+    min-height: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 10px 6px 6px;
+    background: none;
+    border: none;
+    border-radius: 9px;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.12s;
+    animation: row-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(min(var(--i), 8) * 25ms);
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  .row:hover:not(:disabled),
+  .row:focus-visible {
+    background: var(--bg-hover);
+  }
+  .row:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .art {
+    position: relative;
+    width: 30px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 5px;
+    overflow: hidden;
+    background: var(--bg-active);
+  }
+  .art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .art.live {
+    display: grid;
+    place-items: center;
+    color: var(--success);
+    background: rgba(var(--success-rgb), 0.12);
+  }
+  .row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .row-name {
+    font-weight: 600;
+  }
+  .row-sub {
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .chosen {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+  }
+  .cover {
+    width: 150px;
+    aspect-ratio: 460 / 215;
+    object-fit: cover;
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), var(--shadow-lift);
+  }
+  /* A save folder to choose among several: a radio row, not a field label. */
+  label.check {
+    font-weight: 400;
+    font-size: var(--text-md);
+    color: var(--text);
   }
   .already {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid rgba(var(--warn-rgb), 0.3);
+    background: rgba(var(--warn-rgb), 0.08);
+    border-radius: 12px;
   }
 </style>

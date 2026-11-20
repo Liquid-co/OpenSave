@@ -47,15 +47,14 @@
 >
   <div class="panel" bind:this={panel} tabindex="-1" role="dialog" aria-modal="true" aria-label={title} style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
     <div class="head">
-      <div>
-        <h2 class="with-icon">
-          {#if icon}<svelte:component this={icon} size={20} />{/if}{title}
-        </h2>
+      {#if icon}<span class="mark"><svelte:component this={icon} size={20} /></span>{/if}
+      <div class="titles">
+        <h2>{title}</h2>
         {#if $$slots.sub}<p class="sub"><slot name="sub" /></p>{/if}
       </div>
       <div class="head-actions">
         <slot name="actions" />
-        <button class="btn ghost icon" disabled={!closable} on:click={close} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
+        <button class="shut" disabled={!closable} on:click={close} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
       </div>
     </div>
     <slot />
@@ -74,32 +73,81 @@
     padding: 32px;
   }
   .panel {
+    --modal-r: 18px;
     outline: none;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg);
+    border-radius: var(--modal-r);
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow);
   }
   .head {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 20px 22px 14px;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 20px 16px 22px;
     border-bottom: 1px solid var(--border);
   }
+  /* The dialog's subject, in a tinted tile, as on the sync panel. */
+  .mark {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .titles {
+    flex: 1;
+    min-width: 0;
+  }
   .head h2 {
-    font-size: 1.2rem;
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1.25;
   }
   .sub {
-    font-size: 0.84rem;
+    font-size: var(--text-md);
     color: var(--text-faint);
-    margin-top: 3px;
+    margin-top: 2px;
   }
   .head-actions {
     display: flex;
     gap: 8px;
     align-items: center;
+    align-self: flex-start;
+  }
+  .shut {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      transform 0.16s cubic-bezier(0.2, 0.7, 0.2, 1.4);
+  }
+  .shut:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .shut:hover:not(:disabled) :global(svg) {
+    transform: rotate(90deg);
+  }
+  .shut :global(svg) {
+    transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .shut:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 </style>

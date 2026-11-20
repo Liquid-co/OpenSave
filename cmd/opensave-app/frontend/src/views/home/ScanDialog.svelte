@@ -15,7 +15,6 @@
   import Joystick from 'lucide-svelte/icons/joystick';
   import Package from 'lucide-svelte/icons/package';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
-  import ModalLoading from '../../components/ui/ModalLoading.svelte';
   import FilterTabs from '../../components/ui/FilterTabs.svelte';
   import SearchInput from '../../components/ui/SearchInput.svelte';
   import CoverTile from '../../components/ui/CoverTile.svelte';
@@ -314,7 +313,14 @@
     </svelte:fragment>
 
     {#if scanning}
-      <ModalLoading>{$t('home.scan.scanningDetail')}</ModalLoading>
+      <div class="scanning" role="status">
+        <span class="pulse" aria-hidden="true">
+          <span class="ring"></span>
+          <span class="ring second"></span>
+          <span class="core"><ScanSearch size={26} /></span>
+        </span>
+        <p class="scan-title">{$t('home.scan.scanningDetail')}</p>
+      </div>
     {:else}
       <div class="toolbar">
         <SearchInput placeholder={$t('home.scan.filterPlaceholder')} bind:value={scanFilter} />
@@ -430,26 +436,89 @@
 <style>
   .toolbar {
     display: flex;
-    gap: 12px;
+    gap: 10px 12px;
     padding: 14px 22px;
     align-items: center;
     flex-wrap: wrap;
   }
+  .scanning {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 40px 20px;
+    text-align: center;
+  }
+  .pulse {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 10px;
+  }
+  .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(var(--accent-rgb), 0.45);
+    animation: spread 2.2s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+  }
+  .ring.second {
+    animation-delay: 1.1s;
+  }
+  @keyframes spread {
+    from {
+      transform: scale(0.45);
+      opacity: 1;
+    }
+    to {
+      transform: scale(1);
+      opacity: 0;
+    }
+  }
+  .core {
+    width: 60px;
+    height: 60px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-fill);
+    color: var(--on-accent);
+    box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.18);
+  }
+  .scan-title {
+    font-size: var(--text-base);
+    color: var(--text-dim);
+  }
   .toggle {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 7px 13px;
+    gap: 8px;
+    height: 30px;
+    padding: 0 12px 0 9px;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: 999px;
     background: transparent;
-    font-size: 0.85rem;
+    font-size: var(--text-md);
     color: var(--text-dim);
     white-space: nowrap;
     cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
   }
   .toggle:hover {
     background: var(--bg-hover);
+    color: var(--text);
+  }
+  .toggle:has(input:checked) {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+    color: var(--text);
   }
   /* A notch smaller than the app-wide 17px: this one sits in a compact pill
      next to 0.85rem text, and the full-size circle makes the pill taller
@@ -477,10 +546,8 @@
     gap: 10px;
     margin: 10px 0 2px;
     color: var(--text-faint);
-    font-size: 0.78rem;
+    font-size: var(--text-md);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
   .divider::after {
     content: '';

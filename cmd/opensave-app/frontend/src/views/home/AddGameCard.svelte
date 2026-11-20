@@ -8,6 +8,10 @@
   // also opens the new game's page.
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
+  import Folder from 'lucide-svelte/icons/folder';
+  import FolderOpen from 'lucide-svelte/icons/folder-open';
+  import FileText from 'lucide-svelte/icons/file-text';
+  import BadgeCheck from 'lucide-svelte/icons/badge-check';
   import Modal from '../../components/ui/Modal.svelte';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import { navigate, toast } from '../../lib/stores.js';
@@ -100,10 +104,13 @@
     <div class="field">
       <span class="label">{$t('home.addGame.savePath')}</span>
       {#if canPick}
-        <div class="picked" title={path}><bdi>{path}</bdi></div>
+        <div class="folder">
+          <span class="ftile"><Folder size={18} /></span>
+          <div class="picked" title={path}><bdi>{path}</bdi></div>
+        </div>
         <div class="alt">
-          <button class="linklike" on:click={pickFolder}>{$t('home.addGame.changeFolder')}</button>
-          <button class="linklike" on:click={pickFile}>{$t('home.addGame.trackFileInstead')}</button>
+          <button class="mini" on:click={pickFolder}><FolderOpen size={14} />{$t('home.addGame.changeFolder')}</button>
+          <button class="mini" on:click={pickFile}><FileText size={14} />{$t('home.addGame.trackFileInstead')}</button>
         </div>
       {:else}
         <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={path} />
@@ -120,7 +127,7 @@
         on:keydown={(e) => e.key === 'Enter' && add()}
       />
       <span class="hint">{$t('home.addGame.nameHint')}</span>
-      {#if knownAs}<span class="hint">{$t('home.addGame.recognisedAs', { name: knownAs })}</span>{/if}
+      {#if knownAs}<span class="known"><BadgeCheck size={14} />{$t('home.addGame.recognisedAs', { name: knownAs })}</span>{/if}
     </div>
   </div>
   <ModalFoot>
@@ -136,51 +143,108 @@
 
 <style>
   .body {
-    padding: 18px 22px 20px;
+    padding: 20px 22px 22px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
   }
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
+    margin: 0;
+  }
+  .grow {
+    flex: 1;
   }
   .label,
   label {
-    font-size: 0.82rem;
+    font-size: var(--text-md);
+    font-weight: 600;
     color: var(--text-dim);
   }
-  .picked {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8rem;
-    color: var(--text);
+  /* A folder or program picked: its icon, then the path, the end of which
+     names the game, so a long one keeps its end. */
+  .folder {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px 8px 8px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: 12px;
+    min-width: 0;
+  }
+  .ftile {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .picked {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-sm);
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    direction: rtl; /* long paths keep their end — the part that names the game */
+    direction: rtl;
     text-align: left;
   }
   .alt {
     display: flex;
-    gap: 16px;
+    gap: 6px;
+    flex-wrap: wrap;
   }
-  .linklike {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.8rem;
+  .mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
     color: var(--text-dim);
-    text-decoration: underline;
+    font: inherit;
+    font-size: var(--text-sm);
     cursor: pointer;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      border-color 0.12s;
   }
-  .linklike:hover {
+  .mini:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
     color: var(--text);
+  }
+  .known {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: var(--text-sm);
+    animation: known-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1.3) backwards;
+  }
+  .known :global(svg) {
+    color: var(--accent-text);
+  }
+  @keyframes known-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
   }
   .hint {
     margin: 0;

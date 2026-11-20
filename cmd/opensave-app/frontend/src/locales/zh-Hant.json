@@ -1470,5 +1470,6 @@
   "appearance.backdrop.cover": "封面圖",
   "appearance.backdrop.accent": "強調色光暈",
   "appearance.backdrop.off": "關閉",
-  "home.library.filterLabel": "顯示"
+  "home.library.filterLabel": "顯示",
+  "home.viewOptions.auto": "自動"
 }

@@ -464,27 +464,31 @@ input[type='radio']:disabled {
   margin-bottom: 16px;
 }
 .field label {
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   color: var(--text-dim);
-  font-weight: 500;
+  font-weight: 600;
 }
 .field input,
 .field select,
 .field textarea {
+  min-height: 38px;
   padding: 8px 12px;
   background-color: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--text);
   font: inherit;
-  font-size: 0.93rem;
+  font-size: var(--text-base);
   outline: none;
-  transition: border-color 0.12s;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
 }
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
 }
 /* Explanatory text under a control. Global, not only inside .field: a hint
    under a switch sits outside any .field, and there it was drawn as body

@@ -1470,5 +1470,6 @@
   "appearance.backdrop.cover": "封面图",
   "appearance.backdrop.accent": "强调色光晕",
   "appearance.backdrop.off": "关闭",
-  "home.library.filterLabel": "显示"
+  "home.library.filterLabel": "显示",
+  "home.viewOptions.auto": "自动"
 }

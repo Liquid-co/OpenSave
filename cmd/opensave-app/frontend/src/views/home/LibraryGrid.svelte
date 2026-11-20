@@ -20,9 +20,8 @@
   import ArrowDownWideNarrow from 'lucide-svelte/icons/arrow-down-wide-narrow';
   import ArrowUpNarrowWide from 'lucide-svelte/icons/arrow-up-narrow-wide';
   import { libraryView, gridColumns, filterRows, offeredFilters } from '../../lib/libraryview.js';
-  import { backdropClose } from '../../lib/backdrop.js';
   import Dropdown from '../../components/ui/Dropdown.svelte';
-  import { gatedFlip, pop, slidingIndicator } from '../../lib/motion.js';
+  import { gatedFlip, pop, slidingIndicator, unfold } from '../../lib/motion.js';
   import { fade } from 'svelte/transition';
   import LibraryTile from './LibraryTile.svelte';
   import LibraryViewOptions from './LibraryViewOptions.svelte';
@@ -80,8 +79,12 @@
       run: () => libraryView.update((v) => ({ ...v, reverse: !v.reverse }))
     }
   ];
+  let viewAnchor;
+  // A press outside either menu closes it; one inside, or on its own button,
+  // is left to them.
   const sortOutside = (e) => {
     if (sortOpen && !sortAnchor?.contains(e.target)) sortOpen = false;
+    if (viewOpen && !viewAnchor?.contains(e.target)) viewOpen = false;
   };
 
   // Moving tiles to their new places is measured per tile; past this many it
@@ -288,15 +291,18 @@
       </button>
       <Dropdown items={sortItems} bind:open={sortOpen} minWidth={sortWidth} label={$t('home.library.sort')} />
     </div>
-    <div class="view-anchor">
-      <button class="tool" class:on={viewOpen} aria-expanded={viewOpen} on:click={() => (viewOpen = !viewOpen)}>
+    <div class="anchor" bind:this={viewAnchor}>
+      <button class="tool" class:on={viewOpen} aria-expanded={viewOpen} aria-haspopup="dialog" on:click={() => (viewOpen = !viewOpen)}>
         <LayoutGrid size={15} />{$t('home.library.view')}
+        <span class="chev"><ChevronDown size={13} /></span>
       </button>
       {#if viewOpen}
-        <div class="view-backdrop" use:backdropClose={() => (viewOpen = false)} role="presentation"></div>
-        <div class="view-panel card" role="dialog" aria-label={$t('home.library.viewLabel')}>
+        <div class="view-panel" role="dialog" aria-label={$t('home.library.viewLabel')} transition:unfold={{ origin: 'top right' }}>
+          <div class="view-head">
+            <span class="view-title">{$t('home.library.viewLabel')}</span>
+            <span class="view-hint">{$t('home.library.viewHint')}</span>
+          </div>
           <LibraryViewOptions />
-          <p class="view-hint">{$t('home.library.viewHint')}</p>
         </div>
       {/if}
     </div>
@@ -546,27 +552,32 @@
     margin: 0 4px;
   }
 
-  .view-anchor {
-    position: relative;
-  }
-  .view-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-  }
   .view-panel {
     position: absolute;
     right: 0;
-    top: calc(100% + 8px);
-    z-index: 31;
+    top: calc(100% + 6px);
+    z-index: 70;
     width: 380px;
     max-width: calc(100vw - 32px);
-    padding: 16px;
+    padding: 16px 16px 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
   }
+  .view-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .view-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
   .view-hint {
-    margin-top: 12px;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--text-faint);
   }
   .grid {

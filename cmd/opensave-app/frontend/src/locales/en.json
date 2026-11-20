@@ -1692,5 +1692,6 @@
   "appearance.backdrop.cover": "Cover art",
   "appearance.backdrop.accent": "Accent glow",
   "appearance.backdrop.off": "Off",
-  "home.library.filterLabel": "Show"
+  "home.library.filterLabel": "Show",
+  "home.viewOptions.auto": "Auto"
 }
