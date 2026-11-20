@@ -653,8 +653,6 @@ func (e *Engine) SyncAllGames(ctx context.Context) {
 	}
 }
 
-// InitiatePair sends a handshake to a device at address:port and opens the
-// approve-confirm grace window.
 // pairingIdentity builds the fields every handshake carries, including this
 // device's public key.
 //
@@ -678,20 +676,48 @@ func (e *Engine) pairingIdentity(settings store.Settings) map[string]any {
 	return body
 }
 
-func (e *Engine) InitiatePair(ctx context.Context, address string, port int) error {
+// InitiatePair sends a handshake to a device at address:port and opens the
+// approve-confirm grace window.
+//
+// It returns the four digits the other device shows for this request, or ""
+// when it runs a version without the check (pairing/check.go).
+func (e *Engine) InitiatePair(ctx context.Context, address string, port int) (string, error) {
 	settings, err := e.Store.GetSettings()
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	e.Pairing.RecordSent(address, fmt.Sprintf("%s:%d", address, port))
+	hostPort := fmt.Sprintf("%s:%d", address, port)
+	e.Pairing.RecordSent(address, hostPort)
 
-	err = postHandshake(ctx, address, port, e.pairingIdentity(settings))
+	body := e.pairingIdentity(settings)
+	ownKey, _ := body["publicKey"].(string)
+	nonce := ""
+	if ownKey != "" {
+		if n, err := pairing.NewNonce(); err == nil {
+			nonce = n
+			body["checkCommit"] = pairing.Commit(n)
+		}
+	}
+
+	reply, err := postHandshake(ctx, address, port, body)
 	if err != nil {
-		return fmt.Errorf("handshake to %s:%d: %w", address, port, err)
+		return "", fmt.Errorf("handshake to %s:%d: %w", address, port, err)
 	}
 	e.Log("info", fmt.Sprintf("pairing request sent to %s:%d — waiting for their approval", address, port))
-	return nil
+
+	// Pinned whether or not the codes work out: the confirm must come with
+	// the key the device answered with.
+	e.Pairing.ExpectKey(reply.PublicKey, address, hostPort)
+	if nonce == "" || reply.PublicKey == "" || reply.CheckNonce == "" {
+		return "", nil
+	}
+	if err := postHandshakeCheck(ctx, address, port, map[string]any{"peerId": settings.NodeID, "nonce": nonce}); err != nil {
+		// The other device has no code to show, so neither do we.
+		e.Log("warn", fmt.Sprintf("could not send the pairing check to %s: %v", hostPort, err))
+		return "", nil
+	}
+	return pairing.CheckCode(ownKey, reply.PublicKey, nonce, reply.CheckNonce), nil
 }
 
 // InitiatePairWan sends a handshake to a room member through the relay.
@@ -712,11 +738,12 @@ func (e *Engine) InitiatePairWan(ctx context.Context, peerID string) error {
 }
 
 // ApprovePairing accepts a pending incoming handshake: persists the peer
-// and sends approve-confirm back to them.
-func (e *Engine) ApprovePairing(ctx context.Context, peerID string) error {
-	req, ok := e.Pairing.TakeIncoming(peerID)
-	if !ok {
-		return fmt.Errorf("no pending pairing request from %q", peerID)
+// and sends approve-confirm back to them. shownCode is the four-digit check
+// the user approved, "" if none was shown (pairing.TakeChecked).
+func (e *Engine) ApprovePairing(ctx context.Context, peerID, shownCode string) error {
+	req, err := e.Pairing.TakeChecked(peerID, shownCode)
+	if err != nil {
+		return fmt.Errorf("pairing with %q: %w", peerID, err)
 	}
 	settings, err := e.Store.GetSettings()
 	if err != nil {

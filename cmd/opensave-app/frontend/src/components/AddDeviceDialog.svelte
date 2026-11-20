@@ -19,12 +19,14 @@
   import Info from 'lucide-svelte/icons/info';
   import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
   import Modal from './ui/Modal.svelte';
+  import CheckDigits from './ui/CheckDigits.svelte';
   import { peers, discoveredPeers, wanRoom, settings, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { isHandheld } from '../lib/devices.js';
   import { generateRoomCode } from '../lib/roomcode.js';
   import { placeOnRadar, LABELLED_UP_TO } from '../lib/radar.js';
   import { rise, pop } from '../lib/motion.js';
+  import { sentPairings, pairClock, askToPair, waitingOn } from '../lib/pairing.js';
   import { t } from '../lib/i18n.js';
 
   /** 'nearby', 'code' or 'address': which way to open on. */
@@ -33,8 +35,8 @@
   const close = () => dispatch('close');
 
   let busy = false;
-  // Asked, and waiting on the other device to accept: id to name.
-  let asked = {};
+  // Asked, and waiting on the other device to accept (lib/pairing.js).
+  $: wait = (key) => waitingOn($sentPairings, key, $pairClock);
 
   async function run(fn) {
     if (busy) return false;
@@ -60,11 +62,7 @@
   $: listed = nearby
     .filter((d) => kind === 'all' || kindOf(d) === kind)
     .filter((d) => !query.trim() || `${d.deviceName} ${d.address}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const pairNearby = (d) =>
-    run(async () => {
-      await api.post('/api/peers/pair', { address: d.address, port: d.port });
-      asked = { ...asked, [d.id]: d.deviceName };
-    });
+  const pairNearby = (d) => run(() => askToPair(d.id, d.deviceName, { address: d.address, port: d.port }));
 
   // ── With a code ──
   $: inRoom = !!$wanRoom?.enabled;
@@ -79,20 +77,14 @@
     if (ok) toast($t('internetSync.joiningRoomToast', { code: c.trim() }));
   }
   $: roomPeers = ($wanRoom?.peers ?? []).filter((p) => p.id);
-  const pairRoom = (p) =>
-    run(async () => {
-      await api.post('/api/peers/pair', { peerId: p.id, address: 'relay' });
-      asked = { ...asked, [p.id]: p.deviceName };
-    });
+  const pairRoom = (p) => run(() => askToPair(p.id, p.deviceName, { peerId: p.id, address: 'relay' }));
 
   // ── By address ──
   let ip = '';
   let port = 8383;
-  const pairAddress = () =>
-    run(async () => {
-      await api.post('/api/peers/pair', { address: ip.trim(), port: Number(port) });
-      asked = { ...asked, [`${ip.trim()}:${port}`]: `${ip.trim()}:${port}` };
-    });
+  $: typed = `${ip.trim()}:${port}`;
+  const pairAddress = () => run(() => askToPair(typed, typed, { address: ip.trim(), port: Number(port) }));
+  $: typedWait = wait(typed);
 
   const WAYS = [
     { id: 'nearby', icon: Wifi },
@@ -122,7 +114,7 @@
             <span class="sweep"></span>
             <span class="me"><Monitor size={22} /></span>
             {#each radar.placed as p (p.device.id)}
-              <span class="pip" class:asked={asked[p.device.id]} style="left: {p.x}px; top: {p.y}px" in:pop={{ start: 0.4 }}>
+              <span class="pip" class:asked={wait(p.device.id)} style="left: {p.x}px; top: {p.y}px" in:pop={{ start: 0.4 }}>
                 <svelte:component this={isHandheld(p.device.deviceType) ? Gamepad2 : Monitor} size={15} />
               </span>
               {#if radar.labelled}<span class="lbl" style="left: {p.x}px; top: {p.y + 20}px">{p.device.deviceName}</span>{/if}
@@ -143,10 +135,20 @@
           {/if}
           <div class="rows">
             {#each listed as d (d.id)}
-              <div class="row" class:waiting={asked[d.id]} in:rise={{ y: 4 }}>
+              {@const sent = wait(d.id)}
+              <div class="row" class:waiting={sent} in:rise={{ y: 4 }}>
                 <span class="dtile"><svelte:component this={isHandheld(d.deviceType) ? Gamepad2 : Monitor} size={18} /></span>
-                <span class="dtext"><span class="dname">{d.deviceName}</span><span class="dsub">{d.address}</span></span>
-                {#if asked[d.id]}
+                <span class="dtext">
+                  <span class="dname">{d.deviceName}</span>
+                  {#if sent?.code}
+                    <span class="dsub check">{$t('devices.add.checkOn', { name: d.deviceName })}</span>
+                  {:else}
+                    <span class="dsub">{d.address}</span>
+                  {/if}
+                </span>
+                {#if sent?.code}
+                  <CheckDigits code={sent.code} />
+                {:else if sent}
                   <span class="wait"><Clock size={14} />{$t('devices.add.acceptOn', { name: d.deviceName })}</span>
                 {:else}
                   <button class="btn small primary" disabled={busy} on:click={() => pairNearby(d)}>{$t('devices.pair')}</button>
@@ -195,7 +197,7 @@
                 <span class="dtext"><span class="dname">{p.deviceName}</span></span>
                 {#if pairedIds.has(p.id)}
                   <span class="paired"><Check size={13} />{$t('devices.add.paired')}</span>
-                {:else if asked[p.id]}
+                {:else if wait(p.id)}
                   <span class="wait"><Clock size={14} />{$t('devices.add.acceptOn', { name: p.deviceName })}</span>
                 {:else}
                   <button class="btn small primary" disabled={busy} on:click={() => pairRoom(p)}>{$t('devices.pair')}</button>
@@ -215,7 +217,12 @@
           <label class="field-l port"><span>{$t('devices.add.port')}</span><input type="number" bind:value={port} /></label>
           <button class="btn primary" disabled={busy || !ip.trim()} on:click={pairAddress}>{$t('devices.sendPairing')}</button>
         </div>
-        {#if asked[`${ip.trim()}:${port}`]}
+        {#if typedWait?.code}
+          <div class="typed-check" in:rise={{ y: 4 }}>
+            <CheckDigits code={typedWait.code} size="md" />
+            <p>{$t('devices.add.checkThere')}</p>
+          </div>
+        {:else if typedWait}
           <p class="wait big"><Clock size={15} />{$t('devices.add.acceptThere')}</p>
         {/if}
       </div>
@@ -523,6 +530,24 @@
   .wait.big {
     margin-top: 12px;
     font-size: var(--text-md);
+  }
+  .dsub.check {
+    color: var(--accent-text);
+  }
+  .typed-check {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--accent-rgb), 0.5);
+    background: var(--bg);
+  }
+  .typed-check p {
+    color: var(--text-dim);
+    font-size: var(--text-md);
+    line-height: 1.45;
   }
   .empty-rows {
     display: flex;

@@ -6,6 +6,9 @@
   // from the path (GET /api/suggest-name), which knows a Switch game by the
   // name its emulator shows. Fires `close` on Cancel and after tracking, which
   // also opens the new game's page.
+  //
+  // The browser build has no system picker, so there the path is typed or
+  // pasted, or chosen with Browse (FolderBrowser).
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import Folder from 'lucide-svelte/icons/folder';
@@ -14,6 +17,7 @@
   import BadgeCheck from 'lucide-svelte/icons/badge-check';
   import Modal from '../../components/ui/Modal.svelte';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
+  import FolderBrowser from '../../components/FolderBrowser.svelte';
   import { navigate, toast } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
   import { folderName } from '../../lib/filedrop.js';
@@ -33,6 +37,12 @@
   let adding = false;
   let nameInput;
   const canPick = native.isWails();
+  let browsing = false;
+  function browsed(e) {
+    typed = false;
+    path = e.detail;
+    browsing = false;
+  }
 
   let suggestedFor = null;
   $: if (path !== suggestedFor) suggest(path);
@@ -113,7 +123,11 @@
           <button class="mini" on:click={pickFile}><FileText size={14} />{$t('home.addGame.trackFileInstead')}</button>
         </div>
       {:else}
-        <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={path} />
+        <div class="typed">
+          <input id="g-path" placeholder="C:\Users\you\AppData\…" bind:value={path} />
+          <button class="btn browse" class:on={browsing} aria-expanded={browsing} on:click={() => (browsing = !browsing)}><FolderOpen size={15} />{$t('folders.browse')}</button>
+        </div>
+        {#if browsing}<FolderBrowser start={path} on:pick={browsed} />{/if}
       {/if}
     </div>
     <div class="field">
@@ -249,5 +263,20 @@
   .actions {
     display: flex;
     gap: 8px;
+  }
+  .typed {
+    display: flex;
+    gap: 8px;
+  }
+  .typed input {
+    flex: 1;
+    min-width: 0;
+  }
+  .browse {
+    flex-shrink: 0;
+  }
+  .browse.on {
+    border-color: var(--accent);
+    color: var(--accent-text);
   }
 </style>

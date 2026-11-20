@@ -35,6 +35,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Get("/api/gamedb/identify", s.handleGameDBIdentify)
 	r.Get("/api/gamedb/running", s.handleGameDBRunning)
 	r.Get("/api/suggest-name", s.handleSuggestName)
+	r.Get("/api/folders", s.handleListFolders)
 	r.Post("/api/games/untrack-bulk", s.handleBulkUntrack)
 
 	// Games a peer syncs that this device has no folder for. Only ever

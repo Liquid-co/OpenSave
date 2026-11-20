@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/p2p"
+	"github.com/opensave/opensave/internal/p2p/pairing"
 	"github.com/opensave/opensave/internal/p2p/syncengine"
 )
 
@@ -163,23 +164,34 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 	if body.Port == 0 {
 		body.Port = 8383
 	}
-	if err := s.Daemon.P2P.InitiatePair(r.Context(), body.Address, body.Port); err != nil {
+	code, err := s.Daemon.P2P.InitiatePair(r.Context(), body.Address, body.Port)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "pending"})
+	reply := map[string]any{"status": "pending"}
+	if code != "" {
+		reply["checkCode"] = code
+	}
+	writeJSON(w, http.StatusOK, reply)
 }
 
 func (s *Server) handleApprovePairing(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		PeerID string `json:"peerId"`
+		// CheckCode is the four-digit check the user saw when they approved.
+		CheckCode string `json:"checkCode"`
 	}
 	if err := readJSON(r, &body); err != nil || body.PeerID == "" {
 		writeError(w, http.StatusBadRequest, "peerId is required")
 		return
 	}
-	if err := s.Daemon.P2P.ApprovePairing(r.Context(), body.PeerID); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	if err := s.Daemon.P2P.ApprovePairing(r.Context(), body.PeerID, body.CheckCode); err != nil {
+		status := http.StatusNotFound
+		if errors.Is(err, pairing.ErrCheckChanged) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	s.BroadcastPeersUpdate()

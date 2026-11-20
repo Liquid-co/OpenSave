@@ -17,6 +17,8 @@
   import DeviceCard from './devices/DeviceCard.svelte';
   import InternetSyncCard from './devices/InternetSyncCard.svelte';
   import AddDeviceDialog from '../components/AddDeviceDialog.svelte';
+  import CheckDigits from '../components/ui/CheckDigits.svelte';
+  import { sentPairings, pairClock, askToPair, waitingOn } from '../lib/pairing.js';
 
   export let params = {};
 
@@ -89,7 +91,8 @@
     });
 
   // ── A paired device ──
-  const pairNearby = (d) => run(() => api.post('/api/peers/pair', { address: d.address, port: d.port }), $t('devices.pairingSentTo', { name: d.deviceName }));
+  const pairNearby = (d) => run(() => askToPair(d.id, d.deviceName, { address: d.address, port: d.port }), $t('devices.pairingSentTo', { name: d.deviceName }));
+  $: sentTo = (id) => waitingOn($sentPairings, id, $pairClock);
   async function unpair(peer) {
     if (!(await askConfirm($t('devices.unpairConfirmBody', { name: peer.name }), { title: $t('devices.unpairConfirmTitle'), confirmText: $t('devices.unpairConfirmText'), danger: true }))) return;
     run(() => api.del(`/api/peers/${peer.id}`), $t('devices.unpaired', { name: peer.name }));
@@ -179,10 +182,22 @@
     <section class="card nearby" aria-labelledby="nearby-title">
       <div class="side-head"><Wifi size={17} /><h2 id="nearby-title">{$t('devices.page.nearby')}</h2></div>
       {#each nearby.slice(0, 4) as d (d.id)}
+        {@const sent = sentTo(d.id)}
         <div class="near" in:rise={{ y: 4 }}>
           <span class="near-tile"><svelte:component this={isHandheld(d.deviceType) ? Gamepad2 : Monitor} size={17} /></span>
-          <span class="near-text"><span class="near-name">{d.deviceName}</span><span class="cap">{d.address}</span></span>
-          <button class="btn small primary" disabled={busy} on:click={() => pairNearby(d)}>{$t('devices.pair')}</button>
+          <span class="near-text">
+            <span class="near-name">{d.deviceName}</span>
+            {#if sent}
+              <span class="cap sent">{sent.code ? $t('devices.add.checkOn', { name: d.deviceName }) : $t('devices.add.acceptOn', { name: d.deviceName })}</span>
+            {:else}
+              <span class="cap">{d.address}</span>
+            {/if}
+          </span>
+          {#if sent?.code}
+            <CheckDigits code={sent.code} />
+          {:else if !sent}
+            <button class="btn small primary" disabled={busy} on:click={() => pairNearby(d)}>{$t('devices.pair')}</button>
+          {/if}
         </div>
       {:else}
         <p class="cap">{$t('devices.page.nearbyNone')}</p>
@@ -374,5 +389,8 @@
   .near-name {
     font-weight: 600;
     font-size: var(--text-md);
+  }
+  .cap.sent {
+    color: var(--accent-text);
   }
 </style>

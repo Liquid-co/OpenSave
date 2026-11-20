@@ -69,7 +69,9 @@ async function request(method, path, body) {
     }
   }
   if (!res.ok) {
-    throw new Error(data.error || `${method} ${path} failed (${res.status})`);
+    const err = new Error(data.error || `${method} ${path} failed (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }

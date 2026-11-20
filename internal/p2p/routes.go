@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/e2ee"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/owntouch"
 	"github.com/opensave/opensave/internal/p2p/pairing"
@@ -31,6 +32,7 @@ import (
 func (e *Engine) RegisterRoutes(r chi.Router) {
 	r.Get("/api/p2p/ping", e.handlePing)
 	r.Post("/api/p2p/handshake", e.handleHandshake)
+	r.Post("/api/p2p/handshake-check", e.handleHandshakeCheck)
 	r.Post("/api/p2p/approve-confirm", e.handleApproveConfirm)
 
 	r.Group(func(r chi.Router) {
@@ -243,24 +245,62 @@ func (e *Engine) handleHandshake(w http.ResponseWriter, r *http.Request) {
 		DeviceType string `json:"deviceType"`
 		Port       int    `json:"port"`
 		PublicKey  string `json:"publicKey"`
+		// CheckCommit is the asking device's commitment to its nonce, sent
+		// by a version that shows the four-digit check (pairing/check.go).
+		CheckCommit string `json:"checkCommit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == "" {
 		jsonError(w, http.StatusBadRequest, "peerId is required")
 		return
 	}
 
-	e.Pairing.RecordIncoming(pairing.IncomingRequest{
+	req := pairing.IncomingRequest{
 		PeerID:     body.PeerID,
 		DeviceName: body.DeviceName,
 		DeviceType: orDefault(body.DeviceType, "desktop"),
 		Address:    clientIP(r),
 		Port:       body.Port,
 		PublicKey:  body.PublicKey,
-	})
+	}
+	reply := map[string]any{"status": "pending", "message": "Pairing request received. Waiting for host approval."}
+	// Our key goes back so the asking device can pin it and check the
+	// approve-confirm carries the same one. It is a public key; anyone we
+	// pair with gets it anyway.
+	if id, err := e.Store.DeviceIdentity(); err == nil {
+		own := e2ee.EncodeKey(id.Public)
+		reply["publicKey"] = own
+		if body.CheckCommit != "" && body.PublicKey != "" {
+			if nonce, err := pairing.NewNonce(); err == nil {
+				req.Checks, req.Commit, req.Nonce, req.OwnKey = true, body.CheckCommit, nonce, own
+				reply["checkNonce"] = nonce
+			}
+		}
+	}
+	e.Pairing.RecordIncoming(req)
 	e.Log("info", fmt.Sprintf("pairing request from %q (%s) — awaiting approval", body.DeviceName, clientIP(r)))
 	e.notifyPeerUpdate()
 
-	jsonOK(w, map[string]any{"status": "pending", "message": "Pairing request received. Waiting for host approval."})
+	jsonOK(w, reply)
+}
+
+// handleHandshakeCheck takes the asking device's nonce, sent once it has our
+// answer, and works out the four digits the pairing banner shows.
+func (e *Engine) handleHandshakeCheck(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PeerID string `json:"peerId"`
+		Nonce  string `json:"nonce"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == "" {
+		jsonError(w, http.StatusBadRequest, "peerId is required")
+		return
+	}
+	if _, ok := e.Pairing.Reveal(body.PeerID, clientIP(r), body.Nonce); !ok {
+		e.Log("warn", fmt.Sprintf("refused a pairing check from %s (peer %s): it does not match the handshake", clientIP(r), body.PeerID))
+		jsonError(w, http.StatusBadRequest, "No matching pairing request.")
+		return
+	}
+	e.notifyPeerUpdate()
+	jsonOK(w, map[string]any{"status": "ok"})
 }
 
 func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +319,15 @@ func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := e.Store.GetPeer(body.PeerID)
 	alreadyPaired := err == nil
+
+	// The device we asked answered our handshake with a key, and the code
+	// the user compared came from it. A confirm with another key is not
+	// from the device they checked.
+	if e.Pairing.KeyMismatch(body.PeerID, ip, body.Port, body.PublicKey) {
+		e.Log("warn", fmt.Sprintf("refused a pairing confirmation from %s (peer %s): its key is not the one it answered our request with", ip, body.PeerID))
+		jsonError(w, http.StatusBadRequest, "Pairing confirmation rejected: the key does not match the handshake.")
+		return
+	}
 
 	if !e.Pairing.ValidateConfirm(body.PeerID, ip, body.Port, false) {
 		if !alreadyPaired {

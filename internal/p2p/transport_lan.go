@@ -332,8 +332,21 @@ type pingInfo struct {
 	BuildTimeMs int64  `json:"buildTimeMs"`
 }
 
-func postHandshake(ctx context.Context, address string, port int, body map[string]any) error {
-	return postPeerJSON(ctx, address, port, "/handshake", body)
+// handshakeReply is what a device answers a handshake with. A version from
+// before the four-digit check sends neither field.
+type handshakeReply struct {
+	PublicKey  string `json:"publicKey"`
+	CheckNonce string `json:"checkNonce"`
+}
+
+func postHandshake(ctx context.Context, address string, port int, body map[string]any) (handshakeReply, error) {
+	var reply handshakeReply
+	err := postPeerJSONInto(ctx, address, port, "/handshake", body, &reply)
+	return reply, err
+}
+
+func postHandshakeCheck(ctx context.Context, address string, port int, body map[string]any) error {
+	return postPeerJSON(ctx, address, port, "/handshake-check", body)
 }
 
 func postApproveConfirm(ctx context.Context, address string, port int, body map[string]any) error {
@@ -341,6 +354,10 @@ func postApproveConfirm(ctx context.Context, address string, port int, body map[
 }
 
 func postPeerJSON(ctx context.Context, address string, port int, route string, body map[string]any) error {
+	return postPeerJSONInto(ctx, address, port, route, body, nil)
+}
+
+func postPeerJSONInto(ctx context.Context, address string, port int, route string, body map[string]any, out any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -353,5 +370,5 @@ func postPeerJSON(ctx context.Context, address string, port int, route string, b
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return doJSON(req, nil)
+	return doJSON(req, out)
 }

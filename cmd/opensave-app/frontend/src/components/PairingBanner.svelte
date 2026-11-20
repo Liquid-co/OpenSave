@@ -8,6 +8,7 @@
   import { demandAttention } from '../lib/notify.js';
   import { t, segments } from '../lib/i18n.js';
   import Link from 'lucide-svelte/icons/link';
+  import CheckDigits from './ui/CheckDigits.svelte';
 
   let busy = false;
   let seen = new Set(); // request ids we've already chimed for
@@ -25,38 +26,53 @@
     seen = new Set(list.map((r) => r.peerId));
   }
 
-  const approve = (req) => act('/api/peers/approve', req, $t('pairing.pairedWith', { device: req.deviceName }));
-  const reject = (req) => act('/api/peers/reject', req, null);
+  // The approval carries the numbers on screen, so a request replaced by a
+  // newer one a moment ago is not approved unseen (409).
+  const approve = (req) => act('/api/peers/approve', { peerId: req.peerId, checkCode: req.checkCode ?? '' }, $t('pairing.pairedWith', { device: req.deviceName }));
+  const reject = (req) => act('/api/peers/reject', { peerId: req.peerId }, null);
 
-  async function act(path, req, okMsg) {
+  async function act(path, body, okMsg) {
     if (busy) return;
     busy = true;
     try {
-      await api.post(path, { peerId: req.peerId });
+      await api.post(path, body);
       if (okMsg) toast(okMsg, 'success');
     } catch (e) {
-      toast(e.message, 'error');
+      toast(e.status === 409 ? $t('pairing.checkChanged') : e.message, 'error');
     } finally {
       busy = false;
     }
   }
+  const who = (req) => req.deviceName ?? $t('pairing.aDevice');
 </script>
 
 {#if $pairingRequests.length > 0}
   <div class="pair-wrap" transition:fly={{ y: -90, duration: 320 }}>
     {#each $pairingRequests as req (req.peerId)}
       <div class="pair-card" transition:fly={{ y: -20, duration: 200 }}>
-        <div class="pair-icon"><Link size={19} /></div>
-        <div class="pair-body">
-          <div class="pair-title">
-            {#each segments($t('pairing.wantsToPair'), { device: req.deviceName ?? $t('pairing.aDevice') }, ['device']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
+        <div class="pair-main">
+          <div class="pair-icon"><Link size={19} /></div>
+          <div class="pair-body">
+            <div class="pair-title">
+              {#each segments($t('pairing.wantsToPair'), { device: who(req) }, ['device']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
+            </div>
+            <div class="pair-sub">{req.isWan ? $t('pairing.subInternet') : $t('pairing.subFrom', { address: req.address })}</div>
           </div>
-          <div class="pair-sub">{req.isWan ? $t('pairing.subInternet') : $t('pairing.subFrom', { address: req.address })}</div>
+          <div class="pair-actions">
+            <button class="btn small" disabled={busy} on:click={() => reject(req)}>{$t('pairing.ignore')}</button>
+            <button class="btn small primary" disabled={busy} on:click={() => approve(req)}>{$t('pairing.approve')}</button>
+          </div>
         </div>
-        <div class="pair-actions">
-          <button class="btn small" disabled={busy} on:click={() => reject(req)}>{$t('pairing.ignore')}</button>
-          <button class="btn small primary" disabled={busy} on:click={() => approve(req)}>{$t('pairing.approve')}</button>
-        </div>
+        {#if req.checkCode}
+          <div class="pair-check">
+            <CheckDigits code={req.checkCode} size="md" />
+            <p>{$t('pairing.checkMatch', { device: who(req) })}</p>
+          </div>
+        {:else if req.checks}
+          <div class="pair-check quiet"><p>{$t('pairing.checkPending')}</p></div>
+        {:else if !req.isWan}
+          <div class="pair-check quiet"><p>{$t('pairing.noCheck', { device: who(req) })}</p></div>
+        {/if}
       </div>
     {/each}
   </div>
@@ -76,8 +92,8 @@
   }
   .pair-card {
     display: flex;
-    align-items: center;
-    gap: 14px;
+    flex-direction: column;
+    gap: 12px;
     padding: 13px 16px;
     background: var(--bg-raised);
     border: 1px solid var(--accent);
@@ -85,6 +101,32 @@
     /* Still, no pulse: the outline, the chime and the window coming to the
        front already say someone is asking. */
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  }
+  .pair-main {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .pair-check {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .pair-check p {
+    font-size: var(--text-md);
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+  .pair-check.quiet {
+    padding: 8px 12px;
+  }
+  .pair-check.quiet p {
+    font-size: var(--text-sm);
+    color: var(--text-faint);
   }
   .pair-icon {
     flex-shrink: 0;
