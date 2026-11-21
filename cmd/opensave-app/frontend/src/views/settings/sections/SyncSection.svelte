@@ -1,6 +1,7 @@
 <script>
   // Sync: what syncs on its own, which games a new device's saves count as,
   // and how fast saves may move.
+  import Select from '../../../components/ui/Select.svelte';
   import SettingGroup from '../../../components/ui/SettingGroup.svelte';
   import SettingRow from '../../../components/ui/SettingRow.svelte';
   import Switch from '../../../components/ui/Switch.svelte';
@@ -40,19 +41,27 @@
         {#each segments($t('settings.sync.unknownGameMore'), { askMe: $t('settings.sync.askShort') }, ['askMe']) as part}{#if part.bold}<em>{part.text}</em>{:else}{part.text}{/if}{/each}
       </MoreInfo>
     </svelte:fragment>
-    <select id="s-unknown-game" bind:value={draft.unknownGameFromPeer}>
-      <option value="track">{$t('settings.sync.unknownGame.track')}</option>
-      <option value="ask">{$t('settings.sync.unknownGame.ask')}</option>
-    </select>
+    <Select
+      id="s-unknown-game"
+      bind:value={draft.unknownGameFromPeer}
+      options={[
+        { value: 'track', label: $t('settings.sync.unknownGame.track') },
+        { value: 'ask', label: $t('settings.sync.unknownGame.ask') }
+      ]}
+    />
   </SettingRow>
   <SettingRow id="speedLimit" label={$t('settings.sync.bandwidthLimit')} hint={$t('settings.sync.speedHint')} control="s-limit">
-    <select id="s-limit" bind:value={draft.speedLimit}>
-      <option value={0}>{$t('settings.sync.speed.unlimited')}</option>
-      <option value={100}>{$t('settings.sync.speed.low')}</option>
-      <option value={500}>{$t('settings.sync.speed.medium')}</option>
-      <option value={1024}>{$t('settings.sync.speed.high')}</option>
-      <option value={5120}>{$t('settings.sync.speed.veryHigh')}</option>
-      <option value={10240}>{$t('settings.sync.speed.ultra')}</option>
-    </select>
+    <Select
+      id="s-limit"
+      bind:value={draft.speedLimit}
+      options={[
+        [0, 'unlimited'],
+        [100, 'low'],
+        [500, 'medium'],
+        [1024, 'high'],
+        [5120, 'veryHigh'],
+        [10240, 'ultra']
+      ].map(([value, k]) => ({ value, label: $t('settings.sync.speed.' + k) }))}
+    />
   </SettingRow>
 </SettingGroup>

@@ -1,6 +1,7 @@
 <script>
   // Snapshots and storage: the space they take and whether they can be put
   // back, where they are kept, how long and how many.
+  import Select from '../../../components/ui/Select.svelte';
   import SettingGroup from '../../../components/ui/SettingGroup.svelte';
   import SettingRow from '../../../components/ui/SettingRow.svelte';
   import Switch from '../../../components/ui/Switch.svelte';
@@ -102,9 +103,7 @@
   {#if draft.autoDeleteBackups}
     <div transition:collapse>
       <SettingRow label={$t('settings.storage.deleteOlderThan')} control="s-days">
-        <select id="s-days" bind:value={draft.autoDeleteDays}>
-          {#each [7, 14, 30, 60, 90, 180] as n}<option value={n}>{$t('settings.storage.days', { n })}</option>{/each}
-        </select>
+        <Select id="s-days" bind:value={draft.autoDeleteDays} options={[7, 14, 30, 60, 90, 180].map((n) => ({ value: n, label: $t('settings.storage.days', { n }) }))} />
       </SettingRow>
     </div>
   {/if}

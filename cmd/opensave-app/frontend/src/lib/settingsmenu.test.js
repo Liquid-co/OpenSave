@@ -31,7 +31,10 @@ describe('SETTINGS_INDEX', () => {
       expect(en[e.label], e.label).toBeTruthy();
       if (e.hint) expect(en[e.hint], e.hint).toBeTruthy();
     }
-    for (const s of SECTIONS) expect(en[`settings.section.${s}`], s).toBeTruthy();
+    for (const s of SECTIONS) {
+      expect(en[`settings.section.${s}`], s).toBeTruthy();
+      expect(en[`settings.section.${s}Hint`], s).toBeTruthy();
+    }
   });
   it('gives every setting its own id', () => {
     const ids = SETTINGS_INDEX.map((e) => e.id);

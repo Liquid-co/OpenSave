@@ -3,6 +3,7 @@
   // the Library's background, the sidebar, size, motion and the Library's
   // look. Applied as they are chosen (lib/appearance.js); none of it waits on
   // the daemon.
+  import Select from '../../../components/ui/Select.svelte';
   import SettingGroup from '../../../components/ui/SettingGroup.svelte';
   import SettingRow from '../../../components/ui/SettingRow.svelte';
   import Switch from '../../../components/ui/Switch.svelte';
@@ -132,11 +133,12 @@
     <Segmented options={sidebarOptions} value={$sidebar.mode} label={$t('settings.appearance.sidebar')} on:change={(e) => sidebar.update((v) => chooseSidebar(v, e.detail))} />
   </SettingRow>
   <SettingRow id="size" label={$t('settings.appearance.size')} control="s-scale">
-    <select id="s-scale" value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
-      {#each SCALES as s}
-        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ` ${$t('settings.appearance.scaleDefault')}` : ''}</option>
-      {/each}
-    </select>
+    <Select
+      id="s-scale"
+      value={$appearance.scale}
+      options={SCALES.map((s) => ({ value: s, label: `${Math.round(s * 100)}%${s === 1 ? ` ${$t('settings.appearance.scaleDefault')}` : ''}` }))}
+      on:change={(e) => set({ scale: e.detail })}
+    />
   </SettingRow>
   <SettingRow id="animations" label={$t('settings.appearance.animations')}>
     <svelte:fragment slot="hint">

@@ -2,6 +2,7 @@
   // Whether every snapshot can still be restored: when they were last read
   // back, what was found, what to do about what was found, and how often it
   // happens by itself. See daemon/verify.go and daemon/repair.go.
+  import Select from '../../components/ui/Select.svelte';
   import { onMount } from 'svelte';
   import FileCheck from 'lucide-svelte/icons/file-check';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
@@ -202,12 +203,15 @@
       {$t('settings.snapshotChecks.checkAuto')}
     </label>
     {#if auto}
-      <select value={every} on:change={(e) => setEvery(Number(e.currentTarget.value))} aria-label={$t('settings.snapshotChecks.howOftenAria')}>
-        {#each EVERY as [days, label]}
-          <option value={days}>{label}</option>
-        {/each}
-        {#if !EVERY.some(([d]) => d === every)}<option value={every}>{$t('settings.snapshotChecks.everyNDays', { n: every })}</option>{/if}
-      </select>
+      <Select
+        value={every}
+        label={$t('settings.snapshotChecks.howOftenAria')}
+        options={[
+          ...EVERY.map(([days, label]) => ({ value: days, label })),
+          ...(EVERY.some(([d]) => d === every) ? [] : [{ value: every, label: $t('settings.snapshotChecks.everyNDays', { n: every }) }])
+        ]}
+        on:change={(e) => setEvery(e.detail)}
+      />
       <span class="hint">{nextAt ? $t('settings.snapshotChecks.nextAt', { when: inWords(nextAt) }) : $t('settings.snapshotChecks.firstLater')} {$t('settings.snapshotChecks.scheduleHint')}</span>
     {:else}
       <span class="hint">{$t('settings.snapshotChecks.stillChecked')}</span>
@@ -318,14 +322,6 @@
     gap: 8px;
     font-size: 0.86rem;
     cursor: pointer;
-  }
-  .schedule select {
-    padding: 6px 10px;
-    background-color: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.85rem;
   }
   .schedule .hint,
   .actions .hint {

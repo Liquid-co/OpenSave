@@ -1964,5 +1964,7 @@
   "theme.sub.default": "默认",
   "theme.sub.dark": "深色",
   "theme.sub.light": "浅色",
-  "theme.sub.both": "深色、浅色"
+  "theme.sub.both": "深色、浅色",
+  "settings.cloud.on": "正在备份到 {provider}",
+  "settings.cloud.notSetUp": "尚未设置"
 }

@@ -2204,5 +2204,7 @@
   "theme.sub.default": "Default",
   "theme.sub.dark": "Dark",
   "theme.sub.light": "Light",
-  "theme.sub.both": "Dark, light"
+  "theme.sub.both": "Dark, light",
+  "settings.cloud.on": "Backing up to {provider}",
+  "settings.cloud.notSetUp": "Not set up yet"
 }

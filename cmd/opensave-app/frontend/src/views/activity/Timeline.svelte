@@ -3,6 +3,7 @@
   // last played and when it was last snapshotted and synced, and then the
   // timeline itself — syncs with your other devices, snapshots, play
   // sessions, restores. See lib/timeline.js and internal/daemon/activity.go.
+  import Select from '../../components/ui/Select.svelte';
   import { onDestroy } from 'svelte';
   import ArrowDownToLine from 'lucide-svelte/icons/arrow-down-to-line';
   import ArrowUpFromLine from 'lucide-svelte/icons/arrow-up-from-line';
@@ -195,12 +196,16 @@
 {:else}
   <div class="filters">
     <FilterTabs options={Object.entries(TIMELINE_FILTERS).map(([id]) => [id, $t('activity.filter.' + id)])} bind:value={filter} />
-    <select bind:value={gameId} aria-label={$t('activity.timeline.showOneGameAria')}>
-      <option value="">{$t('activity.timeline.everyGame')}</option>
-      {#each Object.values($games).sort((a, b) => a.name.localeCompare(b.name)) as game (game.id)}
-        <option value={game.id}>{game.name}</option>
-      {/each}
-    </select>
+    <Select
+      bind:value={gameId}
+      label={$t('activity.timeline.showOneGameAria')}
+      options={[
+        { value: '', label: $t('activity.timeline.everyGame') },
+        ...Object.values($games)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((g) => ({ value: g.id, label: g.name }))
+      ]}
+    />
   </div>
 
   {#if days.length === 0}
@@ -269,14 +274,6 @@
     gap: 12px;
     flex-wrap: wrap;
     margin-bottom: 10px;
-  }
-  select {
-    padding: 6px 10px;
-    background-color: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.85rem;
   }
   .day {
     margin: 16px 0 8px;

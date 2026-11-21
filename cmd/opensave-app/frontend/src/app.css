@@ -490,27 +490,61 @@ input[type='radio']:disabled {
   color: var(--text-dim);
   font-weight: 600;
 }
+/* Every text field, number box, select and text area, wherever it is: one
+   look, the same as the app's own Select (components/ui/Select.svelte).
+   They used to be styled only inside a .field, and everywhere else were
+   left as the browser draws them — a white-edged box from another program.
+   :where() keeps this at no weight at all, so a component that draws its
+   own (the search boxes) still does. */
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])),
+:where(select),
+:where(textarea) {
+  min-height: 36px;
+  padding: 7px 12px;
+  background-color: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+  outline: none;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    background-color 0.12s;
+}
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'])):hover:not(:focus, :disabled, [readonly]),
+:where(select):hover:not(:focus, :disabled),
+:where(textarea):hover:not(:focus, :disabled, [readonly]) {
+  background-color: var(--bg-hover);
+}
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'])):focus,
+:where(select):focus,
+:where(textarea):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
+}
+:where(input, textarea)::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+:where(input, select, textarea):disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+:where(input[readonly]) {
+  background-color: transparent;
+}
+/* A number's own up and down buttons, quieter: the system draws them light
+   on a dark box. */
+input[type='number']::-webkit-inner-spin-button {
+  opacity: 0.45;
+}
 .field input,
 .field select,
 .field textarea {
   min-height: 38px;
-  padding: 8px 12px;
-  background-color: var(--bg);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  color: var(--text);
-  font: inherit;
   font-size: var(--text-base);
-  outline: none;
-  transition:
-    border-color 0.12s,
-    box-shadow 0.12s;
-}
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
 }
 /* Explanatory text under a control. Global, not only inside .field: a hint
    under a switch sits outside any .field, and there it was drawn as body

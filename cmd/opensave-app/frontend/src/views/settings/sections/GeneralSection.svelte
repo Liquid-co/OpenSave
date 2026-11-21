@@ -1,6 +1,7 @@
 <script>
   // General: this device — its language, name, kind and id — and how
   // OpenSave starts and updates.
+  import Select from '../../../components/ui/Select.svelte';
   import SettingGroup from '../../../components/ui/SettingGroup.svelte';
   import SettingRow from '../../../components/ui/SettingRow.svelte';
   import Switch from '../../../components/ui/Switch.svelte';
@@ -37,12 +38,11 @@
     <input id="s-name" class="wide" class:invalid={unsaved.includes('deviceName')} bind:value={draft.deviceName} />
   </SettingRow>
   <SettingRow id="deviceType" label={$t('settings.general.deviceType')} hint={$t('settings.general.typeHint')} control="s-type">
-    <select id="s-type" bind:value={draft.deviceType}>
-      <option value="desktop">{$t('settings.general.type.desktop')}</option>
-      <option value="deck">{$t('settings.general.type.deck')}</option>
-      <option value="handheld">{$t('settings.general.type.handheld')}</option>
-      <option value="mobile">{$t('settings.general.type.mobile')}</option>
-    </select>
+    <Select
+      id="s-type"
+      bind:value={draft.deviceType}
+      options={['desktop', 'deck', 'handheld', 'mobile'].map((v) => ({ value: v, label: $t('settings.general.type.' + v) }))}
+    />
   </SettingRow>
   <SettingRow id="deviceId" label={$t('settings.general.deviceId')} hint={$t('settings.general.deviceIdHint')}>
     <code class="id" title={draft.nodeId}>{draft.nodeId ?? ''}</code>
@@ -51,12 +51,12 @@
     >
   </SettingRow>
   <SettingRow id="language" label={$t('settings.language')} control="s-lang">
-    <select id="s-lang" value={$locale} on:change={(e) => locale.set(e.currentTarget.value)}>
-      <option value={SYSTEM_LOCALE}>{$t('settings.systemDefault')}</option>
-      {#each Object.entries(LOCALES) as [id, label]}
-        <option value={id}>{label}</option>
-      {/each}
-    </select>
+    <Select
+      id="s-lang"
+      value={$locale}
+      options={[{ value: SYSTEM_LOCALE, label: $t('settings.systemDefault') }, ...Object.entries(LOCALES).map(([value, label]) => ({ value, label }))]}
+      on:change={(e) => locale.set(e.detail)}
+    />
   </SettingRow>
 </SettingGroup>
 

@@ -2,6 +2,7 @@
   // Two snapshots of a game side by side: which files one has that the other
   // does not, and which both have in different versions. Read from the
   // archives' own lists, so it is instant (see snapshot/compare.go).
+  import Select from '../../components/ui/Select.svelte';
   import FilePen from 'lucide-svelte/icons/file-pen';
   import FilePlus from 'lucide-svelte/icons/file-plus';
   import FileMinus from 'lucide-svelte/icons/file-minus';
@@ -53,15 +54,11 @@
     <div class="pick">
       <label class="field">
         <span>{$t('game.compare.from')}</span>
-        <select bind:value={from}>
-          {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
-        </select>
+        <Select bind:value={from} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
       </label>
       <label class="field">
         <span>{$t('game.compare.to')}</span>
-        <select bind:value={to}>
-          {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
-        </select>
+        <Select bind:value={to} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
       </label>
     </div>
 
@@ -107,9 +104,6 @@
     margin: 0;
     font-size: 0.78rem;
     color: var(--text-faint);
-    min-width: 0;
-  }
-  .pick select {
     min-width: 0;
   }
   .quiet,
