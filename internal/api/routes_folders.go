@@ -272,3 +272,78 @@ func startingPlaces() folderPlaces {
 	}
 	return out
 }
+
+// handleMakeFolder makes one new folder inside another, for the navigator's
+// New folder: a place for an export, say, that does not exist yet. One level
+// and a plain name, and never over anything already there.
+func (s *Server) handleMakeFolder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Parent string `json:"parent"`
+		Name   string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	parent := strings.TrimSpace(body.Parent)
+	if !filepath.IsAbs(parent) {
+		writeError(w, http.StatusBadRequest, "path must be absolute")
+		return
+	}
+	parent = filepath.Clean(parent)
+	if info, err := os.Stat(parent); err != nil || !info.IsDir() {
+		writeError(w, http.StatusNotFound, "That folder doesn't exist.")
+		return
+	}
+	name, problem := folderName(body.Name, runtime.GOOS)
+	if problem != "" {
+		writeError(w, http.StatusBadRequest, problem)
+		return
+	}
+	full := filepath.Join(parent, name)
+	if err := os.Mkdir(full, 0o755); err != nil {
+		switch {
+		case errors.Is(err, fs.ErrExist):
+			writeError(w, http.StatusConflict, "There's already something called that here.")
+		case errors.Is(err, fs.ErrPermission):
+			writeError(w, http.StatusForbidden, "OpenSave isn't allowed to make a folder here.")
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, folderEntry{Name: name, Path: full})
+}
+
+// windowsReserved are names Windows keeps for devices, with any extension.
+var windowsReserved = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$`)
+
+// folderName checks the name of a new folder: one plain name that the
+// system can hold. It returns the name to use — Windows drops trailing dots
+// and spaces itself, so they are dropped here, before the check — or what is
+// wrong with it.
+func folderName(raw, goos string) (string, string) {
+	name := strings.TrimSpace(raw)
+	if goos == "windows" {
+		name = strings.TrimRight(name, ". ")
+	}
+	switch {
+	case name == "":
+		return "", "Give the folder a name."
+	case name == "." || name == "..":
+		return "", "That name can't be used for a folder."
+	case len(name) > 255:
+		return "", "That name is too long."
+	case strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, 0):
+		return "", `A folder name can't contain / or \.`
+	}
+	if goos == "windows" {
+		if strings.ContainsAny(name, `<>:"|?*`) || strings.IndexFunc(name, func(r rune) bool { return r < 32 }) >= 0 {
+			return "", `A folder name can't contain < > : " | ? or *.`
+		}
+		if windowsReserved.MatchString(name) {
+			return "", "Windows keeps that name for itself."
+		}
+	}
+	return name, ""
+}

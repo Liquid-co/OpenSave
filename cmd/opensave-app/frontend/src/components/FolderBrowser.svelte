@@ -9,6 +9,10 @@
   // with the file clicked. Given `files="programs"`, it lists the programs a
   // game can be started from, as this system knows them, and starts from
   // where programs and games are installed.
+  //
+  // Choosing a folder, a new one can be made where you are (POST
+  // /api/folders): a place for an export that does not exist yet. It opens
+  // as soon as it is made, ready to be used.
   import { createEventDispatcher, onMount } from 'svelte';
   import Folder from 'lucide-svelte/icons/folder';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
@@ -17,9 +21,10 @@
   import Check from 'lucide-svelte/icons/check';
   import FileArchive from 'lucide-svelte/icons/file-archive';
   import AppWindow from 'lucide-svelte/icons/app-window';
+  import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import { api } from '../lib/api.js';
   import { t } from '../lib/i18n.js';
-  import { rise } from '../lib/motion.js';
+  import { rise, collapse } from '../lib/motion.js';
 
   export let start = '';
   /** An extension, ".sscb", or "programs": choose such a file instead of a
@@ -65,6 +70,42 @@
     }
   });
 
+  // ── A new folder, here ──
+  let naming = false;
+  let newName = '';
+  let making = false;
+  let nameError = '';
+  function startNaming() {
+    naming = true;
+    newName = '';
+    nameError = '';
+  }
+  async function makeFolder() {
+    if (!newName.trim() || making || !listing) return;
+    making = true;
+    nameError = '';
+    try {
+      const made = await api.post('/api/folders', { parent: listing.path, name: newName });
+      naming = false;
+      await open(made.path);
+    } catch (e) {
+      nameError = e.message;
+    } finally {
+      making = false;
+    }
+  }
+  function nameKeys(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      makeFolder();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      naming = false;
+    }
+  }
+  const focusIt = (el) => el.focus();
+
   function key(e) {
     if (e.key === 'Backspace' && listing?.parent && e.target?.tagName !== 'INPUT') {
       e.preventDefault();
@@ -90,9 +131,33 @@
     <button class="up" disabled={!listing?.parent || loading} title={$t('folders.up')} aria-label={$t('folders.up')} on:click={() => open(listing.parent)}><ArrowUp size={15} /></button>
     <span class="path" title={listing?.path}><bdi>{listing?.path ?? ''}</bdi></span>
     {#if !files}
+      <button class="btn small" class:on={naming} disabled={!listing || loading} on:click={() => (naming ? (naming = false) : startNaming())}
+        ><FolderPlus size={14} />{$t('folders.newFolder')}</button
+      >
       <button class="btn small primary" disabled={!listing || loading} on:click={() => dispatch('pick', listing.path)}><Check size={14} />{$t('folders.useThis')}</button>
     {/if}
   </div>
+
+  {#if naming}
+    <div class="naming" transition:collapse>
+      <div class="name-row">
+        <FolderPlus size={15} />
+        <input
+          bind:value={newName}
+          placeholder={$t('folders.newFolderName')}
+          aria-label={$t('folders.newFolderName')}
+          aria-invalid={!!nameError}
+          spellcheck="false"
+          use:focusIt
+          on:keydown={nameKeys}
+          on:input={() => (nameError = '')}
+        />
+        <button class="btn small primary" disabled={!newName.trim() || making} on:click={makeFolder}>{$t('folders.create')}</button>
+        <button class="btn small ghost" on:click={() => (naming = false)}>{$t('common.cancel')}</button>
+      </div>
+      {#if nameError}<p class="error" role="alert">{nameError}</p>{/if}
+    </div>
+  {/if}
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 
@@ -249,5 +314,32 @@
   .error {
     color: var(--danger, #e5484d);
     font-size: var(--text-sm);
+  }
+  .btn.on:not(.primary) {
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .naming {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px 6px 10px;
+    border-radius: 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+  }
+  .name-row > :global(svg) {
+    flex: none;
+    color: var(--accent-text);
+  }
+  .name-row input {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
   }
 </style>

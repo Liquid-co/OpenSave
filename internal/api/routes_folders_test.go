@@ -216,3 +216,96 @@ func TestListFolders_ProgramPlaces(t *testing.T) {
 		t.Errorf("no Program Files among %+v", out.Places)
 	}
 }
+
+func makeFolder(t *testing.T, parent, name string) (*httptest.ResponseRecorder, folderEntry) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"parent": parent, "name": name})
+	req := httptest.NewRequest(http.MethodPost, "/api/folders", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	(&Server{}).handleMakeFolder(rec, req)
+	var out folderEntry
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec, out
+}
+
+// New folder makes one folder where it is asked, and says where it is.
+func TestMakeFolder_MakesOneFolderInsideAnother(t *testing.T) {
+	root := t.TempDir()
+	rec, out := makeFolder(t, root, "  Exports  ")
+	want := filepath.Join(root, "Exports")
+	if rec.Code != http.StatusOK || out.Path != want || out.Name != "Exports" {
+		t.Fatalf("status %d, %+v; want %s", rec.Code, out, want)
+	}
+	if info, err := os.Stat(want); err != nil || !info.IsDir() {
+		t.Fatalf("no folder at %s: %v", want, err)
+	}
+}
+
+// Never over something already there, and never anywhere but one level
+// down from a folder that exists.
+func TestMakeFolder_RefusesWhatItShouldNot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "taken"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// "a" is there, so "a/b" would make a folder inside it if the name were
+	// let through: only the check on the name stops it.
+	if err := os.Mkdir(filepath.Join(root, "a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		parent, name string
+		code         int
+	}{
+		{root, "taken", http.StatusConflict},
+		{root, "", http.StatusBadRequest},
+		{root, "..", http.StatusBadRequest},
+		{root, "a/b", http.StatusBadRequest},
+		{root, `a\b`, http.StatusBadRequest},
+		{filepath.Join("some", "relative"), "x", http.StatusBadRequest},
+		{filepath.Join(root, "gone"), "x", http.StatusNotFound},
+	} {
+		if rec, _ := makeFolder(t, c.parent, c.name); rec.Code != c.code {
+			t.Errorf("parent %q name %q: status %d, want %d (%s)", c.parent, c.name, rec.Code, c.code, rec.Body.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "a", "b")); err == nil {
+		t.Error(`"a/b" made a folder inside "a"`)
+	}
+}
+
+// What a name may be is the system's rule: Windows has more of them.
+func TestFolderName_ByEachSystemsRules(t *testing.T) {
+	for _, c := range []struct {
+		raw, goos, want string
+		ok              bool
+	}{
+		{"Saves", "linux", "Saves", true},
+		{"what?", "linux", "what?", true},
+		{"what?", "windows", "", false},
+		{"a:b", "windows", "", false},
+		{"CON", "windows", "", false},
+		{"nul.txt", "windows", "", false},
+		{"console", "windows", "console", true},
+		{"Backups. ", "windows", "Backups", true},
+		{"...", "windows", "", false},
+		{"a/b", "darwin", "", false},
+	} {
+		got, problem := folderName(c.raw, c.goos)
+		if (problem == "") != c.ok || got != c.want {
+			t.Errorf("folderName(%q, %s) = %q, %q; want %q ok=%v", c.raw, c.goos, got, problem, c.want, c.ok)
+		}
+	}
+}
+
+func TestMakeFolder_IsOnlyForThisComputer(t *testing.T) {
+	h := localhostOnly(http.HandlerFunc((&Server{}).handleMakeFolder))
+	req := httptest.NewRequest(http.MethodPost, "/api/folders", strings.NewReader(`{"parent":"/","name":"x"}`))
+	req.RemoteAddr = "192.168.1.66:50000"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("a device on the network got %d", rec.Code)
+	}
+}
