@@ -4,8 +4,13 @@
   // the Appearance section; says what was picked through on:pick, or on:close.
   import { createEventDispatcher, onMount } from 'svelte';
   import { hsvToHex, hexToHsv, normalizeHex, onAccent } from '../../lib/appearance.js';
+  import { t } from '../../lib/i18n.js';
 
   export let initial = '#8a63f4';
+  /** Which edge of its button the wheel lines up with. */
+  export let align = 'right';
+  /** What choosing says: adding a colour to the accents, or using one. */
+  export let confirm = '';
 
   const dispatch = createEventDispatcher();
   let { h, s, v } = hexToHsv(initial);
@@ -56,7 +61,7 @@
   onMount(() => wheel?.focus());
 </script>
 
-<div class="wheel-pop" role="dialog" aria-label="Pick a colour">
+<div class="wheel-pop align-{align}" role="dialog" aria-label={$t('colourWheel.aria')}>
   <div
     class="wheel"
     bind:this={wheel}
@@ -105,8 +110,8 @@
   </div>
 
   <div class="actions">
-    <button class="btn small ghost" on:click={() => dispatch('close')}>Cancel</button>
-    <button class="btn small primary" on:click={() => dispatch('pick', hex)}>Add colour</button>
+    <button class="btn small ghost" on:click={() => dispatch('close')}>{$t('common.cancel')}</button>
+    <button class="btn small primary" on:click={() => dispatch('pick', hex)}>{confirm || $t('colourWheel.add')}</button>
   </div>
 </div>
 
@@ -218,5 +223,9 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+  }
+  .wheel-pop.align-left {
+    left: 0;
+    right: auto;
   }
 </style>

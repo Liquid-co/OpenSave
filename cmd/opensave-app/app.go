@@ -346,6 +346,30 @@ func programFilters(goos string) []runtime.FileFilter {
 	}
 }
 
+// SaveThemeFile asks where to keep a theme (lib/customthemes.js
+// exportTheme) and writes it there. Returns the path written, or "" when
+// the dialog was closed.
+func (a *App) SaveThemeFile(name, content string) (string, error) {
+	if len(content) > 64*1024 {
+		return "", fmt.Errorf("a theme is never that large")
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export theme",
+		DefaultFilename: name,
+		Filters:         []runtime.FileFilter{{DisplayName: "OpenSave theme (*.opensave-theme)", Pattern: "*.opensave-theme"}},
+	})
+	if err != nil || path == "" {
+		return "", err
+	}
+	if filepath.Ext(path) == "" {
+		path += ".opensave-theme"
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // SelectBackupFile opens the native file picker filtered to .sscb
 // backup files (import source).
 func (a *App) SelectBackupFile(title string) string {

@@ -38,6 +38,9 @@ const fakeRoot = () => {
     props,
     style: {
       zoom: '',
+      removeProperty: (k) => {
+        delete props[k];
+      },
       setProperty: (k, v) => {
         props[k] = v;
       }
@@ -69,7 +72,8 @@ describe('sanitizeAppearance', () => {
       motion: false,
       controller: 'on',
       backdrop: 'cover',
-      coverColours: true
+      coverColours: true,
+      customThemes: []
     });
     expect(sanitizeAppearance({ controller: 'sometimes' }).controller).toBe('auto');
     expect(sanitizeAppearance({ backdrop: 'accent' }).backdrop).toBe('accent');
@@ -100,7 +104,7 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ family: 'opensave', theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true });
+    expect(loadAppearance(s)).toEqual({ family: 'opensave', theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true, customThemes: [] });
     // A picked colour, and the ones kept beside the presets, come back too.
     saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
     expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });
@@ -271,6 +275,32 @@ describe('applyAppearance', () => {
     applyAppearance({ ...DEFAULT_APPEARANCE, family: 'blackout', theme: 'light' }, { root });
     expect(root.dataset.theme).toBe('dark');
     expect(root.props['--bg']).toBe('#000000');
+  });
+
+  it("puts a theme of your own on the page — its corners, font, status colours and shadows — and takes them off again", () => {
+    const root = fakeRoot();
+    const mine = {
+      id: 'gold1',
+      name: 'Gold',
+      colours: { background: '#0f0d0a', panels: '#1a1712', text: '#f1e9da', quiet: '#b0a48f', accent: '#d8b052', onAccent: '', success: '#33cc66' },
+      roundness: 0.5,
+      shadows: 0,
+      font: 'mono'
+    };
+    applyAppearance({ ...DEFAULT_APPEARANCE, customThemes: [mine], family: 'custom:gold1', accent: 'theme' }, { root });
+    expect(root.dataset.look).toBe('custom:gold1');
+    expect(root.props['--bg']).toBe('#0f0d0a');
+    expect(root.props['--round']).toBe('0.5');
+    expect(root.props['--font-ui']).toContain('Cascadia Code');
+    expect(root.props['--success']).toBe('#33cc66');
+    expect(root.props['--success-rgb']).toBe('51, 204, 102');
+    expect(root.props['--shadow']).toContain('0.000');
+    applyAppearance(DEFAULT_APPEARANCE, { root });
+    for (const k of ['--round', '--font-ui', '--success', '--shadow']) expect(root.props[k], k).toBeUndefined();
+  });
+
+  it("forgets a theme of your own that is gone, and goes back to OpenSave's", () => {
+    expect(sanitizeAppearance({ family: 'custom:gone', customThemes: [] }).family).toBe('opensave');
   });
 
   it('tells the page when marks on the accent must be dark, which an inline image cannot read from a variable', () => {

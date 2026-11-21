@@ -6,7 +6,14 @@
 // the same reasons: it is about this screen and the person in front of it,
 // and it takes effect as it is chosen rather than when a form is saved.
 import { writable } from 'svelte/store';
+import { normalizeHex, hsvToHex, hexToHsv, hexToRgb, lighten, darken, luminance, contrast, onAccent, MIN_CONTRAST, DARK_INK, accentFill, TEXT_CONTRAST } from './colour.js';
+export { normalizeHex, hsvToHex, hexToHsv, hexToRgb, lighten, darken, luminance, contrast, onAccent, MIN_CONTRAST, DARK_INK, accentFill, TEXT_CONTRAST };
 import { LOOKS, FAMILIES, DEFAULT_FAMILY, lookFor, lookVars } from './themes.js';
+import { sanitizeTheme, deriveLook, MAX_THEMES, FONTS } from './customthemes.js';
+const FONT_DEFAULT = FONTS.system;
+
+/** The family id a theme of your own goes by. */
+export const customFamily = (id) => `custom:${id}`;
 
 // Light or dark, for a theme that has both (lib/themes.js FAMILIES).
 export const THEMES = { dark: 'Dark', light: 'Light', system: 'Match system' };
@@ -68,21 +75,14 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   backdrop: 'cover',
   // A game's page takes its Play button and tab colours from the cover
   // (lib/covertint.js), rather than the accent.
-  coverColours: true
+  coverColours: true,
+  // Themes made here (lib/customthemes.js), newest last.
+  customThemes: Object.freeze([])
 });
 
 // Controller navigation (lib/controller.js): on by itself when a controller is
 // used or on a Steam Deck or handheld, or set on or off.
 const CONTROLLER_CHOICES = ['auto', 'on', 'off'];
-
-/** A colour as "#rrggbb" in lower case, or null if it is not one. */
-export function normalizeHex(value) {
-  if (typeof value !== 'string') return null;
-  let s = value.trim().toLowerCase();
-  if (!s.startsWith('#')) s = '#' + s;
-  if (/^#[0-9a-f]{3}$/.test(s)) s = '#' + [...s.slice(1)].map((c) => c + c).join('');
-  return /^#[0-9a-f]{6}$/.test(s) ? s : null;
-}
 
 /** The hex an accent stands for: a preset's colour, a picked one's own, or
  *  — for the theme's own — `themeAccent`. */
@@ -116,8 +116,15 @@ export function sanitizeAppearance(raw) {
     const oldest = customAccents.findIndex((c) => c !== accent);
     customAccents.splice(oldest, 1);
   }
+  const customThemes = [];
+  for (const raw of Array.isArray(v.customThemes) ? v.customThemes : []) {
+    const t = sanitizeTheme(raw);
+    if (t && !customThemes.some((x) => x.id === t.id) && customThemes.length < MAX_THEMES) customThemes.push(t);
+  }
+  const family = v.family in FAMILIES || customThemes.some((t) => customFamily(t.id) === v.family) ? v.family : DEFAULT_APPEARANCE.family;
   return {
-    family: v.family in FAMILIES ? v.family : DEFAULT_APPEARANCE.family,
+    family,
+    customThemes,
     theme: v.theme in THEMES ? v.theme : DEFAULT_APPEARANCE.theme,
     accent,
     customAccents,
@@ -151,30 +158,6 @@ export function withoutCustomAccent(v, color) {
   };
 }
 
-/** Hue (0-360), saturation and value (0-1) as "#rrggbb". */
-export function hsvToHex(h, s, v) {
-  const f = (n) => {
-    const k = (n + h / 60) % 6;
-    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
-  };
-  return '#' + [f(5), f(3), f(1)].map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
-}
-
-/** "#rrggbb" as hue (0-360), saturation and value (0-1). */
-export function hexToHsv(hex) {
-  const [r, g, b] = hexToRgb(normalizeHex(hex) ?? '#000000').map((c) => c / 255);
-  const max = Math.max(r, g, b);
-  const d = max - Math.min(r, g, b);
-  let h = 0;
-  if (d) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h = (h * 60 + 360) % 360;
-  }
-  return { h, s: max ? d / max : 0, v: max };
-}
-
 /** Whether things may move: chosen here, and never while the system asks
  *  apps to reduce motion. */
 export const motionAllowed = (v, reduceMotion) => sanitizeAppearance(v).motion && !reduceMotion;
@@ -204,78 +187,6 @@ export function resolvedTheme(theme, prefersDark) {
   return theme === 'light' ? 'light' : 'dark';
 }
 
-export function hexToRgb(hex) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/** The colour a fraction of the way to white: the accent's hover shade. */
-export function lighten(hex, amount) {
-  return (
-    '#' +
-    hexToRgb(hex)
-      .map((c) => Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0'))
-      .join('')
-  );
-}
-
-/** The colour a fraction of the way to black. */
-export function darken(hex, amount) {
-  return (
-    '#' +
-    hexToRgb(hex)
-      .map((c) => Math.round(c * (1 - amount)).toString(16).padStart(2, '0'))
-      .join('')
-  );
-}
-
-/** WCAG relative luminance. */
-export function luminance(hex) {
-  const [r, g, b] = hexToRgb(hex).map((c) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/** WCAG contrast ratio between two colours, 1 to 21. */
-export function contrast(a, b) {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-// The least contrast text and marks keep against the colour behind them: what
-// WCAG asks of large text and of the parts of a control, and what every
-// accent there has ever been already met in white.
-export const MIN_CONTRAST = 3;
-
-// Near-black for text on a light accent: the app's own darkest ink rather
-// than pure black, which looks harsh on a bright colour.
-export const DARK_INK = '#141416';
-
-/** The text on an accent — every primary button, every badge: white while
- *  white reads, near-black on the light colours where it would not. */
-export function onAccent(hex) {
-  return contrast(hex, '#ffffff') >= MIN_CONTRAST ? '#ffffff' : DARK_INK;
-}
-
-// What a button's label needs against its fill: WCAG's figure for ordinary
-// text. A label at 13px is not "large", so the 3:1 that is enough for a badge
-// or a tick is not enough for the words on a primary button.
-export const TEXT_CONTRAST = 4.5;
-
-/** The fill of a primary button: the accent itself where its label reads at
- *  4.5:1, and otherwise darkened (white label) or lightened (dark label) just
- *  enough. The violet's white label was 4.1:1 on it; this makes it 4.5:1. */
-export function accentFill(hex) {
-  const ink = onAccent(hex);
-  const shift = ink === '#ffffff' ? darken : lighten;
-  for (let amount = 0; amount <= 1; amount += 0.02) {
-    const c = amount === 0 ? hex : shift(hex, amount);
-    if (contrast(c, ink) >= TEXT_CONTRAST) return c;
-  }
-  return ink === '#ffffff' ? '#000000' : '#ffffff';
-}
 
 // The surface accent-coloured text is judged against in each theme: the
 // palest one it is drawn on — the raised card in either. A theme passes its
@@ -316,11 +227,29 @@ export function accentVars(accent, theme = 'dark', { surface, themeAccent } = {}
 export const WINDOW_BACKGROUND = { dark: [12, 12, 13], light: [244, 244, 247] };
 
 /** The look in use (lib/themes.js LOOKS): the theme's, light or dark as
- *  chosen or as the system is. */
+ *  chosen or as the system is. A theme of your own has one look, its id
+ *  being its family's. */
 export function currentLook(v, prefersDark = true) {
-  const a = sanitizeAppearance(v);
-  return lookFor(a.family, a.theme, prefersDark);
+  return lookOf(v, prefersDark).id;
 }
+
+/** The look in use and its id: one of the app's own, or a theme of your own
+ *  worked out from its colours (lib/customthemes.js deriveLook). */
+export function lookOf(v, prefersDark = true) {
+  const a = sanitizeAppearance(v);
+  const mine = a.customThemes.find((t) => customFamily(t.id) === a.family);
+  if (mine) return { id: a.family, look: deriveLook(mine), theme: mine };
+  const id = lookFor(a.family, a.theme, prefersDark);
+  return { id, look: LOOKS[id], theme: null };
+}
+
+// The shadows a theme's Shadows setting scales: the app's own for dark and
+// light (app.css), at that strength.
+const SHADOWS = {
+  dark: (k) => [`0 16px 40px rgba(0, 0, 0, ${(0.55 * k).toFixed(3)})`, `0 18px 34px -14px rgba(0, 0, 0, ${Math.min(0.9 * k, 1).toFixed(3)})`],
+  light: (k) => [`0 16px 40px rgba(20, 20, 40, ${(0.16 * k).toFixed(3)})`, `0 16px 30px -14px rgba(20, 20, 40, ${(0.35 * k).toFixed(3)})`]
+};
+const rgbOf = (hex) => hexToRgb(hex).join(', ');
 
 /** Puts an appearance on the page: the theme's colours and whether it is
  *  dark or light (data-theme, which the kind-specific rules in app.css read),
@@ -332,14 +261,34 @@ export function applyAppearance(
 ) {
   if (!root) return;
   const a = sanitizeAppearance(v);
-  const lookId = lookFor(a.family, a.theme, prefersDark);
-  const look = LOOKS[lookId];
+  const { id: lookId, look } = lookOf(a, prefersDark);
   const theme = look.kind;
   root.dataset.theme = theme;
   root.dataset.look = lookId;
   root.dataset.motion = motionAllowed(a, reduceMotion) ? 'on' : 'off';
-  const vars = { ...lookVars(lookId), ...accentVars(a.accent, theme, { surface: look.raised, themeAccent: look.accent }) };
+  const vars = { ...lookVars(look), ...accentVars(a.accent, theme, { surface: look.raised, themeAccent: look.accent }) };
+  // A theme of your own can set what the app's do not: the text on its
+  // accent, its own status colours, its corners, shadows and font. Each is
+  // cleared again when it does not, so the app's own come back.
+  if (look.onAccent && a.accent === THEME_ACCENT) vars['--on-accent'] = look.onAccent;
+  const own = {
+    '--round': look.roundness != null && look.roundness !== 1 ? String(look.roundness) : null,
+    '--font-ui': look.font && look.font !== FONT_DEFAULT ? look.font : null,
+    '--success': look.success || null,
+    '--success-rgb': look.success ? rgbOf(look.success) : null,
+    '--warn': look.warning || null,
+    '--warn-rgb': look.warning ? rgbOf(look.warning) : null,
+    '--danger': look.danger || null,
+    '--danger-rgb': look.danger ? rgbOf(look.danger) : null,
+    '--danger-text': look.danger || null,
+    '--shadow': look.shadows != null && look.shadows !== 1 ? SHADOWS[theme](look.shadows)[0] : null,
+    '--shadow-lift': look.shadows != null && look.shadows !== 1 ? SHADOWS[theme](look.shadows)[1] : null
+  };
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+  for (const [name, value] of Object.entries(own)) {
+    if (value == null) root.style.removeProperty?.(name);
+    else root.style.setProperty(name, value);
+  }
   // For what CSS cannot colour with a variable: the tick drawn inside a
   // checkbox is an inline image (see app.css).
   root.dataset.onAccent = vars['--on-accent'] === '#ffffff' ? 'light' : 'dark';

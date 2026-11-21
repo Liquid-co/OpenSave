@@ -16,8 +16,13 @@
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
   import Plus from 'lucide-svelte/icons/plus';
   import X from 'lucide-svelte/icons/x';
-  import { appearance, THEMES, ACCENTS, SCALES, BACKDROPS, THEME_ACCENT, onAccent, accentHex, withCustomAccent, withoutCustomAccent, currentLook } from '../../../lib/appearance.js';
-  import { LOOKS, hasBoth } from '../../../lib/themes.js';
+  import { appearance, THEMES, ACCENTS, SCALES, BACKDROPS, THEME_ACCENT, onAccent, accentHex, withCustomAccent, withoutCustomAccent, lookOf } from '../../../lib/appearance.js';
+  import { themeFromLook } from '../../../lib/customthemes.js';
+  import { readThemeFile } from '../../../lib/themefiles.js';
+  import { toast } from '../../../lib/stores.js';
+  import ThemeEditor from '../ThemeEditor.svelte';
+  import Upload from 'lucide-svelte/icons/upload';
+  import { hasBoth } from '../../../lib/themes.js';
   import ThemeCards from '../ThemeCards.svelte';
   import { systemReducesMotion } from '../../../lib/motion.js';
   import { sidebar, chooseSidebar, SIDEBAR_MODES } from '../../../lib/shell.js';
@@ -29,7 +34,28 @@
   $: themeOptions = Object.keys(THEMES).map((id) => ({ id, label: $t('appearance.theme.' + id), icon: themeIcons[id] }));
   // The look in use, for the theme's own accent and for saying which kind a
   // one-kind theme is.
-  $: look = LOOKS[currentLook($appearance, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true)];
+  $: inUse = lookOf($appearance, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true);
+  $: look = inUse.look;
+  $: themeName = inUse.theme ? inUse.theme.name : $t('theme.name.' + $appearance.family);
+
+  // ── Making and changing themes ──
+  // The editor takes the section's place until it is done with (saved or
+  // not); an imported theme opens in it first, to be looked at before it is
+  // kept.
+  let editing = null; // {theme, isNew}
+  let top;
+  function edit(theme, isNew) {
+    editing = { theme, isNew };
+    top?.closest('.body')?.scrollTo({ top: 0 });
+  }
+  let fileInput;
+  async function imported(e) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    const { theme, error } = await readThemeFile(file);
+    if (error) toast($t(error), 'error');
+    else edit(theme, true);
+  }
   $: both = hasBoth($appearance.family);
   $: backdropOptions = Object.keys(BACKDROPS).map((id) => ({ id, label: $t('appearance.backdrop.' + id) }));
   $: sidebarOptions = SIDEBAR_MODES.map((id) => ({ id, label: $t('shell.sidebar.' + id) }));
@@ -50,11 +76,19 @@
 
 <svelte:window on:pointerdown={outside} on:keydown={(e) => wheelOpen && e.key === 'Escape' && (e.stopPropagation(), (wheelOpen = false))} />
 
+<span bind:this={top}></span>
+{#if editing}
+  <ThemeEditor theme={editing.theme} isNew={editing.isNew} on:done={() => (editing = null)} />
+{:else}
 <SettingGroup title={$t('settings.appearance.theme')}>
   <SettingRow id="theme" label={$t('settings.appearance.themes')} hint={$t('settings.appearance.themesHint')} under>
-    <ThemeCards />
+    <div class="theme-tools">
+      <button class="btn small ghost" on:click={() => fileInput.click()}><Upload size={14} />{$t('themeEditor.import')}</button>
+      <input class="file" type="file" accept=".opensave-theme,.json,application/json" bind:this={fileInput} on:change={imported} />
+    </div>
+    <ThemeCards on:create={() => edit({ ...themeFromLook(look), name: '' }, true)} on:edit={(e) => edit(e.detail, false)} />
   </SettingRow>
-  <SettingRow id="lightDark" label={$t('settings.appearance.lightDark')} hint={both ? $t('settings.appearance.lightDarkHint') : $t(look.kind === 'dark' ? 'settings.appearance.onlyDark' : 'settings.appearance.onlyLight', { theme: $t('theme.name.' + $appearance.family) })}>
+  <SettingRow id="lightDark" label={$t('settings.appearance.lightDark')} hint={both ? $t('settings.appearance.lightDarkHint') : $t(look.kind === 'dark' ? 'settings.appearance.onlyDark' : 'settings.appearance.onlyLight', { theme: themeName })}>
     <Segmented options={themeOptions} value={$appearance.theme} disabled={!both} label={$t('settings.appearance.lightDark')} on:change={(e) => set({ theme: e.detail })} />
   </SettingRow>
   <SettingRow id="accent" label={$t('settings.appearance.accent')} under>
@@ -154,8 +188,17 @@
     <LibraryViewOptions />
   </SettingRow>
 </SettingGroup>
+{/if}
 
 <style>
+  .theme-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: -34px 0 8px;
+  }
+  .file {
+    display: none;
+  }
   .swatches {
     display: flex;
     flex-wrap: wrap;

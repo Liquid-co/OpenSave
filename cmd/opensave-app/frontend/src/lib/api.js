@@ -197,6 +197,9 @@ export const native = {
   selectExecutable: (title, dir) => app()?.SelectExecutable(title ?? '', dir ?? '') ?? Promise.resolve(''),
   selectBackupFile: (title) => app()?.SelectBackupFile(title ?? '') ?? Promise.resolve(''),
   selectSaveFile: (title, name) => app()?.SelectSaveFile(title ?? '', name ?? '') ?? Promise.resolve(''),
+  // A theme file, through the system's save dialog; null in a browser, which
+  // downloads it instead.
+  saveThemeFile: (name, content) => app()?.SaveThemeFile?.(name, content) ?? null,
   openExternal: (url) => app()?.OpenExternal(url),
   minimise: () => app()?.WindowMinimise(),
   toggleMaximise: () => app()?.WindowToggleMaximise(),

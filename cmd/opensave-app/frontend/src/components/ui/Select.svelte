@@ -26,6 +26,8 @@
   export let disabled = false;
   /** A width for the box; otherwise as wide as its longest choice needs. */
   export let width = undefined;
+  /** Shown in the box while nothing is chosen. */
+  export let placeholder = '';
 
   const dispatch = createEventDispatcher();
   let open = false;
@@ -135,7 +137,7 @@
   on:click={() => (open ? hide() : show())}
   on:keydown={boxKeys}
 >
-  <span class="cur">{current?.label ?? ''}</span>
+  <span class="cur" class:placeholder={!current}>{current?.label ?? placeholder}</span>
   <span class="chev"><ChevronDown size={15} /></span>
 </button>
 
@@ -192,6 +194,9 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  .placeholder {
+    color: var(--text-faint);
   }
   .chev {
     display: grid;
