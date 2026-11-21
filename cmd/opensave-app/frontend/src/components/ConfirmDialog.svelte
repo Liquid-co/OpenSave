@@ -1,4 +1,5 @@
 <script>
+  import { holdsDialog } from '../lib/dialogs.js';
   import { dialogOut } from '../lib/motion.js';
   import { confirmRequest, answerConfirm } from '../lib/stores.js';
   import { backdropClose } from '../lib/backdrop.js';
@@ -20,7 +21,7 @@
 
 {#if $confirmRequest}
   <div class="backdrop" use:backdropClose={() => answerConfirm(false)} role="presentation" out:dialogOut|global>
-    <div class="modal card" role="alertdialog" aria-modal="true" aria-label={$confirmRequest.title}>
+    <div class="modal card" role="alertdialog" aria-modal="true" use:holdsDialog aria-label={$confirmRequest.title}>
       <h3>{$confirmRequest.title}</h3>
       <p class="message">{$confirmRequest.message}</p>
       <div class="actions">

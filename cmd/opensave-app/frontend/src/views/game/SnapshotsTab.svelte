@@ -11,7 +11,8 @@
   // taken lights up as it lands; one opened from elsewhere is marked a moment.
   import { onDestroy, tick as rendered } from 'svelte';
   import { askConfirm, toast } from '../../lib/stores.js';
-  import { api } from '../../lib/api.js';
+  import { api, native } from '../../lib/api.js';
+  import { restoreKey } from '../../lib/toasts.js';
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
   import { askRestore } from '../../lib/restore.js';
@@ -136,7 +137,10 @@
   // ── Acting on one ──
   const rollback = async (snap) => {
     if (!(await askRestore(game, snap))) return;
-    return run($t('game.snapshots.restored'), () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
+    return run($t('game.snapshots.restored'), () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), {
+      key: restoreKey(game.id),
+      action: { label: $t('game.header.openFolder'), run: () => native.openFolder(game.savePath) }
+    });
   };
   // Pinned: no limit, age rule or clean-up removes it. Not a lock.
   const togglePin = (snap) =>

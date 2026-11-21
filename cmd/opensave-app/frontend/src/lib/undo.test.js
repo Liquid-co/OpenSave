@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { hiddenKeys, withUndo } from './undo.js';
 
-// A notify that records toasts and lets the test press their buttons.
+// A notify that records toasts, runs each out as the real one does, and lets
+// the test press their buttons.
 const recorder = () => {
   const toasts = [];
-  const notify = (message, kind, opts = {}) => toasts.push({ message, kind, ...opts });
+  const notify = (message, kind, opts = {}) => {
+    toasts.push({ message, kind, ...opts });
+    if (opts.onExpire) setTimeout(opts.onExpire, opts.ttl);
+  };
   return { toasts, notify, undo: () => toasts.find((t) => t.action)?.action.run() };
 };
 
@@ -23,7 +27,7 @@ describe('withUndo', () => {
 
     expect(get(hiddenKeys).has('g1')).toBe(true);
     expect(r.toasts[0]).toMatchObject({ message: 'Stopped tracking Hades', ttl: 1000 });
-    expect(r.toasts[0].action.label).toBe('Undo');
+    expect(r.toasts[0].undo).toBe(true);
     expect(run).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1000);

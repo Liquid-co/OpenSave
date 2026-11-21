@@ -30,7 +30,7 @@
     if (!dir) return;
     try {
       await api.post(`/api/offered-games/${offer.gameId}/place`, { path: dir });
-      toast($t('home.offered.trackedToast', { name: offer.name }), 'success');
+      toast($t('home.offered.trackedToast', { name: offer.name }), 'success', { game: { name: offer.name, appId: offer.appId } });
       await load();
     } catch (e) {
       toast(e.message, 'error');

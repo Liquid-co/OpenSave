@@ -192,9 +192,10 @@
     answering = true;
     try {
       const res = await api.post(`/api/games/${game.id}/emptied`, { answer });
-      if (answer === 'delete') toast($t('game.header.deletedAtNextSync', { name: game.name }), 'success');
-      else if (res.fetching > 0) toast($t('game.header.puttingBackDevices', { name: game.name, n: res.fetching }), 'success');
-      else toast($t('game.header.filesBack', { name: game.name }), 'success');
+      const about = { game: game.id };
+      if (answer === 'delete') toast($t('game.header.deletedAtNextSync', { name: game.name }), 'success', about);
+      else if (res.fetching > 0) toast($t('game.header.puttingBackDevices', { name: game.name, n: res.fetching }), 'success', about);
+      else toast($t('game.header.filesBack', { name: game.name }), 'success', about);
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -209,7 +210,7 @@
     try {
       if (use) {
         await api.post(`/api/games/${game.id}/relocate`, { path: found });
-        toast($t('game.header.relocated', { name: game.name, path: found }), 'success');
+        toast($t('game.header.relocated', { name: game.name, path: found }), 'success', { game: game.id });
       } else {
         await api.post(`/api/games/${game.id}/relocate/dismiss`);
         toast($t('game.header.relocateDismissed', { path: found, name: game.name }), 'success');

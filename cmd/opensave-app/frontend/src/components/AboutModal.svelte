@@ -1,4 +1,5 @@
 <script>
+  import { holdsDialog } from '../lib/dialogs.js';
   import { dialogOut } from '../lib/motion.js';
   import { onMount } from 'svelte';
   import { native } from '../lib/api.js';
@@ -40,7 +41,7 @@
 <svelte:window on:keydown={onKeydown} />
 
 <div class="backdrop" use:backdropClose={onClose} role="presentation" out:dialogOut|global>
-  <div class="modal" role="dialog" aria-modal="true" aria-label={$t('about.title')}>
+  <div class="modal" role="dialog" aria-modal="true" use:holdsDialog aria-label={$t('about.title')}>
     <button class="btn ghost icon x" on:click={onClose} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
     <img class="logo" src={logoUrl} alt="" />
     <h2>{info?.name ?? 'OpenSave'}</h2>

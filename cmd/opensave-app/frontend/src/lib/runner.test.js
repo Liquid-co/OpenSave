@@ -4,7 +4,7 @@ import { createRunner } from './runner.js';
 
 const notes = () => {
   const seen = [];
-  return { seen, notify: (msg, kind) => seen.push([kind, msg]) };
+  return { seen, notify: (msg, kind, opts) => seen.push([kind, msg, opts]) };
 };
 
 describe('createRunner', () => {
@@ -17,7 +17,7 @@ describe('createRunner', () => {
     release();
     await p;
     expect(get(busy)).toBe(false);
-    expect(seen).toEqual([['success', 'Done']]);
+    expect(seen.map(([k, m]) => [k, m])).toEqual([['success', 'Done']]);
   });
 
   it('refuses a second action while the first is running', async () => {
@@ -40,7 +40,7 @@ describe('createRunner', () => {
     await run('Never said', async () => {
       throw new Error('the daemon said no');
     });
-    expect(seen).toEqual([['error', 'the daemon said no']]);
+    expect(seen.map(([k, m]) => [k, m])).toEqual([['error', 'the daemon said no']]);
     expect(get(busy)).toBe(false);
   });
 
@@ -58,5 +58,24 @@ describe('createRunner', () => {
     const { seen, notify } = notes();
     await createRunner(notify).run('', async () => {});
     expect(seen).toEqual([]);
+  });
+});
+
+describe('a failed action', () => {
+  it('offers to try it again, which runs it again', async () => {
+    const { seen, notify } = notes();
+    const { run } = createRunner(notify);
+    let calls = 0;
+    const fn = async () => {
+      calls++;
+      if (calls === 1) throw new Error('daemon said no');
+    };
+    expect(await run('Done', fn, { key: 'k', action: { label: 'Open' } })).toBe(false);
+    const [kind, msg, opts] = seen[0];
+    expect([kind, msg, opts.key, opts.action]).toEqual(['error', 'daemon said no', 'k', undefined]);
+    await opts.retry();
+    expect(calls).toBe(2);
+    expect(seen[1].slice(0, 2)).toEqual(['success', 'Done']);
+    expect(seen[1][2].action).toEqual({ label: 'Open' });
   });
 });

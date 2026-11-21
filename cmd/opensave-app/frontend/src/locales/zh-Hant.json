@@ -1907,5 +1907,10 @@
   "game.settings.discard": "捨棄",
   "settings.appearance.coverColours": "遊戲頁面使用封面的顏色",
   "settings.appearance.coverColoursHint": "遊戲頁面上的「開始遊戲」按鈕和分頁使用其封面中的一種顏色，並確保清晰可讀。關閉後：所有地方都使用你的強調色。",
-  "game.hero.play": "開始遊戲"
+  "game.hero.play": "開始遊戲",
+  "toast.undo": "復原",
+  "toast.retry": "重試",
+  "toast.more": "還有 {n} 則",
+  "toast.restoring": "正在恢復 {name}",
+  "toast.restored": "{name} 已恢復"
 }

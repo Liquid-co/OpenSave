@@ -9,6 +9,7 @@
   import { onMount } from 'svelte';
   import { peers, settings, toast, askConfirm, navigate } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
+  import { restoreKey } from '../../lib/toasts.js';
   import { isHandheld } from '../../lib/devices.js';
   import { providerConfigured } from '../../lib/cloudproviders.js';
   import { gameState, newestCopy, copyTime } from '../../lib/backupsview.js';
@@ -65,7 +66,7 @@
     sending = true;
     try {
       const res = await api.post(`/api/cloud/sync-local/${game.id}`);
-      toast(res.uploaded ? $t('backups.uploaded', { n: res.uploaded }) : $t('backups.upToDate'), 'success');
+      toast(res.uploaded ? $t('backups.uploaded', { n: res.uploaded }) : $t('backups.upToDate'), 'success', { game: game.id, detail: game.name });
       await readCloud();
     } catch (e) {
       toast(e.message, 'error');
@@ -76,7 +77,7 @@
   async function putBack(c) {
     const when = new Date(copyTime(c)).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     if (!(await askConfirm($t('backups.putBackBody', { game: game.name, when }), { title: $t('backups.putBackTitle', { game: game.name }), confirmText: $t('backups.putBack') }))) return;
-    run($t('backups.putBackDone', { game: game.name }), () => api.post(`/api/cloud/restore/${game.id}`, { fileName: c.name }));
+    run($t('backups.putBackDone', { game: game.name }), () => api.post(`/api/cloud/restore/${game.id}`, { fileName: c.name }), { key: restoreKey(game.id) });
   }
 </script>
 

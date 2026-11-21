@@ -13,6 +13,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { toast, settings, cloudUploadEvent, askConfirm, gameList } from '../lib/stores.js';
   import { api } from '../lib/api.js';
+  import { restoreKey } from '../lib/toasts.js';
   import { providerConfigured } from '../lib/cloudproviders.js';
   import { gameState, SHELF_FILTERS, inFilter } from '../lib/backupsview.js';
   import { t } from '../lib/i18n.js';
@@ -119,9 +120,9 @@
     if (!(await askConfirm($t('backups.putBackBody', { game: g.gameName, when }), { title: $t('backups.putBackTitle', { game: g.gameName }), confirmText: $t('backups.putBack') }))) return;
     try {
       await api.post(`/api/cloud/restore/${g.gameId}`, { fileName: c.name });
-      toast($t('backups.putBackDone', { game: g.gameName }), 'success');
+      toast($t('backups.putBackDone', { game: g.gameName }), 'success', { key: restoreKey(g.gameId), game: g.gameId });
     } catch (e) {
-      toast(e.message, 'error');
+      toast(e.message, 'error', { key: restoreKey(g.gameId), game: g.gameId });
     }
   }
 

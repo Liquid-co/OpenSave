@@ -2147,5 +2147,10 @@
   "game.settings.discard": "Discard",
   "settings.appearance.coverColours": "Game pages take their colours from the cover",
   "settings.appearance.coverColoursHint": "Play and the tabs on a game's page use a colour from its cover art, kept readable. Off: your accent colour everywhere.",
-  "game.hero.play": "Play"
+  "game.hero.play": "Play",
+  "toast.undo": "Undo",
+  "toast.retry": "Try again",
+  "toast.more": "{n} more",
+  "toast.restoring": "Restoring {name}",
+  "toast.restored": "{name} restored"
 }

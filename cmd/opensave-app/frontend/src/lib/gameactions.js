@@ -11,6 +11,7 @@ import { askConfirm, gameList, games, navigate, toast, view } from './stores.js'
 import { hiddenKeys, withUndo } from './undo.js';
 import { whenLabel } from './snapshots.js';
 import { askRestore } from './restore.js';
+import { restoreKey } from './toasts.js';
 import { collections, toggleFavourite } from './collections.js';
 
 /** The game whose collections are being edited, or null. */
@@ -64,12 +65,14 @@ export function gameMenuItems(game, { now = new Date(), favourite = false } = {}
   ];
 }
 
-async function attempt(fn, success) {
+// Does one thing to a game and says how it went; a failure offers to try
+// again. `shown` goes to the toasts (lib/toasts.js): the game, a key.
+async function attempt(fn, success, shown = {}) {
   try {
     await fn();
-    if (success) toast(success, 'success');
+    if (success) toast(success, 'success', shown);
   } catch (e) {
-    toast(e.message, 'error');
+    toast(e.message, 'error', { ...shown, retry: () => attempt(fn, success, shown) });
   }
 }
 
@@ -78,11 +81,11 @@ export async function runGameAction(id, game) {
     case 'open':
       return navigate('game', { gameId: game.id });
     case 'sync':
-      return attempt(() => api.post(`/api/games/${game.id}/sync`), `Syncing ${game.name}`);
+      return attempt(() => api.post(`/api/games/${game.id}/sync`), 'Syncing', { game, detail: game.name });
     case 'snapshot':
-      return attempt(() => api.post(`/api/games/${game.id}/snapshot`, { comment: '' }), `Snapshot of ${game.name} taken`);
+      return attempt(() => api.post(`/api/games/${game.id}/snapshot`, { comment: '' }), 'Snapshot taken', { game, detail: game.name });
     case 'launch':
-      return attempt(() => api.post(`/api/games/${game.id}/launch`), `Launching ${game.name}…`);
+      return attempt(() => api.post(`/api/games/${game.id}/launch`), 'Launching…', { game, detail: game.name });
     case 'folder': {
       const problem = await native.openFolder(game.savePath);
       if (problem) toast(problem, 'error');
@@ -144,7 +147,10 @@ async function restoreLatest(game) {
   const snap = latestSnapshot(game);
   if (!snap) return;
   if (!(await askRestore(game, snap))) return;
-  return attempt(() => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), `${game.name} restored`);
+  return attempt(() => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }), `${game.name} restored`, {
+    key: restoreKey(game.id),
+    game
+  });
 }
 
 /** Stops tracking a game, with a few seconds to undo it. */
@@ -153,6 +159,9 @@ export async function untrackGame(game) {
   if (current.name === 'game' && current.params?.gameId === game.id) navigate('home');
   const outcome = await withUndo({
     message: `Stopped tracking ${game.name}. Its snapshots stay on disk.`,
+    title: `${game.name} untracked`,
+    detail: 'Its snapshots stay on disk',
+    game,
     keys: [game.id],
     stillThere: (id) => !!get(games)[id],
     run: () => api.del(`/api/games/${game.id}`)
@@ -185,6 +194,7 @@ async function offerCloudCleanup(game) {
   }
   if (!settings?.cloudSync?.ready) return;
   toast(`${game.name}'s cloud snapshots were kept.`, 'info', {
+    game,
     ttl: 12000,
     action: {
       label: 'Delete them',

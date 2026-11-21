@@ -2,6 +2,7 @@
   // Ctrl+K: type a few letters of a game, a page or an action and press
   // Enter. Everything in it is also somewhere on screen; this is the way to
   // it that does not need the mouse or knowing where it is.
+  import { holdsDialog } from '../lib/dialogs.js';
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import Search from 'lucide-svelte/icons/search';
   import CornerDownLeft from 'lucide-svelte/icons/corner-down-left';
@@ -140,7 +141,7 @@
 </script>
 
 <div class="scrim" role="presentation" on:mousedown|self={close}>
-  <div class="palette" role="dialog" aria-modal="true" aria-label={$t('palette.ariaLabel')}>
+  <div class="palette" role="dialog" aria-modal="true" use:holdsDialog aria-label={$t('palette.ariaLabel')}>
     <div class="input-row">
       <Search size={17} />
       <input

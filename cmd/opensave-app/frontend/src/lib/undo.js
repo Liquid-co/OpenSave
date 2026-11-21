@@ -13,6 +13,7 @@
 // unpairing — keep their confirmation.
 import { get, writable } from 'svelte/store';
 import { toast } from './stores.js';
+import { t } from './i18n.js';
 
 export const UNDO_DELAY = 6000;
 
@@ -30,12 +31,14 @@ const unhide = (keys) =>
 
 /**
  * Announces an action with an Undo button and carries it out after `delay`
- * unless undone. `keys` are hidden meanwhile. `stillThere(key)` says whether
+ * unless undone. The toast's countdown is the one that counts: pointing at
+ * the toast holds it, and closing it goes ahead at once.
+ * `keys` are hidden meanwhile. `stillThere(key)` says whether
  * the thing a key names is still listed; once the action is done its keys
  * stay hidden until the daemon's update removes the thing itself, so nothing
  * flickers back in between. Resolves 'done', 'undone' or 'failed'.
  */
-export function withUndo({ message, keys = [], run, delay = UNDO_DELAY, notify = toast, stillThere = () => false }) {
+export function withUndo({ message, keys = [], run, delay = UNDO_DELAY, notify = toast, stillThere = () => false, ...shown }) {
   return new Promise((resolve) => {
     let settled = false;
     hide(keys);
@@ -43,7 +46,6 @@ export function withUndo({ message, keys = [], run, delay = UNDO_DELAY, notify =
     const finish = async (undone) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
       if (undone) {
         unhide(keys);
         resolve('undone');
@@ -61,8 +63,14 @@ export function withUndo({ message, keys = [], run, delay = UNDO_DELAY, notify =
       resolve('done');
     };
 
-    const timer = setTimeout(() => finish(false), delay);
-    notify(message, 'info', { ttl: delay, action: { label: 'Undo', run: () => finish(true) } });
+    notify(message, 'info', {
+      ...shown,
+      ttl: delay,
+      undo: true,
+      action: { label: get(t)('toast.undo'), run: () => finish(true) },
+      onExpire: () => finish(false),
+      onClose: () => finish(false)
+    });
   });
 }
 

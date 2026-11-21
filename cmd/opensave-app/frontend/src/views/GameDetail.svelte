@@ -9,12 +9,13 @@
   import { onDestroy } from 'svelte';
   import { t as i18n } from '../lib/i18n.js';
   import { slidingIndicator } from '../lib/motion.js';
-  import { games, peers, settings, activityTick } from '../lib/stores.js';
+  import { games, peers, settings, activityTick, toast } from '../lib/stores.js';
   import { api, gameCover } from '../lib/api.js';
   import { appearance } from '../lib/appearance.js';
   import { coverTint, tintVars } from '../lib/covertint.js';
   import { deviceSlots } from '../lib/activityview.js';
   import { createRunner } from '../lib/runner.js';
+  import { splitMessage } from '../lib/toasts.js';
   import LibraryBackdrop from './home/LibraryBackdrop.svelte';
   import GameHero from './game/GameHero.svelte';
   import SaveTimeline from './game/SaveTimeline.svelte';
@@ -28,8 +29,16 @@
 
   $: game = $games[params.gameId];
 
-  // One action at a time across the whole page — see lib/runner.js.
-  const runner = createRunner();
+  // One action at a time across the whole page — see lib/runner.js. Its
+  // toasts carry the game: its cover, and its name under a title that does
+  // not say it already.
+  const runner = createRunner((message, kind, shown = {}) =>
+    toast(message, kind, {
+      game: params.gameId,
+      ...(game && !splitMessage(message).detail && !shown.detail ? { detail: game.name } : {}),
+      ...shown
+    })
+  );
 
   const tabs = [
     { id: 'history', label: 'game.tab.history', component: SnapshotsTab },

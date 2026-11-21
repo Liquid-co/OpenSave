@@ -175,7 +175,7 @@
             {/each}
           </div>
           <div class="row-actions">
-            <button class="btn small" on:click={() => { navigator.clipboard?.writeText(code); toast($t('internetSync.codeCopiedToast')); }}><Copy size={14} />{$t('common.copy')}</button>
+            <button class="btn small" on:click={() => { navigator.clipboard?.writeText(code); toast($t('internetSync.codeCopiedToast'), 'info', { icon: Copy }); }}><Copy size={14} />{$t('common.copy')}</button>
             {#if !inRoom}
               <button class="btn small ghost" on:click={() => (fresh = generateRoomCode())}><Dices size={14} />{$t('devices.add.newCode')}</button>
               <button class="btn small primary" disabled={busy} on:click={() => joinRoom(code)}>{$t('devices.add.useCode')}</button>

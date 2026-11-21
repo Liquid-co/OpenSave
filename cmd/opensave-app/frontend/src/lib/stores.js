@@ -4,6 +4,9 @@ import { notifyPrefs } from './notifyprefs.js';
 import { arrivalMessage, arrivalNote, incompleteSnapshotsMessage, newGamesNote } from './notifications.js';
 import { toDesktop } from './notify.js';
 import { t } from './i18n.js';
+import { createToasts, restoreKey } from './toasts.js';
+import { restoreProgressText } from './restoreprogress.js';
+import { api } from './api.js';
 
 // When each game's arrival was last said (lib/notifications.js).
 const arrivalShown = {};
@@ -64,7 +67,11 @@ setInterval(() => {
       if (entry.state === 'running' && age > SYNC_STALE_MS) {
         delete copy[gameId];
         changed = true;
-        toast(`Sync of ${get(games)[gameId]?.name ?? 'a game'} stalled — it will retry automatically`, 'error');
+        toast(`Sync of ${get(games)[gameId]?.name ?? 'a game'} stalled — it will retry automatically`, 'error', {
+          key: syncErrorKey(gameId),
+          game: gameId,
+          retry: () => syncGame(gameId)
+        });
       } else if ((entry.state === 'error' || entry.state === 'done') && age > SYNC_ERROR_LINGER_MS) {
         delete copy[gameId];
         changed = true;
@@ -73,7 +80,8 @@ setInterval(() => {
     return changed ? copy : s;
   });
 }, 30 * 1000);
-export const toasts = writable([]);
+// Feedback toasts (lib/toasts.js), drawn by components/Toasts.svelte.
+export const toasts = createToasts();
 export const cloudAuthEvent = writable(null); // {success, userEmail?, error?} from the OAuth callback
 export const cloudUploadEvent = writable(null); // {gameId, done, total, current, complete} while sync-local runs
 export const backupProgressEvent = writable(null); // {op, done, total, current, complete} while an .sscb export/import runs
@@ -117,19 +125,21 @@ export function answerConfirm(result) {
   req?.resolve(result);
 }
 
-let toastId = 0;
-/** Shows a message for a few seconds. `action` ({label, run}) adds a button
- *  to it — Undo, most often — and `ttl` says how long it stays. */
-export function toast(message, kind = 'info', { action = null, ttl = 0 } = {}) {
-  const id = ++toastId;
-  toasts.update((t) => [...t, { id, message, kind, action }]);
-  // Errors stay long enough to actually read the reason.
-  const life = ttl || (kind === 'error' ? 9000 : 4200);
-  setTimeout(() => dismissToast(id), life);
-  return id;
+/**
+ * Says what just happened. `kind` is success, info, warning, error or
+ * progress. Options (lib/toasts.js): `game` shows its cover; `title` and
+ * `detail` give the two lines (otherwise the message is split at its dash);
+ * `action` ({label, run}) is the one thing to do next; `retry` offers Try
+ * again on an error; `key` updates the toast already shown with that key;
+ * `progress` ({done, total}) draws a bar; `icon` replaces the kind's own;
+ * `ttl` says how long it stays. Returns its id.
+ */
+export function toast(message, kind = 'info', opts = {}) {
+  return toasts.show(message, kind, opts);
 }
+/** Takes a toast away without anything waiting on it going ahead. */
 export function dismissToast(id) {
-  toasts.update((t) => t.filter((x) => x.id !== id));
+  toasts.remove(id);
 }
 
 // Turn a raw sync error into a plain-language reason.
@@ -190,6 +200,7 @@ export function applyMessage(msg) {
     case 'snapshots-incomplete':
       // Sent once per run of discarded automatic snapshots, so no rate limit.
       toast(incompleteSnapshotsMessage(data, get(t)), 'error', {
+        game: data.gameId,
         action: { label: get(t)('common.open'), run: () => navigate('game', { gameId: data.gameId }) }
       });
       break;
@@ -198,7 +209,11 @@ export function applyMessage(msg) {
       // device had and this device had not changed since. Said out loud all
       // the same: a save that changes by itself should say who changed it.
       if (get(notifyPrefs).cloudPulled) {
-        toast(`Brought ${data.deviceName}'s newer save for “${data.gameName}” from the cloud`, 'success');
+        toast('', 'success', {
+          game: data.gameId,
+          title: `Newer save from the cloud`,
+          detail: `${data.gameName}, from ${data.deviceName}`
+        });
         toDesktop('cloudPulled', {
           title: data.gameName,
           body: `Brought ${data.deviceName}'s newer save from the cloud`,
@@ -208,14 +223,21 @@ export function applyMessage(msg) {
       break;
     case 'games-update':
       games.set(data ?? {});
+      followRestores(data ?? {});
       break;
     case 'activity': {
       lastActivity.set(data);
       activityTick.update((n) => n + 1);
       const said = get(notifyPrefs).arrivals ? arrivalMessage(data, get(games), arrivalShown) : null;
       if (said) {
-        toast(said, 'info', { action: { label: 'Open', run: () => navigate('game', { gameId: data.gameId }) } });
-        toDesktop('arrivals', arrivalNote(data, get(games)));
+        const note = arrivalNote(data, get(games));
+        toast(said, 'received', {
+          game: data.gameId,
+          title: note?.body,
+          detail: note?.title,
+          action: { label: get(t)('common.open'), run: () => navigate('game', { gameId: data.gameId }) }
+        });
+        toDesktop('arrivals', note);
       }
       break;
     }
@@ -231,8 +253,10 @@ export function applyMessage(msg) {
     case 'sync-progress':
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'running', at: Date.now(), ...data.data } }));
       break;
-    case 'sync-complete':
+    case 'sync-complete': {
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'done', at: Date.now(), ...data.data } }));
+      const failed = get(toasts).find((x) => x.key === syncErrorKey(data.gameId));
+      if (failed) toasts.change(failed.id, { kind: 'success', title: `${get(games)[data.gameId]?.name ?? 'Game'} synced`, detail: 'It worked on a later try', retry: null, action: null });
       setTimeout(
         () =>
           syncActivity.update((s) => {
@@ -243,6 +267,7 @@ export function applyMessage(msg) {
         4000
       );
       break;
+    }
     case 'sync-error': {
       syncActivity.update((s) => ({ ...s, [data.gameId]: { state: 'error', at: Date.now(), ...data.data } }));
       const gameName = get(games)[data.gameId]?.name ?? 'a game';
@@ -251,9 +276,18 @@ export function applyMessage(msg) {
       // they don't need to manually re-sync. The retry loop re-fails every
       // ~20s while the cause persists, so rate-limit the toast per game.
       const now = Date.now();
-      if (now - (lastSyncErrorToast[data.gameId] ?? 0) > 60_000) {
+      // A toast still shown for it is brought up to date instead.
+      const shown = get(toasts).some((x) => x.key === syncErrorKey(data.gameId));
+      if (shown || now - (lastSyncErrorToast[data.gameId] ?? 0) > 60_000) {
         lastSyncErrorToast[data.gameId] = now;
-        toast(`Sync failed for “${gameName}”${reason ? ' — ' + reason : ''}. OpenSave will retry automatically.`, 'error');
+        toast('', 'error', {
+          key: syncErrorKey(data.gameId),
+          game: data.gameId,
+          title: `Couldn't sync ${gameName}`,
+          detail: reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1)}. It tries again on its own.` : 'It tries again on its own.',
+          retry: () => syncGame(data.gameId),
+          action: { label: get(t)('common.open'), run: () => navigate('game', { gameId: data.gameId }) }
+        });
       }
       break;
     }
@@ -262,7 +296,8 @@ export function applyMessage(msg) {
       if (data.error) {
         toast(
           `Couldn't apply your choice for “${gameName}” — ${friendlySyncError(data.error)}. The conflict is still open.`,
-          'error'
+          'error',
+          { game: data.gameId }
         );
       } else {
         toast(
@@ -271,7 +306,8 @@ export function applyMessage(msg) {
             : data.resolution === 'keep-remote'
               ? `Now using the other device's version of “${gameName}” — yours is snapshotted if you change your mind`
               : `Kept this device's version of “${gameName}”`,
-          'success'
+          'success',
+          { game: data.gameId }
         );
       }
       conflictResolution.set(data ?? null);
@@ -286,14 +322,16 @@ export function applyMessage(msg) {
       if (data.error) {
         toast(
           `Couldn't apply your choice for the “${data.root}” folder of “${name}” — ${friendlySyncError(data.error)}. It's still waiting.`,
-          'error'
+          'error',
+          { game: data.gameId }
         );
       } else {
         toast(
           data.resolution === 'keep-remote'
             ? `Now using the other device's “${data.root}” folder for “${name}” — yours is snapshotted if you change your mind`
             : `Kept this device's “${data.root}” folder for “${name}”`,
-          'success'
+          'success',
+          { game: data.gameId }
         );
       }
       break;
@@ -318,6 +356,38 @@ export function applyMessage(msg) {
 }
 
 const lastSyncErrorToast = {}; // gameId -> ms timestamp of last error toast
+const syncErrorKey = (gameId) => `sync-error:${gameId}`;
+const syncGame = (gameId) => api.post(`/api/games/${gameId}/sync`).catch((e) => toast(e.message, 'error'));
+
+// A restore as one toast: the daemon's progress fills it in (the games
+// update carries `restoring` while one runs), and the answer to the request
+// that started it finishes it in place, as done or as what went wrong — the
+// request passes the same key (restoreKey). One whose answer never comes
+// here, started from another screen, is finished a moment after the daemon
+// stops reporting it.
+const restoringNow = new Set();
+function followRestores(all) {
+  const tr = get(t);
+  for (const [id, g] of Object.entries(all)) {
+    const p = g?.restoring;
+    if (p?.phase) {
+      restoringNow.add(id);
+      toast('', 'progress', {
+        key: restoreKey(id),
+        game: id,
+        title: tr('toast.restoring', { name: g.name }),
+        detail: restoreProgressText(p, tr),
+        progress: { done: p.done, total: p.total }
+      });
+    } else if (restoringNow.has(id)) {
+      restoringNow.delete(id);
+      setTimeout(() => {
+        const left = get(toasts).find((x) => x.key === restoreKey(id) && x.kind === 'progress');
+        if (left) toasts.change(left.id, { kind: 'success', title: tr('toast.restored', { name: g.name }), detail: '', progress: null });
+      }, 3000);
+    }
+  }
+}
 
 // The stale-sync sweep lives at the top of this file, beside SYNC_STALE_MS.
 //

@@ -1,4 +1,5 @@
 <script>
+  import { holdsDialog } from '../lib/dialogs.js';
   import { dialogOut } from '../lib/motion.js';
   import { backdropClose } from '../lib/backdrop.js';
   import ReleaseNotes from './ReleaseNotes.svelte';
@@ -25,7 +26,7 @@
 <svelte:window on:keydown={onKeydown} />
 
 <div class="backdrop" use:backdropClose={onClose} role="presentation" out:dialogOut|global>
-  <div class="modal" role="dialog" aria-modal="true" aria-label={$t('whatsNew.title')}>
+  <div class="modal" role="dialog" aria-modal="true" use:holdsDialog aria-label={$t('whatsNew.title')}>
     <button class="btn ghost icon x" on:click={onClose} title={$t('common.close')} aria-label={$t('common.close')}><X size={18} /></button>
 
     <div class="hero">

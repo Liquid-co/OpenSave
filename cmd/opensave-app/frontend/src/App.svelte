@@ -262,6 +262,9 @@
       </div>
     {:else if ready}
       <Sidebar />
+      <!-- The page and its toasts: they sit at the bottom centre of the page,
+           above the status bar and never over the sidebar. -->
+      <div class="page">
       <main bind:this={mainEl}>
         <!-- At the top of the page rather than floating over it: floating, they
              sat on the page's own header buttons for as long as they were
@@ -286,6 +289,8 @@
           {/key}
         </div>
       </main>
+      <Toasts />
+      </div>
     {:else}
       <div class="boot-loading">
         <img class="boot-logo pulse" src={logoUrl} alt="OpenSave" />
@@ -294,7 +299,7 @@
     {/if}
   </div>
   <StatusBar />
-  <Toasts />
+  {#if !ready || bootError}<Toasts floating />{/if}
   <ConflictModal />
   <LocationConflictModal />
   <ConfirmDialog />
@@ -324,6 +329,12 @@
     flex: 1;
     display: flex;
     min-height: 0;
+  }
+  .page {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
   }
   main {
     flex: 1;

@@ -12,18 +12,21 @@ export function createRunner(notify = toast) {
   let running = false;
 
   /** Runs fn unless something else is running. A label is announced on
-   *  success; a failure is announced with the daemon's own message. Says
-   *  whether it ran and succeeded. */
-  async function run(label, fn) {
+   *  success; a failure is announced with the daemon's own message, and
+   *  offers to try again. `shown` goes to both toasts (lib/toasts.js): a
+   *  `key` to finish a toast already under way, an `action` for the done
+   *  one. Says whether it ran and succeeded. */
+  async function run(label, fn, shown = {}) {
     if (running) return false;
     running = true;
     busy.set(true);
     try {
       await fn();
-      if (label) notify(label, 'success');
+      if (label) notify(label, 'success', shown);
       return true;
     } catch (e) {
-      notify(e.message, 'error');
+      const { action, ...rest } = shown;
+      notify(e.message, 'error', { ...rest, retry: () => run(label, fn, shown) });
       return false;
     } finally {
       running = false;

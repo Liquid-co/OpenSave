@@ -98,7 +98,7 @@
     adding = true;
     try {
       const game = await api.post('/api/games', { name: name.trim(), savePath: path, appId });
-      toast($t('common.nowTracking', { name: game.name ?? name }), 'success');
+      toast($t('common.nowTracking', { name: game.name ?? name }), 'success', { game });
       dispatch('close');
       navigate('game', { gameId: game.id });
     } catch (e) {

@@ -8,6 +8,7 @@
   // click that starts and ends on the backdrop (see backdrop.js for why both).
   // `closable` turns all three off at once, for a dialog that must not be
   // dismissed while it is writing something.
+  import { holdsDialog } from '../../lib/dialogs.js';
   import { dialogOut } from '../../lib/motion.js';
   import { onMount } from 'svelte';
   import X from 'lucide-svelte/icons/x';
@@ -47,7 +48,7 @@
   on:keydown={(e) => e.key === 'Escape' && close()}
   role="presentation"
 >
-  <div class="panel" bind:this={panel} tabindex="-1" role="dialog" aria-modal="true" aria-label={title} style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
+  <div class="panel" bind:this={panel} tabindex="-1" role="dialog" aria-modal="true" use:holdsDialog aria-label={title} style="width: min({width}px, 100%); height: {height}; max-height: {maxHeight}">
     <div class="head">
       {#if icon}<span class="mark"><svelte:component this={icon} size={20} /></span>{/if}
       <div class="titles">

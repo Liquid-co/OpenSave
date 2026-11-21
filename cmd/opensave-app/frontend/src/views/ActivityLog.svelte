@@ -15,6 +15,7 @@
   import CalendarRange from 'lucide-svelte/icons/calendar-range';
   import { logEntries, gameList, navigate, toast, peers, activityTick, games } from '../lib/stores.js';
   import { api } from '../lib/api.js';
+  import Copy from 'lucide-svelte/icons/copy';
   import { asText, feedByDay, filterEntries, linkGames } from '../lib/activity.js';
   import { PERIODS, periodStart, deviceSlots, activityStats, barParts } from '../lib/activityview.js';
   import { playLength } from '../lib/format.js';
@@ -131,7 +132,7 @@
   async function copyShown() {
     try {
       await navigator.clipboard.writeText(asText(shown));
-      toast($i18n('activity.copiedEntries', { n: shown.length }), 'success');
+      toast($i18n('activity.copiedEntries', { n: shown.length }), 'info', { icon: Copy });
     } catch (e) {
       toast($i18n('activity.copyFailed', { error: e.message }), 'error');
     }
