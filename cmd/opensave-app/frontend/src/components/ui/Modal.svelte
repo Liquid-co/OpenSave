@@ -22,7 +22,9 @@
   /** Widest the panel gets, in pixels; it narrows with the window. */
   export let width = 760;
   export let height = 'min(78vh, 720px)';
-  export let maxHeight = 'none';
+  /** Tallest it gets. Never past the window: by default it stops at the
+   *  backdrop's padding, and its .body scrolls (see the style below). */
+  export let maxHeight = '100%';
 
   const close = () => {
     if (closable) onClose();
@@ -82,7 +84,17 @@
     flex-direction: column;
     box-shadow: var(--shadow);
   }
+  /* A dialog's .body takes the height left between the title and the
+     footer, and scrolls when what it holds is taller. Without this a dialog
+     sized to its content ran off a short window (a Steam Deck, a laptop),
+     and one with a fixed height squeezed its list and cut it off. */
+  .panel > :global(.body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
   .head {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 14px;

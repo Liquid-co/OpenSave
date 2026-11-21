@@ -238,6 +238,7 @@
 
 <style>
   .ways {
+    flex-shrink: 0;
     display: flex;
     gap: 10px;
     padding: 18px 22px 0;
@@ -690,6 +691,7 @@
     flex: 0 0 110px;
   }
   .foot {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 10px;

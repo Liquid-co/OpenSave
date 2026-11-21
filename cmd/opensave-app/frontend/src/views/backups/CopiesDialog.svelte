@@ -3,7 +3,13 @@
   // rows: why each was taken, when, and its size. Put one back, delete it
   // from the cloud, or send up what is missing. Fires `close`, `putBack`
   // (with the copy), `upload` and `deleted`.
+  //
+  // Sized to what it holds, up to most of the window, and the list scrolls
+  // inside it: one copy is a short dialog, two hundred a scrolling one.
+  // The rows arrive one after another (moving only), and a deleted one
+  // closes up rather than vanishing.
   import { createEventDispatcher } from 'svelte';
+  import { collapse } from '../../lib/motion.js';
   import Cloud from 'lucide-svelte/icons/cloud';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import Trash2 from 'lucide-svelte/icons/trash-2';
@@ -18,6 +24,8 @@
 
   export let game;
   export let busy = false;
+  /** This game's upload is the one running. */
+  export let uploadingThis = false;
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
 
@@ -48,13 +56,13 @@
   }
 </script>
 
-<Modal title={game.gameName} icon={Cloud} width={620} onClose={close}>
+<Modal title={game.gameName} icon={Cloud} width={640} height="auto" maxHeight="min(86vh, 780px)" onClose={close}>
   <svelte:fragment slot="sub">
     {#if copies.length}{$t('backups.copies', { n: copies.length, size: fmtSize(game.totalSize) })}{:else}{$t('backups.noCopies')}{/if}
   </svelte:fragment>
   <svelte:fragment slot="actions">
     {#if game.tracked}
-      <button class="btn small" disabled={busy} on:click={() => dispatch('upload')}><ArrowUp size={14} />{$t('backups.uploadMissing')}</button>
+      <button class="btn small" class:sending={uploadingThis} disabled={busy} on:click={() => dispatch('upload')}><span class="arrow"><ArrowUp size={14} /></span>{uploadingThis ? $t('backups.sending') : $t('backups.uploadMissing')}</button>
     {/if}
   </svelte:fragment>
 
@@ -67,9 +75,9 @@
           {@const d = describe(c)}
           {@const ms = copyTime(c)}
           {#if i === 0 || dayLabel(ms) !== dayLabel(copyTime(copies[i - 1]))}
-            <div class="day">{dayLabel(ms) === 'Today' ? $t('backups.today') : dayLabel(ms) === 'Yesterday' ? $t('backups.yesterday') : dayLabel(ms)}</div>
+            <div class="day" style="--i: {Math.min(i, 12)}">{dayLabel(ms) === 'Today' ? $t('backups.today') : dayLabel(ms) === 'Yesterday' ? $t('backups.yesterday') : dayLabel(ms)}</div>
           {/if}
-          <div class="row k-{d.kind}">
+          <div class="row k-{d.kind}" style="--i: {Math.min(i, 12)}" out:collapse={{ duration: 220 }}>
             <span class="time">{new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
             <span class="info">
               <span class="title">{d.title}</span>
@@ -96,13 +104,40 @@
 </Modal>
 
 <style>
+  /* Takes what the dialog has left and scrolls; its parts keep their own
+     height. The list used to be squeezed instead: with overflow hidden it
+     shrank to fit and cut its last rows off, and nothing scrolled. */
   .body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     padding: 14px 22px 18px;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 60vh;
-    overflow-y: auto;
+  }
+  .body > * {
+    flex-shrink: 0;
+  }
+  .day,
+  .row {
+    animation: arrive 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 25ms);
+  }
+  .arrow {
+    display: grid;
+    overflow: hidden;
+  }
+  .sending .arrow :global(svg) {
+    animation: send 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  }
+  @keyframes send {
+    45% {
+      transform: translateY(-16px);
+    }
+    46% {
+      transform: translateY(16px);
+    }
   }
   .note {
     font-size: var(--text-md);

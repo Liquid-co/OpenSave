@@ -117,6 +117,17 @@ func TestCloudOverview_SaysWhatIsUpAndWhatThisPCKnowsOfIt(t *testing.T) {
 		t.Errorf("after a sync from a peer: current %q uploaded=%v, want snap_mirror, not up", g.Current, g.CurrentUploaded)
 	}
 
+	// A snapshot brought in from a backup file is history, not the save.
+	if err := ts.daemon.Store.CreateSnapshot(store.Snapshot{
+		ID: "snap_imported", GameID: gameID, BranchName: "main", Timestamp: later.Add(30 * time.Second).Format("2006-01-02T15:04:05.000Z"),
+		Comment: importedComment, IsSystemAuto: true, ZipPath: filepath.Join(t.TempDir(), "i.zip"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if g := getOverview(t, ts)[gameID]; g.Current != "snap_mirror" {
+		t.Errorf("after an import: current %q, want snap_mirror still", g.Current)
+	}
+
 	// A restore after that moves the record on, and the restored save is
 	// the one that counts.
 	head, _, _ := ts.daemon.Store.GetCloudHead(gameID)

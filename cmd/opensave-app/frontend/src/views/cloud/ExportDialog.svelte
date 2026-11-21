@@ -2,12 +2,19 @@
   // Export: tracked games plus saves the scan found, pre-ticked for the
   // tracked ones. The chosen games' LIVE saves, with where each belongs, go
   // into one .sscb file. Fires `close`.
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  //
+  // Where the file goes: the system's save dialog in the app, when Export is
+  // pressed. The browser build has none, so there the dialog has a Save to
+  // field with the folder navigator; it starts in Documents.
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { toast, backupProgressEvent } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
   import { t } from '../../lib/i18n.js';
   import Modal from '../../components/ui/Modal.svelte';
-  import Package from 'lucide-svelte/icons/package';
+  import FileDown from 'lucide-svelte/icons/file-down';
+  import FolderOpen from 'lucide-svelte/icons/folder-open';
+  import FolderBrowser from '../../components/FolderBrowser.svelte';
+  import { collapse } from '../../lib/motion.js';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
   import ModalLoading from '../../components/ui/ModalLoading.svelte';
   import CoverTile from '../../components/ui/CoverTile.svelte';
@@ -19,6 +26,25 @@
   let items = null; // [{id,name,savePath,appId,cover,tracked}], null while loading
   let sel = {};
   let exporting = false;
+
+  const app = native.isWails();
+  const FILE = 'opensave-saves.sscb';
+  let dest = '';
+  let browsing = false;
+  const sepOf = (dir) => (dir.includes('\\') ? '\\' : '/');
+  const join = (dir, name) => (dir.endsWith('\\') || dir.endsWith('/') ? dir + name : dir + sepOf(dir) + name);
+  const nameOf = (path) => path.split(/[\\/]/).pop() || FILE;
+  const folderOf = (path) => path.slice(0, Math.max(0, path.length - nameOf(path).length - 1));
+  onMount(async () => {
+    if (app) return;
+    try {
+      const { places = [] } = await api.get('/api/folders');
+      const start = places.find((p) => p.name === 'documents') ?? places[0];
+      if (start && !dest) dest = join(start.path, FILE);
+    } catch {
+      // Typed in, then.
+    }
+  });
 
   // Live per-game progress while the daemon walks the export.
   let prog = null;
@@ -76,8 +102,9 @@
   async function run() {
     const chosen = (items ?? []).filter((it) => sel[it.id]);
     if (!chosen.length) return;
-    const target = await native.selectSaveFile($t('cloud.export.selectFileDialog'), 'opensave-saves.sscb');
+    let target = app ? await native.selectSaveFile($t('cloud.export.selectFileDialog'), FILE) : dest.trim();
     if (!target) return;
+    if (!/\.sscb$/i.test(target)) target += '.sscb';
     exporting = true;
     try {
       const res = await api.post('/api/backup/export', {
@@ -105,7 +132,7 @@
   }
 </script>
 
-<Modal title={$t('cloud.export.title')} icon={Package} onClose={close}>
+<Modal title={$t('cloud.export.title')} icon={FileDown} onClose={close} closable={!exporting} width={920} height="min(84vh, 820px)">
   <svelte:fragment slot="sub">
     {#if !items}
       {$t('cloud.export.looking')}
@@ -121,29 +148,51 @@
       <button class="btn small" on:click={() => setAll(!allSelected)}>
         {allSelected ? $t('home.library.unselectAll') : $t('cloud.export.selectAll')}
       </button>
-      <button class="btn small" on:click={() => { setAll(false); setAll(true, true); }}>{$t('cloud.export.trackedOnly')}</button>
+      <button class="btn small ghost" on:click={() => { setAll(false); setAll(true, true); }}>{$t('cloud.export.trackedOnly')}</button>
     </div>
     <div class="list">
       {#if items.length === 0}
         <div class="empty-state">
-          <div class="empty-icon"><Package size={36} strokeWidth={1.5} /></div>
+          <div class="empty-icon"><FileDown size={36} strokeWidth={1.5} /></div>
           <p>{$t('cloud.export.empty')}</p>
         </div>
       {:else}
         <div class="grid">
-          {#each items as it (it.id)}
-            <CoverTile
-              name={it.name}
-              title={it.savePath}
-              src={it.cover}
-              selected={!!sel[it.id]}
-              badge={it.tracked ? $t('home.scan.tracked') : $t('cloud.export.badgeDetected')}
-              on:activate={() => (sel[it.id] = !sel[it.id])}
-            />
+          {#each items as it, i (it.id)}
+            <div class="cell" style="--i: {Math.min(i, 16)}">
+              <CoverTile
+                name={it.name}
+                title={it.savePath}
+                src={it.cover}
+                selected={!!sel[it.id]}
+                badge={it.tracked ? $t('home.scan.tracked') : $t('cloud.export.badgeDetected')}
+                on:activate={() => (sel[it.id] = !sel[it.id])}
+              />
+            </div>
           {/each}
         </div>
       {/if}
     </div>
+    {#if !app}
+      <div class="dest">
+        <label for="export-dest">{$t('cloud.export.saveTo')}</label>
+        <div class="dest-row">
+          <input id="export-dest" bind:value={dest} spellcheck="false" />
+          <button class="btn small" class:on={browsing} on:click={() => (browsing = !browsing)}><FolderOpen size={14} />{$t('folders.browse')}</button>
+        </div>
+        {#if browsing}
+          <div transition:collapse>
+            <FolderBrowser
+              start={folderOf(dest)}
+              on:pick={(e) => {
+                dest = join(e.detail, nameOf(dest));
+                browsing = false;
+              }}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#if exporting && prog}
       <ProgressBar done={prog.done} total={prog.total}>
         {$t('cloud.export.progress', { done: Math.min(prog.done + 1, prog.total), total: prog.total })}
@@ -153,8 +202,8 @@
     <ModalFoot>
       <span class="quiet">{$t('cloud.export.detectedNote')}</span>
       <div class="actions">
-        <button class="btn" on:click={close}>{$t('common.cancel')}</button>
-        <button class="btn primary" disabled={exporting || count === 0} on:click={run}>
+        <button class="btn" disabled={exporting} on:click={close}>{$t('common.cancel')}</button>
+        <button class="btn primary" disabled={exporting || count === 0 || (!app && !dest.trim())} on:click={run}>
           {exporting ? $t('cloud.export.exporting') : $t('cloud.export.exportCount', { n: count })}
         </button>
       </div>
@@ -165,26 +214,58 @@
 <style>
   .quiet {
     color: var(--text-faint);
-    font-size: 0.85rem;
+    font-size: var(--text-md);
   }
   .toolbar {
+    flex-shrink: 0;
     display: flex;
     gap: 8px;
-    padding: 10px 20px 0;
+    padding: 14px 22px 4px;
   }
   .list {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 4px 22px 12px;
+    padding: 8px 22px 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
     gap: 16px;
     padding: 4px;
+  }
+  /* The covers arrive one after another, moving only. */
+  .cell {
+    animation: arrive 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 22ms);
+  }
+  .dest {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 22px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .dest label {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .dest-row {
+    display: flex;
+    gap: 8px;
+  }
+  .dest-row input {
+    flex: 1;
+    min-width: 0;
+  }
+  .btn.on {
+    border-color: var(--accent);
+    color: var(--accent-text);
   }
   .empty-state {
     flex: 1;

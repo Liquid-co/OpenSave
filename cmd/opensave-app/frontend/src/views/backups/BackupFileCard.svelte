@@ -3,20 +3,29 @@
   // can hold. A feature of its own, which people missed while it was a row
   // under the cloud settings, so it is drawn as a cartridge with your covers
   // on its label. Works with or without a cloud.
+  //
+  // Motion: the cartridge drops into its slot as the page arrives, and gives
+  // a little hop when a backup file has just been made from it.
   import { onMount } from 'svelte';
   import Download from 'lucide-svelte/icons/download';
   import FolderOpen from 'lucide-svelte/icons/folder-open';
-  import { api, native, gameCover } from '../../lib/api.js';
-  import { gameList, newGames, toast } from '../../lib/stores.js';
+  import { api, gameCover } from '../../lib/api.js';
+  import { gameList, newGames } from '../../lib/stores.js';
   import { t } from '../../lib/i18n.js';
   import CoverImage from '../../components/CoverImage.svelte';
   import ExportDialog from '../cloud/ExportDialog.svelte';
   import ImportDialog from '../cloud/ImportDialog.svelte';
 
   let last = null; // { madeMs, games }
+  let hop = false;
   async function readLast() {
     try {
+      const before = last?.madeMs ?? 0;
       last = await api.get('/api/backup/last-file');
+      if (before && last?.madeMs > before) {
+        hop = false;
+        requestAnimationFrame(() => (hop = true));
+      }
     } catch {
       last = null;
     }
@@ -29,25 +38,21 @@
     : new Date(last.madeMs).toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(new Date(last.madeMs).getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
 
   let exporting = false;
-  let importSource = '';
-  async function open() {
-    if (!native.isWails()) {
-      toast($t('backups.file.appOnly'));
-      return;
-    }
-    const src = await native.selectBackupFile($t('cloud.backup.selectImportFile'));
-    if (src) importSource = src;
-  }
+  // The import dialog chooses its own file: the system picker in the app,
+  // the folder navigator in the browser build.
+  let importing = false;
 </script>
 
 <section class="card file" aria-labelledby="file-title">
-  <div class="cart" aria-hidden="true">
-    <span class="grip"></span>
-    <span class="label">
-      {#each label as g (g.id)}<span class="art"><CoverImage src={gameCover(g, true)} alt="" /></span>{:else}<span class="art plain"></span>{/each}
-      <span class="label-text"><span class="brand">OPENSAVE</span><span class="count">{$t('backups.file.games', { n: $gameList.length })}</span></span>
-    </span>
-    <span class="pins"></span>
+  <div class="slot">
+    <div class="cart" class:hop aria-hidden="true" on:animationend={(e) => e.animationName.endsWith('hop') && (hop = false)}>
+      <span class="grip"></span>
+      <span class="label">
+        {#each label as g (g.id)}<span class="art"><CoverImage src={gameCover(g, true)} alt="" /></span>{:else}<span class="art plain"></span>{/each}
+        <span class="label-text"><span class="brand">OPENSAVE</span><span class="count">{$t('backups.file.games', { n: $gameList.length })}</span></span>
+      </span>
+      <span class="pins"></span>
+    </div>
   </div>
   <div class="text">
     <h2 id="file-title">{$t('backups.file.title')}</h2>
@@ -62,7 +67,7 @@
   </div>
   <div class="actions">
     <button class="btn make" on:click={() => (exporting = true)}><Download size={16} />{$t('backups.file.make')}</button>
-    <button class="btn" on:click={open}><FolderOpen size={15} />{$t('backups.file.open')}</button>
+    <button class="btn" on:click={() => (importing = true)}><FolderOpen size={15} />{$t('backups.file.open')}</button>
   </div>
 </section>
 
@@ -74,8 +79,8 @@
     }}
   />
 {/if}
-{#if importSource}
-  <ImportDialog source={importSource} on:close={() => (importSource = '')} />
+{#if importing}
+  <ImportDialog on:close={() => (importing = false)} />
 {/if}
 
 <style>
@@ -112,6 +117,34 @@
   }
   .file:hover .cart {
     transform: translateY(-3px) rotate(-1.5deg);
+  }
+  /* Dropping into its slot: from a little above, tilted, with a small
+     settle. Movement only, so it is there from the first frame. */
+  .slot {
+    animation: slot-in 0.6s cubic-bezier(0.3, 1.35, 0.5, 1) 0.18s backwards;
+  }
+  @keyframes slot-in {
+    from {
+      transform: translateY(-22px) rotate(-5deg);
+    }
+  }
+  /* A file was just made: up and back, as if ejected and pushed in. */
+  .cart.hop {
+    animation: hop 0.55s cubic-bezier(0.3, 0.7, 0.4, 1);
+  }
+  @keyframes hop {
+    35% {
+      transform: translateY(-14px) rotate(1.5deg);
+    }
+    70% {
+      transform: translateY(2px);
+    }
+  }
+  .pins {
+    transition: filter 0.3s;
+  }
+  .hop .pins {
+    filter: brightness(1.5);
   }
   .grip {
     position: absolute;

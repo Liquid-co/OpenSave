@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -81,7 +82,7 @@ type ActivityReport struct {
 
 // mirrorPrefix starts the comment of a snapshot kept of another device's
 // save when it arrived (syncengine recordMirrorSnapshot).
-const mirrorPrefix = "Synced from peer: "
+const mirrorPrefix = syncengine.MirrorCommentPrefix
 
 // mirrorDevice is the device a mirrored snapshot came from, if it is one.
 func mirrorDevice(comment string) (string, bool) {

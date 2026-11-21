@@ -1,27 +1,28 @@
 <script>
   // What is moving between this device and others, and what moved lately.
-  // Opens from the status bar; refreshes whenever a sync reports progress.
+  // Opens from Transfers in the status bar, above it; refreshes whenever a
+  // sync reports progress, and every two seconds while something runs.
+  //
+  // Drawn as the sync panel is: a header that says where things stand, then
+  // each game by its cover. A running one shows its progress as the toasts
+  // do (a thin bar, the amount and the speed under it); a finished one says
+  // which way it went, how much, and when.
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import ArrowDown from 'lucide-svelte/icons/arrow-down';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
+  import ArrowDownUp from 'lucide-svelte/icons/arrow-down-up';
   import CircleCheck from 'lucide-svelte/icons/circle-check';
   import CircleX from 'lucide-svelte/icons/circle-x';
   import X from 'lucide-svelte/icons/x';
-  import { api } from '../lib/api.js';
+  import Activity from 'lucide-svelte/icons/activity';
+  import { api, gameCover } from '../lib/api.js';
   import { games, syncActivity, navigate } from '../lib/stores.js';
   import { timeAgoParts } from '../lib/timeago.js';
-  import { amountLabel, peerLabel, speedLabel, withNames } from '../lib/transfers.js';
-  // Aliased: each recent transfer below is also named t, which would
-  // shadow the store and break $t inside the list.
+  import { amountLabel, speedLabel, withNames } from '../lib/transfers.js';
+  import { unfold } from '../lib/motion.js';
+  import CoverImage from './CoverImage.svelte';
+  // Aliased: each transfer below is named t, which would shadow the store.
   import { t as i18n } from '../lib/i18n.js';
-
-  // timeAgo's facts as a catalog key and its params, ready for $i18n.
-  const agoKey = (at, now = Date.now()) => {
-    const p = timeAgoParts(at, now);
-    if (p.kind === 'invalid') return { text: p.text };
-    const { kind, ...params } = p;
-    return { key: 'timeAgo.' + kind, params };
-  };
 
   const dispatch = createEventDispatcher();
   let data = null;
@@ -48,60 +49,91 @@
   });
 
   $: shown = withNames(data, $games);
+  $: recent = shown.recent.slice(0, 20);
 
-  function open(t) {
-    if ($games[t.gameId]) {
+  const ago = (at) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return p.text;
+    const { kind, ...params } = p;
+    return $i18n('timeAgo.' + kind, params);
+  };
+  const way = (tr) => $i18n(tr.direction === 'upload' ? 'transfers.to' : 'transfers.from', { peer: tr.peer || $i18n('transfers.anotherDevice') });
+  const amount = (tr) => amountLabel(tr, (done, total) => $i18n('transfers.ofTotal', { done, total }));
+
+  function open(tr) {
+    if ($games[tr.gameId]) {
       dispatch('close');
-      navigate('game', { gameId: t.gameId });
+      navigate('game', { gameId: tr.gameId });
     }
+  }
+  function toActivity() {
+    dispatch('close');
+    navigate('activity');
   }
 </script>
 
-<div class="panel" role="dialog" aria-label={$i18n('transfers.title')}>
-  <div class="head">
-    <h3>{$i18n('transfers.title')}</h3>
-    <button class="btn small ghost icon" aria-label={$i18n('common.close')} title={$i18n('common.close')} on:click={() => dispatch('close')}><X size={14} /></button>
+<div class="panel" role="dialog" aria-label={$i18n('transfers.title')} transition:unfold={{ origin: 'bottom right', y: 6 }}>
+  <div class="top">
+    <span class="tile" class:moving={shown.active.length}><ArrowDownUp size={18} /></span>
+    <div class="top-text">
+      <p class="headline">{$i18n('transfers.title')}</p>
+      <p class="detail" role="status">{shown.active.length ? $i18n('transfers.movingNow', { n: shown.active.length }) : $i18n('transfers.nothingNow')}</p>
+    </div>
+    <button class="shut" aria-label={$i18n('common.close')} title={$i18n('common.close')} on:click={() => dispatch('close')}><X size={16} /></button>
   </div>
 
-  {#if error}
-    <p class="empty">{$i18n('transfers.readError', { error })}</p>
-  {:else if !data}
-    <div class="skeleton" style="height: 44px; margin: 10px 14px"></div>
-  {:else if shown.active.length === 0 && shown.recent.length === 0}
-    <p class="empty">{$i18n('transfers.empty')}</p>
-  {:else}
-    {#if shown.active.length}
-      <h4>{$i18n('transfers.now')}</h4>
-      {#each shown.active as t}
-        <button class="row" on:click={() => open(t)}>
-          <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
-          <span class="main">
-            <span class="name">{t.name}</span>
-            <span class="sub">{peerLabel(t)}{#if amountLabel(t)}{' · '}{amountLabel(t)}{/if}{#if speedLabel(t.speedBytesPerSec)}{' · '}{speedLabel(t.speedBytesPerSec)}{/if}</span>
-            <span class="bar"><span style="width: {Math.max(3, t.percentage ?? 0)}%"></span></span>
-          </span>
-          <span class="pct">{t.percentage ?? 0}%</span>
-        </button>
-      {/each}
+  <div class="scroll">
+    {#if error}
+      <p class="empty">{$i18n('transfers.readError', { error })}</p>
+    {:else if !data}
+      <div class="skeleton" style="height: 52px; margin: 10px 14px"></div>
+    {:else if shown.active.length === 0 && recent.length === 0}
+      <div class="empty-state">
+        <span class="empty-icon"><ArrowDownUp size={22} /></span>
+        <p>{$i18n('transfers.empty')}</p>
+      </div>
+    {:else}
+      {#if shown.active.length}
+        <h4>{$i18n('transfers.now')}</h4>
+        {#each shown.active as tr, i (tr.gameId + tr.peer + tr.direction)}
+          <button class="row live" style="--i: {i}" on:click={() => open(tr)}>
+            <span class="thumb"><CoverImage src={gameCover($games[tr.gameId] ?? { name: tr.name }, true)} alt="" /></span>
+            <span class="main">
+              <span class="line"><span class="name">{tr.name}</span><span class="pct">{tr.percentage ?? 0}%</span></span>
+              <span class="sub"><svelte:component this={tr.direction === 'upload' ? ArrowUp : ArrowDown} size={12} />{way(tr)}</span>
+              <span class="bar"><span style="transform: scaleX({Math.max(0.03, (tr.percentage ?? 0) / 100)})"></span></span>
+              <span class="under">
+                {#if amount(tr)}<span>{amount(tr)}</span>{/if}
+                {#if speedLabel(tr.speedBytesPerSec)}<span>{speedLabel(tr.speedBytesPerSec)}</span>{/if}
+              </span>
+            </span>
+          </button>
+        {/each}
+      {/if}
+      {#if recent.length}
+        <h4>{$i18n('transfers.recently')}</h4>
+        {#each recent as tr, i (tr.gameId + tr.peer + tr.direction + tr.endedAt)}
+          <button class="row" style="--i: {Math.min(i + shown.active.length, 10)}" on:click={() => open(tr)} title={tr.error || ''}>
+            <span class="thumb"><CoverImage src={gameCover($games[tr.gameId] ?? { name: tr.name }, true)} alt="" /></span>
+            <span class="main">
+              <span class="name">{tr.name}</span>
+              <span class="sub"><svelte:component this={tr.direction === 'upload' ? ArrowUp : ArrowDown} size={12} />{way(tr)}</span>
+              {#if tr.error}<span class="err">{tr.error}</span>{/if}
+            </span>
+            <span class="end">
+              <span class="state" class:bad={tr.state === 'error'}><svelte:component this={tr.state === 'error' ? CircleX : CircleCheck} size={14} /></span>
+              {#if amount(tr)}<span class="size">{amount(tr)}</span>{/if}
+              {#if tr.endedAt}<span class="when">{ago(tr.endedAt)}</span>{/if}
+            </span>
+          </button>
+        {/each}
+      {/if}
     {/if}
-    {#if shown.recent.length}
-      <h4>{$i18n('transfers.recently')}</h4>
-      {#each shown.recent.slice(0, 20) as t}
-        {@const w = agoKey(t.endedAt, now)}
-        <button class="row" on:click={() => open(t)} title={t.error || ''}>
-          <span class="dir {t.direction}"><svelte:component this={t.direction === 'upload' ? ArrowUp : ArrowDown} size={14} /></span>
-          <span class="main">
-            <span class="name">{t.name}</span>
-            <span class="sub">{peerLabel(t)}{#if amountLabel(t)}{' · '}{amountLabel(t)}{/if}{#if t.error}{' · '}{t.error}{/if}</span>
-          </span>
-          <span class="end">
-            {#if t.state === 'error'}<span class="bad"><CircleX size={13} /></span>{:else}<span class="good"><CircleCheck size={13} /></span>{/if}
-            <span class="when">{t.endedAt ? (w.text ?? $i18n(w.key, w.params)) : ''}</span>
-          </span>
-        </button>
-      {/each}
-    {/if}
-  {/if}
+  </div>
+
+  <div class="foot">
+    <button class="btn small ghost" on:click={toActivity}><Activity size={14} />{$i18n('transfers.seeActivity')}</button>
+  </div>
 </div>
 
 <style>
@@ -110,65 +142,118 @@
     right: 12px;
     bottom: calc(var(--statusbar-h) + 8px);
     z-index: 120;
-    width: min(380px, calc(100vw - 24px));
-    max-height: min(60vh, 520px);
-    overflow-y: auto;
+    width: min(390px, calc(100vw - 24px));
+    max-height: min(64vh, 560px);
+    display: flex;
+    flex-direction: column;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
-    padding-bottom: 8px;
+    overflow: hidden;
   }
-  .head {
+  .top {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 10px 6px 14px;
+    gap: 12px;
+    padding: 14px 12px 14px 16px;
+    border-bottom: 1px solid var(--border);
   }
-  h3 {
-    font-size: 0.95rem;
+  .tile {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-active);
+    color: var(--text-dim);
   }
-  h4 {
-    margin: 8px 14px 4px;
-    font-size: 0.7rem;
+  .tile.moving {
+    background: rgba(var(--info-rgb), 0.16);
+    color: var(--info);
+  }
+  .tile.moving :global(svg) {
+    animation: trade 1.6s ease-in-out infinite;
+  }
+  @keyframes trade {
+    50% {
+      transform: rotate(180deg);
+    }
+  }
+  .top-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .headline {
+    font-size: var(--text-lg);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  }
+  .detail {
+    font-size: var(--text-sm);
     color: var(--text-faint);
   }
-  .empty {
-    padding: 8px 14px 12px;
-    font-size: 0.85rem;
+  .shut {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
     color: var(--text-dim);
+    cursor: pointer;
+  }
+  .shut:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 6px 8px;
+  }
+  h4 {
+    margin: 10px 10px 4px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-faint);
   }
   .row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
-    padding: 7px 14px;
+    padding: 8px 10px;
     border: none;
+    border-radius: var(--radius);
     background: transparent;
     color: var(--text);
     font: inherit;
     text-align: left;
     cursor: pointer;
+    animation: arrive 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 30ms + 60ms);
   }
   .row:hover {
     background: var(--bg-hover);
   }
-  .dir {
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 26px;
-    flex-shrink: 0;
-    border-radius: 8px;
-    background: var(--btn-bg);
-    color: var(--text-dim);
+  .thumb {
+    position: relative;
+    width: 30px;
+    height: 40px;
+    flex: none;
+    border-radius: 5px;
+    overflow: hidden;
+    background: var(--bg-active);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
   }
-  .dir.download {
-    color: var(--accent-text);
+  .thumb :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .main {
     flex: 1;
@@ -177,50 +262,115 @@
     flex-direction: column;
     gap: 2px;
   }
+  .line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
   .name {
-    font-size: 0.86rem;
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-md);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .sub {
-    font-size: 0.74rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-sm);
     color: var(--text-faint);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .pct {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--info);
+    font-variant-numeric: tabular-nums;
+  }
   .bar {
-    height: 4px;
-    margin-top: 3px;
-    border-radius: 999px;
+    height: 3px;
+    margin-top: 4px;
+    border-radius: 2px;
     background: var(--bg-active);
     overflow: hidden;
   }
   .bar span {
     display: block;
     height: 100%;
-    background: var(--accent);
-    transition: width 0.3s ease;
+    background: var(--info);
+    transform-origin: left;
+    transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
-  .pct,
-  .when {
-    font-size: 0.74rem;
+  .under {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--text-xs);
     color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .err {
+    font-size: var(--text-xs);
+    color: var(--danger-text);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .end {
+    flex: none;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
   }
-  .good {
+  .state {
     display: flex;
     color: var(--success);
   }
-  .bad {
-    display: flex;
+  .state.bad {
     color: var(--danger);
+  }
+  .size,
+  .when {
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .empty {
+    padding: 12px 14px;
+    font-size: var(--text-md);
+    color: var(--text-dim);
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 20px 18px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: var(--text-md);
+  }
+  .empty-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-active);
+    color: var(--text-faint);
+  }
+  .foot {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-sidebar);
   }
 </style>

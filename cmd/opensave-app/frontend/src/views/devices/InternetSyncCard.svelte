@@ -105,7 +105,7 @@
       <span class="names">{roomNames.join(', ')}</span>
     </div>
     <div class="row-actions">
-      <button class="btn small" on:click={() => dispatch('add', { way: 'code' })}>{$t('devices.inet.pairSomeone')}</button>
+      <button class="btn small" on:click={() => dispatch('add', { way: 'code' })}>{$t('internetSync.joinRoom')}</button>
       <button class="btn small ghost" disabled={busy} on:click={leave}>{$t('internetSync.leaveRoom')}</button>
     </div>
   {:else}

@@ -151,18 +151,45 @@ export function gameRows({ items = [], games = [], here = '', period = 'month', 
   });
 }
 
-export const ROW_SORTS = {
-  played: (a, b) => b.lastPlayedAt - a.lastPlayedAt,
-  time: (a, b) => b.playedMs - a.playedMs || b.lastPlayedAt - a.lastPlayedAt,
-  sessions: (a, b) => b.sessions - a.sessions || b.lastPlayedAt - a.lastPlayedAt
+/** The columns the table sorts by, and each one's value. */
+export const SORT_COLUMNS = ['played', 'time', 'sessions'];
+const SORT_VALUE = {
+  played: (r) => r.lastPlayedAt || 0,
+  time: (r) => r.playedMs || 0,
+  sessions: (r) => r.sessions || 0
 };
 
-/** Rows in an order: by a sort above, or by name given the names. */
-export function sortRows(rows, by, names = {}) {
-  const out = [...rows];
-  if (by === 'name') out.sort((a, b) => String(names[a.gameId] ?? '').localeCompare(String(names[b.gameId] ?? '')));
-  else out.sort(ROW_SORTS[by] ?? ROW_SORTS.played);
-  return out;
+/** No column chosen: the table's normal order, by name. */
+export const NORMAL_SORT = Object.freeze({ by: '', dir: '' });
+
+/**
+ * A column header pressed: normal, then descending, then ascending, then
+ * normal again. Pressing another column starts that one at descending, so
+ * only one column sorts at a time.
+ */
+export function nextSort(state, column) {
+  if (state?.by !== column) return { by: column, dir: 'desc' };
+  if (state.dir === 'desc') return { by: column, dir: 'asc' };
+  return NORMAL_SORT;
+}
+
+/**
+ * Rows in the order chosen: by a column either way, or normally by name.
+ * Rows with nothing in that column (never played, no sessions) stay at the
+ * bottom both ways; ties go by name.
+ */
+export function sortRows(rows, sort = NORMAL_SORT, names = {}) {
+  const name = (r) => String(names[r.gameId] ?? r.gameId);
+  const byName = (a, b) => name(a).localeCompare(name(b));
+  const value = SORT_VALUE[sort?.by];
+  if (!value) return [...rows].sort(byName);
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const va = value(a);
+    const vb = value(b);
+    if (!va !== !vb) return va ? -1 : 1;
+    return sign * (va - vb) || byName(a, b);
+  });
 }
 
 /** The parts of a split bar: each device's share, in slot order, the ones

@@ -9,17 +9,13 @@ export function speedLabel(bytesPerSec) {
   return `${fmtSize(bytesPerSec)}/s`;
 }
 
-/** "400 KB of 1.0 MB", "1.0 MB", or '' when nothing is known. */
-export function amountLabel(t) {
-  if (t.totalBytes > 0 && t.state === 'running') return `${fmtSize(t.bytesTransferred ?? 0)} of ${fmtSize(t.totalBytes)}`;
+/** "400 KB of 1.0 MB", "1.0 MB", or '' when nothing is known. `ofTotal`
+ *  words the running case, for the reader's language. */
+export function amountLabel(t, ofTotal = (done, total) => `${done} of ${total}`) {
+  if (t.totalBytes > 0 && t.state === 'running') return ofTotal(fmtSize(t.bytesTransferred ?? 0), fmtSize(t.totalBytes));
   if (t.totalBytes > 0) return fmtSize(t.totalBytes);
   if (t.bytesTransferred > 0) return fmtSize(t.bytesTransferred);
   return '';
-}
-
-/** "from Deck" for a download, "to Deck" for an upload. */
-export function peerLabel(t) {
-  return t.direction === 'upload' ? `to ${t.peer || 'another device'}` : `from ${t.peer || 'another device'}`;
 }
 
 /** The transfers as the panel lists them, with each game's name. */

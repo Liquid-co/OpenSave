@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { periodStart, deviceSlots, activityStats, gameRows, sortRows, barParts, DEVICE_COLOURS } from './activityview.js';
+import { periodStart, deviceSlots, activityStats, gameRows, sortRows, nextSort, NORMAL_SORT, barParts, DEVICE_COLOURS } from './activityview.js';
 
 const NOW = Date.parse('2026-11-20T12:00:00Z');
 const H = 3600e3;
@@ -96,9 +96,32 @@ describe('gameRows', () => {
 
   it('sorts by last played, time, sessions or name', () => {
     const rows = gameRows({ items, games, here: 'Gaming PC', period: 'all', now: NOW });
-    expect(sortRows(rows, 'played').map((r) => r.gameId)).toEqual(['elden', 'hades', 'celeste']);
-    expect(sortRows(rows, 'time').map((r) => r.gameId)).toEqual(['elden', 'hades', 'celeste']);
-    expect(sortRows(rows, 'name', { elden: 'Elden Ring', hades: 'Hades II', celeste: 'Celeste' }).map((r) => r.gameId)).toEqual(['celeste', 'elden', 'hades']);
+    const names = { elden: 'Elden Ring', hades: 'Hades II', celeste: 'Celeste' };
+    expect(sortRows(rows, { by: 'played', dir: 'desc' }, names).map((r) => r.gameId)).toEqual(['elden', 'hades', 'celeste']);
+    expect(sortRows(rows, { by: 'time', dir: 'desc' }, names).map((r) => r.gameId)).toEqual(['elden', 'hades', 'celeste']);
+    expect(sortRows(rows, NORMAL_SORT, names).map((r) => r.gameId)).toEqual(['celeste', 'elden', 'hades']);
+  });
+
+  it('sorts ascending too, keeping rows with nothing in the column at the bottom', () => {
+    const rows = gameRows({ items, games, here: 'Gaming PC', period: 'all', now: NOW });
+    const names = { elden: 'Elden Ring', hades: 'Hades II', celeste: 'Celeste' };
+    // Celeste was not played in the period: last both ways.
+    expect(sortRows(rows, { by: 'played', dir: 'asc' }, names).map((r) => r.gameId)).toEqual(['hades', 'elden', 'celeste']);
+    expect(sortRows(rows, { by: 'sessions', dir: 'asc' }, names).at(-1).gameId).toBe('celeste');
+  });
+});
+
+describe('nextSort', () => {
+  it('goes normal, descending, ascending, normal', () => {
+    let s = NORMAL_SORT;
+    s = nextSort(s, 'time');
+    expect(s).toEqual({ by: 'time', dir: 'desc' });
+    s = nextSort(s, 'time');
+    expect(s).toEqual({ by: 'time', dir: 'asc' });
+    expect(nextSort(s, 'time')).toEqual(NORMAL_SORT);
+  });
+  it('lets one column sort at a time', () => {
+    expect(nextSort({ by: 'time', dir: 'asc' }, 'sessions')).toEqual({ by: 'sessions', dir: 'desc' });
   });
 });
 

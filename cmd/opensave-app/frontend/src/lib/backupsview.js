@@ -1,6 +1,5 @@
 // The Backups page's facts, from GET /api/cloud/overview: each game's state,
-// the headline, the shelf's order and filters, and where each copy sits on
-// the timeline.
+// the headline, and the shelf's order and filters.
 //
 // Only what the app knows. A cloud copy carries no record of why it was
 // taken; this PC's own record says, for the copies it holds too. A copy it
@@ -15,9 +14,6 @@ export function copyKind(copy) {
   if (k === 'manual' || k === 'session' || k === 'safety') return k;
   return 'auto';
 }
-
-/** The kinds in the order the key lists them. */
-export const COPY_KINDS = ['session', 'manual', 'safety', 'auto', 'unknown'];
 
 /** When a copy's snapshot was taken, else when it reached the cloud. */
 export function copyTime(copy) {
@@ -92,50 +88,3 @@ export function shelfOrder(games = []) {
 
 /** How many edges the stack behind a cover shows: more copies, more edges. */
 export const stackEdges = (copies) => (copies >= 5 ? 2 : copies >= 2 ? 1 : 0);
-
-const DAY = 24 * 60 * 60 * 1000;
-
-/**
- * The timeline's window: the last `days` days, today the last. Days start at
- * local midnight, so a copy lands on the day it was taken where you are.
- */
-export function timelineWindow(now = Date.now(), days = 14) {
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  const start = new Date(midnight);
-  start.setDate(start.getDate() - (days - 1));
-  const end = new Date(midnight);
-  end.setDate(end.getDate() + 1);
-  const dayStarts = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    dayStarts.push(d.getTime());
-  }
-  return { start: start.getTime(), end: end.getTime(), now, dayStarts };
-}
-
-/** Where a moment falls in the window, 0 to 1. */
-export const placeIn = (win, ms) => (ms - win.start) / (win.end - win.start);
-
-/**
- * A game's dots: its copies inside the window, oldest first, each with its
- * place, its kind, and whether it is the game's newest copy.
- */
-export function laneDots(g, win) {
-  const newest = newestCopy(g);
-  return (g.copies ?? [])
-    .map((c) => ({ copy: c, ms: copyTime(c) }))
-    .filter(({ ms }) => ms >= win.start && ms < win.end)
-    .sort((a, b) => a.ms - b.ms)
-    .map(({ copy, ms }) => ({ copy, ms, at: placeIn(win, ms), kind: copyKind(copy), latest: copy === newest }));
-}
-
-/** The kinds present on the timeline, for its key. */
-export function kindsShown(games, win) {
-  const seen = new Set();
-  for (const g of games) for (const d of laneDots(g, win)) seen.add(d.kind);
-  return COPY_KINDS.filter((k) => seen.has(k));
-}
-
-export { DAY };

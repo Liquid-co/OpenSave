@@ -46,6 +46,11 @@ describe('humanizeComment', () => {
 describe('snapshotKind', () => {
   const auto = (comment) => ({ isSystemAuto: true, comment });
 
+  it('names the copy a sync keeps by the device it came from', () => {
+    expect(snapshotKind(auto('Synced from peer: Steam Deck (Auto backup)'))).toMatchObject({ kind: 'other', title: 'Synced from Steam Deck' });
+    expect(snapshotKind(auto('Synced from peer: Living Room PC')).title).toBe('Synced from Living Room PC');
+  });
+
   it('calls one the person took theirs, titled by their comment', () => {
     expect(snapshotKind({ isSystemAuto: false, comment: 'before the boss' })).toMatchObject({
       kind: 'manual',

@@ -10,9 +10,13 @@ import (
 	"testing"
 )
 
-func getFolders(t *testing.T, path string) (*httptest.ResponseRecorder, folderListing) {
+func getFolders(t *testing.T, path string, ext ...string) (*httptest.ResponseRecorder, folderListing) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/folders?path="+url.QueryEscape(path), nil)
+	q := "/api/folders?path=" + url.QueryEscape(path)
+	if len(ext) > 0 {
+		q += "&ext=" + url.QueryEscape(ext[0])
+	}
+	req := httptest.NewRequest(http.MethodGet, q, nil)
 	rec := httptest.NewRecorder()
 	(&Server{}).handleListFolders(rec, req)
 	var out folderListing
@@ -85,5 +89,24 @@ func TestListFolders_IsOnlyForThisComputer(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code == http.StatusOK {
 		t.Fatal("a device on the network was shown this computer's folders")
+	}
+}
+
+func TestListFolders_ListsFilesOfTheTypeAskedForOnly(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"saves.SSCB", "older.sscb", "notes.txt", "saves.sscb.bak"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, out := getFolders(t, root); len(out.Files) != 0 {
+		t.Fatalf("files listed without asking: %+v", out.Files)
+	}
+	rec, out := getFolders(t, root, ".sscb")
+	if rec.Code != http.StatusOK || len(out.Files) != 2 || out.Files[0].Name != "older.sscb" || out.Files[1].Name != "saves.SSCB" {
+		t.Fatalf("status %d, files %+v, want the two .sscb files by name", rec.Code, out.Files)
+	}
+	if rec, _ := getFolders(t, root, "*"); rec.Code != http.StatusBadRequest {
+		t.Errorf("ext * answered %d, want 400", rec.Code)
 	}
 }

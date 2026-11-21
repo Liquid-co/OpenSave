@@ -6,11 +6,7 @@ import {
   backupSummary,
   shelfOrder,
   inFilter,
-  stackEdges,
-  timelineWindow,
-  laneDots,
-  kindsShown,
-  placeIn
+  stackEdges
 } from './backupsview.js';
 
 const copy = (o = {}) => ({ name: 'x', snapshotId: 'snap_1', known: true, comment: '', isSystemAuto: true, ...o });
@@ -79,31 +75,5 @@ describe('shelf', () => {
   });
   it('grows the stack with the copies', () => {
     expect([0, 1, 2, 4, 5, 20].map(stackEdges)).toEqual([0, 0, 1, 1, 2, 2]);
-  });
-});
-
-describe('timeline', () => {
-  const now = new Date(2026, 10, 20, 15, 30).getTime(); // Nov 20, 3:30 PM local
-  const win = timelineWindow(now, 14);
-  it('spans fourteen local days ending tonight', () => {
-    expect(win.dayStarts.length).toBe(14);
-    expect(new Date(win.dayStarts[0]).getDate()).toBe(7);
-    expect(new Date(win.end).getDate()).toBe(21);
-    expect(placeIn(win, win.start)).toBe(0);
-    expect(placeIn(win, win.end)).toBe(1);
-  });
-  it('places copies inside the window, oldest first, and marks the newest', () => {
-    const inside = copy({ snapshotId: 'a', takenMs: new Date(2026, 10, 18, 21, 12).getTime() });
-    const newest = copy({ snapshotId: 'b', takenMs: new Date(2026, 10, 20, 13, 0).getTime(), isSystemAuto: false });
-    const before = copy({ snapshotId: 'c', takenMs: new Date(2026, 9, 21).getTime() });
-    const dots = laneDots({ copies: [newest, before, inside] }, win);
-    expect(dots.map((d) => d.copy.snapshotId)).toEqual(['a', 'b']);
-    expect(dots.map((d) => d.latest)).toEqual([false, true]);
-    expect(dots[1].kind).toBe('manual');
-    expect(dots.every((d) => d.at > 0 && d.at < 1)).toBe(true);
-  });
-  it('keys only the kinds on screen', () => {
-    const g = { copies: [copy({ takenMs: now - 1000, known: false })] };
-    expect(kindsShown([g], win)).toEqual(['unknown']);
   });
 });

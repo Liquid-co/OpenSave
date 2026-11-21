@@ -19,11 +19,13 @@ type folderEntry struct {
 	Path string `json:"path"`
 }
 
-// folderListing is one folder's subfolders. Parent is "" at a drive's root.
+// folderListing is one folder's subfolders, and its files of one type when
+// asked for. Parent is "" at a drive's root.
 type folderListing struct {
 	Path    string        `json:"path"`
 	Parent  string        `json:"parent"`
 	Folders []folderEntry `json:"folders"`
+	Files   []folderEntry `json:"files,omitempty"`
 	// More is set when the folder holds more than maxListedFolders.
 	More bool `json:"more,omitempty"`
 }
@@ -44,9 +46,10 @@ const (
 
 // handleListFolders lists the folders in one folder, for the folder navigator
 // the browser build shows where the desktop app opens the system's picker.
-// With no path it answers with the places to start from.
+// With no path it answers with the places to start from. With ext (".sscb")
+// it lists the files of that one type too, for choosing a backup file.
 //
-// Folders only, never files, and names only, never contents. It sits behind
+// Names only, never contents, and files only of the type asked for. It sits behind
 // localhostOnly with every other dashboard route, and that surface already
 // takes any path to track.
 func (s *Server) handleListFolders(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +63,11 @@ func (s *Server) handleListFolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p = filepath.Clean(p)
+	ext := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("ext")))
+	if ext != "" && (!strings.HasPrefix(ext, ".") || strings.ContainsAny(ext, `/\*?`)) {
+		writeError(w, http.StatusBadRequest, "ext must look like .sscb")
+		return
+	}
 
 	type result struct {
 		list folderListing
@@ -67,7 +75,7 @@ func (s *Server) handleListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		list, err := listFolders(p)
+		list, err := listFolders(p, ext)
 		done <- result{list, err}
 	}()
 	select {
@@ -88,7 +96,7 @@ func (s *Server) handleListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func listFolders(p string) (folderListing, error) {
+func listFolders(p, ext string) (folderListing, error) {
 	entries, err := os.ReadDir(p)
 	if err != nil {
 		return folderListing{}, err
@@ -107,6 +115,9 @@ func listFolders(p string) (folderListing, error) {
 			}
 		}
 		if !isDir {
+			if ext != "" && strings.HasSuffix(strings.ToLower(e.Name()), ext) && len(out.Files) < maxListedFolders {
+				out.Files = append(out.Files, folderEntry{Name: e.Name(), Path: full})
+			}
 			continue
 		}
 		if len(out.Folders) == maxListedFolders {
@@ -115,9 +126,11 @@ func listFolders(p string) (folderListing, error) {
 		}
 		out.Folders = append(out.Folders, folderEntry{Name: e.Name(), Path: full})
 	}
-	sort.Slice(out.Folders, func(i, j int) bool {
-		return strings.ToLower(out.Folders[i].Name) < strings.ToLower(out.Folders[j].Name)
-	})
+	byName := func(list []folderEntry) {
+		sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
+	}
+	byName(out.Folders)
+	byName(out.Files)
 	return out, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opensave/opensave/internal/p2p/syncengine"
 	"github.com/opensave/opensave/internal/snapshot"
 	"github.com/opensave/opensave/internal/store"
 )
@@ -79,7 +80,11 @@ func (s *Server) handleCloudOverview(w http.ResponseWriter, r *http.Request) {
 		cg := &cloudGame{GameID: g.ID, GameName: g.Name, AppID: g.AppID, Tracked: true, Copies: []cloudCopy{}}
 		snaps := map[string]store.Snapshot{}
 		branches, _ := s.Daemon.Store.ListBranches(g.ID)
-		var newest store.Snapshot
+		// The newest snapshot of the save on the active branch, and apart
+		// from it the newest a sync kept. A safety copy is the save before
+		// something replaced it, and an imported one is history brought in
+		// from a file: neither is the save as it stands.
+		var newest, newestSync store.Snapshot
 		for _, b := range branches {
 			list, err := s.Daemon.Store.ListSnapshots(g.ID, b)
 			if err != nil {
@@ -87,20 +92,28 @@ func (s *Server) handleCloudOverview(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, sn := range list {
 				snaps[sn.ID] = sn
-				if b == g.ActiveBranch && !sn.Safety && sn.Timestamp > newest.Timestamp {
+				if b != g.ActiveBranch || sn.Safety || sn.Comment == importedComment {
+					continue
+				}
+				if sn.Timestamp > newest.Timestamp {
 					newest = sn
+				}
+				if strings.HasPrefix(sn.Comment, syncengine.MirrorCommentPrefix) && sn.Timestamp > newestSync.Timestamp {
+					newestSync = sn
 				}
 			}
 		}
 		cg.LocalSnapshots = len(snaps)
-		// The save as it stands is whichever happened last: the cloud record
-		// moves on every snapshot taken and every restore, but not on a
-		// snapshot mirrored from a paired device's sync, which the sync
-		// engine writes itself. That one is the save after the sync.
+		// The save as it stands: the cloud record, which moves on every
+		// snapshot taken and every restore, but not on the snapshot a sync
+		// keeps, which the sync engine writes itself. A newer one of those
+		// is the save after that sync. With no record yet, the newest.
 		cg.Current = newest.ID
-		if head, ok, err := s.Daemon.Store.GetCloudHead(g.ID); err == nil && ok && head.Snapshot != "" &&
-			stampMs(head.Since) >= stampMs(newest.Timestamp) {
+		if head, ok, err := s.Daemon.Store.GetCloudHead(g.ID); err == nil && ok && head.Snapshot != "" {
 			cg.Current = head.Snapshot
+			if newestSync.ID != "" && stampMs(newestSync.Timestamp) > stampMs(head.Since) {
+				cg.Current = newestSync.ID
+			}
 		}
 		local[g.ID] = snaps
 		byID[g.ID] = cg
@@ -174,6 +187,10 @@ func copyMoment(c cloudCopy) int64 {
 	}
 	return 0
 }
+
+// importedComment is what an import gives the snapshots it adds to a game's
+// history (daemon.ImportArchive).
+const importedComment = "Imported from backup"
 
 // stampMs reads a stored timestamp; 0 when it cannot.
 func stampMs(stamp string) int64 {

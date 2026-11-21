@@ -1,33 +1,30 @@
 <script>
   // Backups: your saves kept off this PC. A header over your own covers says
-  // how many games have their current save in the cloud; below it every game,
-  // as covers or on a two-week timeline (it remembers which). On the right,
-  // the backup file, which is a feature of its own, and what the cloud does
-  // by itself.
+  // how many games have their current save in the cloud; below it every game
+  // as its cover, with its copies stacked behind it. On the right, the backup
+  // file, which is a feature of its own, and what the cloud does by itself.
   //
   // With nowhere to back up to yet, the page is the choice of where
   // (BackupsSetup). Everything shown comes from GET /api/cloud/overview
   // (internal/api/routes_cloud_overview.go) and is only what the app knows.
+  //
+  // Motion: the parts arrive one after another by moving, never by fading
+  // (app.css "arrive"), so a slow frame never shows a blank page.
   import { onDestroy, onMount } from 'svelte';
   import { toast, settings, cloudUploadEvent, askConfirm, gameList } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { providerConfigured } from '../lib/cloudproviders.js';
-  import { gameState } from '../lib/backupsview.js';
+  import { gameState, SHELF_FILTERS, inFilter } from '../lib/backupsview.js';
   import { t } from '../lib/i18n.js';
-  import { rise } from '../lib/motion.js';
   import Skeleton from '../components/ui/Skeleton.svelte';
   import FilterTabs from '../components/ui/FilterTabs.svelte';
-  import LayoutGrid from 'lucide-svelte/icons/layout-grid';
-  import ChartNoAxesGantt from 'lucide-svelte/icons/chart-no-axes-gantt';
   import CloudOff from 'lucide-svelte/icons/cloud-off';
   import BackupsHero from './backups/BackupsHero.svelte';
   import CoverShelf from './backups/CoverShelf.svelte';
-  import CopiesTimeline from './backups/CopiesTimeline.svelte';
   import CopiesDialog from './backups/CopiesDialog.svelte';
   import BackupFileCard from './backups/BackupFileCard.svelte';
   import AutoCard from './backups/AutoCard.svelte';
   import BackupsSetup from './backups/BackupsSetup.svelte';
-  import { SHELF_FILTERS, inFilter, kindsShown, timelineWindow, COPY_KINDS } from '../lib/backupsview.js';
 
   let config = null; // the cloud settings, null until read
   let autoPull = false;
@@ -82,42 +79,26 @@
   });
   onMount(loadConfig);
 
-  // ── Covers or Timeline, remembered ──
-  const VIEW_KEY = 'opensave.backups.view';
-  let view = 'covers';
-  try {
-    if (localStorage.getItem(VIEW_KEY) === 'timeline') view = 'timeline';
-  } catch {
-    // Private storage off: Covers it is.
-  }
-  function setView(v) {
-    view = v;
-    try {
-      localStorage.setItem(VIEW_KEY, v);
-    } catch {
-      // Not remembered, still shown.
-    }
-  }
-
   let filter = 'all';
   $: games = overview ?? [];
   $: counts = Object.fromEntries(SHELF_FILTERS.map((f) => [f, games.filter((g) => inFilter(g, f)).length]));
   $: filterOptions = SHELF_FILTERS.map((f) => [f, $t('backups.filter.' + f)]);
-  $: win = timelineWindow(Date.now(), 14);
-  $: keys = view === 'timeline' ? kindsShown(games, win) : [];
 
   // ── Acting on it ──
-  let uploading = null; // { name, done, total } while Back up now or Upload now runs
+  // { gameId, name, done, total } while Back up now or Upload now runs.
+  let uploading = null;
   async function upload(list) {
-    if (uploading) return;
-    uploading = { name: list[0]?.gameName ?? '', done: 0, total: list.length };
+    if (uploading || !list.length) return;
+    uploading = { gameId: list[0].gameId, name: list[0].gameName, done: 0, total: list.length };
     let sent = 0;
     try {
       for (const g of list) {
-        uploading = { ...uploading, name: g.gameName };
+        uploading = { ...uploading, gameId: g.gameId, name: g.gameName };
         const res = await api.post(`/api/cloud/sync-local/${g.gameId}`);
         sent += res.uploaded ?? 0;
         uploading = { ...uploading, done: uploading.done + 1 };
+        // Each game shows as safe the moment its own upload is done.
+        await read();
       }
       toast(sent ? $t('backups.uploaded', { n: sent }) : $t('backups.upToDate'), 'success');
     } catch (e) {
@@ -185,43 +166,32 @@
       }}
     />
   {:else}
-    <div class="cols" in:rise={{ y: 6 }}>
+    <div class="cols">
       <div class="main">
-        <BackupsHero
-          {config}
-          {games}
-          {tracked}
-          {on}
-          {reading}
-          {readError}
-          {uploading}
-          loaded={overview !== null}
-          {listable}
-          on:backup={backUpNow}
-          on:retry={read}
-          on:turnOn={() => setEnabled(true)}
-          on:change={() => (setup = true)}
-        />
+        <div class="part" style="--n: 0">
+          <BackupsHero
+            {config}
+            {games}
+            {tracked}
+            {on}
+            {reading}
+            {readError}
+            {uploading}
+            loaded={overview !== null}
+            {listable}
+            on:backup={backUpNow}
+            on:retry={read}
+            on:turnOn={() => setEnabled(true)}
+            on:change={() => (setup = true)}
+          />
+        </div>
 
-        <section class="shelf" aria-labelledby="shelf-title">
+        <section class="shelf part" style="--n: 1" aria-labelledby="shelf-title">
           <div class="shelf-head">
             <h2 id="shelf-title">{$t('backups.inTheCloud')}</h2>
             {#if on && listable && overview}
-              {#if view === 'covers'}
-                <FilterTabs options={filterOptions} {counts} bind:value={filter} />
-              {:else}
-                <div class="keys" aria-label={$t('backups.keyLabel')}>
-                  {#each COPY_KINDS.filter((k) => keys.includes(k)) as k}
-                    <span class="key"><i class="dot k-{k}"></i>{$t('backups.kind.' + k)}</span>
-                  {/each}
-                </div>
-              {/if}
+              <FilterTabs options={filterOptions} {counts} bind:value={filter} />
             {/if}
-            <span class="grow"></span>
-            <div class="seg" role="radiogroup" aria-label={$t('backups.viewLabel')}>
-              <button class:on={view === 'covers'} role="radio" aria-checked={view === 'covers'} on:click={() => setView('covers')}><LayoutGrid size={14} />{$t('backups.view.covers')}</button>
-              <button class:on={view === 'timeline'} role="radio" aria-checked={view === 'timeline'} on:click={() => setView('timeline')}><ChartNoAxesGantt size={14} />{$t('backups.view.timeline')}</button>
-            </div>
           </div>
 
           {#if !on}
@@ -234,17 +204,22 @@
             <Skeleton kind="cards" count={6} />
           {:else if !games.length}
             <div class="quiet-box"><p>{$t('backups.nothingTracked')}</p></div>
-          {:else if view === 'covers'}
-            <CoverShelf games={games.filter((g) => inFilter(g, filter))} {tracked} busy={!!uploading} on:open={(e) => (opened = e.detail)} on:upload={(e) => upload([e.detail])} />
           {:else}
-            <CopiesTimeline {games} {tracked} {win} on:putBack={(e) => putBack(e.detail.game, e.detail.copy)} on:open={(e) => (opened = e.detail)} />
+            <CoverShelf
+              games={games.filter((g) => inFilter(g, filter))}
+              {tracked}
+              busy={!!uploading}
+              uploadingId={uploading?.gameId ?? ''}
+              on:open={(e) => (opened = e.detail)}
+              on:upload={(e) => upload([e.detail])}
+            />
           {/if}
         </section>
       </div>
 
       <aside class="side">
-        <BackupFileCard />
-        <AutoCard enabled={on} {autoPull} on:enabled={(e) => setEnabled(e.detail)} on:autoPull={(e) => setAutoPull(e.detail)} />
+        <div class="part" style="--n: 2"><BackupFileCard /></div>
+        <div class="part" style="--n: 3"><AutoCard enabled={on} {autoPull} on:enabled={(e) => setEnabled(e.detail)} on:autoPull={(e) => setAutoPull(e.detail)} /></div>
       </aside>
     </div>
   {/if}
@@ -253,8 +228,8 @@
 {#if openedGame}
   <CopiesDialog
     game={openedGame}
-    {tracked}
     busy={!!uploading}
+    uploadingThis={uploading?.gameId === openedGame.gameId}
     on:close={() => (opened = null)}
     on:putBack={(e) => putBack(openedGame, e.detail)}
     on:upload={() => upload([openedGame])}
@@ -284,6 +259,11 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+  }
+  /* One after another: the header, the list, then the cards on the side. */
+  .part {
+    animation: arrive 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--n) * 55ms);
   }
   /* Narrow windows: the side cards go under the list. */
   @media (max-width: 1180px) {
@@ -318,72 +298,6 @@
   h2 {
     font-size: var(--text-lg);
     font-weight: 600;
-  }
-  .grow {
-    flex: 1;
-  }
-  .keys {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .key {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-sm);
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-  .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .k-session {
-    background: var(--success);
-  }
-  .k-manual {
-    background: var(--accent);
-  }
-  .k-safety {
-    background: var(--warn);
-  }
-  .k-auto {
-    background: var(--text-faint);
-  }
-  .k-unknown {
-    border: 1.5px solid var(--text-faint);
-  }
-  .seg {
-    display: inline-flex;
-    padding: 3px;
-    border-radius: 9px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-  }
-  .seg button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-dim);
-    font: inherit;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-  .seg button.on {
-    background: var(--bg-active);
-    color: var(--text);
   }
   .quiet-box {
     display: flex;

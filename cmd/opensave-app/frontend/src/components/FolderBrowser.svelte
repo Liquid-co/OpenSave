@@ -4,18 +4,23 @@
   // Folders come from the daemon (GET /api/folders), folders only.
   //
   // Opens at `start` when that is a folder, otherwise at the places saves are
-  // usually under. Fires `pick` with the folder chosen.
+  // usually under. Fires `pick` with the folder chosen; or, given `files`
+  // (an extension such as ".sscb"), lists those files too and fires `pick`
+  // with the file clicked.
   import { createEventDispatcher, onMount } from 'svelte';
   import Folder from 'lucide-svelte/icons/folder';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import HardDrive from 'lucide-svelte/icons/hard-drive';
   import Home from 'lucide-svelte/icons/house';
   import Check from 'lucide-svelte/icons/check';
+  import FileArchive from 'lucide-svelte/icons/file-archive';
   import { api } from '../lib/api.js';
   import { t } from '../lib/i18n.js';
   import { rise } from '../lib/motion.js';
 
   export let start = '';
+  /** An extension, ".sscb": choose a file of that type instead of a folder. */
+  export let files = '';
   const dispatch = createEventDispatcher();
 
   let places = [];
@@ -29,7 +34,7 @@
     loading = true;
     error = '';
     try {
-      listing = await api.get(`/api/folders?path=${encodeURIComponent(path)}`);
+      listing = await api.get(`/api/folders?path=${encodeURIComponent(path)}${files ? `&ext=${encodeURIComponent(files)}` : ''}`);
       list?.scrollTo?.(0, 0);
     } catch (e) {
       error = e.message;
@@ -44,7 +49,9 @@
     } catch (e) {
       error = e.message;
     }
-    const from = String(start ?? '').trim();
+    // A file to start from opens the folder it is in.
+    let from = String(start ?? '').trim();
+    if (files && from.toLowerCase().endsWith(files)) from = from.replace(/[\\/][^\\/]*$/, '');
     if (from) await open(from);
     if (!listing && places[0]) {
       error = '';
@@ -76,7 +83,9 @@
   <div class="here">
     <button class="up" disabled={!listing?.parent || loading} title={$t('folders.up')} aria-label={$t('folders.up')} on:click={() => open(listing.parent)}><ArrowUp size={15} /></button>
     <span class="path" title={listing?.path}><bdi>{listing?.path ?? ''}</bdi></span>
-    <button class="btn small primary" disabled={!listing || loading} on:click={() => dispatch('pick', listing.path)}><Check size={14} />{$t('folders.useThis')}</button>
+    {#if !files}
+      <button class="btn small primary" disabled={!listing || loading} on:click={() => dispatch('pick', listing.path)}><Check size={14} />{$t('folders.useThis')}</button>
+    {/if}
   </div>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -85,9 +94,13 @@
     {#if listing}
       {#each listing.folders as f (f.path)}
         <button class="folder" on:click={() => open(f.path)}><Folder size={15} /><span>{f.name}</span></button>
-      {:else}
-        <p class="empty">{$t('folders.empty')}</p>
       {/each}
+      {#each listing.files ?? [] as f (f.path)}
+        <button class="folder file" on:click={() => dispatch('pick', f.path)}><FileArchive size={15} /><span>{f.name}</span></button>
+      {/each}
+      {#if !listing.folders.length && !(listing.files ?? []).length}
+        <p class="empty">{files ? $t('folders.emptyFiles', { ext: files }) : $t('folders.empty')}</p>
+      {/if}
       {#if listing.more}<p class="empty">{$t('folders.more', { n: listing.folders.length })}</p>{/if}
     {:else if loading}
       <p class="empty">{$t('folders.loading')}</p>
@@ -202,6 +215,12 @@
   .folder :global(svg) {
     flex-shrink: 0;
     color: var(--accent-text);
+  }
+  .folder.file :global(svg) {
+    color: #c9a24a;
+  }
+  .folder.file span {
+    font-weight: 600;
   }
   .folder span {
     overflow: hidden;

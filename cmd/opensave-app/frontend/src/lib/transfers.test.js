@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountLabel, peerLabel, speedLabel, withNames } from './transfers.js';
+import { amountLabel, speedLabel, withNames } from './transfers.js';
 
 describe('transfer wording', () => {
   it('shows speed only when there is one', () => {
@@ -13,12 +13,7 @@ describe('transfer wording', () => {
     expect(amountLabel({ state: 'done', bytesTransferred: 1048576, totalBytes: 1048576 })).toBe('1.0 MB');
     expect(amountLabel({ state: 'error', bytesTransferred: 2048, totalBytes: 0 })).toBe('2.0 KB');
     expect(amountLabel({ state: 'done', bytesTransferred: 0, totalBytes: 0 })).toBe('');
-  });
-
-  it('says which way it went', () => {
-    expect(peerLabel({ direction: 'download', peer: 'Deck' })).toBe('from Deck');
-    expect(peerLabel({ direction: 'upload', peer: 'Deck' })).toBe('to Deck');
-    expect(peerLabel({ direction: 'download' })).toBe('from another device');
+    expect(amountLabel({ state: 'running', bytesTransferred: 0, totalBytes: 1024 }, (a, b) => `${a} / ${b}`)).toBe('0 B / 1.0 KB');
   });
 
   it("names each game, falling back to its id for one this device doesn't track", () => {

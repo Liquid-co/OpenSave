@@ -33,16 +33,26 @@ export const gated =
 // instant as well as still.
 
 /** A dialog leaving: the dimming fades and the panel sinks back the way it
- *  rose (dialog-in in app.css). Goes on the overlay; moves its first child. */
+ *  rose (dialog-in in app.css). Goes on the overlay; moves its first child.
+ *
+ *  Clicks go through it while it leaves. When the same dialog opens again
+ *  before it has gone (closed, then reopened at once), Svelte stops the
+ *  leaving and calls tick(1): everything must be put back then, pointer
+ *  events too. They used to stay off, and the dialog that came back was
+ *  drawn but could not be clicked or scrolled; the page behind it took the
+ *  wheel instead. */
 export const dialogOut = gated((node, { duration = 140 } = {}) => {
   const panel = node.firstElementChild;
+  // From the moment it starts to leave, not from its first frame: a click
+  // just after closing belongs to what is underneath.
+  node.style.pointerEvents = 'none';
   return {
     duration,
     easing: cubicIn,
     tick: (t) => {
       node.style.opacity = String(t);
-      node.style.pointerEvents = 'none';
-      if (panel) panel.style.transform = `translateY(${(1 - t) * 8}px) scale(${0.985 + 0.015 * t})`;
+      node.style.pointerEvents = t < 1 ? 'none' : '';
+      if (panel) panel.style.transform = t < 1 ? `translateY(${(1 - t) * 8}px) scale(${0.985 + 0.015 * t})` : '';
     }
   };
 });
@@ -165,6 +175,21 @@ export const rise = gated((node, { duration = 220, y = 8, delay = 0 } = {}) => (
   easing: cubicOut,
   css: (t, u) => `opacity: ${t}; transform: translateY(${u * y}px);`
 }));
+
+/** Something arriving by moving only, never fading: it is readable from its
+ *  first frame, so a slow frame never leaves a blank (the page's own arrival
+ *  works the same way, app.css). For what appears on a screen's first paint;
+ *  `rise` is for what appears because someone asked for it. */
+export const arrive = gated((node, { duration = 260, y = 8, x = 0, delay = 0 } = {}) => ({
+  duration,
+  delay,
+  easing: cubicOut,
+  css: (t, u) => `transform: translate(${u * x}px, ${u * y}px);`
+}));
+
+/** The delay for the i-th of a run of things arriving one after another,
+ *  capped so a long list does not keep the last waiting. */
+export const stagger = (i, step = 30, max = 12) => Math.min(i, max) * step;
 
 /** A strip opening its height and closing it again, rather than pushing
  *  everything below it in one jump. */

@@ -1893,7 +1893,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// Mirror the peer's latest snapshot locally so both sides share history.
 	if remoteData.LatestSnapshot != nil {
 		e.recordMirrorSnapshot(gameID, game, peer, *remoteData.LatestSnapshot,
-			fmt.Sprintf("Synced from peer: %s (%s)", peer.Name, remoteData.LatestSnapshot.Comment))
+			fmt.Sprintf(MirrorCommentPrefix+"%s (%s)", peer.Name, remoteData.LatestSnapshot.Comment))
 	}
 
 	// pulledFiles closes the same window on the pusher's side: until it
@@ -2076,6 +2076,11 @@ func fetchWithRetry(ctx context.Context, t Transport, peer Peer, ref FileRef,
 
 // recordMirrorSnapshot zips the (just-updated) local save under the peer's
 // snapshot id so both devices show the same history entry.
+// MirrorCommentPrefix starts the comment of the snapshot a sync keeps of the
+// other device's (recordMirrorSnapshot): the save as it stands after the
+// sync. Read elsewhere to tell that snapshot from the rest.
+const MirrorCommentPrefix = "Synced from peer: "
+
 func (e *Engine) recordMirrorSnapshot(gameID string, game store.Game, peer Peer, remoteSnap SnapshotInfo, comment string) {
 	if _, err := e.Store.GetSnapshot(remoteSnap.ID); err == nil {
 		return // already mirrored

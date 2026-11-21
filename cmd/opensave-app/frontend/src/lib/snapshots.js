@@ -61,6 +61,9 @@ const plainTitles = [
   [/^before sync replaced local files$/i, () => 'Before a sync replaced it'],
   [/^safety snapshot before restoring file "(.+)" from (.+)$/i, (m) => `Before putting back ${m[1]} from ${m[2]}`],
   [/^auto backup before switching to branch "(.+)"$/i, (m) => `Before switching to ${m[1]}`],
+  // The copy a sync keeps of the other device's snapshot (syncengine,
+  // recordMirrorSnapshot): "Synced from peer: Steam Deck (Auto backup)".
+  [/^synced from peer: (.+?)(?: \(.*\))?$/i, (m) => `Synced from ${m[1]}`],
   [/^branch "(.+)" created from "(.+)"$/i, (m) => `Start of ${m[1]}, copied from ${m[2]}`]
 ];
 

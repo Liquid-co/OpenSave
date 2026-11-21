@@ -11,7 +11,7 @@
   import { timeAgoParts } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
   import { snapshotKind } from '../../lib/snapshots.js';
-  import { gameRows, sortRows, barParts } from '../../lib/activityview.js';
+  import { gameRows, sortRows, nextSort, NORMAL_SORT, barParts } from '../../lib/activityview.js';
   import { gatedFlip } from '../../lib/motion.js';
 
   /** The activity report (GET /api/activity), gathered for the period. */
@@ -22,7 +22,9 @@
   /** Device name to colour slot (deviceSlots). */
   export let slots = new Map();
 
-  let sort = 'played';
+  // Normal is by name; a column header goes descending, ascending, then back
+  // to normal, and choosing another column resets this one (nextSort).
+  let sort = NORMAL_SORT;
   let now = Date.now();
   const tick = setInterval(() => (now = Date.now()), 60_000);
   onDestroy(() => clearInterval(tick));
@@ -52,7 +54,18 @@
     }
     return best ? snapshotKind(best, new Date(now)) : null;
   }
-  const kindLabel = (k) => (k.kind === 'manual' ? k.title : k.kind === 'session' ? $t('activity.games.afterPlaying') : k.kind === 'safety' ? $t('activity.games.safetyCopy') : k.kind === 'start' ? $t('activity.games.trackingStarted') : $t('activity.games.saveChanged'));
+  // A snapshot with a reason of its own (imported from a backup, synced from
+  // another device) says it; only a plain automatic one is "Save changed".
+  const kindLabel = (k) =>
+    k.kind === 'manual' || k.kind === 'other'
+      ? k.title
+      : k.kind === 'session'
+        ? $t('activity.games.afterPlaying')
+        : k.kind === 'safety'
+          ? $t('activity.games.safetyCopy')
+          : k.kind === 'start'
+            ? $t('activity.games.trackingStarted')
+            : $t('activity.games.saveChanged');
 
   const SORTABLE = [
     ['played', 'activity.games.colLastPlayed'],
@@ -66,9 +79,14 @@
   <table class="tbl">
     <thead>
       <tr>
-        <th scope="col"><button class="sort" class:on={sort === 'name'} on:click={() => (sort = 'name')}>{$t('activity.games.colGame')}{#if sort === 'name'}<ArrowDown size={13} />{/if}</button></th>
+        <th scope="col">{$t('activity.games.colGame')}</th>
         {#each SORTABLE as [id, key]}
-          <th scope="col"><button class="sort" class:on={sort === id} on:click={() => (sort = id)}>{$t(key)}{#if sort === id}<ArrowDown size={13} />{/if}</button></th>
+          {@const dir = sort.by === id ? sort.dir : ''}
+          <th scope="col" aria-sort={dir === 'desc' ? 'descending' : dir === 'asc' ? 'ascending' : 'none'}>
+            <button class="sort" class:on={!!dir} on:click={() => (sort = nextSort(sort, id))} title={$t(dir === 'desc' ? 'activity.games.sortAsc' : dir === 'asc' ? 'activity.games.sortNormal' : 'activity.games.sortDesc')}>
+              {$t(key)}<span class="arrow dir-{dir || 'none'}" aria-hidden="true"><ArrowDown size={13} /></span>
+            </button>
+          </th>
         {/each}
         <th scope="col">{$t('activity.games.colLastSnapshot')}</th>
         <th scope="col">{$t('activity.games.colLastSynced')}</th>
@@ -171,6 +189,23 @@
   }
   .sort.on {
     color: var(--text);
+  }
+  /* One arrow, turning: hidden at normal (a hint of it on hover), pointing
+     down for descending, up for ascending. */
+  .arrow {
+    display: inline-grid;
+    transition:
+      transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1),
+      opacity 0.15s;
+  }
+  .arrow.dir-none {
+    opacity: 0;
+  }
+  .sort:hover .arrow.dir-none {
+    opacity: 0.4;
+  }
+  .arrow.dir-asc {
+    transform: rotate(180deg);
   }
   td {
     padding: 10px 14px;

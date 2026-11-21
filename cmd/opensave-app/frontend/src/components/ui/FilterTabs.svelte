@@ -1,5 +1,7 @@
 <script>
   // A row of filter buttons, each with a count: "Games 12", "In cloud 3".
+  // One marker slides to the one chosen, as the Library's pills do.
+  import { slidingIndicator } from '../../lib/motion.js';
   /** [[id, label], …] in display order. */
   export let options = [];
   /** Count per id; an id with no entry shows none. */
@@ -7,7 +9,7 @@
   export let value;
 </script>
 
-<div class="tabs">
+<div class="tabs" use:slidingIndicator={{ mode: 'fill', className: 'tab-mark' }}>
   {#each options as [id, label]}
     <button class:active={value === id} on:click={() => (value = id)}>
       {label}
@@ -47,6 +49,19 @@
     color: var(--text);
     border-color: var(--border-strong);
     font-weight: 600;
+  }
+  .tabs:global(.slides) button {
+    position: relative;
+    z-index: 1;
+  }
+  .tabs:global(.slides) button.active {
+    background: transparent;
+    border-color: transparent;
+  }
+  .tabs :global(.tab-mark) {
+    background: var(--bg-active);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
   }
   .count {
     color: var(--text-faint);

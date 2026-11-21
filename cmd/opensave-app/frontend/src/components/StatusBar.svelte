@@ -42,6 +42,9 @@
   $: if ($syncPause) now = Date.now();
 
   $: running = Object.entries($syncActivity).filter(([, s]) => s.state === 'running');
+  // How far along what is moving is, taken together, for the line under
+  // Transfers. Nothing known reads as just started.
+  $: moving = running.length ? running.reduce((n, [, s]) => n + (s.percentage ?? 0), 0) / running.length / 100 : 0;
   // "Reconnecting" only once there has been a connection to lose: the socket
   // starts closed, and every launch would otherwise open by saying so.
   let connectedOnce = false;
@@ -127,13 +130,18 @@
       </button>
     {/if}
     <button
-      class="bar-item"
+      class="bar-item transfers"
       class:on={transfersOpen}
+      class:moving={running.length > 0}
       on:click={() => (transfersOpen = !transfersOpen)}
       title={$t('statusBar.transfersHint')}
       aria-expanded={transfersOpen}
     >
-      <ArrowDownUp size={13} />{$t('transfers.title')}{#if running.length}<span class="count">{running.length}</span>{/if}
+      <span class="swap"><ArrowDownUp size={13} /></span>{$t('transfers.title')}
+      {#if running.length}
+        {#key running.length}<span class="count" in:pop={{ start: 0.6 }}>{running.length}</span>{/key}
+        <span class="moved" aria-hidden="true"><span style="transform: scaleX({Math.max(0.04, moving)})"></span></span>
+      {/if}
     </button>
     <button class="bar-item ver" on:click={() => showAbout.set(true)} title={$t('statusBar.aboutTitle')}>{version}</button>
   </div>
@@ -323,6 +331,42 @@
   }
   .bar-item.warn {
     color: var(--warn);
+  }
+  /* Transfers, while something moves: the arrows trade places, it takes the
+     colour of things on their way, and a line along its foot fills. */
+  .transfers {
+    position: relative;
+  }
+  .swap {
+    display: grid;
+  }
+  .transfers.moving {
+    color: var(--info);
+  }
+  .transfers.moving .swap :global(svg) {
+    animation: trade 1.6s ease-in-out infinite;
+  }
+  @keyframes trade {
+    50% {
+      transform: rotate(180deg);
+    }
+  }
+  .moved {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 2px;
+    background: rgba(var(--info-rgb), 0.2);
+    overflow: hidden;
+  }
+  .moved span {
+    display: block;
+    height: 100%;
+    background: var(--info);
+    transform-origin: left;
+    transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .count {
     padding: 0 6px;

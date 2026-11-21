@@ -15,7 +15,7 @@
   import { toast, settings, cloudAuthEvent } from '../../lib/stores.js';
   import { providerById, connectedProviderOf, isEmail, needsOwnApp } from '../../lib/cloudproviders.js';
   import { t } from '../../lib/i18n.js';
-  import { rise } from '../../lib/motion.js';
+  import { arrive, pop, collapse } from '../../lib/motion.js';
   import ProviderIcon from '../cloud/ProviderIcon.svelte';
   import OwnOAuthApp from '../cloud/OwnOAuthApp.svelte';
   import FolderBrowser from '../../components/FolderBrowser.svelte';
@@ -122,14 +122,14 @@
 <div class="setup">
   {#if step === 'choose'}
     {#if canGoBack}<button class="btn ghost back" on:click={() => dispatch('back')}><ArrowLeft size={16} />{$t('backups.title')}</button>{/if}
-    <div class="choose" in:rise={{ y: 6 }}>
-      <div class="intro">
+    <div class="choose">
+      <div class="intro in" style="--n: 0">
         <h1>{$t('backups.setup.title')}</h1>
         <p>{$t('backups.setup.sub')}</p>
       </div>
       <div class="big-row">
         {#each SIGN_IN as id}
-          <button class="big" class:current={connected === id} on:click={() => choose(id)}>
+          <button class="big in" style="--n: {1 + SIGN_IN.indexOf(id)}" class:current={connected === id} on:click={() => choose(id)}>
             <span class="logo"><ProviderIcon provider={providerById(id)} size={40} /></span>
             <span>
               <span class="pname">{$t('cloud.provider.' + id)}</span>
@@ -143,17 +143,17 @@
       <div>
         <div class="own-label">{$t('backups.setup.own')}</div>
         <div class="small-row">
-          <button class="small" class:current={config.provider === 'local' && config.url} on:click={() => choose('local')}>
+          <button class="small in" style="--n: 4" class:current={config.provider === 'local' && config.url} on:click={() => choose('local')}>
             <span class="st"><Folder size={20} /></span>
             <span><span class="pname">{$t('backups.setup.local')}</span><span class="psub">{$t('backups.setup.localSub')}</span></span>
           </button>
-          <button class="small" class:current={config.provider === 'webdav' && config.url} on:click={() => choose('webdav')}>
+          <button class="small in" style="--n: 5" class:current={config.provider === 'webdav' && config.url} on:click={() => choose('webdav')}>
             <span class="st"><Server size={20} /></span>
             <span><span class="pname">{$t('backups.setup.webdav')}</span><span class="psub">{$t('backups.setup.webdavSub')}</span></span>
           </button>
         </div>
       </div>
-      <div class="assure">
+      <div class="assure in" style="--n: 6">
         <ShieldCheck size={20} />
         <span>{$t('backups.setup.assure')}</span>
         <button class="btn ghost small" on:click={() => choose('webhook')}>{$t('backups.setup.webhook')}</button>
@@ -161,7 +161,7 @@
     </div>
   {:else}
     <button class="btn ghost back" on:click={() => (step = 'choose')}><ArrowLeft size={16} />{$t('backups.setup.elsewhere')}</button>
-    <section class="panel" in:rise={{ y: 6 }} aria-labelledby="setup-title">
+    <section class="panel" in:arrive={{ y: 10 }} aria-labelledby="setup-title">
       <div class="panel-head">
         <span class="logo big-logo" class:plain={!provider?.img}><ProviderIcon {provider} size={provider?.img ? 46 : 30} /></span>
         {#if SIGN_IN.includes(step)}
@@ -180,7 +180,7 @@
         {/if}
         <ol class="steps">
           <li class:done={started}>
-            <span class="num">{#if started}<Check size={14} strokeWidth={3} />{:else}1{/if}</span>
+            <span class="num">{#if started}<span class="tick" in:pop={{ start: 0.3 }}><Check size={14} strokeWidth={3} /></span>{:else}1{/if}</span>
             <div class="step-body">
               {#if started}
                 <b>{$t('backups.setup.browserOpen')}</b>
@@ -197,7 +197,7 @@
               <span class="step-sub">{auto ? $t('backups.setup.allowAuto') : $t('backups.setup.allowManual')}</span>
               {#if step === 'google_drive'}<span class="step-sub warn">{$t('cloud.connect.googleConsent1')}<strong>{$t('cloud.connect.googleConsentTick')}</strong>{$t('cloud.connect.googleConsent2')}</span>{/if}
               {#if started}
-                <div class="waiting"><span class="spin"><LoaderCircle size={18} /></span><span>{$t('backups.setup.waitingFor', { provider: $t('cloud.provider.' + step) })}</span><button class="btn ghost small" on:click={startSignIn}>{$t('backups.setup.openAgain')}</button></div>
+                <div class="waiting" in:collapse><span class="spin"><LoaderCircle size={18} /></span><span>{$t('backups.setup.waitingFor', { provider: $t('cloud.provider.' + step) })}</span><button class="btn ghost small" on:click={startSignIn}>{$t('backups.setup.openAgain')}</button></div>
               {/if}
             </div>
           </li>
@@ -315,6 +315,25 @@
   .big.current,
   .small.current {
     border-color: rgba(var(--accent-rgb), 0.6);
+  }
+  /* The choices arrive one after another, moving only. */
+  .in {
+    animation: arrive 0.36s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--n) * 45ms);
+  }
+  .logo {
+    transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .big:hover .logo {
+    transform: translateY(-2px) scale(1.06);
+  }
+  .tick {
+    display: grid;
+  }
+  .num {
+    transition:
+      background 0.25s,
+      color 0.25s;
   }
   .logo {
     width: 64px;

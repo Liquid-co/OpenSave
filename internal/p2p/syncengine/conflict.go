@@ -398,7 +398,7 @@ func (e *Engine) overwriteLocalWithRemote(ctx context.Context, gameID string, pe
 	} else if remoteData.LatestSnapshot != nil {
 		// Nothing to transfer but still record the shared history entry.
 		e.recordMirrorSnapshot(gameID, game, peer, *remoteData.LatestSnapshot,
-			fmt.Sprintf("Synced from peer: %s (%s)", peer.Name, mirrorComment))
+			fmt.Sprintf(MirrorCommentPrefix+"%s (%s)", peer.Name, mirrorComment))
 	}
 	return nil
 }
