@@ -60,8 +60,10 @@ export const MAX_CUSTOM_ACCENTS = 8;
 export const SCALES = [0.9, 1, 1.1, 1.25];
 
 // What lights the top of the Library: the cover of the game you play (or
-// played last), a glow in the accent colour, or nothing.
-export const BACKDROPS = { cover: 'Cover art', accent: 'Accent glow', off: 'Off' };
+// played last), or nothing. There was an accent-colour glow as well; a saved
+// choice of it now reads as nothing (sanitizeAppearance), the nearer of the
+// two to a page without a picture.
+export const BACKDROPS = { cover: 'Cover art', off: 'Off' };
 
 export const DEFAULT_APPEARANCE = Object.freeze({
   // The theme (lib/themes.js), and light or dark where it has both.
@@ -73,6 +75,9 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   motion: true,
   controller: 'auto',
   backdrop: 'cover',
+  // The Library's cover moves on through your games, one cross-fading into
+  // the next, rather than staying on the one played last.
+  backdropCycle: true,
   // A game's page takes its Play button and tab colours from the cover
   // (lib/covertint.js), rather than the accent.
   coverColours: true,
@@ -131,7 +136,8 @@ export function sanitizeAppearance(raw) {
     scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
     motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion,
     controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller,
-    backdrop: v.backdrop in BACKDROPS ? v.backdrop : DEFAULT_APPEARANCE.backdrop,
+    backdrop: v.backdrop === 'accent' ? 'off' : v.backdrop in BACKDROPS ? v.backdrop : DEFAULT_APPEARANCE.backdrop,
+    backdropCycle: typeof v.backdropCycle === 'boolean' ? v.backdropCycle : DEFAULT_APPEARANCE.backdropCycle,
     coverColours: typeof v.coverColours === 'boolean' ? v.coverColours : DEFAULT_APPEARANCE.coverColours
   };
 }

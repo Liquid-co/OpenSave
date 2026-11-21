@@ -289,9 +289,8 @@
 {/if}
 
 <style>
-  .backups {
-    max-width: 1500px;
-  }
+  /* As wide as the window, like the Library; a cap left full-screen windows
+     with an empty strip down the right. */
   .cols {
     display: flex;
     gap: 20px;

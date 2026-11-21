@@ -163,6 +163,9 @@
   <SettingRow id="backdrop" label={$t('settings.appearance.backdrop')}>
     <Segmented options={backdropOptions} value={$appearance.backdrop} label={$t('settings.appearance.backdrop')} on:change={(e) => set({ backdrop: e.detail })} />
   </SettingRow>
+  <SettingRow id="backdropCycle" label={$t('settings.appearance.backdropCycle')} hint={$t('settings.appearance.backdropCycleHint')}>
+    <Switch checked={$appearance.backdropCycle} disabled={$appearance.backdrop !== 'cover'} label={$t('settings.appearance.backdropCycle')} on:change={(e) => set({ backdropCycle: e.detail })} />
+  </SettingRow>
   <SettingRow id="sidebar" label={$t('settings.appearance.sidebar')}>
     <Segmented options={sidebarOptions} value={$sidebar.mode} label={$t('settings.appearance.sidebar')} on:change={(e) => sidebar.update((v) => chooseSidebar(v, e.detail))} />
   </SettingRow>

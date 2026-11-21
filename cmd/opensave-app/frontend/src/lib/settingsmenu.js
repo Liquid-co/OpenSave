@@ -47,6 +47,7 @@ export const SETTINGS_INDEX = [
   ['appearance', 'accent', 'settings.appearance.accent'],
   ['appearance', 'coverColours', 'settings.appearance.coverColours', 'settings.appearance.coverColoursHint'],
   ['appearance', 'backdrop', 'settings.appearance.backdrop'],
+  ['appearance', 'backdropCycle', 'settings.appearance.backdropCycle', 'settings.appearance.backdropCycleHint'],
   ['appearance', 'sidebar', 'settings.appearance.sidebar'],
   ['appearance', 'size', 'settings.appearance.size'],
   ['appearance', 'animations', 'settings.appearance.animations', 'settings.appearance.animationsHint'],

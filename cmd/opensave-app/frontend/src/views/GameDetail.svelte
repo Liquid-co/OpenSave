@@ -177,10 +177,12 @@
 {/if}
 
 <style>
+  /* As wide as the window, like the Library and Activity. A cap here left
+     a full-screen window with an empty strip down the right, and the cover
+     behind the header (LibraryBackdrop, sized to this box) cut off with it. */
   .game {
     position: relative;
     isolation: isolate;
-    max-width: 1400px;
   }
   .timeline-wrap {
     margin-top: 18px;

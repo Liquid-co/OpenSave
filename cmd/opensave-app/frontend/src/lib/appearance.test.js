@@ -72,11 +72,16 @@ describe('sanitizeAppearance', () => {
       motion: false,
       controller: 'on',
       backdrop: 'cover',
+      backdropCycle: true,
       coverColours: true,
       customThemes: []
     });
     expect(sanitizeAppearance({ controller: 'sometimes' }).controller).toBe('auto');
-    expect(sanitizeAppearance({ backdrop: 'accent' }).backdrop).toBe('accent');
+    // The accent glow is gone; whoever chose it gets no picture, not a cover.
+    expect(sanitizeAppearance({ backdrop: 'accent' }).backdrop).toBe('off');
+    expect(sanitizeAppearance({ backdrop: 'off' }).backdrop).toBe('off');
+    expect(sanitizeAppearance({ backdropCycle: false }).backdropCycle).toBe(false);
+    expect(sanitizeAppearance({ backdropCycle: 'no' }).backdropCycle).toBe(true);
     expect(sanitizeAppearance({ coverColours: false }).coverColours).toBe(false);
     expect(sanitizeAppearance({ coverColours: 'yes' }).coverColours).toBe(true);
     expect(sanitizeAppearance({ backdrop: 'video' }).backdrop).toBe('cover');
@@ -104,7 +109,7 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ family: 'opensave', theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true, customThemes: [] });
+    expect(loadAppearance(s)).toEqual({ family: 'opensave', theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', backdropCycle: true, coverColours: true, customThemes: [] });
     // A picked colour, and the ones kept beside the presets, come back too.
     saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
     expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recentlyPlayed, backdropGame, playedFromReport, syncState, waitingSummary } from './libraryhome.js';
+import { recentlyPlayed, backdropGame, backdropCycle, playedFromReport, syncState, waitingSummary } from './libraryhome.js';
 
 const g = (id, extra = {}) => ({ id, name: id, ...extra });
 
@@ -94,5 +94,46 @@ describe('waitingSummary', () => {
       { kind: 'new', n: 3 }
     ]);
     expect(waitingSummary(undefined)).toEqual([]);
+  });
+});
+
+describe('removing from Recently played', () => {
+  const at = (iso) => Date.parse(iso);
+  const games = [
+    g('a', { lastPlayedAt: '2026-11-20T10:00:00Z' }),
+    g('b', { lastPlayedAt: '2026-11-19T10:00:00Z' }),
+    g('c', { lastPlayedAt: '2026-11-18T10:00:00Z' })
+  ];
+
+  it('leaves a removed play out, and the next one takes its place', () => {
+    const hidden = { a: at('2026-11-20T10:00:00Z') };
+    expect(recentlyPlayed(games, {}, 2, hidden).map((r) => r.game.id)).toEqual(['b', 'c']);
+    expect(backdropGame(games, {}, hidden).id).toBe('b');
+  });
+
+  it('brings a game back when it is played again', () => {
+    const hidden = { a: at('2026-11-19T00:00:00Z') };
+    expect(recentlyPlayed(games, {}, 4, hidden).map((r) => r.game.id)).toEqual(['a', 'b', 'c']);
+    const playing = [g('a', { playingSince: '2026-11-21T09:00:00Z' }), ...games.slice(1)];
+    expect(recentlyPlayed(playing, {}, 4, { a: at('2026-11-20T10:00:00Z') })[0]).toMatchObject({ playing: true });
+  });
+
+  it('counts a play reported from another device the same way', () => {
+    const played = { c: { at: '2026-11-21T08:00:00Z', on: 'Deck' } };
+    expect(recentlyPlayed(games, played, 1, { c: at('2026-11-21T08:00:00Z') })[0].game.id).toBe('a');
+  });
+});
+
+describe('backdropCycle', () => {
+  const games = [g('a'), g('b', { coverExplicit: true }), g('c'), g('d')];
+
+  it('starts on the game it is given and comes round through the rest, without explicit art', () => {
+    expect(backdropCycle(games, g('c')).map((x) => x.id)).toEqual(['c', 'd', 'a']);
+  });
+
+  it('starts at the top when there is no game to start on, or it is not there', () => {
+    expect(backdropCycle(games).map((x) => x.id)).toEqual(['a', 'c', 'd']);
+    expect(backdropCycle(games, g('zz')).map((x) => x.id)).toEqual(['a', 'c', 'd']);
+    expect(backdropCycle(null)).toEqual([]);
   });
 });

@@ -15,15 +15,21 @@ const ms = (v) => {
  * of the rest. A game's last play is the later of this device's own record
  * (game.lastPlayedAt) and what the activity report knows (`played`: gameId
  * to {at, on}, which includes play inferred from another device's save
- * arriving). Games never played are left out.
+ * arriving). Games never played are left out, and so are those removed
+ * from the row (`hidden`: gameId to the play, in ms, that was removed) —
+ * until they are played again, when the newer play brings them back.
  * @returns {{game, playing: boolean, at: number, on: string}[]}
  */
-export function recentlyPlayed(games, played = {}, limit = 4) {
+export function recentlyPlayed(games, played = {}, limit = 4, hidden = {}) {
   const out = [];
+  const keep = (item) => {
+    if (!(item.at > (hidden?.[item.game.id] ?? 0))) return;
+    out.push(item);
+  };
   for (const game of games ?? []) {
     const since = ms(game.playingSince);
     if (since) {
-      out.push({ game, playing: true, at: since, on: '' });
+      keep({ game, playing: true, at: since, on: '' });
       continue;
     }
     const here = ms(game.lastPlayedAt);
@@ -31,8 +37,8 @@ export function recentlyPlayed(games, played = {}, limit = 4) {
     const there = ms(report?.at);
     if (!here && !there) continue;
     // The report says where only when it was elsewhere; "" is this device.
-    if (there > here) out.push({ game, playing: false, at: there, on: report?.on ?? '' });
-    else out.push({ game, playing: false, at: here, on: '' });
+    if (there > here) keep({ game, playing: false, at: there, on: report?.on ?? '' });
+    else keep({ game, playing: false, at: here, on: '' });
   }
   out.sort((a, b) => Number(b.playing) - Number(a.playing) || b.at - a.at);
   return out.slice(0, limit);
@@ -40,8 +46,17 @@ export function recentlyPlayed(games, played = {}, limit = 4) {
 
 /** The game whose cover lights the top of the Library: the one being played,
  *  or else the one played last. Null when nothing has been played. */
-export function backdropGame(games, played = {}) {
-  return recentlyPlayed(games, played, 1)[0]?.game ?? null;
+export function backdropGame(games, played = {}, hidden = {}) {
+  return recentlyPlayed(games, played, 1, hidden)[0]?.game ?? null;
+}
+
+/** The games the Library's cover moves through, in turn: the one it starts
+ *  on (backdropGame), then the rest of the library in its order, coming
+ *  round again. Art marked explicit is never shown, so those are left out. */
+export function backdropCycle(games, start = null) {
+  const list = (games ?? []).filter((game) => game && !game.coverExplicit);
+  const i = start ? list.findIndex((game) => game.id === start.id) : -1;
+  return i > 0 ? [...list.slice(i), ...list.slice(0, i)] : list;
 }
 
 /** gameId -> {at, on} from /api/activity's games, for recentlyPlayed. */

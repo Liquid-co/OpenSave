@@ -74,9 +74,8 @@ const gameIcons = {
   untrack: Trash2
 };
 
-export function openGameMenu(event, game) {
-  openMenu(
-    event,
-    gameMenuItems(game, { favourite: isFavourite(get(collections), game.id) }).map((item) => item && { ...item, icon: gameIcons[item.id], run: () => runGameAction(item.id, game) })
-  );
+/** The game's menu; `extra` items (where it was opened from) go first. */
+export function openGameMenu(event, game, extra = []) {
+  const items = gameMenuItems(game, { favourite: isFavourite(get(collections), game.id) }).map((item) => item && { ...item, icon: gameIcons[item.id], run: () => runGameAction(item.id, game) });
+  openMenu(event, extra.length ? [...extra, null, ...items] : items);
 }

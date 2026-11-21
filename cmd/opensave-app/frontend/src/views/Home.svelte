@@ -15,6 +15,7 @@
   import NeedsYou from './home/NeedsYou.svelte';
   import SplitButton from '../components/ui/SplitButton.svelte';
   import { recentlyPlayed, backdropGame, playedFromReport } from '../lib/libraryhome.js';
+  import { recentHidden } from '../lib/recenthidden.js';
   import { libraryHeadline } from '../lib/headline.js';
   import { libraryView } from '../lib/libraryview.js';
   import { rise, collapse } from '../lib/motion.js';
@@ -110,8 +111,9 @@
     }
   }
   $: $activityTick, loadPlayed();
-  $: recent = recentlyPlayed($visibleGames, played, 4);
-  $: lit = backdropGame($visibleGames, played);
+  // More than fit across: the row turns into a belt to drag through.
+  $: recent = recentlyPlayed($visibleGames, played, 12, $recentHidden);
+  $: lit = backdropGame($visibleGames, played, $recentHidden);
   $: headline = libraryHeadline(rows);
 
   // Where each game's save stands — the summary and the cards read the same
@@ -175,7 +177,7 @@
 </script>
 
 <div class="library">
-<LibraryBackdrop game={lit} />
+<LibraryBackdrop game={lit} games={$visibleGames} />
 
 <div class="head">
   <div class="title-block">
