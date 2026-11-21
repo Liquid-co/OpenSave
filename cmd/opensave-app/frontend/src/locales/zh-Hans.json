@@ -1910,5 +1910,7 @@
   "toast.undo": "撤销",
   "toast.retry": "重试",
   "toast.restoring": "正在恢复 {name}",
-  "toast.restored": "{name} 已恢复"
+  "toast.restored": "{name} 已恢复",
+  "devices.card.syncing": "正在同步 {name}",
+  "devices.card.syncingMore": "正在同步 {name} 和另外 {n} 个"
 }

@@ -47,6 +47,14 @@
     { id: 'settings', label: 'game.tab.settings', component: SettingsTab }
   ];
   let tab = 'history';
+  // Which way the last tab pick went, for the way the tab comes in: +18 from
+  // the right, -18 from the left, 0 the first time.
+  let from = 0;
+  function pickTab(id) {
+    const step = tabs.findIndex((x) => x.id === id) - tabs.findIndex((x) => x.id === tab);
+    from = Math.sign(step) * 18;
+    tab = id;
+  }
   let focusSnap = null;
   let takeRequest = 0;
 
@@ -63,6 +71,7 @@
   $: if (params.gameId !== shownFor) {
     shownFor = params.gameId;
     tab = 'history';
+    from = 0;
     focusSnap = params.snapshot ?? null;
     opened = new Set([tab]);
     report = null;
@@ -111,7 +120,7 @@
   $: counts = { history: snapCount, branches: game ? Object.keys(game.branches ?? {}).length : 0 };
 
   function takeSnapshot() {
-    tab = 'history';
+    pickTab('history');
     takeRequest = Date.now();
   }
 </script>
@@ -122,7 +131,7 @@
   <div class="game" style={vars}>
     <LibraryBackdrop {game} height={560} />
     {#key params.gameId}
-      <GameHero {game} {runner} {played} renameRequest={params.rename} on:tab={(e) => (tab = e.detail)} on:snapshot={takeSnapshot} />
+      <GameHero {game} {runner} {played} renameRequest={params.rename} on:tab={(e) => pickTab(e.detail)} on:snapshot={takeSnapshot} />
 
       <div class="timeline-wrap">
         <SaveTimeline
@@ -131,17 +140,17 @@
           {here}
           {slots}
           on:snapshot={(e) => {
-            tab = 'history';
+            pickTab('history');
             focusSnap = e.detail;
           }}
-          on:branches={() => (tab = 'branches')}
+          on:branches={() => pickTab('branches')}
         />
       </div>
 
       <div class="tabbar">
         <div class="tabs" role="tablist" use:slidingIndicator={{ mode: 'underline' }}>
           {#each tabs as tb (tb.id)}
-            <button role="tab" aria-selected={tab === tb.id} class:active={tab === tb.id} on:click={() => (tab = tb.id)}>
+            <button role="tab" aria-selected={tab === tb.id} class:active={tab === tb.id} on:click={() => pickTab(tb.id)}>
               {$i18n(tb.label)}{#if counts[tb.id] !== undefined}<span class="count">{counts[tb.id]}</span>{/if}
             </button>
           {/each}
@@ -153,7 +162,7 @@
 
       {#each tabs as tb (tb.id)}
         {#if opened.has(tb.id)}
-          <div class="panel" hidden={tab !== tb.id} role="tabpanel">
+          <div class="panel" class:sideways={from !== 0} hidden={tab !== tb.id} role="tabpanel" style="--from: {from}px">
             <svelte:component
               this={tb.component}
               {game}
@@ -230,8 +239,18 @@
   .take {
     margin-bottom: 6px;
   }
-  /* A tab arriving: a short rise, as the page does. */
+  /* A tab arriving: in from the side of the tab it was picked from — from
+     the right going right, from the left going back — or a short rise when
+     the page opens on it. */
   .panel:not([hidden]) {
     animation: arrive 0.26s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  .panel.sideways:not([hidden]) {
+    animation: tab-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  @keyframes tab-in {
+    from {
+      transform: translateX(var(--from));
+    }
   }
 </style>

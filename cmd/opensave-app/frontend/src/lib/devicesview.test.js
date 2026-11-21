@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { peerWhere, gamesOnBoth, recentWith, isOlder, homeRelayAddress } from './devicesview.js';
+import { peerWhere, gamesOnBoth, recentWith, isOlder, homeRelayAddress, syncingWith } from './devicesview.js';
 
 describe('peerWhere', () => {
   it('tells this network, the internet and offline apart', () => {
@@ -56,5 +56,23 @@ describe('homeRelayAddress', () => {
     expect(homeRelayAddress(['172.18.0.1', '100.101.5.6'], 8384)).toBe('ws://100.101.5.6:8384');
     expect(homeRelayAddress(['203.0.113.9', '192.168.1.20'], 8384)).toBe('ws://192.168.1.20:8384');
     expect(homeRelayAddress([], 8384)).toBe('');
+  });
+});
+
+describe('syncingWith', () => {
+  it("lists only what is running with that device, newest first", () => {
+    const activity = {
+      hades: { state: 'running', peerName: 'Steam Deck', direction: 'download', percentage: 40, at: 2 },
+      celeste: { state: 'running', peerName: 'Steam Deck', at: 5 },
+      tunic: { state: 'running', peerName: 'Laptop', at: 9 },
+      hk: { state: 'done', peerName: 'Steam Deck', at: 10 }
+    };
+    expect(syncingWith(activity, 'Steam Deck')).toEqual([
+      { gameId: 'celeste', direction: '', percentage: 0 },
+      { gameId: 'hades', direction: 'download', percentage: 40 }
+    ]);
+    expect(syncingWith(activity, 'Nobody')).toEqual([]);
+    expect(syncingWith(null, 'Steam Deck')).toEqual([]);
+    expect(syncingWith(activity, '')).toEqual([]);
   });
 });

@@ -160,6 +160,14 @@
     };
   });
   $: count = badgeCount(waiting, events);
+  // The bell swings when something new comes in — not when the count drops,
+  // nor when the page first learns what was already there.
+  let rang = 0;
+  let lastCount = null;
+  $: {
+    if (lastCount !== null && count > lastCount) rang++;
+    lastCount = count;
+  }
   $: listed = new Set([...allWaiting, ...allEvents].map((it) => it.id));
 
   function dismiss(item) {
@@ -216,7 +224,7 @@
     aria-label={count ? $t('notifications.countAria', { n: count }) : $t('notifications.title')}
     aria-expanded={open}
   >
-    <Bell size={14} />
+    {#key rang}<span class="clapper" class:swing={rang > 0}><Bell size={14} /></span>{/key}
     {#if count}{#key count}<span class="badge">{count > 9 ? '9+' : count}</span>{/key}{/if}
   </button>
 
@@ -526,5 +534,30 @@
   .dismiss:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  /* Something new: the bell swings from its top, a little less each way. */
+  .clapper {
+    display: grid;
+    transform-origin: 50% 1px;
+  }
+  .clapper :global(svg) {
+    display: block;
+  }
+  .swing {
+    animation: swing 0.9s cubic-bezier(0.3, 0.6, 0.4, 1);
+  }
+  @keyframes swing {
+    15% {
+      transform: rotate(16deg);
+    }
+    35% {
+      transform: rotate(-12deg);
+    }
+    55% {
+      transform: rotate(7deg);
+    }
+    75% {
+      transform: rotate(-3deg);
+    }
   }
 </style>

@@ -47,9 +47,11 @@
 </script>
 
 {#if $pairingRequests.length > 0}
-  <div class="pair-wrap" transition:fly={{ y: -90, duration: 320 }}>
+  <!-- In: down from the top, there from its first frame. Out: back up,
+       fading as it goes. -->
+  <div class="pair-wrap" in:fly={{ y: -90, duration: 320, opacity: 1 }} out:fly={{ y: -90, duration: 220 }}>
     {#each $pairingRequests as req (req.peerId)}
-      <div class="pair-card" transition:fly={{ y: -20, duration: 200 }}>
+      <div class="pair-card" in:fly={{ y: -20, duration: 200, opacity: 1 }} out:fly={{ y: -20, duration: 180 }}>
         <div class="pair-main">
           <div class="pair-icon"><Link size={19} /></div>
           <div class="pair-body">

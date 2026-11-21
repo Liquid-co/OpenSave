@@ -129,6 +129,33 @@
   $: lastOn = played?.lastPlayedOn || $t('game.hero.thisPc');
   $: snapCount = Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0);
 
+  // ── The cover, to play with ──
+  // It leans toward the pointer, a light sliding over it the way a card
+  // catches it, and settles back when the pointer goes. A new snapshot — by
+  // you or by itself — is a camera's shutter: a flash over the art, and the
+  // cover giving a little. Neither happens with animations off.
+  let coverEl;
+  let flashEl;
+  let lean = '';
+  function tilt(e) {
+    if (e.pointerType !== 'mouse' || !get(motionOn)) return;
+    const r = coverEl.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    lean = `--ry: ${((x - 0.5) * 16).toFixed(2)}deg; --rx: ${((0.5 - y) * 16).toFixed(2)}deg; --mx: ${(x * 100).toFixed(1)}%; --my: ${(y * 100).toFixed(1)}%`;
+  }
+  const untilt = () => (lean = '');
+  let seenSnaps = null;
+  $: {
+    if (seenSnaps !== null && snapCount > seenSnaps) shutter();
+    seenSnaps = snapCount;
+  }
+  function shutter() {
+    if (!get(motionOn)) return;
+    flashEl?.animate([{ opacity: 0.8 }, { opacity: 0 }], { duration: 650, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
+    coverEl?.animate([{ scale: '0.94' }, { scale: '1' }], { duration: 520, easing: 'cubic-bezier(0.3, 1.5, 0.5, 1)' });
+  }
+
   // ── The cover ──
   // As a library tile does it (views/home/LibraryTile.svelte): a custom cover
   // wins in either shape; otherwise Steam's art in the shape asked for, which
@@ -232,7 +259,8 @@
 <section class="hero" aria-label={game.name}>
   <button class="back" on:click={() => navigate('home')}><ArrowLeft size={16} />{$t('game.hero.library')}</button>
   <div class="row">
-    <span class="cover {shape}" class:letterbox>
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <span class="cover {shape}" class:letterbox class:leaning={!!lean} style={lean} bind:this={coverEl} on:pointermove={tilt} on:pointerleave={untilt}>
       <span class="fallback">{game.name}</span>
       {#if backdrop}<span class="backdrop" style="background-image: url('{backdrop}')"></span>{/if}
       <span class="art" bind:this={artEl}>
@@ -242,6 +270,7 @@
           <img src={coverSrc} alt="" on:load={measure} on:error={(e) => (e.currentTarget.style.display = 'none')} />
         {/if}
       </span>
+      <span class="flash" bind:this={flashEl} aria-hidden="true"></span>
     </span>
     <div class="text">
       {#if editName}
@@ -440,6 +469,39 @@
   }
   .cover:hover {
     transform: translateY(-3px) rotate(-1deg);
+  }
+  /* Leaning toward the pointer: lifted, turned on both axes. The art's
+     layers are clipped by the cover, so the whole card turns as one. */
+  .cover.leaning {
+    transform: perspective(700px) translateY(-3px) rotateX(var(--rx)) rotateY(var(--ry));
+    transition:
+      transform 0.12s ease-out,
+      width 0.45s cubic-bezier(0.3, 1.15, 0.5, 1),
+      height 0.45s cubic-bezier(0.3, 1.15, 0.5, 1);
+  }
+  /* The light it catches, where the pointer is. */
+  .cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.22), transparent 55%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .cover.leaning::after {
+    opacity: 1;
+  }
+  /* The shutter: white over the art, gone as soon as it is there. */
+  .flash {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
   }
   @keyframes cover-in {
     from {

@@ -64,8 +64,8 @@
       {:else}
         <p class="lead">{describeSummary(preview)}{#if preview.unchanged}{$t('restore.unchanged', { n: preview.unchanged })}{/if}</p>
         <ul class="files">
-          {#each preview.changes as c}
-            <li class="file {c.change}">
+          {#each preview.changes as c, i}
+            <li class="file {c.change}" style="--i: {Math.min(i, 8)}">
               <span class="kind"><svelte:component this={icons[c.change]} size={14} /></span>
               <span class="path" title={c.path}>{#if c.location}<span class="loc">{c.location}</span>{/if}{c.path}</span>
               <span class="what">{c.change === 'changed' ? $t('restore.changes') : c.change === 'restored' ? $t('restore.comesBack') : $t('restore.removed')}</span>
@@ -103,6 +103,20 @@
   }
   .lead {
     font-size: 0.92rem;
+  }
+  /* What it would do arrives as it is worked out: the summary, then the
+     files a row after the row above. Movement only. */
+  .lead,
+  .file {
+    animation: found 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  .file {
+    animation-delay: calc(60ms + var(--i, 0) * 30ms);
+  }
+  @keyframes found {
+    from {
+      transform: translateY(6px);
+    }
   }
   .quiet {
     display: flex;

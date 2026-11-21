@@ -65,3 +65,15 @@ export function homeRelayAddress(lanIps, port) {
   ip = ip || list[0] || '';
   return ip && port ? `ws://${ip}:${port}` : '';
 }
+
+/** The syncs running with one device now, from the sync activity store
+ *  (gameId -> {state, peerName, direction, percentage}): newest first, as
+ *  {gameId, direction, percentage}. Matched by the device's name, which is
+ *  what a sync event carries. */
+export function syncingWith(activity, deviceName) {
+  if (!deviceName) return [];
+  return Object.entries(activity ?? {})
+    .filter(([, s]) => s?.state === 'running' && s.peerName === deviceName)
+    .sort(([, a], [, b]) => (b.at ?? 0) - (a.at ?? 0))
+    .map(([gameId, s]) => ({ gameId, direction: s.direction ?? '', percentage: s.percentage ?? 0 }));
+}

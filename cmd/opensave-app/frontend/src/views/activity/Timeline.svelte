@@ -22,6 +22,21 @@
   import { playLength, fmtSize } from '../../lib/format.js';
   import { snapshotKind, whenLabel } from '../../lib/snapshots.js';
   import { TIMELINE_FILTERS, byDay, filterItems, runs } from '../../lib/timeline.js';
+  import { gatedFlip } from '../../lib/motion.js';
+
+  // Each entry keeps its key while the list changes around it, so one that
+  // arrives comes in at the top and the rest move down to make room, rather
+  // than every row taking the next one's words. Two entries alike in every
+  // way are told apart by their order.
+  function keyed(list) {
+    const seen = new Map();
+    return list.map((run) => {
+      const base = `${run.item.gameId}|${run.item.kind}|${run.item.atMs}|${run.count}`;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      return { run, key: `${base}|${n}` };
+    });
+  }
 
   // timeAgo's facts as a catalog key and its params, ready for $t.
   const agoKey = (iso, now = Date.now()) => {
@@ -194,10 +209,10 @@
     {#each days as day (day.key)}
       <h4 class="day">{day.day === 'Today' ? $t('activity.day.today') : day.day === 'Yesterday' ? $t('activity.day.yesterday') : day.day}</h4>
       <div class="card entries">
-        {#each day.runs as run}
+        {#each keyed(day.runs) as { run, key }, i (key)}
           {@const game = $games[run.item.gameId]}
           {@const said = eventSay(run.item, new Date(now), $t)}
-          <button class="entry tone-{run.said.tone}" on:click={() => navigate('game', { gameId: run.item.gameId })}>
+          <button class="entry tone-{run.said.tone}" style="--i: {Math.min(i, 10)}" animate:gatedFlip on:click={() => navigate('game', { gameId: run.item.gameId })}>
             <span class="kind"><svelte:component this={ICONS[run.said.icon] ?? Dot} size={15} /></span>
             <span class="thumb"><span class="initials">{initials(game.name)}</span><CoverImage src={gameCover(game)} alt="" /></span>
             <span class="what">
@@ -338,5 +353,16 @@
   .empty p {
     color: var(--text-faint);
     font-size: 0.86rem;
+  }
+  /* In, one after another down the day: a short rise, movement only. One
+     that arrives later comes in the same way, at the top. */
+  .entry {
+    animation: entry-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 28ms);
+  }
+  @keyframes entry-in {
+    from {
+      transform: translateY(8px);
+    }
   }
 </style>

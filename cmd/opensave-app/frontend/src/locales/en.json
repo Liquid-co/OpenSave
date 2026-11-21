@@ -2150,5 +2150,7 @@
   "toast.undo": "Undo",
   "toast.retry": "Try again",
   "toast.restoring": "Restoring {name}",
-  "toast.restored": "{name} restored"
+  "toast.restored": "{name} restored",
+  "devices.card.syncing": "Syncing {name}",
+  "devices.card.syncingMore": "Syncing {name} and {n} more"
 }

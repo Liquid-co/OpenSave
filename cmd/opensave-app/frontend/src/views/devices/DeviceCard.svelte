@@ -2,6 +2,11 @@
   // One paired device: where it is and how it is reached, a problem with the
   // pairing when there is one, the games the two of you share, what moved
   // between you lately, and whether it may choose folders here.
+  //
+  // Motion: while a save is moving between you, a line says which, its
+  // arrows running the way it goes, over a bar of how far it has come. Where
+  // the device is, when you last synced and what moved lately come in again
+  // when they change.
   import { createEventDispatcher, onDestroy } from 'svelte';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import Monitor from 'lucide-svelte/icons/monitor';
@@ -15,10 +20,11 @@
   import CoverImage from '../../components/CoverImage.svelte';
   import Dropdown from '../../components/ui/Dropdown.svelte';
   import { gameCover } from '../../lib/api.js';
-  import { games, navigate, appUpdate } from '../../lib/stores.js';
+  import { games, navigate, appUpdate, syncActivity } from '../../lib/stores.js';
+  import { rise, collapse, gatedFlip } from '../../lib/motion.js';
   import { isHandheld } from '../../lib/devices.js';
   import { protectionState } from '../../lib/protection.js';
-  import { peerWhere, gamesOnBoth, recentWith, isOlder } from '../../lib/devicesview.js';
+  import { peerWhere, gamesOnBoth, recentWith, isOlder, syncingWith } from '../../lib/devicesview.js';
   import { timeAgoParts } from '../../lib/timeago.js';
   import { t } from '../../lib/i18n.js';
 
@@ -47,6 +53,9 @@
   $: older = isOlder(peer.appVersion, myVersion);
   $: open = protectionState(peer) === 'open';
   $: SHOWN = 6;
+  $: live = syncingWith($syncActivity, peer.name);
+  $: first = live[0];
+  $: liveName = first ? ($games[first.gameId]?.name ?? first.gameId) : '';
 
   let menuOpen = false;
   let anchor;
@@ -64,12 +73,12 @@
 
 <svelte:window on:mousedown={outside} />
 
-<article class="card" class:problem={open} class:offline={where === 'offline'}>
+<article class="card" class:problem={open} class:offline={where === 'offline'} class:live={!!first}>
   <header>
     <span class="tile where-{where}"><svelte:component this={isHandheld(peer.deviceType) ? Gamepad2 : Monitor} size={21} /></span>
     <div class="who">
       <h3>{peer.name}</h3>
-      <p class="state where-{where}">{$t('devices.card.' + where)}</p>
+      {#key where}<p class="state where-{where}" in:rise={{ y: 4 }}>{$t('devices.card.' + where)}</p>{/key}
     </div>
     <div class="anchor" bind:this={anchor}>
       <button class="more" class:on={menuOpen} aria-label={$t('devices.card.more', { name: peer.name })} aria-haspopup="menu" aria-expanded={menuOpen} on:click={() => (menuOpen = !menuOpen)}>
@@ -78,6 +87,21 @@
       <Dropdown items={menu} bind:open={menuOpen} label={$t('devices.card.more', { name: peer.name })} />
     </div>
   </header>
+
+  {#if first}
+    <div class="live-row" transition:collapse>
+      <span class="flow" class:down={first.direction === 'download'} aria-hidden="true">
+        <span class="lane"><svelte:component this={first.direction === 'download' ? ArrowDown : ArrowUp} size={13} /><svelte:component
+            this={first.direction === 'download' ? ArrowDown : ArrowUp}
+            size={13}
+          /></span
+        >
+      </span>
+      <span class="live-what">{live.length > 1 ? $t('devices.card.syncingMore', { name: liveName, n: live.length - 1 }) : $t('devices.card.syncing', { name: liveName })}</span>
+      {#if first.percentage}<span class="pct">{first.percentage}%</span>{/if}
+      <span class="track"><span class="fill" class:unknown={!first.percentage} style={first.percentage ? `width: ${first.percentage}%` : ''}></span></span>
+    </div>
+  {/if}
 
   {#if open}
     <div class="alert">
@@ -88,7 +112,7 @@
   {/if}
 
   <dl class="facts">
-    <div><dt>{$t('devices.card.lastSynced')}</dt><dd>{ago(peer.lastSynced)}</dd></div>
+    <div><dt>{$t('devices.card.lastSynced')}</dt>{#key peer.lastSynced}<dd in:rise={{ y: 4 }}>{ago(peer.lastSynced)}</dd>{/key}</div>
     <div><dt>{$t('devices.card.connection')}</dt><dd>{peer.address === 'relay' ? $t('devices.card.viaInternet') : $t('devices.card.direct')}</dd></div>
     <div><dt>OpenSave</dt><dd class:warn={older} title={older ? $t('devices.card.olderTitle') : ''}>{peer.appVersion || '—'}{#if older}<span class="tag">{$t('devices.card.older')}</span>{/if}</dd></div>
   </dl>
@@ -110,8 +134,8 @@
   {#if lately.length}
     <section class="sub">
       <h4>{$t('devices.card.lately')}</h4>
-      {#each lately as it}
-        <div class="lately">
+      {#each lately as it (it.kind + it.gameId + it.atMs)}
+        <div class="lately" in:rise={{ y: 4 }} animate:gatedFlip>
           <svelte:component this={it.kind === 'sent' ? ArrowUp : ArrowDown} size={14} />
           <span class="what">{$t(it.kind === 'sent' ? 'devices.card.sent' : 'devices.card.got', { name: $games[it.gameId]?.name ?? it.gameId })}</span>
           <span class="when">{ago(it.atMs)}</span>
@@ -160,6 +184,100 @@
   .tile.where-network,
   .tile.where-internet {
     color: var(--success);
+  }
+  .tile {
+    transition:
+      background 0.3s,
+      color 0.3s;
+  }
+  .live .tile {
+    background: rgba(var(--accent-rgb), 0.14);
+    color: var(--accent-text);
+  }
+
+  /* A save on the move: its arrows run the way it goes, on a lane, over a
+     bar of how far it has come (or a sweep, until that is known). */
+  .live-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 6px;
+    margin: 0 12px 12px;
+    padding: 9px 12px 10px;
+    border-radius: 10px;
+    background: rgba(var(--accent-rgb), 0.08);
+    font-size: var(--text-md);
+  }
+  .flow {
+    width: 13px;
+    height: 13px;
+    overflow: hidden;
+    color: var(--accent-text);
+  }
+  .lane {
+    display: flex;
+    flex-direction: column;
+    animation: run-up 0.9s linear infinite;
+  }
+  .lane :global(svg) {
+    display: block;
+    flex: none;
+  }
+  .down .lane {
+    animation-name: run-down;
+  }
+  @keyframes run-up {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-13px);
+    }
+  }
+  @keyframes run-down {
+    from {
+      transform: translateY(-13px);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  .live-what {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .pct {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .track {
+    grid-column: 1 / -1;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(var(--accent-rgb), 0.16);
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-text);
+    transition: width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .fill.unknown {
+    width: 30%;
+    animation: sweep 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(340%);
+    }
   }
   .who {
     flex: 1;

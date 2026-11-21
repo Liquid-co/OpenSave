@@ -93,7 +93,7 @@
       </tr>
     </thead>
     <tbody>
-      {#each rows as r (r.gameId)}
+      {#each rows as r, row (r.gameId)}
         {@const game = $games[r.gameId]}
         {@const snap = lastSnapshot(r.gameId)}
         {@const parts = barParts(r.byDevice, slots)}
@@ -113,7 +113,7 @@
           <td class="time">
             {#if r.playedMs > 0}
               <span class="main">{playLength(r.playedMs)}</span>
-              <span class="bar" role="img" aria-label={parts.map((p) => `${p.device} ${playLength(p.ms)}`).join(', ')}>
+              <span class="bar" style="--row: {Math.min(row, 12)}" role="img" aria-label={parts.map((p) => `${p.device} ${playLength(p.ms)}`).join(', ')}>
                 {#each parts as p (p.device)}<span class="seg slot-{p.slot}" style="flex: {p.share}" title="{p.device}: {playLength(p.ms)}"></span>{/each}
               </span>
               {#if r.unrecorded}<span class="sub">{$t('activity.games.notRecordedOn', { device: r.lastPlayedOn })}</span>{/if}
@@ -305,6 +305,16 @@
     max-width: 150px;
     height: 6px;
     margin: 6px 0 2px;
+    /* Grows in from the left as the table arrives, a row after the row
+       above. Not from nothing: a sliver is there from the first frame. */
+    transform-origin: left center;
+    animation: bar-grow 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(var(--row, 0) * 35ms + 120ms);
+  }
+  @keyframes bar-grow {
+    from {
+      transform: scaleX(0.15);
+    }
   }
   .seg {
     border-radius: 3px;
