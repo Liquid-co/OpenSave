@@ -174,7 +174,7 @@
     <span class="cap">{$i18n('activity.stat.played')}</span>
     {#key stats.playedMs}<span class="v" in:rise={{ y: 4 }}>{stats.playedMs ? playLength(stats.playedMs) : '—'}</span>{/key}
     <span class="bar" role="img" aria-label={playedParts.map((p) => `${p.device} ${playLength(p.ms)}`).join(', ')}>
-      {#each playedParts as p (p.device)}<span class="seg slot-{p.slot}" style="flex: {p.share}" title="{p.device}: {playLength(p.ms)}"></span>{:else}<span class="seg empty"></span>{/each}
+      {#each playedParts as p (p.device)}<span class="seg slot-{p.slot}" style="flex: {p.share}" title="{p.device}: {playLength(p.ms)}"></span>{:else}<span class="seg none"></span>{/each}
     </span>
   </div>
   <div class="stat" style="--i: 1">
@@ -384,7 +384,7 @@
     min-width: 4px;
     transition: flex 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
-  .seg.empty {
+  .seg.none {
     flex: 1;
     background: var(--bg-active);
   }

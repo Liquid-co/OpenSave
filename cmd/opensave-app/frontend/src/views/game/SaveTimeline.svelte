@@ -128,7 +128,7 @@
     </div>
 
   </div>
-  {#if empty}<p class="empty">{$t('game.timeline.empty')}</p>{/if}
+  {#if empty}<p class="none">{$t('game.timeline.empty')}</p>{/if}
 </section>
 
 <style>
@@ -354,7 +354,7 @@
     z-index: 3;
     white-space: normal;
   }
-  .empty {
+  .none {
     font-size: var(--text-sm);
     color: var(--text-faint);
   }

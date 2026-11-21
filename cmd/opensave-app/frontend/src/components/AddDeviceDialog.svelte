@@ -141,7 +141,7 @@
                 <span class="dtext">
                   <span class="dname">{d.deviceName}</span>
                   {#if sent?.code}
-                    <span class="dsub check">{$t('devices.add.checkOn', { name: d.deviceName })}</span>
+                    <span class="dsub cue">{$t('devices.add.checkOn', { name: d.deviceName })}</span>
                   {:else}
                     <span class="dsub">{d.address}</span>
                   {/if}
@@ -532,7 +532,7 @@
     margin-top: 12px;
     font-size: var(--text-md);
   }
-  .dsub.check {
+  .dsub.cue {
     color: var(--accent-text);
   }
   .typed-check {

@@ -106,7 +106,7 @@
           </td>
           <td class="two">
             {#if r.lastPlayedAt}
-              <span class="main"><span class="dev-dot slot-{slots.get(r.lastPlayedOn) ?? 5}" aria-hidden="true"></span>{r.lastPlayedOn}</span>
+              <span class="main" title={r.lastPlayedOn}><span class="dev-dot slot-{slots.get(r.lastPlayedOn) ?? 5}" aria-hidden="true"></span>{r.lastPlayedOn}</span>
               <span class="sub">{ago(r.lastPlayedAt)}</span>
             {:else}<span class="none">{$t('activity.games.notPlayed')}</span>{/if}
           </td>
@@ -124,7 +124,7 @@
           <td>{#if r.sessions}<span class="main">{r.sessions}</span>{:else}<span class="none">—</span>{/if}</td>
           <td class="two">
             {#if snap}
-              <span class="main">{kindLabel(snap)}</span>
+              <span class="main" title={kindLabel(snap)}>{kindLabel(snap)}</span>
               <span class="sub">{ago(r.lastSnapshotAt)}</span>
             {:else}<span class="none">{$t('home.summary.noneYet')}</span>{/if}
           </td>
@@ -133,7 +133,7 @@
               <span class="main warn">{$t('activity.games.needsDecision')}</span>
               <span class="sub">{ago(r.lastSyncedAt) || '—'}</span>
             {:else if r.lastSyncedAt}
-              <span class="main">{$t('activity.games.withDevice', { device: r.lastSyncedWith || $t('activity.timeline.anotherDevice') })}</span>
+              <span class="main" title={$t('activity.games.withDevice', { device: r.lastSyncedWith || $t('activity.timeline.anotherDevice') })}>{$t('activity.games.withDevice', { device: r.lastSyncedWith || $t('activity.timeline.anotherDevice') })}</span>
               <span class="sub">{ago(r.lastSyncedAt)}</span>
             {:else}
               <span class="none">{$t('activity.games.notSynced')}</span>
@@ -273,10 +273,10 @@
   .time {
     line-height: 1.3;
   }
+  /* A block, not flex: an ellipsis is drawn only for text in a block, and
+     in a flex box a cell too narrow for its words was cut mid-letter. */
   .main {
-    display: flex;
-    align-items: center;
-    gap: 7px;
+    display: block;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -322,10 +322,12 @@
     transition: flex 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .dev-dot {
+    display: inline-block;
     width: 8px;
     height: 8px;
+    margin-right: 7px;
+    vertical-align: 1px;
     border-radius: 50%;
-    flex-shrink: 0;
   }
   /* The device colours (lib/activityview.js deviceSlots). */
   .slot-0 {

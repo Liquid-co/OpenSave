@@ -11,7 +11,8 @@
   // Motion: the parts arrive one after another by moving, never by fading
   // (app.css "arrive"), so a slow frame never shows a blank page.
   import { onDestroy, onMount } from 'svelte';
-  import { toast, settings, cloudUploadEvent, askConfirm, gameList } from '../lib/stores.js';
+  import { toast, settings, cloudUploadEvent, askConfirm, gameList, navigate } from '../lib/stores.js';
+  import { openMenu } from '../lib/contextmenu.js';
   import { api } from '../lib/api.js';
   import { restoreKey } from '../lib/toasts.js';
   import { providerConfigured } from '../lib/cloudproviders.js';
@@ -20,6 +21,10 @@
   import Skeleton from '../components/ui/Skeleton.svelte';
   import FilterTabs from '../components/ui/FilterTabs.svelte';
   import CloudOff from 'lucide-svelte/icons/cloud-off';
+  import Layers from 'lucide-svelte/icons/layers';
+  import ArrowUpRight from 'lucide-svelte/icons/arrow-up-right';
+  import CloudUpload from 'lucide-svelte/icons/cloud-upload';
+  import Trash2 from 'lucide-svelte/icons/trash-2';
   import BackupsHero from './backups/BackupsHero.svelte';
   import CoverShelf from './backups/CoverShelf.svelte';
   import CopiesDialog from './backups/CopiesDialog.svelte';
@@ -126,6 +131,50 @@
     }
   }
 
+  // ── A cover's right-click menu ──
+  // The game's copies, the game itself, an upload, and removing every copy
+  // the cover stands for — the same copies the Copies dialog lists, removed
+  // one at a time the way it removes one, so linked ids go too.
+  let deletingId = '';
+  function coverMenu({ event, game: g }) {
+    const own = g.tracked && $gameList.some((x) => x.id === g.gameId);
+    openMenu(event, [
+      { label: $t('backups.menu.copies'), icon: Layers, run: () => (opened = g.gameId) },
+      ...(own ? [{ label: $t('backups.menu.openGame'), icon: ArrowUpRight, run: () => navigate('game', { gameId: g.gameId }) }] : []),
+      ...(own && g.localSnapshots > 0 ? [{ label: $t('backups.menu.backUp'), icon: CloudUpload, disabled: !!uploading, run: () => upload([g]) }] : []),
+      null,
+      { label: $t('backups.menu.delete'), icon: Trash2, danger: true, disabled: !g.copies.length || !!deletingId, run: () => deleteAll(g) }
+    ]);
+  }
+  async function deleteAll(g) {
+    const copies = [...g.copies];
+    if (!copies.length || deletingId) return;
+    const ok = await askConfirm($t('backups.deleteAllBody', { n: copies.length, game: g.gameName }), {
+      title: $t('backups.deleteAllTitle', { game: g.gameName }),
+      confirmText: $t('backups.deleteAllConfirm'),
+      danger: true
+    });
+    if (!ok) return;
+    deletingId = g.gameId;
+    let done = 0;
+    let error = '';
+    try {
+      for (const c of copies) {
+        try {
+          await api.post(`/api/cloud/delete/${g.gameId}`, { fileName: c.name, id: c.id ?? '' });
+          done++;
+        } catch (e) {
+          error ||= e.message;
+        }
+      }
+      if (error) toast($t('backups.deletePartial', { done, total: copies.length, game: g.gameName, error }), 'error');
+      else toast($t('backups.deletedAll', { n: done, game: g.gameName }), 'success');
+    } finally {
+      deletingId = '';
+      read();
+    }
+  }
+
   async function setEnabled(value) {
     const before = config.enabled;
     config = { ...config, enabled: value };
@@ -213,6 +262,7 @@
               uploadingId={uploading?.gameId ?? ''}
               on:open={(e) => (opened = e.detail)}
               on:upload={(e) => upload([e.detail])}
+              on:menu={(e) => coverMenu(e.detail)}
             />
           {/if}
         </section>

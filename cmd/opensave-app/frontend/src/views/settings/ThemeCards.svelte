@@ -14,7 +14,9 @@
   import { gameList, toast } from '../../lib/stores.js';
   import { gameCover } from '../../lib/api.js';
   import { pop } from '../../lib/motion.js';
+  import { openMenu } from '../../lib/contextmenu.js';
   import CoverImage from '../../components/CoverImage.svelte';
+  import DefaultCover from '../../components/ui/DefaultCover.svelte';
   import Dropdown from '../../components/ui/Dropdown.svelte';
   import Check from 'lucide-svelte/icons/check';
   import Plus from 'lucide-svelte/icons/plus';
@@ -82,13 +84,14 @@
   {#each cards as c (c.key)}
     {@const look = c.look}
     {@const on = a.family === c.family}
-    <div class="card" class:on in:pop={{ start: 0.94 }}>
+    <div class="theme" class:on in:pop={{ start: 0.94 }}>
       <button
         class="pick"
         role="radio"
         aria-checked={on}
         style="--l-bg: {look.bg}; --l-side: {look.sidebar}; --l-raised: {look.raised}; --l-active: {look.active}; --l-border: {look.border}; --l-text: {look.text}; --l-faint: {look.textFaint}; --l-accent: {look.accent}"
         on:click={() => appearance.update((v) => pick(c.family, v))}
+        on:contextmenu={(e) => c.mine && ((menuFor = null), openMenu(e, menuItems(c.mine)))}
       >
         <span class="pic" aria-hidden="true">
           <span class="side">
@@ -101,7 +104,7 @@
             <span class="covers">
               {#each [0, 1, 2, 3] as i}
                 <span class="cv">
-                  {#if covers[i]}<CoverImage src={gameCover(covers[i], true)} alt="" />{/if}
+                  {#if covers[i]}<DefaultCover name={covers[i].name} /><CoverImage src={gameCover(covers[i], true)} alt="" />{/if}
                 </span>
               {/each}
             </span>
@@ -110,7 +113,7 @@
           {#if on}<span class="tick"><Check size={12} strokeWidth={3} /></span>{/if}
         </span>
         <span class="words">
-          <span class="name">{c.name}</span>
+          <span class="name" title={c.name}>{c.name}</span>
           <span class="sub" class:yours={!!c.mine}>{c.sub}</span>
         </span>
       </button>
@@ -133,7 +136,7 @@
     grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
     gap: 12px;
   }
-  .card {
+  .theme {
     position: relative;
     border-radius: calc(12px * var(--round, 1));
     background: var(--bg);
@@ -142,14 +145,14 @@
       box-shadow 0.18s,
       transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1.3);
   }
-  .card:hover {
+  .theme:hover {
     transform: translateY(-2px);
     box-shadow: inset 0 0 0 1px var(--border-strong);
   }
-  .card:active {
+  .theme:active {
     transform: scale(0.98);
   }
-  .card.on {
+  .theme.on {
     box-shadow: 0 0 0 2px var(--accent);
   }
   .pick {
@@ -185,7 +188,7 @@
     opacity: 0;
     transition: opacity 0.15s;
   }
-  .card:hover .menu-btn,
+  .theme:hover .menu-btn,
   .menu-btn:focus-visible,
   .menu-btn.open {
     opacity: 1;

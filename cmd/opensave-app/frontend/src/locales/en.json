@@ -105,7 +105,7 @@
     "other": "Untracked {n} games — snapshots kept"
   },
   "settings.general.deviceIdentity": "Device identity",
-  "settings.general.deviceName": "Device name — how other devices see you",
+  "settings.general.deviceName": "Device name",
   "settings.general.deviceType": "Device type",
   "settings.general.type.desktop": "Desktop (Windows / macOS / Linux PC)",
   "settings.general.type.deck": "Steam Deck (SteamOS handheld)",
@@ -1946,7 +1946,7 @@
   "backups.state.cloudOnly": "Not tracked on this PC",
   "backups.openCopies": "{game}'s copies in the cloud",
   "backups.uploadNow": "Upload now",
-  "backups.shelfHint": "The stack behind a cover grows with its copies. Click a cover to see them all.",
+  "backups.shelfHint": "The stack behind a cover grows with its copies. Click a cover to see them all, or right-click it for more.",
   "backups.tip.unknownTitle": "A copy this PC doesn't hold",
   "backups.trackFirst": "Track this game on this PC to put a copy back",
   "backups.noCopies": "No copies in the cloud yet",
@@ -1958,6 +1958,21 @@
   "backups.deleteTitle": "Delete this copy from the cloud?",
   "backups.deleteBody": "The copy of {game} from {when} is removed from the cloud. Snapshots on your devices stay.",
   "backups.deleteHint": "Delete this copy from the cloud",
+  "backups.menu.copies": "See copies",
+  "backups.menu.openGame": "Open game",
+  "backups.menu.backUp": "Back up now",
+  "backups.menu.delete": "Delete from cloud…",
+  "backups.deleteAllTitle": "Delete {game} from the cloud?",
+  "backups.deleteAllBody": {
+    "one": "The 1 copy of {game} is removed from the cloud. Snapshots on your devices stay.",
+    "other": "All {n} copies of {game} are removed from the cloud. Snapshots on your devices stay."
+  },
+  "backups.deleteAllConfirm": "Delete from cloud",
+  "backups.deletedAll": {
+    "one": "Deleted 1 copy of {game} from the cloud",
+    "other": "Deleted {n} copies of {game} from the cloud"
+  },
+  "backups.deletePartial": "Deleted {done} of {total} copies of {game}. The rest could not be removed: {error}",
   "backups.waitingNote": {
     "one": "1 snapshot on this PC is waiting to go up.",
     "other": "{n} snapshots on this PC are waiting to go up."
@@ -2215,7 +2230,7 @@
   "colourWheel.use": "Use colour",
   "themeEditor.create": "Create a theme",
   "themeEditor.createCard": "Create theme",
-  "themeEditor.edit": "Change {name}",
+  "themeEditor.edit": "Edit {name}",
   "themeEditor.back": "Back to Appearance",
   "themeEditor.name": "Name",
   "themeEditor.namePlaceholder": "My theme",
@@ -2295,7 +2310,7 @@
   "themeEditor.import.newerVersion": "That theme is from a newer OpenSave. Update to use it.",
   "themeEditor.import.badColours": "That theme’s colours aren’t ones OpenSave can use.",
   "themeEditor.menu.more": "More for {name}",
-  "themeEditor.menu.edit": "Change",
+  "themeEditor.menu.edit": "Edit",
   "themeEditor.menu.duplicate": "Duplicate",
   "themeEditor.menu.export": "Export as a file",
   "themeEditor.menu.delete": "Delete",

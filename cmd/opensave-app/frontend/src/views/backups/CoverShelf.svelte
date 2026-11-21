@@ -19,6 +19,7 @@
   import { fade } from 'svelte/transition';
   import { t } from '../../lib/i18n.js';
   import CoverImage from '../../components/CoverImage.svelte';
+  import DefaultCover from '../../components/ui/DefaultCover.svelte';
 
   export let games = [];
   export let tracked = [];
@@ -62,8 +63,14 @@
       <div class="stack st-{l.st}" class:sending={uploadingId === g.gameId}>
         {#if edges >= 2}<span class="edge e2"></span>{/if}
         {#if edges >= 1}<span class="edge e1"></span>{/if}
-        <button class="cv" title={g.gameName} aria-label={$t('backups.openCopies', { game: g.gameName })} on:click={() => dispatch('open', g.gameId)}>
-          <span class="name">{g.gameName}</span>
+        <button
+          class="cv"
+          title={g.gameName}
+          aria-label={$t('backups.openCopies', { game: g.gameName })}
+          on:click={() => dispatch('open', g.gameId)}
+          on:contextmenu={(event) => dispatch('menu', { event, game: g })}
+        >
+          <DefaultCover name={g.gameName} />
           <CoverImage src={coverOf(g)} alt="" />
         </button>
         {#if g.copies.length}
@@ -182,17 +189,6 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-  /* Before the art, which covers it: it shows only where there is none. */
-  .name {
-    position: absolute;
-    inset: auto 0 0 0;
-    padding: 9px;
-    color: var(--text);
-    font-size: var(--text-md);
-    font-weight: 700;
-    text-align: left;
-    line-height: 1.2;
   }
   .count {
     position: absolute;

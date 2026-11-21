@@ -52,14 +52,14 @@
   <svelte:fragment slot="sub">{game.name}</svelte:fragment>
   <div class="body">
     <div class="pick">
-      <label class="field">
-        <span>{$t('game.compare.from')}</span>
-        <Select bind:value={from} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
-      </label>
-      <label class="field">
-        <span>{$t('game.compare.to')}</span>
-        <Select bind:value={to} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
-      </label>
+      <div class="field">
+        <span aria-hidden="true">{$t('game.compare.from')}</span>
+        <Select bind:value={from} label={$t('game.compare.from')} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
+      </div>
+      <div class="field">
+        <span aria-hidden="true">{$t('game.compare.to')}</span>
+        <Select bind:value={to} label={$t('game.compare.to')} options={snapshots.map((s) => ({ value: s.id, label: label(s) }))} />
+      </div>
     </div>
 
     {#if error}
@@ -97,7 +97,7 @@
     gap: 12px;
     margin-bottom: 14px;
   }
-  .pick label {
+  .pick .field {
     display: flex;
     flex-direction: column;
     gap: 5px;

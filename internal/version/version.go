@@ -11,7 +11,7 @@ import (
 
 // Version is the app's semantic version. Overridable via
 // -ldflags "-X github.com/opensave/opensave/internal/version.Version=…".
-var Version = "2.5.0-beta.1"
+var Version = "2.5.0-b1.reui"
 
 // BuildTime is the unix-seconds build timestamp, injected via
 // -ldflags "-X github.com/opensave/opensave/internal/version.BuildTime=…".

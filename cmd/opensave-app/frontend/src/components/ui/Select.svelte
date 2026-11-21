@@ -142,7 +142,7 @@
 </button>
 
 {#if open}
-  <div class="list" role="listbox" aria-label={label} bind:this={list} style={place} use:portal on:keydown={listKeys} transition:unfold={{ origin: 'top left', duration: 140, y: -4 }}>
+  <div class="list" role="listbox" tabindex="-1" aria-label={label} bind:this={list} style={place} use:portal on:keydown={listKeys} transition:unfold={{ origin: 'top left', duration: 140, y: -4 }}>
     {#each options as o (o.value)}
       <button type="button" role="option" aria-selected={o.value === value} class:on={o.value === value} on:click={() => choose(o)}>
         <span class="label">{o.label}</span>

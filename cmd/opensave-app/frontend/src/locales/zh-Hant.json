@@ -90,7 +90,7 @@
   "settings.reset.confirmAction": "取消追蹤 {n}",
   "settings.reset.doneToast": "已取消追蹤 {n} 個遊戲——快照已保留",
   "settings.general.deviceIdentity": "裝置身份",
-  "settings.general.deviceName": "裝置名稱——其他裝置看到你的名字",
+  "settings.general.deviceName": "裝置名稱",
   "settings.general.deviceType": "裝置型別",
   "settings.general.type.desktop": "桌面電腦（Windows / macOS / Linux PC）",
   "settings.general.type.deck": "Steam Deck（SteamOS 掌機）",
@@ -1706,7 +1706,7 @@
   "backups.state.cloudOnly": "這台電腦沒有追蹤",
   "backups.openCopies": "{game} 在雲端的副本",
   "backups.uploadNow": "立即上傳",
-  "backups.shelfHint": "封面後面的疊層會隨著副本增加而變厚。點選封面查看全部副本。",
+  "backups.shelfHint": "封面後面的疊層會隨著副本增加而變厚。點選封面查看全部副本，按右鍵可進行更多操作。",
   "backups.tip.unknownTitle": "這台電腦上沒有的副本",
   "backups.trackFirst": "在這台電腦上追蹤此遊戲後才能還原副本",
   "backups.noCopies": "雲端還沒有副本",
@@ -1718,6 +1718,21 @@
   "backups.deleteTitle": "要從雲端刪除這個副本嗎？",
   "backups.deleteBody": "{game} 來自 {when} 的副本將從雲端刪除。你裝置上的快照會保留。",
   "backups.deleteHint": "從雲端刪除這個副本",
+  "backups.menu.copies": "查看副本",
+  "backups.menu.openGame": "開啟遊戲",
+  "backups.menu.backUp": "立即備份",
+  "backups.menu.delete": "從雲端刪除…",
+  "backups.deleteAllTitle": "要從雲端刪除 {game} 嗎？",
+  "backups.deleteAllBody": {
+    "one": "{game} 在雲端的 1 個副本將被刪除。你裝置上的快照會保留。",
+    "other": "{game} 在雲端的全部 {n} 個副本將被刪除。你裝置上的快照會保留。"
+  },
+  "backups.deleteAllConfirm": "從雲端刪除",
+  "backups.deletedAll": {
+    "one": "已從雲端刪除 {game} 的 1 個副本",
+    "other": "已從雲端刪除 {game} 的 {n} 個副本"
+  },
+  "backups.deletePartial": "已刪除 {game} 的 {total} 個副本中的 {done} 個，其餘無法刪除：{error}",
   "backups.waitingNote": {
     "one": "這台電腦上有 1 個快照等待上傳。",
     "other": "這台電腦上有 {n} 個快照等待上傳。"
@@ -1975,7 +1990,7 @@
   "colourWheel.use": "使用顏色",
   "themeEditor.create": "建立主題",
   "themeEditor.createCard": "建立主題",
-  "themeEditor.edit": "修改 {name}",
+  "themeEditor.edit": "編輯 {name}",
   "themeEditor.back": "返回外觀",
   "themeEditor.name": "名稱",
   "themeEditor.namePlaceholder": "我的主題",
@@ -2055,7 +2070,7 @@
   "themeEditor.import.newerVersion": "這個主題來自較新版本的 OpenSave，請更新後使用。",
   "themeEditor.import.badColours": "這個主題的顏色無法使用。",
   "themeEditor.menu.more": "{name} 的更多操作",
-  "themeEditor.menu.edit": "修改",
+  "themeEditor.menu.edit": "編輯",
   "themeEditor.menu.duplicate": "複製",
   "themeEditor.menu.export": "匯出為檔案",
   "themeEditor.menu.delete": "刪除",

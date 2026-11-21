@@ -20,6 +20,7 @@
   import { t } from '../../lib/i18n.js';
   import Select from '../../components/ui/Select.svelte';
   import CoverImage from '../../components/CoverImage.svelte';
+  import DefaultCover from '../../components/ui/DefaultCover.svelte';
   import AccentWheel from './AccentWheel.svelte';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import Check from 'lucide-svelte/icons/check';
@@ -34,6 +35,29 @@
   export let isNew = true;
 
   const dispatch = createEventDispatcher();
+
+  // The preview stays exactly where it opened while the form scrolls past it:
+  // pinned at the editor's own distance from the top of the scrolling area
+  // (measured on the editor, which does not move with the pin), and as tall
+  // as the rest of that area allows, so in a short window its own end
+  // scrolls inside it instead of hanging below the window for good.
+  function fitRoom(node) {
+    let el = node.parentElement;
+    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    const editor = node.closest('.editor');
+    if (!el || !editor || typeof ResizeObserver === 'undefined') return {};
+    const cs = getComputedStyle(el);
+    const fit = () => {
+      const top = parseFloat(cs.paddingTop);
+      const start = Math.max(0, editor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - top);
+      node.style.setProperty('--stick', `${start}px`);
+      node.style.setProperty('--room', `${el.clientHeight - top - parseFloat(cs.paddingBottom) - start}px`);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return { destroy: () => ro.disconnect() };
+  }
   let draft = structuredClone(sanitizeTheme(theme));
 
   $: look = deriveLook(draft);
@@ -203,14 +227,16 @@
 
       <section>
         <h5>{$t('themeEditor.shape')}</h5>
-        {#each [['roundness', 'sharp', 'round'], ['borders', 'none', 'strong'], ['shadows', 'flat', 'deep']] as [k, lo, hi]}
-          <div class="slider">
-            <span class="sname">{$t('themeEditor.' + k)}</span>
-            <span class="end">{$t('themeEditor.' + lo)}</span>
-            <input type="range" min={SHAPE[k].min} max={SHAPE[k].max} step={SHAPE[k].step} bind:value={draft[k]} style="--at: {pct(draft[k], SHAPE[k])}" aria-label={$t('themeEditor.' + k)} />
-            <span class="end">{$t('themeEditor.' + hi)}</span>
-          </div>
-        {/each}
+        <div class="sliders">
+          {#each [['roundness', 'sharp', 'round'], ['borders', 'none', 'strong'], ['shadows', 'flat', 'deep']] as [k, lo, hi]}
+            <div class="slider">
+              <span class="sname">{$t('themeEditor.' + k)}</span>
+              <span class="end lo">{$t('themeEditor.' + lo)}</span>
+              <input type="range" min={SHAPE[k].min} max={SHAPE[k].max} step={SHAPE[k].step} bind:value={draft[k]} style="--at: {pct(draft[k], SHAPE[k])}" aria-label={$t('themeEditor.' + k)} />
+              <span class="end hi">{$t('themeEditor.' + hi)}</span>
+            </div>
+          {/each}
+        </div>
       </section>
 
       <section>
@@ -229,7 +255,7 @@
       </section>
     </form>
 
-    <aside>
+    <aside use:fitRoom>
       <h5>{$t('themeEditor.preview')}</h5>
       <!-- The app in this theme, small: what each colour does, where. -->
       <div class="pv" style={previewStyle} aria-hidden="true">
@@ -245,7 +271,7 @@
             <span class="pv-btn">{$t('themeEditor.pv.addGame')}</span>
           </span>
           <span class="pv-covers">
-            {#each [0, 1, 2, 3] as i}<span class="pv-cv">{#if covers[i]}<CoverImage src={gameCover(covers[i], true)} alt="" />{/if}</span>{/each}
+            {#each [0, 1, 2, 3] as i}<span class="pv-cv">{#if covers[i]}<DefaultCover name={covers[i].name} /><CoverImage src={gameCover(covers[i], true)} alt="" />{/if}</span>{/each}
           </span>
           <span class="pv-card">
             <span class="pv-line"><b>{$t('themeEditor.pv.synced')}</b><span class="pv-chip">{$t('themeEditor.pv.online')}</span></span>
@@ -282,10 +308,24 @@
 </div>
 
 <style>
+  /* Two columns: the heading, the form and its buttons on the left, the
+     preview on the right beside all three. Pinned (sticky) against the whole
+     editor rather than the form alone, it neither scrolls up at the start nor
+     is pushed up by the buttons at the end. */
   .editor {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 22px;
+    row-gap: 18px;
+    align-items: start;
+  }
+  .editor > .head {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .editor > .foot {
+    grid-column: 1;
+    grid-row: 3;
   }
   .head {
     display: flex;
@@ -325,22 +365,26 @@
     margin-top: 16px;
   }
   .split {
-    display: flex;
-    gap: 22px;
-    align-items: flex-start;
+    display: contents;
   }
   .form {
-    flex: 1;
+    grid-column: 1;
+    grid-row: 2;
     min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
   }
   aside {
-    flex: none;
-    width: 300px;
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    width: 322px;
+    max-height: var(--room, none);
+    overflow-y: auto;
+    padding-left: 22px;
+    border-left: 1px solid var(--border);
     position: sticky;
-    top: 0;
+    top: var(--stick, 0px);
   }
   .pair {
     display: grid;
@@ -464,12 +508,23 @@
   }
 
   /* Shape: three sliders, each between its two ends. */
-  .slider {
+  /* One grid for all three, so every track starts and ends at the same
+     place whatever the words either side of it. */
+  .sliders {
     display: grid;
-    grid-template-columns: 96px auto 1fr auto;
+    grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
     align-items: center;
-    gap: 10px;
-    padding: 6px 0;
+    gap: 14px 10px;
+    padding: 4px 0;
+  }
+  .slider {
+    display: contents;
+  }
+  .sname {
+    padding-right: 8px;
+  }
+  .end.lo {
+    justify-self: end;
   }
   .sname {
     font-weight: 600;
@@ -689,13 +744,24 @@
     cursor: pointer;
   }
 
+  /* Too narrow for two columns: one, with the preview under the form and
+     above its buttons, scrolling with the rest. */
   @media (max-width: 1000px) {
-    .split {
-      flex-direction: column;
+    .editor {
+      grid-template-columns: minmax(0, 1fr);
     }
     aside {
-      width: 100%;
+      grid-column: 1;
+      grid-row: 3;
+      width: auto;
+      max-height: none;
+      overflow: visible;
+      padding-left: 0;
+      border-left: 0;
       position: static;
+    }
+    .editor > .foot {
+      grid-row: 4;
     }
   }
 </style>

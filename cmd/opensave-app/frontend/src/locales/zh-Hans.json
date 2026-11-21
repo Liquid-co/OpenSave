@@ -90,7 +90,7 @@
   "settings.reset.confirmAction": "取消跟踪 {n}",
   "settings.reset.doneToast": "已取消跟踪 {n} 个游戏——快照已保留",
   "settings.general.deviceIdentity": "设备身份",
-  "settings.general.deviceName": "设备名称——其他设备看到你的名字",
+  "settings.general.deviceName": "设备名称",
   "settings.general.deviceType": "设备类型",
   "settings.general.type.desktop": "桌面电脑（Windows / macOS / Linux PC）",
   "settings.general.type.deck": "Steam Deck（SteamOS 掌机）",
@@ -1706,7 +1706,7 @@
   "backups.state.cloudOnly": "这台电脑没有跟踪",
   "backups.openCopies": "{game} 在云端的副本",
   "backups.uploadNow": "立即上传",
-  "backups.shelfHint": "封面后面的叠层会随着副本增多而变厚。点击封面查看全部副本。",
+  "backups.shelfHint": "封面后面的叠层会随着副本增多而变厚。点击封面查看全部副本，右键点击可进行更多操作。",
   "backups.tip.unknownTitle": "这台电脑上没有的副本",
   "backups.trackFirst": "在这台电脑上跟踪此游戏后才能恢复副本",
   "backups.noCopies": "云端还没有副本",
@@ -1718,6 +1718,21 @@
   "backups.deleteTitle": "要从云端删除这个副本吗？",
   "backups.deleteBody": "{game} 来自 {when} 的副本将从云端删除。你设备上的快照会保留。",
   "backups.deleteHint": "从云端删除这个副本",
+  "backups.menu.copies": "查看副本",
+  "backups.menu.openGame": "打开游戏",
+  "backups.menu.backUp": "立即备份",
+  "backups.menu.delete": "从云端删除…",
+  "backups.deleteAllTitle": "要从云端删除 {game} 吗？",
+  "backups.deleteAllBody": {
+    "one": "{game} 在云端的 1 个副本将被删除。你设备上的快照会保留。",
+    "other": "{game} 在云端的全部 {n} 个副本将被删除。你设备上的快照会保留。"
+  },
+  "backups.deleteAllConfirm": "从云端删除",
+  "backups.deletedAll": {
+    "one": "已从云端删除 {game} 的 1 个副本",
+    "other": "已从云端删除 {game} 的 {n} 个副本"
+  },
+  "backups.deletePartial": "已删除 {game} 的 {total} 个副本中的 {done} 个，其余无法删除：{error}",
   "backups.waitingNote": {
     "one": "这台电脑上有 1 个快照等待上传。",
     "other": "这台电脑上有 {n} 个快照等待上传。"
@@ -1975,7 +1990,7 @@
   "colourWheel.use": "使用颜色",
   "themeEditor.create": "创建主题",
   "themeEditor.createCard": "创建主题",
-  "themeEditor.edit": "修改 {name}",
+  "themeEditor.edit": "编辑 {name}",
   "themeEditor.back": "返回外观",
   "themeEditor.name": "名称",
   "themeEditor.namePlaceholder": "我的主题",
@@ -2055,7 +2070,7 @@
   "themeEditor.import.newerVersion": "这个主题来自更新版本的 OpenSave，请更新后使用。",
   "themeEditor.import.badColours": "这个主题的颜色无法使用。",
   "themeEditor.menu.more": "{name} 的更多操作",
-  "themeEditor.menu.edit": "修改",
+  "themeEditor.menu.edit": "编辑",
   "themeEditor.menu.duplicate": "复制",
   "themeEditor.menu.export": "导出为文件",
   "themeEditor.menu.delete": "删除",
