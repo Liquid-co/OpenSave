@@ -18,6 +18,8 @@
 
   /** The game to take the cover from, or null. */
   export let game = null;
+  /** How far down the page it reaches, in pixels. */
+  export let height = 460;
 
   // The shown canvas's own size; the stretch to the page does the rest.
   const W = 160;
@@ -58,7 +60,7 @@
 </script>
 
 {#if mode !== 'off'}
-  <div class="backdrop" aria-hidden="true">
+  <div class="backdrop" aria-hidden="true" style="height: {height}px">
     {#if showCover}
       {#key src}
         <canvas use:painted={src} transition:fade={{ duration: still ? 0 : 600 }}></canvas>

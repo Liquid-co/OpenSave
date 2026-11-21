@@ -6,6 +6,10 @@
 // a copy OpenSave kept just before replacing your save is the one you want
 // after a sync went wrong, and it looked exactly like every other row.
 
+/** How a sync names the snapshot it keeps of another device's save
+ *  (syncengine.MirrorCommentPrefix): "Synced from peer: Steam Deck (…)". */
+export const MIRROR_PREFIX = 'Synced from peer: ';
+
 /** A snapshot ID's own time: IDs are "snap_" and the creation time in ms. */
 export function snapIdTime(id) {
   const m = /^snap_(\d{12,})$/.exec(id ?? '');

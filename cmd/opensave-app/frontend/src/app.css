@@ -80,6 +80,8 @@
   /* Something on its way that needs nothing from you: an upload waiting. */
   --info: #7cc4ff;
   --info-rgb: 124, 196, 255;
+  /* A panel the page's art shows through (the game page's timeline). */
+  --glass: rgba(23, 23, 26, 0.72);
 }
 
 :root[data-theme='light'] {
@@ -115,6 +117,7 @@
   --device-other: #a1a1aa;
   --info: #1d6fb8;
   --info-rgb: 29, 111, 184;
+  --glass: rgba(255, 255, 255, 0.78);
 }
 
 * {

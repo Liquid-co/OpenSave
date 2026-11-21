@@ -50,3 +50,17 @@ func TestSync_TheSnapshotAfterAPullIsUploaded(t *testing.T) {
 	}
 	t.Fatalf("uploads %v, want %s among them", sent, want)
 }
+
+// Which branch the other device answered with is kept, for the game page to
+// say which devices are on which branch as of the last sync.
+func TestSync_NotesTheBranchThePeerIsOn(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.remoteDir, "save.dat", "remote progress")
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	got, err := env.store.PeerBranches("game1")
+	if err != nil || got[env.peer.ID].Branch != "main" || got[env.peer.ID].SeenMs == 0 {
+		t.Fatalf("peer branches %+v (err %v), want main with a time", got, err)
+	}
+}

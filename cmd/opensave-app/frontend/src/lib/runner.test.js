@@ -44,6 +44,16 @@ describe('createRunner', () => {
     expect(get(busy)).toBe(false);
   });
 
+  it('says whether the action ran and succeeded', async () => {
+    const { run } = createRunner(() => {});
+    expect(await run('', async () => {})).toBe(true);
+    expect(
+      await run('', async () => {
+        throw new Error('no');
+      })
+    ).toBe(false);
+  });
+
   it('says nothing on success without a label', async () => {
     const { seen, notify } = notes();
     await createRunner(notify).run('', async () => {});

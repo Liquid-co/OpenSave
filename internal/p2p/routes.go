@@ -959,7 +959,7 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 		}
 		e.Log("info", fmt.Sprintf("peer-requested deletion applied: %s", body.RelPath))
 		asker := "another device"
-		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+		if peer, ok := e.requestPeer(r); ok {
 			asker = peer.Name
 		}
 		e.Sync.NoteEmptiedByPeer(gameID, asker, deleting)
@@ -971,7 +971,7 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 		// edit here reads as a two-way divergence and prompts on a save the
 		// peer never touched. Re-derive it now rather than waiting for some
 		// later sync to happen along and put it right.
-		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+		if peer, ok := e.requestPeer(r); ok {
 			e.refreshLineageAfterDeletion(gameID, peer)
 		}
 	}
@@ -1052,7 +1052,7 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 		// ReportSyncEvent). Still recorded before this returns.
 		answerNow(w)
 		e.reports.once(body.Data, func() {
-			if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			if peer, ok := e.requestPeer(r); ok {
 				e.peerFinishedPulling(gameID, peer, body.Data)
 			}
 		})
@@ -1064,7 +1064,7 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 		claimedHash, _ := body.Data["manifestHash"].(string)
 		answerNow(w)
 		e.reports.once(body.Data, func() {
-			if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			if peer, ok := e.requestPeer(r); ok {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 					defer cancel()
@@ -1083,6 +1083,20 @@ func (e *Engine) handleSyncEvent(w http.ResponseWriter, r *http.Request) {
 
 // peerByAddress finds a paired peer by its request IP, as a sync-engine
 // peer descriptor.
+// requestPeer is the paired device a request came from: the one its
+// signature proved, or, for a build that does not sign, the one at its
+// address. By address alone, two devices behind one address (two installs on
+// one machine, a shared VPN exit) were the same device: one's "in sync"
+// report stamped the other as synced with a game it does not even hold.
+func (e *Engine) requestPeer(r *http.Request) (syncengine.Peer, bool) {
+	if id := lanPeerID(r); id != "" {
+		if p, err := e.Store.GetPeer(id); err == nil {
+			return syncengine.Peer{ID: p.ID, Name: p.Name, Address: p.Address, Port: p.Port, IsWan: p.Address == "relay"}, true
+		}
+	}
+	return e.peerByAddress(clientIP(r))
+}
+
 func (e *Engine) peerByAddress(ip string) (syncengine.Peer, bool) {
 	peers, err := e.Store.ListPeers()
 	if err != nil {

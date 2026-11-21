@@ -1,139 +1,206 @@
 <script>
-  // What a new branch starts from. Fires `create` with true for a copy of the
-  // current save, false for an empty one; `cancel` otherwise.
-  import { dialogOut } from '../../lib/motion.js';
-  import { createEventDispatcher } from 'svelte';
-  import GitBranch from 'lucide-svelte/icons/git-branch';
-  import History from 'lucide-svelte/icons/history';
+  // A new branch: its name, and what it starts from. The two answers do
+  // different things to the save folder on the next switch, so they are two
+  // choices to read, not a tickbox. Fires `create` with { name, copy } (copy:
+  // a copy of the current save, or empty), `cancel` otherwise.
+  import { createEventDispatcher, onMount } from 'svelte';
   import { t } from '../../lib/i18n.js';
+  import Modal from '../../components/ui/Modal.svelte';
+  import ModalFoot from '../../components/ui/ModalFoot.svelte';
+  import GitBranch from 'lucide-svelte/icons/git-branch';
+  import Copy from 'lucide-svelte/icons/copy';
+  import Sparkles from 'lucide-svelte/icons/sparkles';
+  import History from 'lucide-svelte/icons/history';
 
-  export let name = '';
   export let activeBranch = '';
+  export let taken = [];
   export let busy = false;
 
   const dispatch = createEventDispatcher();
+  let name = '';
   // Default to copying: a branch that keeps your save can never surprise you.
-  let copySave = true;
+  let copy = true;
+  let field;
+  onMount(() => field?.focus());
 
-  // Escape closes it, as in every other dialog in the app.
-  const onKeydown = (e) => e.key === 'Escape' && dispatch('cancel');
+  // As the daemon cleans it (snapshot.CleanBranchName): lower case, letters,
+  // digits, - and _.
+  $: clean = name.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  $: problem = !name.trim() ? '' : !clean ? $t('game.newBranch.badName') : taken.includes(clean) ? $t('game.newBranch.taken', { name: clean }) : '';
+  const create = () => clean && !problem && !busy && dispatch('create', { name: clean, copy });
 </script>
 
-<svelte:window on:keydown={onKeydown} />
-
-<!-- The same furniture as the conflict modal on purpose — both are "this is
-     about to touch your save folder, choose". -->
-<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="overlay" on:click={() => dispatch('cancel')} out:dialogOut|global>
-  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="modal card" on:click|stopPropagation>
-    <h3 class="with-icon"><GitBranch size={19} /> {$t('game.newBranch.title', { name })}</h3>
-    <p class="desc">{$t('game.newBranch.question')}</p>
-
-    <label class="choice" class:sel={copySave}>
-      <input type="radio" bind:group={copySave} value={true} />
-      <span class="c-body">
-        <span class="c-title">{$t('game.newBranch.copyTitle')}</span>
-        <span class="c-desc">
-          {$t('game.newBranch.copyDesc', { name })}
-        </span>
-      </span>
+<Modal title={$t('game.newBranch.dialogTitle')} icon={GitBranch} width={560} height="auto" onClose={() => dispatch('cancel')}>
+  <svelte:fragment slot="sub">{$t('game.newBranch.sub')}</svelte:fragment>
+  <div class="body">
+    <label class="field">
+      <span>{$t('game.newBranch.nameLabel')}</span>
+      <input bind:this={field} bind:value={name} placeholder={$t('game.branches.namePlaceholder')} maxlength="60" on:keydown={(e) => e.key === 'Enter' && create()} />
+      {#if problem}<span class="problem" role="alert">{problem}</span>{:else if clean && clean !== name}<span class="hint">{$t('game.newBranch.cleaned', { name: clean })}</span>{/if}
     </label>
 
-    <label class="choice" class:sel={!copySave}>
-      <input type="radio" bind:group={copySave} value={false} />
-      <span class="c-body">
-        <span class="c-title">{$t('game.newBranch.freshTitle')}</span>
-        <span class="c-desc">
-          {$t('game.newBranch.freshDesc1', { name })}<strong>{activeBranch}</strong>{$t('game.newBranch.freshDesc2')}
-        </span>
-      </span>
-    </label>
-
+    <div class="label" id="nb-start">{$t('game.newBranch.question')}</div>
+    <div class="choices" role="radiogroup" aria-labelledby="nb-start">
+      <button class="choice" class:sel={copy} role="radio" aria-checked={copy} on:click={() => (copy = true)}>
+        <span class="ctile"><Copy size={17} /></span>
+        <span class="ctext"><span class="ctitle">{$t('game.newBranch.copyTitle')}<span class="tag">{$t('cloud.import.recommended')}</span></span><span class="cdesc">{$t('game.newBranch.copyDesc', { name: clean || '…' })}</span></span>
+        <span class="radio" aria-hidden="true"></span>
+      </button>
+      <button class="choice" class:sel={!copy} role="radio" aria-checked={!copy} on:click={() => (copy = false)}>
+        <span class="ctile"><Sparkles size={17} /></span>
+        <span class="ctext"><span class="ctitle">{$t('game.newBranch.freshTitle')}</span><span class="cdesc">{$t('game.newBranch.freshDesc1', { name: clean || '…' })}<strong>{activeBranch}</strong>{$t('game.newBranch.freshDesc2')}</span></span>
+        <span class="radio" aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+  <ModalFoot>
+    <span class="note"><History size={15} />{$t('game.newBranch.hint')}</span>
     <div class="actions">
       <button class="btn" on:click={() => dispatch('cancel')}>{$t('common.cancel')}</button>
-      <button class="btn primary" disabled={busy} on:click={() => dispatch('create', copySave)}>{$t('game.branches.create')}</button>
+      <button class="btn primary" disabled={busy || !clean || !!problem} on:click={create}>{$t('game.branches.create')}</button>
     </div>
-    <p class="hint-line">
-      <History size={15} class="inline-icon" /> {$t('game.newBranch.hint')}
-    </p>
-  </div>
-</div>
+  </ModalFoot>
+</Modal>
 
 <style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: var(--overlay);
+  .body {
+    padding: 18px 22px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 90;
+    flex-direction: column;
+    gap: 14px;
   }
-  .modal {
-    width: 520px;
-    max-width: calc(100vw - 48px);
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
-  }
-  .modal h3 {
-    margin-bottom: 8px;
-    overflow-wrap: anywhere;
-  }
-  .desc {
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--text-md);
+    font-weight: 600;
     color: var(--text-dim);
-    font-size: 0.9rem;
-    margin-bottom: 14px;
+  }
+  .problem {
+    font-weight: 400;
+    color: var(--danger-text);
+  }
+  .hint {
+    font-weight: 400;
+    color: var(--text-faint);
+  }
+  .label {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .choices {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
   .choice {
     display: flex;
     align-items: flex-start;
-    gap: 11px;
+    gap: 14px;
+    padding: 14px 16px 14px 14px;
+    border-radius: 14px;
+    border: 1.5px solid var(--border);
     background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 10px;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition:
-      border-color 0.13s ease,
-      background 0.13s ease;
+      border-color 0.18s,
+      background 0.18s,
+      transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .choice:hover {
     border-color: var(--border-strong);
+    transform: translateY(-1px);
   }
   .choice.sel {
     border-color: var(--accent);
-    background: var(--accent-soft);
+    background: linear-gradient(0deg, var(--accent-soft), var(--accent-soft)), var(--bg);
   }
-  .choice input {
-    margin-top: 1px;
+  .ctile {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-active);
+    color: var(--text-dim);
+    transition:
+      background 0.18s,
+      color 0.18s;
   }
-  .c-body {
+  .sel .ctile {
+    background: rgba(var(--accent-rgb), 0.22);
+    color: var(--accent-text);
+  }
+  .ctext {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-width: 0;
   }
-  .c-title {
-    font-size: 0.9rem;
+  .ctitle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-weight: 600;
   }
-  .c-desc {
-    font-size: 0.8rem;
+  .tag {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--success);
+    background: rgba(var(--success-rgb), 0.14);
+  }
+  .cdesc {
+    font-size: var(--text-md);
     color: var(--text-dim);
-    line-height: 1.5;
+    line-height: 1.45;
+  }
+  .radio {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: 2px solid var(--border-strong);
+    transition: border-color 0.18s;
+  }
+  .radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: scale(0);
+    transition: transform 0.2s cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+  .sel .radio {
+    border-color: var(--accent);
+  }
+  .sel .radio::after {
+    transform: scale(1);
+  }
+  .note {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+    line-height: 1.4;
+  }
+  .note :global(svg) {
+    flex: none;
   }
   .actions {
     display: flex;
     gap: 8px;
-    justify-content: flex-end;
-    margin-top: 14px;
-  }
-  .hint-line {
-    margin-top: 12px;
-    font-size: 0.78rem;
-    color: var(--text-faint);
-    line-height: 1.5;
   }
 </style>

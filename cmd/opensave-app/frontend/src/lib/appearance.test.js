@@ -67,10 +67,13 @@ describe('sanitizeAppearance', () => {
       scale: 1.25,
       motion: false,
       controller: 'on',
-      backdrop: 'cover'
+      backdrop: 'cover',
+      coverColours: true
     });
     expect(sanitizeAppearance({ controller: 'sometimes' }).controller).toBe('auto');
     expect(sanitizeAppearance({ backdrop: 'accent' }).backdrop).toBe('accent');
+    expect(sanitizeAppearance({ coverColours: false }).coverColours).toBe(false);
+    expect(sanitizeAppearance({ coverColours: 'yes' }).coverColours).toBe(true);
     expect(sanitizeAppearance({ backdrop: 'video' }).backdrop).toBe('cover');
     expect(sanitizeAppearance({ theme: 'sepia', accent: 'teal', scale: 3 })).toEqual({ ...DEFAULT_APPEARANCE, accent: 'teal' });
     expect(sanitizeAppearance({ scale: '1.1' }).scale).toBe(1.1);
@@ -89,7 +92,7 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover' });
+    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true });
     // A picked colour, and the ones kept beside the presets, come back too.
     saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
     expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });

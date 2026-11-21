@@ -1,11 +1,43 @@
 <script>
-  // Every snapshot of this game, newest first and grouped by day: take one,
-  // restore one, look inside one and put back a single file.
+  // History: every snapshot of this game, newest first and grouped by day.
+  // Each row has one action, Restore; the rest (its files, comparing it,
+  // pinning, a note, deleting) is in its ⋯ menu. The coloured edge says why
+  // it was taken, as everywhere snapshots are listed.
+  //
+  // Taking one: Take snapshot (above the tabs, or the page's ⋯ menu) opens a
+  // line at the top to name it; Enter takes it, named or not.
+  //
+  // Motion: the rows arrive one after another, moving only; a snapshot just
+  // taken lights up as it lands; one opened from elsewhere is marked a moment.
   import { onDestroy, tick as rendered } from 'svelte';
   import { askConfirm, toast } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { groupByDay, snapshotKind, whenLabel } from '../../lib/snapshots.js';
+  import { askRestore } from '../../lib/restore.js';
+  import { t } from '../../lib/i18n.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
+  import { collapse } from '../../lib/motion.js';
+  import Camera from 'lucide-svelte/icons/camera';
+  import Pin from 'lucide-svelte/icons/pin';
+  import PinOff from 'lucide-svelte/icons/pin-off';
+  import Pencil from 'lucide-svelte/icons/pencil';
+  import GitCompareArrows from 'lucide-svelte/icons/git-compare-arrows';
+  import FileText from 'lucide-svelte/icons/file-text';
+  import Trash2 from 'lucide-svelte/icons/trash-2';
+  import MoreHorizontal from 'lucide-svelte/icons/ellipsis';
+  import History from 'lucide-svelte/icons/history';
+  import CompareDialog from './CompareDialog.svelte';
+  import SnapshotFiles from './SnapshotFiles.svelte';
+  import Dropdown from '../../components/ui/Dropdown.svelte';
+
+  export let game;
+  export let runner;
+  /** A snapshot to bring into view and mark, when the page was opened on it. */
+  export let focus = null;
+  /** Changes when Take snapshot was asked for elsewhere on the page. */
+  export let takeRequest = 0;
+  const { busy, run } = runner;
 
   // snapshotKind's fixed titles and tag, said in the reader's language; a
   // daemon comment has no translation and passes through as text.
@@ -14,32 +46,19 @@
       return { title: k.title === 'Snapshot' ? { key: 'snapshots.kind.snapshot' } : { text: k.title }, label: { key: 'activity.event.takenByYou' } };
     if (k.kind === 'auto') return { title: { key: 'activity.event.saveChanged' }, label: { key: 'snapshots.kind.automatic' } };
     if (k.kind === 'start') return { title: { key: 'activity.event.trackingStart' }, label: { key: 'snapshots.kind.automatic' } };
+    if (k.kind === 'session') return { title: { text: k.title }, label: { key: 'backups.kind.session' } };
+    if (k.kind === 'safety') return { title: { text: k.title }, label: { key: 'backups.kind.safety' } };
     return { title: { text: k.title }, label: { key: 'snapshots.kind.automatic' } };
   };
-  import { askRestore } from '../../lib/restore.js';
-  import { t } from '../../lib/i18n.js';
-  import { timeAgoParts } from '../../lib/timeago.js';
-
-  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const say = (x) => x.text ?? $t(x.key, x.params);
   const agoKey = (at, now = Date.now()) => {
     const p = timeAgoParts(at, now);
-    if (p.kind === 'invalid') return { text: p.text };
+    if (p.kind === 'invalid') return p.text;
     const { kind, ...params } = p;
-    return { key: 'timeAgo.' + kind, params };
+    return $t('timeAgo.' + kind, params);
   };
-  import Camera from 'lucide-svelte/icons/camera';
-  import Pin from 'lucide-svelte/icons/pin';
-  import PinOff from 'lucide-svelte/icons/pin-off';
-  import Pencil from 'lucide-svelte/icons/pencil';
-  import GitCompareArrows from 'lucide-svelte/icons/git-compare-arrows';
-  import CompareDialog from './CompareDialog.svelte';
 
-  export let game;
-  export let runner;
-  /** A snapshot to bring into view and mark, when the page was opened on it. */
-  export let focus = null;
-  const { busy, run } = runner;
-
+  // ── Opened on one ──
   let flashing = null;
   let listEl;
   $: if (focus && listEl) showSnapshot(focus);
@@ -54,11 +73,6 @@
     }, 1800);
   }
 
-  let comment = '';
-  let browsing = null; // {snap, files}
-  let comparing = null; // the snapshot Compare was opened from
-
-  // Times are relative to now, and now moves.
   let now = new Date();
   const tick = setInterval(() => (now = new Date()), 30_000);
   onDestroy(() => clearInterval(tick));
@@ -68,35 +82,70 @@
     .flatMap((b) => (b.snapshots ?? []).map((s) => ({ ...s, branch: b.name })))
     .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
   $: groups = groupByDay(allSnapshots, now);
-  // The newest snapshot on the branch being played: what a restore of
-  // "the last good save" would most often reach for.
   $: latestId = allSnapshots.find((s) => s.branch === game.activeBranch)?.id;
 
-  // How a snapshot is named in a question about it.
+  // A snapshot that appears while the page is open is one just taken (or
+  // just arrived): it lights up as it lands.
+  let known = null;
+  let fresh = new Set();
+  $: noteFresh(allSnapshots);
+  function noteFresh(list) {
+    const ids = list.map((s) => s.id);
+    if (known) {
+      const added = ids.filter((id) => !known.has(id));
+      if (added.length) {
+        fresh = new Set([...fresh, ...added]);
+        setTimeout(() => {
+          fresh = new Set([...fresh].filter((id) => !added.includes(id)));
+        }, 1600);
+      }
+    }
+    known = new Set(ids);
+  }
+
   const named = (snap) => $t('game.snapshots.named', { when: whenLabel(snap.timestamp, now) });
 
+  // ── Taking one ──
+  let composing = false;
+  let comment = '';
+  let composer;
+  let lastRequest = takeRequest;
+  $: if (takeRequest !== lastRequest) {
+    lastRequest = takeRequest;
+    compose();
+  }
+  async function compose() {
+    composing = true;
+    await rendered();
+    composer?.focus();
+  }
   const takeSnapshot = () =>
     run($t('game.snapshots.created'), async () => {
       await api.post(`/api/games/${game.id}/snapshot`, { comment });
       comment = '';
+      composing = false;
     });
+  function composerKeys(e) {
+    if (e.key === 'Enter') takeSnapshot();
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      composing = false;
+    }
+  }
 
-  // Asked with what it would change; see lib/restore.js.
+  // ── Acting on one ──
   const rollback = async (snap) => {
     if (!(await askRestore(game, snap))) return;
     return run($t('game.snapshots.restored'), () => api.post(`/api/games/${game.id}/rollback`, { snapshotId: snap.id }));
   };
-
-  // Pinned: no limit, age rule or clean-up removes it. Not a lock — deleting
-  // it by hand still works, and says so first.
+  // Pinned: no limit, age rule or clean-up removes it. Not a lock.
   const togglePin = (snap) =>
     run(snap.pinned ? $t('game.snapshots.unpinned') : $t('game.snapshots.pinned'), () =>
       api.patch(`/api/games/${game.id}/snapshot/${snap.id}`, { pinned: !snap.pinned })
     );
-
   // The note is edited in place; Enter or leaving the field saves it,
   // Escape puts it back.
-  let noting = null; // snapshot id being noted
+  let noting = null;
   let noteDraft = '';
   async function startNote(snap) {
     noting = snap.id;
@@ -117,166 +166,153 @@
       noting = null;
     }
   }
-
   async function deleteSnapshot(snap) {
     const pinnedLine = snap.pinned ? $t('game.snapshots.deletePinned') : '';
     if (!(await askConfirm($t('game.snapshots.deleteConfirm', { snap: named(snap), pinned: pinnedLine }), { title: $t('game.snapshots.deleteTitle'), confirmText: $t('common.delete'), danger: true }))) return;
     run($t('game.snapshots.deleted'), () => api.del(`/api/games/${game.id}/snapshot/${snap.id}`));
   }
 
-  async function browseSnapshot(snap) {
-    try {
-      const files = await api.get(`/api/games/${game.id}/snapshot/${snap.id}/files`);
-      browsing = { snap, files };
-    } catch (e) {
-      toast(e.message, 'error');
-    }
-  }
-
-  const restoreFile = async (relPath) => {
-    if (!(await askConfirm($t('game.snapshots.fileRestoreConfirm', { path: relPath, snap: named(browsing.snap) }), { title: $t('game.snapshots.fileRestoreTitle'), confirmText: $t('game.snapshots.restore') }))) return;
-    return run($t('game.snapshots.fileRestored', { path: relPath }), () =>
-      api.post(`/api/games/${game.id}/snapshot/${browsing.snap.id}/restore-file`, { relPath })
-    );
-  };
+  let filesOf = null; // the snapshot whose files are open
+  let comparing = null;
+  let menuFor = null; // the row whose ⋯ menu is open
+  const menuOf = (snap) => [
+    { label: $t('game.snapshots.files'), icon: FileText, run: () => (filesOf = snap) },
+    ...(allSnapshots.length > 1 ? [{ label: $t('game.snapshots.compare'), icon: GitCompareArrows, run: () => (comparing = snap) }] : []),
+    { label: snap.pinned ? $t('game.snapshots.unpin') : $t('game.snapshots.pin'), icon: snap.pinned ? PinOff : Pin, hint: snap.pinned ? '' : $t('game.history.pinHint'), run: () => togglePin(snap) },
+    { label: snap.note ? $t('game.snapshots.editNote') : $t('game.snapshots.addNote'), icon: Pencil, run: () => startNote(snap) },
+    null,
+    { label: $t('common.delete'), icon: Trash2, danger: true, run: () => deleteSnapshot(snap) }
+  ];
 </script>
 
-<div class="card snap-new">
-  <input placeholder={$t('game.snapshots.commentPlaceholder')} bind:value={comment} on:keydown={(e) => e.key === 'Enter' && takeSnapshot()} />
-  <button class="btn primary" disabled={$busy} on:click={takeSnapshot}><Camera size={16} />{$t('game.snapshots.takeNow')}</button>
-</div>
-
-{#if browsing}
-  <div class="card browse">
-    <div class="browse-head">
-      <h3>{$t('game.snapshots.filesIn', { snap: named(browsing.snap) })}</h3>
-      <button class="btn small" on:click={() => (browsing = null)}>{$t('common.close')}</button>
-    </div>
-    {#each browsing.files.filter((f) => !f.isDir) as f}
-      <div class="file-row">
-        <span class="file-path">{f.path}</span>
-        <span class="file-size">{fmtSize(f.size)}</span>
-        <button class="btn small" disabled={$busy} on:click={() => restoreFile(f.path)}>{$t('game.snapshots.restoreFile')}</button>
-      </div>
-    {/each}
+{#if composing}
+  <div class="composer" transition:collapse>
+    <span class="ctile"><Camera size={17} /></span>
+    <input bind:this={composer} placeholder={$t('game.snapshots.commentPlaceholder')} bind:value={comment} on:keydown={composerKeys} maxlength="200" />
+    <button class="btn primary" disabled={$busy} on:click={takeSnapshot}>{$t('game.snapshots.takeNow')}</button>
+    <button class="btn ghost" on:click={() => (composing = false)}>{$t('common.cancel')}</button>
   </div>
 {/if}
 
+{#if filesOf}
+  <SnapshotFiles {game} {runner} snap={filesOf} on:close={() => (filesOf = null)} />
+{/if}
 {#if comparing}
   <CompareDialog {game} snapshots={allSnapshots} start={comparing} onClose={() => (comparing = null)} />
 {/if}
 
 {#if allSnapshots.length === 0}
-  <div class="empty"><h3>{$t('game.snapshots.emptyTitle')}</h3><p>{$t('game.snapshots.emptyBody')}</p></div>
+  <div class="empty">
+    <span class="empty-icon"><History size={24} /></span>
+    <h3>{$t('game.snapshots.emptyTitle')}</h3>
+    <p>{$t('game.snapshots.emptyBody')}</p>
+  </div>
 {:else}
-  <div bind:this={listEl}>
-  {#each groups as group (group.day)}
-    <!-- dayLabel()'s fixed names, said in the reader's language; the rest is
-         already a date in the OS locale. -->
-    <h4 class="day">{group.day === 'Today' ? $t('snapshots.day.today') : group.day === 'Yesterday' ? $t('snapshots.day.yesterday') : group.day}</h4>
-    <div class="list">
-      {#each group.snaps as snap (snap.id)}
-        {@const k = snapshotKind(snap, now)}
-        {@const said = kindSay(k)}
-        {@const w = agoKey(snap.timestamp, now.getTime())}
-        <div class="row kind-{k.kind}" class:open={browsing?.snap.id === snap.id} class:flash={flashing === snap.id} data-snap={snap.id}>
-          <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
-            <span class="time">{new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
-            <span class="ago">{w.text ?? $t(w.key, w.params)}</span>
-          </div>
-          <div class="info">
-            <div class="title">
-              <span class="title-text">{said.title.text ?? $t(said.title.key, said.title.params)}</span>
-              {#if snap.id === latestId}<span class="tag latest">{$t('game.snapshots.latest')}</span>{/if}
-              {#if snap.problem}<span class="tag damaged" title={snap.problem}>{$t('game.snapshots.damaged')}</span>{/if}
+  <div bind:this={listEl} class="days">
+    {#each groups as group, gi (group.day)}
+      <section class="group" style="--g: {Math.min(gi, 6)}">
+        <h4 class="day">{group.day === 'Today' ? $t('snapshots.day.today') : group.day === 'Yesterday' ? $t('snapshots.day.yesterday') : group.day}</h4>
+        <div class="list">
+          {#each group.snaps as snap, si (snap.id)}
+            {@const k = snapshotKind(snap, now)}
+            {@const s = kindSay(k)}
+            <div class="row kind-{k.kind}" class:flash={flashing === snap.id} class:fresh={fresh.has(snap.id)} data-snap={snap.id} style="--i: {Math.min(si, 10)}">
+              <div class="when" title={new Date(snap.timestamp).toLocaleString()}>
+                <span class="time">{new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
+                <span class="ago">{agoKey(snap.timestamp, now.getTime())}</span>
+              </div>
+              <div class="info">
+                <div class="title">
+                  <span class="title-text">{say(s.title)}</span>
+                  {#if snap.id === latestId}<span class="tag latest">{$t('game.snapshots.latest')}</span>{/if}
+                  {#if snap.problem}<span class="tag damaged" title={snap.problem}>{$t('game.snapshots.damaged')}</span>{/if}
+                  {#if snap.pinned}<span class="tag pinned"><Pin size={10} strokeWidth={2.6} />{$t('game.snapshots.pinnedTag')}</span>{/if}
+                </div>
+                {#if noting === snap.id}
+                  <input
+                    id="note-{snap.id}"
+                    class="note-input"
+                    placeholder={$t('game.snapshots.notePlaceholder')}
+                    maxlength="500"
+                    bind:value={noteDraft}
+                    on:keydown={(e) => noteKeydown(e, snap)}
+                    on:blur={() => saveNote(snap)}
+                  />
+                {:else if snap.note}
+                  <button class="note" title={$t('game.snapshots.editNote')} on:click={() => startNote(snap)}>{snap.note}</button>
+                {/if}
+                <div class="meta">
+                  <span class="tag kind">{say(s.label)}</span>
+                  {#if branchCount > 1}<span class="tag">{snap.branch}</span>{/if}
+                  <span>{fmtSize(snap.sizeBytes)}</span>
+                </div>
+              </div>
+              <div class="actions">
+                <button
+                  class="btn small restore"
+                  disabled={$busy || !!snap.problem}
+                  title={snap.problem ? $t('game.snapshots.cannotRestore', { problem: snap.problem }) : undefined}
+                  on:click={() => rollback(snap)}>{$t('game.snapshots.restore')}</button
+                >
+                <span class="more-wrap">
+                  <button
+                    class="more"
+                    class:on={menuFor === snap.id}
+                    aria-label={$t('game.history.more', { snap: named(snap) })}
+                    aria-haspopup="menu"
+                    aria-expanded={menuFor === snap.id}
+                    on:click={() => (menuFor = menuFor === snap.id ? null : snap.id)}><MoreHorizontal size={17} /></button
+                  >
+                  {#if menuFor === snap.id}
+                    <Dropdown items={menuOf(snap)} open={true} label={$t('game.history.more', { snap: named(snap) })} on:close={() => (menuFor = null)} />
+                  {/if}
+                </span>
+              </div>
             </div>
-            {#if noting === snap.id}
-              <input
-                id="note-{snap.id}"
-                class="note-input"
-                placeholder={$t('game.snapshots.notePlaceholder')}
-                maxlength="500"
-                bind:value={noteDraft}
-                on:keydown={(e) => noteKeydown(e, snap)}
-                on:blur={() => saveNote(snap)}
-              />
-            {:else if snap.note}
-              <button class="note" title={$t('game.snapshots.editNote')} on:click={() => startNote(snap)}>{snap.note}</button>
-            {/if}
-            <div class="meta">
-              {#if snap.pinned}<span class="tag pinned"><Pin size={10} strokeWidth={2.6} />{$t('game.snapshots.pinnedTag')}</span>{/if}
-              <span class="tag kind">{said.label.text ?? $t(said.label.key)}</span>
-              {#if branchCount > 1}<span class="tag">{snap.branch}</span>{/if}
-              <span>{fmtSize(snap.sizeBytes)}</span>
-            </div>
-          </div>
-          <div class="actions">
-            <button
-              class="btn small ghost icon"
-              class:on={snap.pinned}
-              disabled={$busy}
-              title={snap.pinned ? $t('game.snapshots.unpinTitle') : $t('game.snapshots.pinTitle')}
-              aria-label={snap.pinned ? $t('game.snapshots.unpin') : $t('game.snapshots.pin')}
-              aria-pressed={snap.pinned}
-              on:click={() => togglePin(snap)}
-            >
-              <svelte:component this={snap.pinned ? PinOff : Pin} size={14} />
-            </button>
-            <button class="btn small ghost icon" title={snap.note ? $t('game.snapshots.editNote') : $t('game.snapshots.addNote')} aria-label={$t('game.snapshots.noteAria')} on:click={() => startNote(snap)}>
-              <Pencil size={13} />
-            </button>
-            {#if allSnapshots.length > 1}
-              <button
-                class="btn small ghost icon"
-                title={$t('game.snapshots.compareTitle')}
-                aria-label={$t('game.snapshots.compare')}
-                on:click={() => (comparing = snap)}
-              >
-                <GitCompareArrows size={14} />
-              </button>
-            {/if}
-            <button class="btn small" on:click={() => browseSnapshot(snap)}>{$t('game.snapshots.files')}</button>
-            <button
-              class="btn small"
-              disabled={$busy || !!snap.problem}
-              title={snap.problem ? $t('game.snapshots.cannotRestore', { problem: snap.problem }) : undefined}
-              on:click={() => rollback(snap)}>{$t('game.snapshots.restore')}</button
-            >
-            <button class="btn small ghost-danger" disabled={$busy} title={$t('game.snapshots.deleteHint')} on:click={() => deleteSnapshot(snap)}>{$t('common.delete')}</button>
-          </div>
+          {/each}
         </div>
-      {/each}
-    </div>
-  {/each}
+      </section>
+    {/each}
   </div>
 {/if}
 
 <style>
-  .snap-new {
+  .composer {
     display: flex;
+    align-items: center;
     gap: 10px;
-    padding: 14px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
+    padding: 10px 10px 10px 12px;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(var(--game-accent-rgb, var(--accent-rgb)), 0.5);
+    background: var(--bg-raised);
   }
-  .snap-new input {
+  .ctile {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: rgba(var(--game-accent-rgb, var(--accent-rgb)), 0.18);
+    color: var(--game-text, var(--accent-text));
+  }
+  .composer input {
     flex: 1;
-    padding: 8px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--text);
-    outline: none;
+    min-width: 0;
+  }
+  .days {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
   }
   .day {
-    font-size: 0.78rem;
+    margin: 0 0 8px 2px;
+    font-size: var(--text-md);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     color: var(--text-faint);
-    margin: 18px 0 8px;
-  }
-  .day:first-of-type {
-    margin-top: 0;
+    animation: arrive 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--g) * 50ms);
   }
   .list {
     display: flex;
@@ -284,67 +320,95 @@
     background: var(--bg-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-  /* Opened on this one (from Ctrl+K): marked for a moment. */
-  .row.flash {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: var(--accent-soft);
   }
   .row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 11px 16px;
+    min-height: 56px;
+    padding: 8px 12px 8px 16px;
     border-top: 1px solid var(--border);
-    border-left: 3px solid transparent;
+    box-shadow: inset 3px 0 0 transparent;
+    animation: arrive 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--g) * 50ms + var(--i) * 25ms);
+    transition:
+      background 0.15s,
+      box-shadow 0.15s;
   }
   .row:first-child {
     border-top: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
-  .row:hover,
-  .row.open {
+  .row:last-child {
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+  .row:only-child {
+    border-radius: var(--radius-lg);
+  }
+  .row:hover {
     background: var(--bg-hover);
   }
-  /* A copy kept before OpenSave replaced the save is the one you look for
-     after something went wrong, so it is marked out from the rest. */
-  .row.kind-safety {
-    border-left-color: var(--warn);
-  }
+  /* Why it was taken, on its edge: by you accent, after playing green, a
+     safety copy amber. Plain automatic ones have none. */
   .row.kind-manual {
-    border-left-color: var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
-  /* The save as a play session left it: a save point by nature. */
   .row.kind-session {
-    border-left-color: var(--success);
+    box-shadow: inset 3px 0 0 var(--success);
+  }
+  .row.kind-safety {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  /* Opened on this one (from Ctrl+K or the timeline): marked a moment. */
+  .row.flash {
+    background: rgba(var(--game-accent-rgb, var(--accent-rgb)), 0.14);
+  }
+  /* Just taken: it lights up as it lands, then settles. */
+  .row.fresh {
+    animation: landed 1.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  @keyframes landed {
+    0% {
+      transform: translateY(-6px);
+      background: rgba(var(--game-accent-rgb, var(--accent-rgb)), 0.22);
+    }
+    30% {
+      transform: none;
+    }
+    100% {
+      background: transparent;
+    }
   }
   .when {
     display: flex;
     flex-direction: column;
-    width: 78px;
+    width: 82px;
     flex-shrink: 0;
   }
   .time {
     font-weight: 600;
-    font-size: 0.9rem;
     font-variant-numeric: tabular-nums;
   }
   .ago {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--text-faint);
   }
   .info {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   }
   .title {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.88rem;
-    margin-bottom: 3px;
+    min-width: 0;
   }
   .title-text {
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -353,14 +417,15 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.74rem;
+    font-size: var(--text-xs);
     color: var(--text-faint);
   }
   .tag {
+    flex: none;
     border: 1px solid var(--border-strong);
     border-radius: 999px;
     padding: 0 7px;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.6;
     color: var(--text-dim);
     white-space: nowrap;
@@ -393,19 +458,15 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
-  .btn.icon.on {
-    color: var(--accent-text);
-  }
   .note {
     display: block;
     max-width: 100%;
-    margin: 1px 0 3px;
     padding: 0;
     border: none;
     background: none;
     color: var(--text-dim);
     font: inherit;
-    font-size: 0.82rem;
+    font-size: var(--text-md);
     font-style: italic;
     text-align: left;
     white-space: nowrap;
@@ -418,61 +479,70 @@
   }
   .note-input {
     width: 100%;
-    margin: 3px 0 4px;
-    padding: 4px 8px;
-    background: var(--bg);
-    border: 1px solid var(--accent);
-    border-radius: 7px;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.84rem;
-    outline: none;
+    margin: 2px 0;
   }
   .actions {
     display: flex;
+    align-items: center;
     gap: 6px;
     flex-shrink: 0;
   }
-  /* Delete is available, not suggested: quiet until pointed at. */
-  .ghost-danger {
+  /* Restore shows on the row pointed at, or the one with focus inside;
+     always there to a keyboard or a touch screen. */
+  .restore {
+    opacity: 0.0001;
+    transition: opacity 0.15s;
+  }
+  .row:hover .restore,
+  .row:focus-within .restore,
+  .row.flash .restore {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .restore {
+      opacity: 1;
+    }
+  }
+  .more-wrap {
+    position: relative;
+  }
+  .more {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
     background: transparent;
-    border-color: transparent;
     color: var(--text-faint);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
-  .ghost-danger:hover:not(:disabled) {
-    background: rgba(var(--danger-rgb), 0.16);
-    border-color: rgba(var(--danger-rgb), 0.4);
-    color: var(--danger-text);
+  .more:hover,
+  .more.on {
+    background: var(--bg-active);
+    color: var(--text);
   }
-  .browse {
-    margin-bottom: 18px;
-  }
-  .browse-head {
+  .empty {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
     align-items: center;
-    margin-bottom: 10px;
+    gap: 8px;
+    padding: 36px 20px;
+    border-radius: var(--radius-lg);
+    border: 1.5px dashed var(--border-strong);
+    text-align: center;
+    color: var(--text-dim);
   }
-  .file-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 4px;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.85rem;
-  }
-  .file-row:last-child {
-    border-bottom: none;
-  }
-  .file-path {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .file-size {
+  .empty-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-active);
     color: var(--text-faint);
-    font-size: 0.78rem;
   }
 </style>

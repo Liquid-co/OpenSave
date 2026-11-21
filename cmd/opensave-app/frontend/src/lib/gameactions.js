@@ -98,7 +98,7 @@ export async function runGameAction(id, game) {
       return collectionsDialog.set(game);
     case 'rename':
       // On the game's page, where its name is: `rename` opens the name for
-      // editing there (GameHeader). A new value each time, so asking twice
+      // editing there (GameHero). A new value each time, so asking twice
       // for the same game opens it again.
       return navigate('game', { gameId: game.id, rename: Date.now() });
   }

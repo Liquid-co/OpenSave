@@ -55,7 +55,10 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   scale: 1,
   motion: true,
   controller: 'auto',
-  backdrop: 'cover'
+  backdrop: 'cover',
+  // A game's page takes its Play button and tab colours from the cover
+  // (lib/covertint.js), rather than the accent.
+  coverColours: true
 });
 
 // Controller navigation (lib/controller.js): on by itself when a controller is
@@ -108,7 +111,8 @@ export function sanitizeAppearance(raw) {
     scale: SCALES.includes(scale) ? scale : DEFAULT_APPEARANCE.scale,
     motion: typeof v.motion === 'boolean' ? v.motion : DEFAULT_APPEARANCE.motion,
     controller: CONTROLLER_CHOICES.includes(v.controller) ? v.controller : DEFAULT_APPEARANCE.controller,
-    backdrop: v.backdrop in BACKDROPS ? v.backdrop : DEFAULT_APPEARANCE.backdrop
+    backdrop: v.backdrop in BACKDROPS ? v.backdrop : DEFAULT_APPEARANCE.backdrop,
+    coverColours: typeof v.coverColours === 'boolean' ? v.coverColours : DEFAULT_APPEARANCE.coverColours
   };
 }
 

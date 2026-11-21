@@ -150,6 +150,12 @@
 </div>
 
 <label class="check motion">
+  <input type="checkbox" checked={$appearance.coverColours} on:change={(e) => set({ coverColours: e.currentTarget.checked })} />
+  {$t('settings.appearance.coverColours')}
+</label>
+<p class="hint">{$t('settings.appearance.coverColoursHint')}</p>
+
+<label class="check">
   <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
   {$t('settings.appearance.animations')}
 </label>

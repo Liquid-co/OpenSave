@@ -1,9 +1,8 @@
 <script>
-  // Linking this game with the same game tracked under another name, and
-  // stopping tracking it.
+  // Linked copies: this game linked with the same game tracked under another
+  // name, here or on a paired device. (Stopping tracking it is in Settings.)
   import { games, askConfirm } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
-  import { untrackGame } from '../../lib/gameactions.js';
   import { t } from '../../lib/i18n.js';
   import Link from 'lucide-svelte/icons/link';
   import LinkPicker from './LinkPicker.svelte';
@@ -93,12 +92,10 @@
     await loadAliases();
   }
 
-  // Undone from the toast rather than confirmed first; see lib/undo.js.
-  const untrack = () => untrackGame(game);
 </script>
 
-<div class="card">
-  <h3>{$t('game.manage.linkedCopies')}</h3>
+<section class="card linked">
+  <h3><Link size={16} />{$t('game.manage.linkedCopies')}</h3>
   <p class="desc">
     {$t('game.manage.linkedDesc')}
   </p>
@@ -134,21 +131,27 @@
       {$t('game.manage.nothingToLink')}
     </p>
   {/if}
-</div>
-
-<div class="card" style="margin-top: 16px;">
-  <h3>{$t('game.manage.stopTracking')}</h3>
-  <p class="desc">
-    {$t('game.manage.stopTrackingDesc', { name: game.name })}
-  </p>
-  <button class="btn danger" disabled={$busy} on:click={untrack}>{$t('game.manage.stopTrackingBtn')}</button>
-</div>
+</section>
 
 <style>
+  .linked {
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+  }
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+  h3 :global(svg) {
+    color: var(--text-faint);
+  }
   .desc {
     color: var(--text-dim);
-    font-size: 0.88rem;
-    margin: 8px 0 14px;
+    font-size: var(--text-md);
+    margin: 6px 0 14px;
   }
   .alias-list {
     display: flex;
@@ -167,8 +170,7 @@
     border-radius: var(--radius);
   }
   .alias-id {
-    font-family: monospace;
-    font-size: 0.82rem;
+    font-size: var(--text-md);
     color: var(--text-dim);
     white-space: nowrap;
     overflow: hidden;

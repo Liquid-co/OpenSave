@@ -551,6 +551,11 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 	if lastSyncedWith == nil {
 		lastSyncedWith = map[string]string{}
 	}
+	// The branch each paired device was on at its last sync of this game.
+	peerBranches, _ := s.Daemon.Store.PeerBranches(g.ID)
+	if peerBranches == nil {
+		peerBranches = map[string]store.PeerBranch{}
+	}
 	// Play: when it was last played here and for how long in all, and
 	// whether it is being played now (see daemon/sessions.go).
 	play, _ := s.Daemon.Store.PlayStatsFor(g.ID)
@@ -584,6 +589,7 @@ func (s *Server) gamePayload(g store.Game) map[string]any {
 		"branches":           branches,
 		"createdAt":          g.CreatedAt,
 		"lastSyncedWith":     lastSyncedWith,
+		"peerBranches":       peerBranches,
 		// The save folder is not there — gone, moved, or on a drive not
 		// plugged in. Nothing is watched or synced for it until it is back.
 		"savePathMissing": daemon.SaveFolderMissing(g.SavePath),

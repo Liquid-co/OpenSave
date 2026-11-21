@@ -530,6 +530,9 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		return Result{}, fmt.Errorf("fetch remote manifest: %w", err)
 	}
 	e.peerNotPlaying(gameID, peer.ID)
+	// Which branch the peer is on, for the game page to say so. Only ever
+	// shown as "at the last sync"; a failure to note it changes nothing.
+	_ = e.Store.NotePeerBranch(gameID, peer.ID, remoteData.ActiveBranch, time.Now().UnixMilli())
 
 	// 2. Branch alignment: local follows the remote's active branch.
 	//
