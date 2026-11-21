@@ -5,21 +5,26 @@
   // the sidebar. With a dialog open they move to the top of the window,
   // clear of the dialog's buttons.
   //
+  // A stack: the newest in front, each older one a step behind it — smaller,
+  // further back, darker, only its edge showing (lib/toaststack.js). A new
+  // one pushes the rest back; one that goes lets the rest come forward.
+  // Pointing at the stack, focusing into it, or tapping it on a touch screen
+  // opens it into a column, and holds every toast in it.
+  //
   // What: about a game, its art, with a small badge for what happened;
   // otherwise a tinted icon. The colour of the kind is only there and in the
   // thin bar along the foot, which shrinks as the toast's time runs out (or
   // fills, for something under way). A title, a second line, the one thing
   // to do next, and a close button on every one.
   //
-  // Away: the close button, Escape while it has focus, or a swipe sideways.
-  //
-  // More than three fold into a stack: the newest in front, the rest behind
-  // it, all of them shown while the pointer is on the stack or focus is in it.
+  // Away: the close button, Escape while it has focus, or a throw to either
+  // side — it tilts as it is dragged, and goes if let go far enough or fast
+  // enough; otherwise it springs back.
   //
   // Screen readers hear each toast once, when it arrives (errors at once);
   // a toast whose bar moves is not read again for it.
   import { toasts, games } from '../lib/stores.js';
-  import { MAX_SHOWN } from '../lib/toasts.js';
+  import { stackPlaces, STACK } from '../lib/toaststack.js';
   import { openDialogs } from '../lib/dialogs.js';
   import { createHold } from '../lib/toasthold.js';
   import { get } from 'svelte/store';
@@ -28,7 +33,6 @@
   // `t` is a toast in the loop below, so the store comes in under its own name.
   import { t as i18n } from '../lib/i18n.js';
   import { onDestroy } from 'svelte';
-  import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import CoverImage from './CoverImage.svelte';
   import X from 'lucide-svelte/icons/x';
@@ -48,11 +52,19 @@
 
   $: top = $openDialogs > 0;
   $: list = $toasts;
-  $: folded = list.length > MAX_SHOWN;
-  let open = false;
-  // Newest nearest the edge they sit on.
-  $: shown = folded && !open ? list.slice(-1) : list;
-  $: if (!folded) open = false;
+  // Newest first: the front of the stack.
+  $: order = list.slice().reverse();
+
+  // Each toast's own height, as drawn (its row, and the border round it).
+  let rows = {};
+  $: heights = Object.fromEntries(Object.entries(rows).map(([id, h]) => [id, h + 2]));
+  $: for (const id of Object.keys(rows)) if (!list.some((t) => String(t.id) === id)) delete rows[id];
+
+  let holding = false;
+  $: open = holding && order.length > 1;
+  $: stack = stackPlaces(order, heights, { open });
+  // Away from the edge they sit on: up from the bottom, down from the top.
+  $: away = top ? 1 : -1;
 
   const gameOf = (t) => (t.game == null ? null : typeof t.game === 'string' ? ($games[t.game] ?? null) : t.game);
   // A game's art for what happened to it; an icon for what went wrong or is
@@ -61,8 +73,8 @@
   // Errors with something to try list their buttons under the words.
   const below = (t) => t.kind === 'error' && (!!t.retry || !!t.action);
   const pct = (p) => (p?.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0);
-  // How much of a toast's time has gone: the bar of one drawn again (a stack
-  // opening) carries on from there.
+  // How much of a toast's time has gone: the bar of one drawn again carries
+  // on from there.
   const spent = (t) => Math.min(t.life, t.life - t.left + (t.held ? 0 : Date.now() - t.woundAt));
 
   function act(t) {
@@ -100,38 +112,87 @@
     };
   }
 
-  // ── Swiping one away ──
-  // Sideways, from anywhere on it but its buttons; let go past a short way,
-  // or flicked, and it goes in that direction. Otherwise it springs back.
-  const swiped = new Map(); // id -> how far it had gone, for its way out
+  // ── Throwing one away ──
+  // The front one, or any of them while the stack is open. It follows the
+  // pointer, tilting the way it goes and fading with distance — and the one
+  // behind it comes forward as it goes, its words showing through, so it is
+  // already arriving when this one leaves. Let go past a third of its width,
+  // or thrown, it flies off that side; otherwise both spring back. A tap on a
+  // closed stack (on a touch screen, where nothing hovers) opens it instead.
+  const thrown = new Set();
   let drag = null;
-  function grab(e, t) {
+  function grab(e, t, i) {
     if (e.button !== 0 || e.target.closest('button')) return;
-    drag = { id: t.id, el: e.currentTarget, x0: e.clientX, dx: 0, at: performance.now() };
+    if (!open && i > 0) return;
+    const next = !open && i === 0 ? e.currentTarget.parentElement.nextElementSibling?.querySelector('.toast') : null;
+    drag = { id: t.id, el: e.currentTarget, next, x0: e.clientX, dx: 0, vx: 0, at: performance.now(), moved: false, touch: e.pointerType !== 'mouse' };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
   }
   function pull(e) {
     if (!drag) return;
-    drag.dx = e.clientX - drag.x0;
-    drag.el.style.transform = `translateX(${drag.dx}px)`;
-    drag.el.style.opacity = String(Math.max(0.2, 1 - Math.abs(drag.dx) / 260));
+    const dx = e.clientX - drag.x0;
+    if (!drag.moved && Math.abs(dx) < 5) return;
+    const now = performance.now();
+    if (!drag.moved) {
+      drag.moved = true;
+      drag.el.style.transition = 'none';
+      drag.el.style.animation = 'none';
+      if (drag.next) drag.next.style.transition = 'none';
+    }
+    drag.vx = (dx - drag.dx) / Math.max(now - drag.at, 1);
+    drag.at = now;
+    drag.dx = dx;
+    const w = drag.el.offsetWidth || 1;
+    drag.el.style.transform = `translateX(${dx}px) rotate(${(dx / w) * 9}deg)`;
+    drag.el.style.opacity = String(1 - Math.min(Math.abs(dx) / (w * 1.3), 0.65));
+    if (drag.next) bringForward(drag.next, Math.min(Math.abs(dx) / (w / 3), 1));
+  }
+  // The card behind, `k` of the way to the front: moved and grown within its
+  // place (which the stack still says is one back), and lit, its words
+  // showing.
+  function bringForward(el, k) {
+    el.style.setProperty('--lift', String(k));
+    el.style.transform = k ? `translateY(${-away * STACK.peek * k}px) scale(${1 + (1 / (1 - STACK.shrink) - 1) * k})` : '';
+  }
+  function settleBack(el) {
+    if (!el) return;
+    el.style.transition = 'transform 0.5s var(--settle)';
+    bringForward(el, 0);
+    el.style.removeProperty('--lift');
+    setTimeout(() => (el.style.transition = ''), 520);
   }
   function letGo() {
     if (!drag) return;
-    const { id, el, dx, at } = drag;
+    const { id, el, next, dx, vx, at, moved, touch } = drag;
     drag = null;
-    const speed = Math.abs(dx) / Math.max(performance.now() - at, 1);
-    if (Math.abs(dx) > 96 || (Math.abs(dx) > 24 && speed > 0.55)) {
-      swiped.set(id, dx);
-      toasts.close(id);
+    if (!moved) {
+      if (touch && !open && list.length > 1) pinOpen();
       return;
     }
-    el.style.transition = 'transform 0.3s cubic-bezier(0.3, 1.4, 0.5, 1), opacity 0.2s';
+    const w = el.offsetWidth || 1;
+    // A throw is still moving when it is let go.
+    const flung = performance.now() - at < 90 && Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx);
+    if (Math.abs(dx) > w / 3 || flung) {
+      const side = Math.sign(dx) || 1;
+      el.style.transition = 'transform 0.4s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.4s ease-out';
+      el.style.transform = `translateX(${side * (w + 140)}px) rotate(${side * 18}deg)`;
+      el.style.opacity = '0';
+      thrown.add(id);
+      // Gone from the stack while still in flight, so the one behind takes
+      // the front as it leaves, from where the drag had brought it.
+      setTimeout(() => {
+        toasts.close(id);
+        settleBack(next);
+      }, 80);
+      return;
+    }
+    el.style.transition = 'transform 0.55s cubic-bezier(0.25, 1.6, 0.4, 1), opacity 0.25s';
     el.style.transform = '';
     el.style.opacity = '';
-    setTimeout(() => (el.style.transition = ''), 320);
+    setTimeout(() => (el.style.transition = ''), 560);
+    settleBack(next);
   }
   function keys(e, t) {
     if (e.key === 'Escape') {
@@ -152,45 +213,41 @@
     else polite = said;
   }
 
-  // While the pointer or focus is on the toasts, none of them runs out —
-  // not only the one pointed at: an opened stack is being read as a whole,
-  // and one arriving under the pointer is in front of someone reading. The
-  // stack opens meanwhile.
+  // While the pointer or focus is on the toasts, none of them runs out and
+  // the stack stands open.
   //
-  // The pointer's leaving is not left to mouseleave alone. The toasts' box
+  // The pointer's leaving is not left to pointerleave alone. The toasts' box
   // takes no pointer events itself (the page shows through between them), a
   // toast that runs out goes from under a still pointer, and a window can
   // lose the pointer without saying so — any of which left them held for
   // good. So while it is in, every move is checked against the box, and
   // leaving the window counts as leaving.
   let box;
-  let holding = false;
   const hold = createHold({
     onChange(on) {
       holding = on;
       const all = get(toasts);
-      if (on) {
-        for (const t of all) toasts.pause(t.id);
-        if (all.length > MAX_SHOWN) open = true;
-      } else {
-        open = false;
+      if (on) for (const t of all) toasts.pause(t.id);
+      else {
         for (const t of all) toasts.resume(t.id);
         unwatch();
       }
     }
   });
-  // One arriving while they are held is held too, and opens the stack it
-  // makes.
+  // One arriving while they are held is held too.
   $: if (holding) for (const t of list) if (!t.held) toasts.pause(t.id);
-  $: if (holding && folded) open = true;
+  // Nothing left to hold open.
+  $: if (!list.length) unpin();
 
-  function pointerEnter() {
+  function pointerEnter(e) {
+    if (e.pointerType !== 'mouse') return;
     hold.pointerIn();
     document.addEventListener('pointermove', watch, true);
     document.documentElement.addEventListener('pointerleave', hold.pointerOut);
     window.addEventListener('blur', hold.pointerOut);
   }
   function watch(e) {
+    if (e.pointerType !== 'mouse') return;
     if (box?.contains(e.target)) hold.pointerIn();
     else hold.pointerOut();
   }
@@ -202,26 +259,33 @@
   function focusOut(e) {
     if (!box?.contains(e.relatedTarget)) hold.focusOut();
   }
+  // Tapped open: shut again by a tap anywhere else.
+  function pinOpen() {
+    hold.pin(true);
+    document.addEventListener('pointerdown', tapElsewhere, true);
+  }
+  function tapElsewhere(e) {
+    if (!box?.contains(e.target)) unpin();
+  }
+  function unpin() {
+    document.removeEventListener('pointerdown', tapElsewhere, true);
+    hold.pin(false);
+  }
   onDestroy(() => {
     hold.stop();
     unwatch();
+    unpin();
   });
 
-  const settle = gated(flip);
-  // Out: swiped ones carry on sideways; the rest sink a little toward the
-  // edge they came from, shrinking as they fade.
-  const away = gated((node, { id }) => {
-    const dx = swiped.get(id);
-    swiped.delete(id);
-    if (dx) {
-      const dir = Math.sign(dx);
-      return { duration: 200, easing: cubicOut, css: (u) => `transform: translateX(${dir * (1 - u) * 180}px); opacity: ${u}` };
-    }
-    const dir = top ? -1 : 1;
+  // Out: one thrown has already gone on its way and only needs the time to
+  // finish; the rest sink a little toward the edge they came from, shrinking
+  // as they fade.
+  const leave = gated((node, { id, dir }) => {
+    if (thrown.delete(id)) return { duration: 340 };
     return {
-      duration: 200,
+      duration: 220,
       easing: cubicOut,
-      css: (u) => `transform: translateY(${(1 - u) * 10 * dir}px) scale(${0.94 + 0.06 * u}); opacity: ${u}`
+      css: (u) => `transform: translateY(${(1 - u) * 14 * -dir}px) scale(${0.9 + 0.1 * u}); opacity: ${u}`
     };
   });
 </script>
@@ -231,70 +295,67 @@
   class="toasts"
   class:top
   class:floating
-  class:folded
   class:open
+  style="height: {stack.height}px"
   bind:this={box}
   data-holding={holding}
   on:pointerenter={pointerEnter}
-  on:pointerleave={hold.pointerOut}
+  on:pointerleave={(e) => e.pointerType === 'mouse' && hold.pointerOut()}
   on:focusin={hold.focusIn}
   on:focusout={focusOut}
 >
-  {#each shown as t (t.id)}
+  {#each order as t, i (t.id)}
+    {@const p = stack.places[t.id]}
     {@const g = artFor(t)}
-    {@const stacked = folded && !open}
-    <div class="slot" out:away={{ id: t.id }} animate:settle={{ duration: 240 }}>
-      {#if stacked}
-        <span class="layer one" aria-hidden="true"></span>
-        <span class="layer two" aria-hidden="true"></span>
-      {/if}
+    <div
+      class="slot"
+      class:back={p.depth > 0}
+      class:hidden={!p.shown}
+      style="transform: translateY({away * p.y}px) scale({p.scale}); z-index: {300 - i}; --depth: {p.depth}"
+    >
       <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div
         class="toast k-{t.kind}"
         class:below={below(t)}
-        on:pointerdown={(e) => grab(e, t)}
+        style:height={heights[t.id] ? `${p.height}px` : null}
+        out:leave={{ id: t.id, dir: away }}
+        on:pointerdown={(e) => grab(e, t, i)}
         on:pointermove={pull}
         on:pointerup={letGo}
         on:pointercancel={letGo}
         on:keydown={(e) => keys(e, t)}
       >
-        <span class="lead">
-          {#if g}
-            {@const src = gameCover(g, true)}
-            <span class="art" class:dim={t.undo}>
-              {#if src && isDaemonURL(src)}<CoverImage {src} alt="" />{:else if src}<img {src} alt="" />{/if}
-            </span>
-            {#if !t.undo && (t.kind === 'success' || t.kind === 'received')}
-              <span class="mark"><svelte:component this={t.icon ?? ICON[t.kind]} size={11} strokeWidth={3.2} /></span>
+        <div class="row" bind:offsetHeight={rows[t.id]}>
+          <span class="lead">
+            {#if g}
+              {@const src = gameCover(g, true)}
+              <span class="art" class:dim={t.undo}>
+                {#if src && isDaemonURL(src)}<CoverImage {src} alt="" />{:else if src}<img {src} alt="" />{/if}
+              </span>
+              {#if !t.undo && (t.kind === 'success' || t.kind === 'received')}
+                <span class="mark"><svelte:component this={t.icon ?? ICON[t.kind]} size={11} strokeWidth={3.2} /></span>
+              {/if}
+            {:else}
+              <span class="glyph" class:spin={t.kind === 'progress' && !t.icon}><svelte:component this={t.icon ?? ICON[t.kind] ?? Info} size={18} /></span>
             {/if}
-          {:else}
-            <span class="glyph" class:spin={t.kind === 'progress' && !t.icon}><svelte:component this={t.icon ?? ICON[t.kind] ?? Info} size={18} /></span>
-          {/if}
-        </span>
+          </span>
 
-        <div class="words">
-          <b>{t.title}</b>
-          {#if t.detail}<span class="detail">{t.detail}</span>{/if}
-          {#if below(t)}
-            <span class="acts">
-              {#if t.retry}<button class="pill" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>{/if}
-              {#if t.action}<button class="quiet" on:click={() => act(t)}>{t.action.label}</button>{/if}
-            </span>
-          {/if}
-        </div>
+          <div class="words">
+            <b>{t.title}</b>
+            {#if t.detail}<span class="detail">{t.detail}</span>{/if}
+            {#if below(t)}
+              <span class="acts">
+                {#if t.retry}<button class="pill" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>{/if}
+                {#if t.action}<button class="quiet" on:click={() => act(t)}>{t.action.label}</button>{/if}
+              </span>
+            {/if}
+          </div>
 
-        <!-- The one thing to do stays in reach in a stack too: an Undo
-             waits for nobody. -->
-        {#if !below(t) && t.action}
-          <button class="pill" on:click={() => act(t)}>{#if t.undo}<Undo2 size={14} />{/if}{t.action.label}</button>
-        {/if}
-        {#if stacked}
-          <button class="count" aria-label={$i18n('toast.more', { n: list.length - 1 })} title={$i18n('toast.more', { n: list.length - 1 })} on:click={() => (open = true)}
-            >+{list.length - 1}</button
-          >
-        {:else}
+          {#if !below(t) && t.action}
+            <button class="pill" on:click={() => act(t)}>{#if t.undo}<Undo2 size={14} />{/if}{t.action.label}</button>
+          {/if}
           <button class="close" aria-label={$i18n('common.dismiss')} title={$i18n('common.dismiss')} on:click={() => toasts.close(t.id)}><X size={15} /></button>
-        {/if}
+        </div>
 
         {#if t.progress}
           <span class="bar fill" role="progressbar" aria-label={t.title} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct(t.progress)}><span style="width: {pct(t.progress)}%"></span></span>
@@ -317,17 +378,19 @@
     --toast-shade: rgba(0, 0, 0, 0.5);
     --pill: rgba(255, 255, 255, 0.07);
     --pill-hover: rgba(255, 255, 255, 0.13);
-    --layer-dark: rgba(0, 0, 0, 0.22);
+    --toast-rim: rgba(255, 255, 255, 0.13);
+    /* How much darker each card further back is. */
+    --dusk: rgba(4, 4, 8, 0.34);
+    /* One curve for the stack moving: quick, settling with a touch of give. */
+    --settle: cubic-bezier(0.2, 1.12, 0.32, 1);
     position: absolute;
     left: 50%;
     bottom: 16px;
     z-index: 100;
     width: min(390px, calc(100% - 32px));
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
     transform: translateX(-50%);
     pointer-events: none;
+    transition: height 0.45s var(--settle);
   }
   :global([data-theme='light']) .toasts {
     --toast-bg: #fff;
@@ -336,55 +399,57 @@
     --toast-shade: rgba(20, 20, 40, 0.16);
     --pill: rgba(20, 20, 40, 0.055);
     --pill-hover: rgba(20, 20, 40, 0.1);
-    --layer-dark: rgba(20, 20, 40, 0.04);
+    --toast-rim: rgba(20, 20, 40, 0.14);
+    --dusk: rgba(60, 60, 80, 0.16);
   }
   .toasts.floating {
     position: fixed;
     bottom: calc(var(--statusbar-h) + 16px);
   }
-  /* A dialog is open: the top of the window, newest nearest the edge. */
+  /* A dialog is open: the top of the window, the stack hanging down. */
   .toasts.top {
     position: fixed;
     top: 14px;
     bottom: auto;
     z-index: 120;
-    flex-direction: column-reverse;
-  }
-  .toasts.open {
-    max-height: calc(100vh - 160px);
-    overflow-y: auto;
-    padding: 14px 0 2px;
-    margin-bottom: -2px;
-  }
-  .folded:not(.open) {
-    padding-top: 14px;
-  }
-  .top.folded:not(.open) {
-    padding: 0 0 14px;
   }
 
+  /* Each card's place in the stack, from lib/toaststack.js. */
   .slot {
-    position: relative;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform-origin: 50% 100%;
     pointer-events: auto;
+    transition:
+      transform 0.5s var(--settle),
+      opacity 0.3s ease;
   }
+  .top .slot {
+    top: 0;
+    bottom: auto;
+    transform-origin: 50% 0;
+  }
+  .slot.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .toast {
     --kind: var(--accent-text);
     position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 60px;
-    padding: 10px 8px 10px 10px;
+    box-sizing: border-box;
     border-radius: 16px;
     background: linear-gradient(180deg, var(--toast-lift), transparent 70%), var(--toast-bg);
-    background: linear-gradient(180deg, var(--toast-lift), transparent 70%), color-mix(in srgb, var(--toast-bg) 88%, transparent);
+    background: linear-gradient(180deg, var(--toast-lift), transparent 70%), color-mix(in srgb, var(--toast-bg) 90%, transparent);
     /* Small, so cheap: the page shows through, softened, and the toast
        reads as a layer above it. */
     -webkit-backdrop-filter: blur(16px) saturate(1.4);
     backdrop-filter: blur(16px) saturate(1.4);
     border: 1px solid var(--toast-edge);
     box-shadow:
+      0 -6px 18px -10px var(--toast-shade),
       0 1px 2px var(--toast-shade),
       0 12px 32px -10px var(--toast-shade),
       0 28px 56px -24px var(--toast-shade);
@@ -392,28 +457,39 @@
     font-size: var(--text-base);
     touch-action: pan-y;
     user-select: none;
-    animation: toast-in 0.42s cubic-bezier(0.2, 1.25, 0.4, 1);
+    /* Grown and tilted from where it stands on the edge, as the stack is. */
+    transform-origin: 50% 100%;
+    transition: height 0.45s var(--settle);
+    animation: toast-in 0.55s cubic-bezier(0.2, 1.25, 0.35, 1);
   }
   .top .toast {
+    transform-origin: 50% 0;
     animation-name: toast-in-top;
   }
-  /* In: up from the edge, a little small, settling. Movement only — it reads
-     from its first frame. */
+  /* In: up from the edge, a little small, settling in front of the rest.
+     Movement only — it reads from its first frame. */
   @keyframes toast-in {
     from {
-      transform: translateY(18px) scale(0.94);
+      transform: translateY(30px) scale(0.9);
     }
   }
   @keyframes toast-in-top {
     from {
-      transform: translateY(-18px) scale(0.94);
+      transform: translateY(-30px) scale(0.9);
     }
   }
-  .toast.below {
-    align-items: flex-start;
+  /* Further back, darker: a veil over the card, deeper per step. */
+  .toast::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--dusk);
+    opacity: calc((var(--depth) - var(--lift, 0)) * 0.42);
+    pointer-events: none;
+    transition: opacity 0.4s ease;
   }
-  .k-success,
-  .k-received {
+  .k-success {
     --kind: var(--success);
   }
   .k-received {
@@ -429,32 +505,26 @@
     --kind: var(--danger);
   }
 
-  /* The stack's edges, peeking out behind the front toast. */
-  .layer {
-    position: absolute;
-    height: 100%;
-    border-radius: 16px;
-    background: var(--toast-bg);
-    border: 1px solid var(--toast-edge);
-    box-shadow: inset 0 0 0 999px var(--layer-dark);
-    pointer-events: none;
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 58px;
+    box-sizing: border-box;
+    padding: 9px 8px 9px 9px;
+    transition: opacity 0.25s ease;
   }
-  .layer.one {
-    left: 10px;
-    right: 10px;
-    top: -7px;
+  .below .row {
+    align-items: flex-start;
   }
-  .layer.two {
-    left: 20px;
-    right: 20px;
-    top: -14px;
-    box-shadow: inset 0 0 0 999px var(--layer-dark), inset 0 0 0 999px var(--layer-dark);
+  /* Behind the front: only the edge shows, so nothing on it is read — and
+     the edge is drawn a little brighter, so the stack reads as one. */
+  .back .row,
+  .back .bar {
+    opacity: var(--lift, 0);
   }
-  .top .layer.one {
-    top: 7px;
-  }
-  .top .layer.two {
-    top: 14px;
+  .back .toast {
+    border-color: var(--toast-rim);
   }
 
   /* What it is about: the game's art, or the kind's icon. */
@@ -471,7 +541,7 @@
     border-radius: 10px;
     background: linear-gradient(140deg, var(--bg-active), var(--bg-raised));
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-    animation: art-in 0.4s cubic-bezier(0.3, 1.3, 0.5, 1);
+    animation: art-in 0.45s cubic-bezier(0.3, 1.3, 0.5, 1);
   }
   @keyframes art-in {
     from {
@@ -503,7 +573,7 @@
     background: var(--kind);
     color: #04120a;
     box-shadow: 0 0 0 2.5px var(--toast-bg);
-    animation: mark-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) 0.12s backwards;
+    animation: mark-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) 0.14s backwards;
   }
   :global([data-theme='light']) .mark {
     color: #fff;
@@ -605,23 +675,6 @@
   .pill:active {
     transform: scale(0.96);
   }
-  .count {
-    flex: none;
-    min-width: 30px;
-    height: 24px;
-    padding: 0 8px;
-    border: 0;
-    border-radius: 12px;
-    background: var(--pill);
-    color: var(--text-dim);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .count:hover {
-    background: var(--pill-hover);
-    color: var(--text);
-  }
   .quiet {
     height: 30px;
     padding: 0 10px;
@@ -673,10 +726,10 @@
     bottom: 0;
     height: 2px;
     pointer-events: none;
+    transition: opacity 0.25s ease;
   }
   .bar.timer {
     background: var(--kind);
-    opacity: 0.75;
     transform-origin: left center;
     animation-name: shrink;
     animation-timing-function: linear;

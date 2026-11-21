@@ -49,6 +49,14 @@ describe('createHold', () => {
     expect(changes).toEqual([true, false]);
   });
 
+  it('holds a stack tapped open until it is tapped shut', () => {
+    hold.pin(true);
+    vi.advanceTimersByTime(10_000);
+    expect(hold.holding).toBe(true);
+    hold.pin(false);
+    expect(changes).toEqual([true, false]);
+  });
+
   it('ignores a pointer leaving that never came in', () => {
     hold.pointerOut();
     vi.advanceTimersByTime(1000);

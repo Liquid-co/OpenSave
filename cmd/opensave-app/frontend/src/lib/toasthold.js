@@ -1,5 +1,7 @@
-// Whether the toasts are being read: the pointer is on them, or focus is in
-// one. While they are, none of them runs out (components/Toasts.svelte).
+// Whether the toasts are being read: the pointer is on them, focus is in
+// one, or the stack was tapped open (a touch screen has no pointer to rest
+// on them). While they are, none of them runs out and the stack stays open
+// (components/Toasts.svelte).
 //
 // The pointer counts as gone a short moment after it leaves, so crossing the
 // gap between two toasts lets nothing go; coming back within that moment
@@ -8,11 +10,12 @@
 export function createHold({ onChange, setTimer = setTimeout, clearTimer = clearTimeout, grace = 250 }) {
   let pointer = false;
   let focus = false;
+  let pinned = false;
   let holding = false;
   let timer = null;
 
   const settle = () => {
-    const now = pointer || focus;
+    const now = pointer || focus || pinned;
     if (now === holding) return;
     holding = now;
     onChange(now);
@@ -44,6 +47,11 @@ export function createHold({ onChange, setTimer = setTimeout, clearTimer = clear
     },
     focusOut() {
       focus = false;
+      settle();
+    },
+    /** Tapped open, or closed again by a tap anywhere else. */
+    pin(on) {
+      pinned = on;
       settle();
     },
     get holding() {

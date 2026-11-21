@@ -1910,7 +1910,6 @@
   "game.hero.play": "开始游戏",
   "toast.undo": "撤销",
   "toast.retry": "重试",
-  "toast.more": "还有 {n} 条",
   "toast.restoring": "正在恢复 {name}",
   "toast.restored": "{name} 已恢复"
 }

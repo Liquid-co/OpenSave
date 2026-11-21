@@ -2150,7 +2150,6 @@
   "game.hero.play": "Play",
   "toast.undo": "Undo",
   "toast.retry": "Try again",
-  "toast.more": "{n} more",
   "toast.restoring": "Restoring {name}",
   "toast.restored": "{name} restored"
 }

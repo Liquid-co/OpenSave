@@ -13,8 +13,7 @@
 //   than adding another, and ends as done in the same place.
 // - A title and a second line: given, or the message split at its dash.
 //
-// Where they are drawn, and the stack they fold into past three, is
-// components/Toasts.svelte.
+// Where they are drawn, and the stack they make, is components/Toasts.svelte.
 import { writable } from 'svelte/store';
 
 /** The key of a game's restore toast: the progress the daemon reports and
@@ -23,8 +22,6 @@ export const restoreKey = (gameId) => `restore:${gameId}`;
 
 /** How long done and info toasts stay. */
 export const TOAST_LIFE = 4000;
-/** More than this many fold into a stack. */
-export const MAX_SHOWN = 3;
 
 const DASH = /^([\s\S]+?)\s+—\s+([\s\S]+)$|^([\s\S]+?)——([\s\S]+)$/;
 
