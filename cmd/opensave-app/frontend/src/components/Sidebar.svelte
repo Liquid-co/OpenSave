@@ -22,6 +22,7 @@
       revealed = next;
     }
   };
+  import { settingsMenu } from '../lib/settingsmenu.js';
   import { slidingIndicator, sidebarSlide, gatedFlip, pop } from '../lib/motion.js';
   import { view, navigate, settings, conflictCount, pairingRequests, syncActivity } from '../lib/stores.js';
   import { gameCover } from '../lib/api.js';
@@ -86,7 +87,7 @@
     <nav use:slidingIndicator={{ mode: 'fill', className: 'slide-nav' }} aria-label={$t('shell.sidebar.pages')}>
       {#each nav as item}
         <button
-          class:active={$view.name === item.id}
+          class:active={item.id === 'settings' ? !!$settingsMenu : $view.name === item.id && !$settingsMenu}
           on:click={() => navigate(item.id)}
           title={full ? '' : $t(PAGE_LABEL_KEYS[item.id])}
           aria-label={full ? null : $t(PAGE_LABEL_KEYS[item.id])}

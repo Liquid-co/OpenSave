@@ -1,7 +1,7 @@
 <script>
   // A colour wheel for picking any accent: hue around the circle, saturation
   // out from the centre, brightness on the slider below. Shown in a popover by
-  // AppearanceOptions; says what was picked through on:pick, or on:close.
+  // the Appearance section; says what was picked through on:pick, or on:close.
   import { createEventDispatcher, onMount } from 'svelte';
   import { hsvToHex, hexToHsv, normalizeHex, onAccent } from '../../lib/appearance.js';
 

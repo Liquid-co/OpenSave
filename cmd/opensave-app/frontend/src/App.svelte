@@ -31,7 +31,8 @@
   import GameDetail from './views/GameDetail.svelte';
   import Devices from './views/Devices.svelte';
   import Backups from './views/Backups.svelte';
-  import Settings from './views/Settings.svelte';
+  import SettingsMenu from './components/SettingsMenu.svelte';
+  import { settingsMenu } from './lib/settingsmenu.js';
   import Changelog from './views/Changelog.svelte';
   import WhatsNewModal from './components/WhatsNewModal.svelte';
   import ActivityLog from './views/ActivityLog.svelte';
@@ -173,7 +174,6 @@
     // Over-the-internet tab (Internet Sync now lives there).
     internet: Devices,
     cloud: Backups,
-    settings: Settings,
     changelog: Changelog,
     activity: ActivityLog
   };
@@ -308,6 +308,7 @@
   <RestoreDialog />
   <DropOverlay />
   <CollectionsDialog />
+  {#if ready && $settingsMenu}<SettingsMenu />{/if}
   {#if ready}<PairingBanner />{/if}
 </div>
 

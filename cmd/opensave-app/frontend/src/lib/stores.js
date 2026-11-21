@@ -5,6 +5,7 @@ import { arrivalMessage, arrivalNote, incompleteSnapshotsMessage, newGamesNote }
 import { toDesktop } from './notify.js';
 import { t } from './i18n.js';
 import { createToasts, restoreKey } from './toasts.js';
+import { openSettings } from './settingsmenu.js';
 import { restoreProgressText } from './restoreprogress.js';
 import { api } from './api.js';
 
@@ -99,7 +100,13 @@ export const gameList = derived(games, ($games) =>
 
 export const conflictCount = derived(conflicts, ($c) => Object.keys($c).length);
 
+/** Goes to a page. Settings is not one: it opens as a menu over the page
+ *  you are on (lib/settingsmenu.js), and closing it leaves you there. */
 export function navigate(name, params = {}) {
+  if (name === 'settings') {
+    openSettings(params);
+    return;
+  }
   view.set({ name, params });
 }
 
