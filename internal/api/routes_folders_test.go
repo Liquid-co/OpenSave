@@ -2,11 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +111,108 @@ func TestListFolders_ListsFilesOfTheTypeAskedForOnly(t *testing.T) {
 	}
 	if rec, _ := getFolders(t, root, "*"); rec.Code != http.StatusBadRequest {
 		t.Errorf("ext * answered %d, want 400", rec.Code)
+	}
+}
+
+// A game's program is known as each system knows one: by extension on
+// Windows — including what launching opens with a double click, a shortcut
+// or a batch file — and by the executable bit elsewhere, where programs have
+// no extension, leaving out shared libraries, which carry the bit as often as
+// not. A macOS app bundle is a folder that is chosen, not opened.
+func TestIsProgram_ByEachSystemsOwnRules(t *testing.T) {
+	cases := []struct {
+		name string
+		mode fs.FileMode
+		goos string
+		want bool
+	}{
+		{"eldenring.exe", 0, "windows", true},
+		{"Launch Game.LNK", 0, "windows", true},
+		{"start.bat", 0, "windows", true},
+		{"start.cmd", 0, "windows", true},
+		{"Hades.url", 0, "windows", true},
+		{"steam_api64.dll", 0, "windows", false},
+		{"readme.txt", 0, "windows", false},
+		{"Celeste", 0o755, "linux", true},
+		{"start.sh", 0o744, "linux", true},
+		{"start.sh", 0o644, "linux", false},
+		{"libfmod.so", 0o755, "linux", false},
+		{"libSDL2-2.0.so.0", 0o755, "linux", false},
+		{"bin", fs.ModeDir | 0o755, "linux", false},
+		{"Celeste", 0o755, "darwin", true},
+		{"libsteam_api.dylib", 0o755, "darwin", false},
+	}
+	for _, c := range cases {
+		if got := isProgram(c.name, c.mode, c.goos); got != c.want {
+			t.Errorf("isProgram(%q, %v, %s) = %v, want %v", c.name, c.mode, c.goos, got, c.want)
+		}
+	}
+	if !isProgramFolder("Celeste.app", "darwin") || isProgramFolder("Celeste.app", "linux") || isProgramFolder("Saves", "darwin") {
+		t.Error("only a .app folder on macOS is a program")
+	}
+}
+
+// Asked for programs, a folder lists this system's programs beside its
+// folders, and nothing else.
+func TestListFolders_ListsProgramsWhenAskedFor(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, mode os.FileMode) {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var want []string
+	if runtime.GOOS == "windows" {
+		write("Game.exe", 0o644)
+		write("Play.lnk", 0o644)
+		write("steam_api64.dll", 0o644)
+		want = []string{"Game.exe", "Play.lnk"}
+	} else {
+		write("Game", 0o755)
+		write("libgame.so", 0o755)
+		want = []string{"Game"}
+	}
+	write("readme.txt", 0o644)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/folders?programs=1&path="+url.QueryEscape(root), nil)
+	rec := httptest.NewRecorder()
+	(&Server{}).handleListFolders(rec, req)
+	var out folderListing
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	var got []string
+	for _, f := range out.Files {
+		got = append(got, f.Name)
+	}
+	if rec.Code != http.StatusOK || strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("status %d, programs %v, want %v", rec.Code, got, want)
+	}
+	if len(out.Folders) != 1 || out.Folders[0].Name != "Data" {
+		t.Errorf("folders %+v, want Data still there to open", out.Folders)
+	}
+	if _, plain := getFolders(t, root); len(plain.Files) != 0 {
+		t.Errorf("programs listed without asking: %+v", plain.Files)
+	}
+}
+
+// Choosing a program starts from home and where programs are installed, not
+// from where saves are.
+func TestListFolders_ProgramPlaces(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/folders?programs=1", nil)
+	rec := httptest.NewRecorder()
+	(&Server{}).handleListFolders(rec, req)
+	var out folderPlaces
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	names := map[string]bool{}
+	for _, p := range out.Places {
+		names[p.Name] = true
+	}
+	if rec.Code != http.StatusOK || !names["home"] || names["savedgames"] || names["appdata"] || len(out.Drives) == 0 {
+		t.Fatalf("status %d, places %+v, drives %+v", rec.Code, out.Places, out.Drives)
+	}
+	if runtime.GOOS == "windows" && os.Getenv("ProgramFiles") != "" && !names["programfiles"] {
+		t.Errorf("no Program Files among %+v", out.Places)
 	}
 }

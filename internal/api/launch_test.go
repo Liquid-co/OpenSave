@@ -179,3 +179,40 @@ func TestLaunchCommand(t *testing.T) {
 		}
 	}
 }
+
+// Browse for a game's program opens where the game is installed, when that
+// is known: Steam's folder for it once Steam has it, and nothing before.
+func TestInstallFolder(t *testing.T) {
+	f := newLaunchFixture(t, true)
+	folder := func() string {
+		t.Helper()
+		resp, body := f.ts.do(t, http.MethodGet, "/api/games/elden-ring/install-folder", nil)
+		var dir string
+		_ = json.Unmarshal(body["dir"], &dir)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		return dir
+	}
+	if dir := folder(); dir != "" {
+		t.Fatalf("not installed, yet the folder is %q", dir)
+	}
+	acf := `"AppState" { "appid" "1245620" "name" "ELDEN RING" "installdir" "ELDEN RING" }`
+	if err := os.WriteFile(filepath.Join(f.steam, "steamapps", "appmanifest_1245620.acf"), []byte(acf), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	// Steam lists it, but its folder is not there: not offered.
+	if dir := folder(); dir != "" {
+		t.Fatalf("a folder that is not there was offered: %q", dir)
+	}
+	want := filepath.Join(f.steam, "steamapps", "common", "ELDEN RING")
+	if err := os.MkdirAll(want, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if dir := folder(); dir != want {
+		t.Errorf("install folder %q, want %q", dir, want)
+	}
+	if resp, _ := f.ts.do(t, http.MethodGet, "/api/games/nope/install-folder", nil); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown game answered %d, want 404", resp.StatusCode)
+	}
+}

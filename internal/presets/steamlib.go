@@ -71,6 +71,18 @@ func (sc *Scanner) steamLibraryPaths() []string {
 	return dedupePaths(libs)
 }
 
+// SteamGameFolders lists each Steam library's folder of installed games
+// (steamapps/common) that is on this device.
+func SteamGameFolders() []string {
+	var out []string
+	for _, lib := range (&Scanner{}).steamLibraryPaths() {
+		if dir := filepath.Join(lib, "steamapps", "common"); dirExists(dir) {
+			out = append(out, dir)
+		}
+	}
+	return out
+}
+
 // steamInstalledApps parses appmanifest files across all libraries.
 func steamInstalledApps(libraries []string) []steamApp {
 	var apps []steamApp

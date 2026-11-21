@@ -98,7 +98,7 @@
   }
 
   async function pickProgram() {
-    const exe = await native.selectFile($t('home.findGame.programDialog'));
+    const exe = await native.selectExecutable($t('home.findGame.programDialog'));
     if (exe) await identify(exe, true);
   }
 

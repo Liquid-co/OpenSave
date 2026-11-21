@@ -311,6 +311,41 @@ func (a *App) SelectFile(title string) string {
 	return file
 }
 
+// SelectExecutable opens the native file picker for a game's program, in
+// dir when that is a folder here.
+func (a *App) SelectExecutable(title, dir string) string {
+	if title == "" {
+		title = "Select program"
+	}
+	if info, err := os.Stat(dir); dir == "" || err != nil || !info.IsDir() {
+		dir = ""
+	}
+	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            title,
+		DefaultDirectory: dir,
+		Filters:          programFilters(goruntime.GOOS),
+	})
+	if err != nil {
+		return ""
+	}
+	return file
+}
+
+// programFilters is what the program picker offers, by system. Windows knows
+// programs by extension, and launching opens a shortcut or batch file the way
+// a double click would. macOS lets an app bundle be chosen as it is, and
+// Linux programs have no extension to filter on: there every file is shown,
+// since a filter would hide the very file wanted.
+func programFilters(goos string) []runtime.FileFilter {
+	if goos != "windows" {
+		return nil
+	}
+	return []runtime.FileFilter{
+		{DisplayName: "Programs (*.exe;*.bat;*.cmd;*.lnk;*.url)", Pattern: "*.exe;*.bat;*.cmd;*.lnk;*.url"},
+		{DisplayName: "All files", Pattern: "*.*"},
+	}
+}
+
 // SelectBackupFile opens the native file picker filtered to .sscb
 // backup files (import source).
 func (a *App) SelectBackupFile(title string) string {

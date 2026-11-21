@@ -6,7 +6,9 @@
   // Opens at `start` when that is a folder, otherwise at the places saves are
   // usually under. Fires `pick` with the folder chosen; or, given `files`
   // (an extension such as ".sscb"), lists those files too and fires `pick`
-  // with the file clicked.
+  // with the file clicked. Given `files="programs"`, it lists the programs a
+  // game can be started from, as this system knows them, and starts from
+  // where programs and games are installed.
   import { createEventDispatcher, onMount } from 'svelte';
   import Folder from 'lucide-svelte/icons/folder';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
@@ -14,13 +16,17 @@
   import Home from 'lucide-svelte/icons/house';
   import Check from 'lucide-svelte/icons/check';
   import FileArchive from 'lucide-svelte/icons/file-archive';
+  import AppWindow from 'lucide-svelte/icons/app-window';
   import { api } from '../lib/api.js';
   import { t } from '../lib/i18n.js';
   import { rise } from '../lib/motion.js';
 
   export let start = '';
-  /** An extension, ".sscb": choose a file of that type instead of a folder. */
+  /** An extension, ".sscb", or "programs": choose such a file instead of a
+   *  folder. */
   export let files = '';
+  $: programs = files === 'programs';
+  $: which = programs ? '&programs=1' : files ? `&ext=${encodeURIComponent(files)}` : '';
   const dispatch = createEventDispatcher();
 
   let places = [];
@@ -34,7 +40,7 @@
     loading = true;
     error = '';
     try {
-      listing = await api.get(`/api/folders?path=${encodeURIComponent(path)}${files ? `&ext=${encodeURIComponent(files)}` : ''}`);
+      listing = await api.get(`/api/folders?path=${encodeURIComponent(path)}${which}`);
       list?.scrollTo?.(0, 0);
     } catch (e) {
       error = e.message;
@@ -45,7 +51,7 @@
 
   onMount(async () => {
     try {
-      ({ places = [], drives = [] } = await api.get('/api/folders'));
+      ({ places = [], drives = [] } = await api.get(programs ? '/api/folders?programs=1' : '/api/folders'));
     } catch (e) {
       error = e.message;
     }
@@ -72,7 +78,7 @@
   <div class="places" aria-label={$t('folders.places')}>
     {#each places as p}
       <button class="place" class:on={listing?.path === p.path} on:click={() => open(p.path)}>
-        {#if p.name === 'home'}<Home size={13} />{/if}{$t('folders.place.' + p.name)}
+        {#if p.name === 'home'}<Home size={13} />{/if}{$t('folders.place.' + p.name)}{#if p.detail}<span class="detail">{p.detail}</span>{/if}
       </button>
     {/each}
     {#each drives as d}
@@ -96,10 +102,10 @@
         <button class="folder" on:click={() => open(f.path)}><Folder size={15} /><span>{f.name}</span></button>
       {/each}
       {#each listing.files ?? [] as f (f.path)}
-        <button class="folder file" on:click={() => dispatch('pick', f.path)}><FileArchive size={15} /><span>{f.name}</span></button>
+        <button class="folder file" on:click={() => dispatch('pick', f.path)}><svelte:component this={programs ? AppWindow : FileArchive} size={15} /><span>{f.name}</span></button>
       {/each}
       {#if !listing.folders.length && !(listing.files ?? []).length}
-        <p class="empty">{files ? $t('folders.emptyFiles', { ext: files }) : $t('folders.empty')}</p>
+        <p class="empty">{programs ? $t('folders.emptyPrograms') : files ? $t('folders.emptyFiles', { ext: files }) : $t('folders.empty')}</p>
       {/if}
       {#if listing.more}<p class="empty">{$t('folders.more', { n: listing.folders.length })}</p>{/if}
     {:else if loading}
@@ -109,6 +115,10 @@
 </div>
 
 <style>
+  .detail {
+    margin-left: 4px;
+    color: var(--text-faint);
+  }
   .browser {
     display: flex;
     flex-direction: column;

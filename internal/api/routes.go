@@ -71,6 +71,7 @@ func (s *Server) routes(r chi.Router) {
 	r.Post("/api/games/{gameId}/branch/switch", s.handleSwitchBranch)
 	r.Delete("/api/games/{gameId}/branch/{branch}", s.handleDeleteBranch)
 	r.Post("/api/games/{gameId}/launch", s.handleLaunchGame)
+	r.Get("/api/games/{gameId}/install-folder", s.handleInstallFolder)
 	r.Post("/api/games/{gameId}/relocate", s.handleAcceptRelocation)
 	r.Post("/api/games/{gameId}/relocate/dismiss", s.handleDismissRelocation)
 

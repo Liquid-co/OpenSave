@@ -116,8 +116,37 @@
     if (dir) cfg.savePath = dir;
   }
 
+  // Choosing the program opens where it is: the folder of the one set, or
+  // where the game is installed when the daemon knows (Steam's folder for
+  // it), or otherwise where programs are installed. The desktop app opens the
+  // system's own picker, offering what this system counts as a program; the
+  // browser build has the folder navigator do the same.
+  let browsingExe = false;
+  let exeFrom = '';
+  const folderOf = (p) => {
+    const dir = String(p ?? '').trim().replace(/[\\/][^\\/]*$/, '');
+    return /^[A-Za-z]:$/.test(dir) ? dir + '\\' : dir;
+  };
+  async function exeStart() {
+    if (cfg.exePath?.trim()) return folderOf(cfg.exePath);
+    try {
+      return (await api.get(`/api/games/${game.id}/install-folder`)).dir ?? '';
+    } catch {
+      return '';
+    }
+  }
   async function browseExe() {
-    const file = await native.selectFile($t('game.config.selectExe'));
+    if (browsingExe) {
+      browsingExe = false;
+      return;
+    }
+    const from = await exeStart();
+    if (!native.isWails()) {
+      exeFrom = from;
+      browsingExe = true;
+      return;
+    }
+    const file = await native.selectExecutable($t('game.config.selectExe'), from);
     if (file) cfg.exePath = file;
   }
 </script>
@@ -196,8 +225,20 @@
       <label for="c-exe">{$t('game.config.exePath')}</label>
       <div class="path-row">
         <input id="c-exe" placeholder={$t('game.config.exePathPlaceholder')} bind:value={cfg.exePath} />
-        {#if native.isWails()}<button class="btn" on:click={browseExe}>{$t('game.header.browse')}</button>{/if}
+        <button class="btn" class:on={browsingExe} on:click={browseExe}><FolderOpen size={15} />{$t('game.header.browse')}</button>
       </div>
+      {#if browsingExe}
+        <div transition:collapse>
+          <FolderBrowser
+            start={exeFrom}
+            files="programs"
+            on:pick={(e) => {
+              cfg.exePath = e.detail;
+              browsingExe = false;
+            }}
+          />
+        </div>
+      {/if}
       <span class="hint">{$t('game.config.exePathHint')}</span>
     </div>
     <AppIdField bind:value={cfg.appId} error={appIdError} />

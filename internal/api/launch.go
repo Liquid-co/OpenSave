@@ -72,6 +72,21 @@ func (s *Server) handleLaunchGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
+// handleInstallFolder answers with the folder a game is installed in on this
+// device, or "" when that is not known: where choosing its program starts.
+func (s *Server) handleInstallFolder(w http.ResponseWriter, r *http.Request) {
+	game, err := s.Daemon.Store.GetGame(chi.URLParam(r, "gameId"))
+	if err != nil {
+		writeError(w, notFoundToStatus(err), err.Error())
+		return
+	}
+	_, _, dir := s.Daemon.SteamInstall(game)
+	if info, err := os.Stat(dir); dir == "" || err != nil || !info.IsDir() {
+		dir = ""
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"dir": dir})
+}
+
 // How a launch is carried out; tests put their own in place, since the real
 // ones start Steam or a game.
 var (

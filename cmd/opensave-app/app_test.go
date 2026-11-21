@@ -65,3 +65,18 @@ func TestRevealTargetDir(t *testing.T) {
 		}
 	})
 }
+
+// Windows filters the program picker to what launching can start; macOS and
+// Linux show every file, since a filter there hides the program itself (an
+// app bundle, or a program with no extension at all).
+func TestProgramFilters(t *testing.T) {
+	win := programFilters("windows")
+	if len(win) == 0 || !strings.Contains(win[0].Pattern, "*.exe") || !strings.Contains(win[0].Pattern, "*.lnk") {
+		t.Errorf("windows filters %+v", win)
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		if f := programFilters(goos); f != nil {
+			t.Errorf("%s filters %+v, want none", goos, f)
+		}
+	}
+}

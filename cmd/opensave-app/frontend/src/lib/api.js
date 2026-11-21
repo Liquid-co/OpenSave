@@ -193,6 +193,8 @@ export const native = {
   // or a message explaining why it couldn't be opened.
   openFolder: (path) => app()?.OpenFolder(path) ?? Promise.resolve(''),
   selectFile: (title) => app()?.SelectFile(title ?? '') ?? Promise.resolve(''),
+  // A game's program, as this system knows one, starting in dir.
+  selectExecutable: (title, dir) => app()?.SelectExecutable(title ?? '', dir ?? '') ?? Promise.resolve(''),
   selectBackupFile: (title) => app()?.SelectBackupFile(title ?? '') ?? Promise.resolve(''),
   selectSaveFile: (title, name) => app()?.SelectSaveFile(title ?? '', name ?? '') ?? Promise.resolve(''),
   openExternal: (url) => app()?.OpenExternal(url),

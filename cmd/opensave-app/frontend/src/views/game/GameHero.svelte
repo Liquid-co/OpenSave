@@ -6,21 +6,27 @@
   // Underneath, anything that needs an answer first: the save emptied here,
   // its folder missing, or the same folder found on another drive.
   //
+  // The cover is the shape the Library shows — wide banner or tall box art —
+  // and switching it here switches it there too: one choice, two places.
+  //
   // Motion: the cover settles in, the words and buttons arrive after it, and
   // the line under the name arrives again whenever what it says changes. Sync
-  // now's arrows turn while a sync runs.
+  // now's arrows turn while a sync runs. Switching shape reshapes the frame
+  // and the new art settles into it.
   import { createEventDispatcher, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { peers, navigate, toast, syncActivity, askConfirm, conflicts, locationConflicts } from '../../lib/stores.js';
   import { emptiedWhere } from '../../lib/emptied.js';
   import { whenLabel } from '../../lib/snapshots.js';
-  import { api, native, gameCover } from '../../lib/api.js';
+  import { api, native, gameCover, isDaemonURL } from '../../lib/api.js';
+  import { libraryView } from '../../lib/libraryview.js';
   import { timeAgoParts } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
   import { canLaunch, cleanGameName, renameGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
   import { restoreProgressText } from '../../lib/restoreprogress.js';
   import { heroStatus, playedTotal } from '../../lib/gamepage.js';
   import { collections, isFavourite, toggleFavourite } from '../../lib/collections.js';
-  import { arrive } from '../../lib/motion.js';
+  import { arrive, motionOn } from '../../lib/motion.js';
   import { t } from '../../lib/i18n.js';
   import CoverImage from '../../components/CoverImage.svelte';
   import Dropdown from '../../components/ui/Dropdown.svelte';
@@ -41,6 +47,8 @@
   import Camera from 'lucide-svelte/icons/camera';
   import SlidersHorizontal from 'lucide-svelte/icons/sliders-horizontal';
   import LoaderCircle from 'lucide-svelte/icons/loader-circle';
+  import RectangleHorizontal from 'lucide-svelte/icons/rectangle-horizontal';
+  import RectangleVertical from 'lucide-svelte/icons/rectangle-vertical';
 
   export let game;
   /** The page's shared runner (see lib/runner.js). */
@@ -119,6 +127,34 @@
   $: lastOn = played?.lastPlayedOn || $t('game.hero.thisPc');
   $: snapCount = Object.values(game.branches ?? {}).reduce((n, b) => n + (b.snapshots?.length ?? 0), 0);
 
+  // ── The cover ──
+  // As a library tile does it (views/home/LibraryTile.svelte): a custom cover
+  // wins in either shape; otherwise Steam's art in the shape asked for, which
+  // for tall art may still come back as the banner. Art far from the frame's
+  // shape is shown whole over a blurred copy of itself, not cropped.
+  $: shape = $libraryView.cover === 'wide' ? 'wide' : 'tall';
+  $: custom = game.coverUrl && !game.coverUrl.includes('steamstatic.com') ? game.coverUrl : '';
+  $: coverSrc = custom || gameCover(game, shape === 'tall');
+  const frameAspect = { wide: 460 / 215, tall: 600 / 900 };
+  let letterbox = false;
+  let backdrop = '';
+  let artEl;
+  $: if (coverSrc || shape) {
+    letterbox = false;
+    backdrop = '';
+  }
+  function measure(e) {
+    const img = e.currentTarget;
+    // Each new picture settles into the frame. The wrapper moves, not the
+    // image: an explicit cover's blur already uses the image's transform.
+    if (get(motionOn)) artEl?.animate([{ transform: 'scale(1.06)' }, { transform: 'none' }], { duration: 500, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
+    if (!img?.naturalWidth || !img?.naturalHeight) return;
+    const ratio = img.naturalWidth / img.naturalHeight / frameAspect[shape];
+    letterbox = ratio > 1.33 || ratio < 0.75;
+    backdrop = letterbox ? img.src : '';
+  }
+  const setShape = (cover) => libraryView.update((v) => ({ ...v, cover }));
+
   // ── Acting ──
   const syncNow = () => run($t('game.header.syncTriggered'), () => api.post(`/api/games/${game.id}/sync`));
   const launchGame = () => run($t('game.header.launching'), () => api.post(`/api/games/${game.id}/launch`));
@@ -134,6 +170,9 @@
     null,
     { label: $t('common.rename'), icon: Pencil, run: startRename },
     { label: favourite ? $t('game.header.removeFavourite') : $t('game.header.addFavourite'), icon: Star, run: () => toggleFavourite($collections, game) },
+    shape === 'wide'
+      ? { label: $t('game.hero.showTall'), hint: $t('game.hero.coverEverywhere'), icon: RectangleVertical, run: () => setShape('tall') }
+      : { label: $t('game.hero.showWide'), hint: $t('game.hero.coverEverywhere'), icon: RectangleHorizontal, run: () => setShape('wide') },
     null,
     { label: $t('game.hero.settings'), icon: SlidersHorizontal, run: () => dispatch('tab', 'settings') }
   ];
@@ -186,9 +225,16 @@
 <section class="hero" aria-label={game.name}>
   <button class="back" on:click={() => navigate('home')}><ArrowLeft size={16} />{$t('game.hero.library')}</button>
   <div class="row">
-    <span class="cover">
+    <span class="cover {shape}" class:letterbox>
       <span class="fallback">{game.name}</span>
-      <CoverImage src={gameCover(game, true)} alt="" />
+      {#if backdrop}<span class="backdrop" style="background-image: url('{backdrop}')"></span>{/if}
+      <span class="art" bind:this={artEl}>
+        {#if coverSrc && isDaemonURL(coverSrc)}
+          <CoverImage src={coverSrc} alt="" on:load={measure} />
+        {:else if coverSrc}
+          <img src={coverSrc} alt="" on:load={measure} on:error={(e) => (e.currentTarget.style.display = 'none')} />
+        {/if}
+      </span>
     </span>
     <div class="text">
       {#if editName}
@@ -359,11 +405,13 @@
     gap: 24px;
   }
   /* The cover settles in: from a little below and smaller, with a touch of
-     overshoot. Movement only, so it is there from the first frame. */
+     overshoot. Movement only, so it is there from the first frame. Its size
+     is set rather than an aspect ratio, so switching shape can move between
+     the two. */
   .cover {
     position: relative;
     width: 124px;
-    aspect-ratio: 2 / 3;
+    height: 186px;
     flex: none;
     border-radius: 10px;
     overflow: hidden;
@@ -372,7 +420,16 @@
       0 18px 40px rgba(0, 0, 0, 0.5),
       inset 0 0 0 1px rgba(255, 255, 255, 0.12);
     animation: cover-in 0.6s cubic-bezier(0.3, 1.3, 0.5, 1) backwards;
-    transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+    transition:
+      transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
+      width 0.45s cubic-bezier(0.3, 1.15, 0.5, 1),
+      height 0.45s cubic-bezier(0.3, 1.15, 0.5, 1);
+  }
+  /* 460 × 215, Steam's header image: sized so the facts beside it still fit
+     on one line in a 1280-wide window. */
+  .cover.wide {
+    width: 248px;
+    height: 116px;
   }
   .cover:hover {
     transform: translateY(-3px) rotate(-1deg);
@@ -382,12 +439,28 @@
       transform: translateY(18px) scale(0.92);
     }
   }
-  .cover :global(img) {
+  .art {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  .art :global(img) {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .letterbox .art :global(img) {
+    object-fit: contain;
+  }
+  .backdrop {
+    position: absolute;
+    inset: -12px;
+    z-index: 1;
+    background-size: cover;
+    background-position: center;
+    filter: blur(14px) brightness(0.55) saturate(1.1);
   }
   .fallback {
     position: absolute;
@@ -525,7 +598,7 @@
   .stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 32px;
+    gap: 6px 28px;
     margin: 4px 0 0;
   }
   .stats dt {
@@ -649,6 +722,11 @@
     }
     .cover {
       width: 104px;
+      height: 156px;
+    }
+    .cover.wide {
+      width: 224px;
+      height: 105px;
     }
     .actions {
       width: 100%;
