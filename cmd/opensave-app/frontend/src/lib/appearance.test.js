@@ -61,6 +61,7 @@ const contrast = (a, b) => {
 describe('sanitizeAppearance', () => {
   it('keeps valid choices and replaces the rest, field by field', () => {
     expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1.25, motion: false, controller: 'on' })).toEqual({
+      family: 'opensave',
       theme: 'light',
       accent: 'teal',
       customAccents: [],
@@ -80,6 +81,13 @@ describe('sanitizeAppearance', () => {
     expect(sanitizeAppearance(null)).toEqual(DEFAULT_APPEARANCE);
   });
 
+  it("keeps a theme it knows and its own accent, and starts anyone else on OpenSave's", () => {
+    expect(sanitizeAppearance({ family: 'catppuccin', accent: 'theme' })).toMatchObject({ family: 'catppuccin', accent: 'theme' });
+    expect(sanitizeAppearance({ family: 'solarized' }).family).toBe('opensave');
+    // Saved before themes: the same look as before.
+    expect(sanitizeAppearance({ theme: 'light', accent: 'teal' })).toMatchObject({ family: 'opensave', theme: 'light', accent: 'teal' });
+  });
+
   it('keeps animations on unless they were switched off', () => {
     // Saved before the choice existed: on, as it was then.
     expect(sanitizeAppearance({ theme: 'light', accent: 'teal', scale: 1 }).motion).toBe(true);
@@ -92,7 +100,7 @@ describe('loadAppearance and saveAppearance', () => {
   it('round-trips, and falls back to the default when storage is garbled or refuses', () => {
     const s = memoryStorage();
     saveAppearance({ theme: 'system', accent: 'rose', scale: 0.9, motion: false, controller: 'off' }, s);
-    expect(loadAppearance(s)).toEqual({ theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true });
+    expect(loadAppearance(s)).toEqual({ family: 'opensave', theme: 'system', accent: 'rose', customAccents: [], scale: 0.9, motion: false, controller: 'off', backdrop: 'cover', coverColours: true });
     // A picked colour, and the ones kept beside the presets, come back too.
     saveAppearance({ ...DEFAULT_APPEARANCE, accent: '#12AB34', customAccents: ['#ff0000', '#12ab34'] }, s);
     expect(loadAppearance(s)).toMatchObject({ accent: '#12ab34', customAccents: ['#ff0000', '#12ab34'] });
@@ -245,6 +253,24 @@ describe('applyAppearance', () => {
     applyAppearance(DEFAULT_APPEARANCE, { root, prefersDark: false });
     expect(root.dataset.theme).toBe('dark');
     expect(root.style.zoom).toBe('');
+  });
+
+  it("puts a theme's colours and own accent on the page, and its background behind the window", () => {
+    const root = fakeRoot();
+    let windowBg = null;
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'catppuccin', theme: 'system', accent: 'theme' }, { root, prefersDark: true, setWindowBackground: (...rgb) => (windowBg = rgb) });
+    expect(root.dataset.theme).toBe('dark');
+    expect(root.dataset.look).toBe('mocha');
+    expect(root.props['--bg']).toBe('#1e1e2e');
+    expect(root.props['--accent']).toBe('#cba6f7');
+    expect(windowBg).toEqual([30, 30, 46]);
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'catppuccin', theme: 'system', accent: 'theme' }, { root, prefersDark: false });
+    expect(root.dataset.look).toBe('latte');
+    expect(root.dataset.theme).toBe('light');
+    // A dark-only theme stays dark, whatever is asked.
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'oled', theme: 'light' }, { root });
+    expect(root.dataset.theme).toBe('dark');
+    expect(root.props['--bg']).toBe('#000000');
   });
 
   it('tells the page when marks on the accent must be dark, which an inline image cannot read from a variable', () => {

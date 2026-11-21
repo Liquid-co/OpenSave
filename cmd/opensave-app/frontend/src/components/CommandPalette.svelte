@@ -12,7 +12,7 @@
   import { api } from '../lib/api.js';
   import { visibleGames, runGameAction, canLaunch, syncAllGames } from '../lib/gameactions.js';
   import { showSetupAgain } from '../lib/setup.js';
-  import { appearance, resolvedTheme } from '../lib/appearance.js';
+  import { appearance } from '../lib/appearance.js';
   import { PAGES, PAGE_LABEL_KEYS } from '../lib/shortcuts.js';
   import { t } from '../lib/i18n.js';
   import { rank, snapshotEntries } from '../lib/palette.js';
@@ -30,7 +30,7 @@
 
   onMount(() => input?.focus());
 
-  const isDark = () => resolvedTheme($appearance.theme, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true) === 'dark';
+  const isDark = () => document.documentElement.dataset.theme !== 'light';
 
   $: entries = [
     ...PAGES.map((p) => ({ label: $t('palette.goTo', { page: $t(PAGE_LABEL_KEYS[p.id]) }), kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),

@@ -1,12 +1,20 @@
-// How the app looks on this device: light or dark, the accent colour, how
-// large everything is drawn, and whether things move.
+// How the app looks on this device: its theme (lib/themes.js) and whether it
+// is light or dark, the accent colour, how large everything is drawn, and
+// whether things move.
 //
 // Kept on this device, like the library view (see libraryview.js), and for
 // the same reasons: it is about this screen and the person in front of it,
 // and it takes effect as it is chosen rather than when a form is saved.
 import { writable } from 'svelte/store';
+import { LOOKS, FAMILIES, DEFAULT_FAMILY, lookFor, lookVars } from './themes.js';
 
+// Light or dark, for a theme that has both (lib/themes.js FAMILIES).
 export const THEMES = { dark: 'Dark', light: 'Light', system: 'Match system' };
+
+// The accent that is the theme's own: violet for OpenSave's, mauve for
+// Catppuccin's. Picking a theme picks it; any colour can still be chosen on
+// top.
+export const THEME_ACCENT = 'theme';
 
 // Around the colour wheel. Any colour can be offered, the bright yellows and
 // limes included: the text on an accent, and the accent used as text on the
@@ -49,6 +57,8 @@ export const SCALES = [0.9, 1, 1.1, 1.25];
 export const BACKDROPS = { cover: 'Cover art', accent: 'Accent glow', off: 'Off' };
 
 export const DEFAULT_APPEARANCE = Object.freeze({
+  // The theme (lib/themes.js), and light or dark where it has both.
+  family: DEFAULT_FAMILY,
   theme: 'dark',
   accent: 'violet',
   customAccents: Object.freeze([]),
@@ -74,8 +84,10 @@ export function normalizeHex(value) {
   return /^#[0-9a-f]{6}$/.test(s) ? s : null;
 }
 
-/** The hex an accent stands for: a preset's colour, or a picked one's own. */
-export function accentHex(accent) {
+/** The hex an accent stands for: a preset's colour, a picked one's own, or
+ *  — for the theme's own — `themeAccent`. */
+export function accentHex(accent, themeAccent = LOOKS.night.accent) {
+  if (accent === THEME_ACCENT) return themeAccent;
   return ACCENTS[accent]?.hex ?? RETIRED_ACCENTS[accent] ?? normalizeHex(accent) ?? ACCENTS[DEFAULT_APPEARANCE.accent].hex;
 }
 
@@ -91,7 +103,7 @@ export function sanitizeAppearance(raw) {
   // A preset by name, or a picked colour by its hex. A picked colour is always
   // among the ones shown, so the one in use can be seen chosen.
   let accent = DEFAULT_APPEARANCE.accent;
-  if (v.accent in ACCENTS) {
+  if (v.accent in ACCENTS || v.accent === THEME_ACCENT) {
     accent = v.accent;
   } else {
     const hex = RETIRED_ACCENTS[v.accent] ?? normalizeHex(v.accent);
@@ -105,6 +117,7 @@ export function sanitizeAppearance(raw) {
     customAccents.splice(oldest, 1);
   }
   return {
+    family: v.family in FAMILIES ? v.family : DEFAULT_APPEARANCE.family,
     theme: v.theme in THEMES ? v.theme : DEFAULT_APPEARANCE.theme,
     accent,
     customAccents,
@@ -265,14 +278,14 @@ export function accentFill(hex) {
 }
 
 // The surface accent-coloured text is judged against in each theme: the
-// palest one it is drawn on — the raised card in either.
+// palest one it is drawn on — the raised card in either. A theme passes its
+// own.
 const TEXT_SURFACE = { dark: '#17171a', light: '#ffffff' };
 
 /** The accent as text or an icon on the page: itself where it reads, and
  *  otherwise lightened (dark theme) or darkened (light) just enough to. A
  *  yellow is fine on dark grey and unreadable on white. */
-export function accentText(hex, theme = 'dark') {
-  const surface = TEXT_SURFACE[theme] ?? TEXT_SURFACE.dark;
+export function accentText(hex, theme = 'dark', surface = TEXT_SURFACE[theme] ?? TEXT_SURFACE.dark) {
   const shift = theme === 'light' ? darken : lighten;
   for (let amount = 0; amount <= 1; amount += 0.05) {
     const c = amount === 0 ? hex : shift(hex, amount);
@@ -281,15 +294,16 @@ export function accentText(hex, theme = 'dark') {
   return theme === 'light' ? DARK_INK : '#ffffff';
 }
 
-/** The CSS variables that carry the accent (see app.css). */
-export function accentVars(accent, theme = 'dark') {
-  const hex = accentHex(accent);
+/** The CSS variables that carry the accent (see app.css), on a theme whose
+ *  panels are `surface` and whose own accent is `themeAccent`. */
+export function accentVars(accent, theme = 'dark', { surface, themeAccent } = {}) {
+  const hex = accentHex(accent, themeAccent);
   return {
     '--accent': hex,
     '--accent-hover': lighten(hex, 0.12),
     '--accent-rgb': hexToRgb(hex).join(', '),
     '--on-accent': onAccent(hex),
-    '--accent-text': accentText(hex, theme),
+    '--accent-text': accentText(hex, theme, surface),
     '--accent-fill': accentFill(hex),
     // Hovering moves the fill away from its label, never towards it, so the
     // label reads at least as well under the pointer.
@@ -301,18 +315,30 @@ export function accentVars(accent, theme = 'dark') {
 // for a moment while the window is resized. It matches --bg in app.css.
 export const WINDOW_BACKGROUND = { dark: [12, 12, 13], light: [244, 244, 247] };
 
-/** Puts an appearance on the page: theme attribute, accent, scale, and
- *  data-motion, which app.css reads to still everything when it is 'off'. */
+/** The look in use (lib/themes.js LOOKS): the theme's, light or dark as
+ *  chosen or as the system is. */
+export function currentLook(v, prefersDark = true) {
+  const a = sanitizeAppearance(v);
+  return lookFor(a.family, a.theme, prefersDark);
+}
+
+/** Puts an appearance on the page: the theme's colours and whether it is
+ *  dark or light (data-theme, which the kind-specific rules in app.css read),
+ *  accent, scale, and data-motion, which app.css reads to still everything
+ *  when it is 'off'. */
 export function applyAppearance(
   v,
   { root = globalThis.document?.documentElement, prefersDark = true, reduceMotion = false, setWindowBackground } = {}
 ) {
   if (!root) return;
   const a = sanitizeAppearance(v);
-  const theme = resolvedTheme(a.theme, prefersDark);
+  const lookId = lookFor(a.family, a.theme, prefersDark);
+  const look = LOOKS[lookId];
+  const theme = look.kind;
   root.dataset.theme = theme;
+  root.dataset.look = lookId;
   root.dataset.motion = motionAllowed(a, reduceMotion) ? 'on' : 'off';
-  const vars = accentVars(a.accent, theme);
+  const vars = { ...lookVars(lookId), ...accentVars(a.accent, theme, { surface: look.raised, themeAccent: look.accent }) };
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
   // For what CSS cannot colour with a variable: the tick drawn inside a
   // checkbox is an inline image (see app.css).
@@ -320,7 +346,7 @@ export function applyAppearance(
   // zoom rather than a larger root font size: much of the app is measured in
   // pixels — icons, tiles, paddings — and would stay put while the text grew.
   root.style.zoom = a.scale === 1 ? '' : String(a.scale);
-  setWindowBackground?.(...WINDOW_BACKGROUND[theme]);
+  setWindowBackground?.(...hexToRgb(look.bg));
 }
 
 export const appearance = writable(loadAppearance());

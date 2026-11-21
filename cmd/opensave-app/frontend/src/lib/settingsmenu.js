@@ -42,7 +42,8 @@ export const SETTINGS_INDEX = [
   ['general', 'betas', 'settings.general.offerBetas', 'settings.general.betasStable'],
   ['general', 'setupGuide', 'settings.general.setupGuide', 'settings.general.setupGuideHint'],
 
-  ['appearance', 'theme', 'settings.appearance.theme'],
+  ['appearance', 'theme', 'settings.appearance.themes', 'settings.appearance.themesHint'],
+  ['appearance', 'lightDark', 'settings.appearance.lightDark', 'settings.appearance.lightDarkHint'],
   ['appearance', 'accent', 'settings.appearance.accent'],
   ['appearance', 'coverColours', 'settings.appearance.coverColours', 'settings.appearance.coverColoursHint'],
   ['appearance', 'backdrop', 'settings.appearance.backdrop'],

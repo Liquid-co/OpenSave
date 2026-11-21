@@ -15,7 +15,9 @@
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
   import Plus from 'lucide-svelte/icons/plus';
   import X from 'lucide-svelte/icons/x';
-  import { appearance, THEMES, ACCENTS, SCALES, BACKDROPS, onAccent, accentHex, withCustomAccent, withoutCustomAccent } from '../../../lib/appearance.js';
+  import { appearance, THEMES, ACCENTS, SCALES, BACKDROPS, THEME_ACCENT, onAccent, accentHex, withCustomAccent, withoutCustomAccent, currentLook } from '../../../lib/appearance.js';
+  import { LOOKS, hasBoth } from '../../../lib/themes.js';
+  import ThemeCards from '../ThemeCards.svelte';
   import { systemReducesMotion } from '../../../lib/motion.js';
   import { sidebar, chooseSidebar, SIDEBAR_MODES } from '../../../lib/shell.js';
   import { t } from '../../../lib/i18n.js';
@@ -24,6 +26,10 @@
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
 
   $: themeOptions = Object.keys(THEMES).map((id) => ({ id, label: $t('appearance.theme.' + id), icon: themeIcons[id] }));
+  // The look in use, for the theme's own accent and for saying which kind a
+  // one-kind theme is.
+  $: look = LOOKS[currentLook($appearance, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true)];
+  $: both = hasBoth($appearance.family);
   $: backdropOptions = Object.keys(BACKDROPS).map((id) => ({ id, label: $t('appearance.backdrop.' + id) }));
   $: sidebarOptions = SIDEBAR_MODES.map((id) => ({ id, label: $t('shell.sidebar.' + id) }));
 
@@ -44,11 +50,26 @@
 <svelte:window on:pointerdown={outside} on:keydown={(e) => wheelOpen && e.key === 'Escape' && (e.stopPropagation(), (wheelOpen = false))} />
 
 <SettingGroup title={$t('settings.appearance.theme')}>
-  <SettingRow id="theme" label={$t('settings.appearance.theme')}>
-    <Segmented options={themeOptions} value={$appearance.theme} label={$t('settings.appearance.theme')} on:change={(e) => set({ theme: e.detail })} />
+  <SettingRow id="theme" label={$t('settings.appearance.themes')} hint={$t('settings.appearance.themesHint')} under>
+    <ThemeCards />
+  </SettingRow>
+  <SettingRow id="lightDark" label={$t('settings.appearance.lightDark')} hint={both ? $t('settings.appearance.lightDarkHint') : $t(look.kind === 'dark' ? 'settings.appearance.onlyDark' : 'settings.appearance.onlyLight', { theme: $t('theme.name.' + currentLook($appearance)) })}>
+    <Segmented options={themeOptions} value={$appearance.theme} disabled={!both} label={$t('settings.appearance.lightDark')} on:change={(e) => set({ theme: e.detail })} />
   </SettingRow>
   <SettingRow id="accent" label={$t('settings.appearance.accent')} under>
     <div class="swatches" role="radiogroup" aria-label={$t('settings.appearance.accent')}>
+      <button
+        class="swatch own"
+        role="radio"
+        aria-checked={$appearance.accent === THEME_ACCENT}
+        aria-label={$t('settings.appearance.themeAccent')}
+        title={$t('settings.appearance.themeAccent')}
+        style="--swatch: {look.accent}; --swatch-on: {onAccent(look.accent)}"
+        on:click={() => set({ accent: THEME_ACCENT })}
+      >
+        {#if $appearance.accent === THEME_ACCENT}<Check size={14} strokeWidth={3} />{:else}<span class="own-mark">T</span>{/if}
+      </button>
+      <span class="sep" aria-hidden="true"></span>
       {#each Object.entries(ACCENTS) as [id, a]}
         <button
           class="swatch"
@@ -93,7 +114,7 @@
           <Plus size={14} strokeWidth={3} />
         </button>
         {#if wheelOpen}
-          <AccentWheel initial={accentHex($appearance.accent)} on:pick={addColour} on:close={() => (wheelOpen = false)} />
+          <AccentWheel initial={accentHex($appearance.accent, look.accent)} on:pick={addColour} on:close={() => (wheelOpen = false)} />
         {/if}
       </span>
     </div>
@@ -171,6 +192,20 @@
     box-shadow:
       0 0 0 2px var(--bg-raised),
       0 0 0 4px var(--swatch);
+  }
+  /* The theme's own: its colour, marked so it reads as "whatever the theme
+     has" rather than one more colour. */
+  .own-mark {
+    font-size: 11px;
+    font-weight: 800;
+    opacity: 0.85;
+  }
+  .sep {
+    width: 1px;
+    height: 20px;
+    align-self: center;
+    margin: 0 2px;
+    background: var(--border-strong);
   }
   .custom,
   .picker {

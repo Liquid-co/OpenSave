@@ -55,7 +55,7 @@
   --text-dim: #a4a4ad;
   /* 4.6:1 against a card. It was #5e5e66, 2.8:1, which is where every hint
      and date in the app lived — present, and hard to read. */
-  --text-faint: #85858f;
+  --text-faint: #868690;
   --success: #4ade80;
   --success-rgb: 74, 222, 128;
   --warn: #fbbf24;
@@ -95,7 +95,7 @@
   --border-strong: #cfcfda;
   --text: #17171c;
   --text-dim: #4f4f5a;
-  --text-faint: #6c6c78;
+  --text-faint: #696974;
   --success: #15803d;
   --success-rgb: 21, 128, 61;
   --warn: #b45309;
