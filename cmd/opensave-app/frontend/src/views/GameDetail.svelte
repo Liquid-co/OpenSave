@@ -35,7 +35,7 @@
   const runner = createRunner((message, kind, shown = {}) =>
     toast(message, kind, {
       game: params.gameId,
-      ...(game && !splitMessage(message).detail && !shown.detail ? { detail: game.name } : {}),
+      ...(game && kind !== 'error' && !splitMessage(message).detail && !shown.detail ? { detail: game.name } : {}),
       ...shown
     })
   );

@@ -2,20 +2,18 @@
 //
 // Collapsed, the newest is in front and each older one is a step behind it:
 // a little smaller, a little further back, so only its edge shows past the
-// one in front — and cut to the front one's height, so the edges line up
-// whatever each says. Past the third, they wait out of sight.
+// one in front. Past the third, they wait out of sight.
 //
-// Open, they stand in a column, newest nearest the edge, each at its own
-// height.
+// Open, they stand in a column, newest nearest the edge.
 //
-// `order` is newest first; `heights` each one's own height (id -> px), unknown
-// until it has been drawn. y grows away from the edge the toasts sit on: up
+// Toasts are all one height (STACK.height); `heights` (id -> px) can say
+// otherwise for one, which the tests use. `order` is newest first. y grows away from the edge the toasts sit on: up
 // from the bottom of the page, or down from the top of the window.
 
-export const STACK = Object.freeze({ peek: 15, shrink: 0.05, layers: 3, gap: 8, fallback: 60 });
+export const STACK = Object.freeze({ peek: 15, shrink: 0.05, layers: 3, gap: 8, height: 60 });
 
 export function stackPlaces(order, heights, { open = false, opt = STACK } = {}) {
-  const h = (id) => heights[id] ?? opt.fallback;
+  const h = (id) => heights[id] ?? opt.height;
   const places = {};
   if (!order.length) return { places, height: 0 };
   const front = h(order[0].id);

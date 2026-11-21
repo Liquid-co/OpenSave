@@ -285,8 +285,7 @@ export function applyMessage(msg) {
           game: data.gameId,
           title: `Couldn't sync ${gameName}`,
           detail: reason ? `${reason.charAt(0).toUpperCase()}${reason.slice(1)}. It tries again on its own.` : 'It tries again on its own.',
-          retry: () => syncGame(data.gameId),
-          action: { label: get(t)('common.open'), run: () => navigate('game', { gameId: data.gameId }) }
+          retry: () => syncGame(data.gameId)
         });
       }
       break;

@@ -17,6 +17,11 @@
   // fills, for something under way). A title, a second line, the one thing
   // to do next, and a close button on every one.
   //
+  // Every toast is the same size, whatever it says: two lines of words — a
+  // title and a second line, or a title given both — each cut short with the
+  // whole of it on hover (and read in full to a screen reader), and one
+  // button beside them, never under.
+  //
   // Away: the close button, Escape while it has focus, or a throw to either
   // side — it tilts as it is dragged, and goes if let go far enough or fast
   // enough; otherwise it springs back.
@@ -55,14 +60,9 @@
   // Newest first: the front of the stack.
   $: order = list.slice().reverse();
 
-  // Each toast's own height, as drawn (its row, and the border round it).
-  let rows = {};
-  $: heights = Object.fromEntries(Object.entries(rows).map(([id, h]) => [id, h + 2]));
-  $: for (const id of Object.keys(rows)) if (!list.some((t) => String(t.id) === id)) delete rows[id];
-
   let holding = false;
   $: open = holding && order.length > 1;
-  $: stack = stackPlaces(order, heights, { open });
+  $: stack = stackPlaces(order, {}, { open });
   // Away from the edge they sit on: up from the bottom, down from the top.
   $: away = top ? 1 : -1;
 
@@ -70,8 +70,9 @@
   // A game's art for what happened to it; an icon for what went wrong or is
   // still going, where the colour says more than the art.
   const artFor = (t) => (t.kind === 'success' || t.kind === 'received' || t.kind === 'info' ? gameOf(t) : null);
-  // Errors with something to try list their buttons under the words.
-  const below = (t) => t.kind === 'error' && (!!t.retry || !!t.action);
+  // The one button beside the words: Try again, when there is that to do,
+  // over anything else.
+  const button = (t) => (t.retry ? 'retry' : t.action ? 'action' : null);
   const pct = (p) => (p?.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0);
   // How much of a toast's time has gone: the bar of one drawn again carries
   // on from there.
@@ -316,8 +317,7 @@
       <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div
         class="toast k-{t.kind}"
-        class:below={below(t)}
-        style:height={heights[t.id] ? `${p.height}px` : null}
+        class:one-line={!t.detail}
         out:leave={{ id: t.id, dir: away }}
         on:pointerdown={(e) => grab(e, t, i)}
         on:pointermove={pull}
@@ -325,7 +325,7 @@
         on:pointercancel={letGo}
         on:keydown={(e) => keys(e, t)}
       >
-        <div class="row" bind:offsetHeight={rows[t.id]}>
+        <div class="row">
           <span class="lead">
             {#if g}
               {@const src = gameCover(g, true)}
@@ -340,18 +340,14 @@
             {/if}
           </span>
 
-          <div class="words">
+          <div class="words" title={t.detail ? `${t.title}\n${t.detail}` : t.title}>
             <b>{t.title}</b>
             {#if t.detail}<span class="detail">{t.detail}</span>{/if}
-            {#if below(t)}
-              <span class="acts">
-                {#if t.retry}<button class="pill" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>{/if}
-                {#if t.action}<button class="quiet" on:click={() => act(t)}>{t.action.label}</button>{/if}
-              </span>
-            {/if}
           </div>
 
-          {#if !below(t) && t.action}
+          {#if button(t) === 'retry'}
+            <button class="pill" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>
+          {:else if button(t) === 'action'}
             <button class="pill" on:click={() => act(t)}>{#if t.undo}<Undo2 size={14} />{/if}{t.action.label}</button>
           {/if}
           <button class="close" aria-label={$i18n('common.dismiss')} title={$i18n('common.dismiss')} on:click={() => toasts.close(t.id)}><X size={15} /></button>
@@ -381,13 +377,15 @@
     --toast-rim: rgba(255, 255, 255, 0.13);
     /* How much darker each card further back is. */
     --dusk: rgba(4, 4, 8, 0.34);
+    /* Every toast's height (lib/toaststack.js stacks them by it). */
+    --toast-h: 60px;
     /* One curve for the stack moving: quick, settling with a touch of give. */
     --settle: cubic-bezier(0.2, 1.12, 0.32, 1);
     position: absolute;
     left: 50%;
     bottom: 16px;
     z-index: 100;
-    width: min(390px, calc(100% - 32px));
+    width: min(400px, calc(100% - 32px));
     transform: translateX(-50%);
     pointer-events: none;
     transition: height 0.45s var(--settle);
@@ -440,6 +438,7 @@
     --kind: var(--accent-text);
     position: relative;
     box-sizing: border-box;
+    height: var(--toast-h);
     border-radius: 16px;
     background: linear-gradient(180deg, var(--toast-lift), transparent 70%), var(--toast-bg);
     background: linear-gradient(180deg, var(--toast-lift), transparent 70%), color-mix(in srgb, var(--toast-bg) 90%, transparent);
@@ -509,13 +508,10 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 58px;
+    height: 100%;
     box-sizing: border-box;
-    padding: 9px 8px 9px 9px;
+    padding: 0 8px 0 9px;
     transition: opacity 0.25s ease;
-  }
-  .below .row {
-    align-items: flex-start;
   }
   /* Behind the front: only the edge shows, so nothing on it is read — and
      the edge is drawn a little brighter, so the stack reads as one. */
@@ -618,33 +614,30 @@
     flex-direction: column;
     gap: 1px;
   }
+  /* Two lines, always: a title and a second line, each cut short — or a
+     title alone, given both. */
   .words b {
     font-weight: 600;
     line-height: 1.3;
     letter-spacing: -0.005em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .one-line .words b {
+    white-space: normal;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    overflow: hidden;
     overflow-wrap: anywhere;
   }
   .detail {
     font-size: var(--text-md);
     line-height: 1.35;
     color: var(--text-dim);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
     overflow: hidden;
-    overflow-wrap: anywhere;
-  }
-  .below .words {
-    padding-top: 2px;
-  }
-  .acts {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   button {
@@ -675,20 +668,6 @@
   .pill:active {
     transform: scale(0.96);
   }
-  .quiet {
-    height: 30px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: 9px;
-    background: transparent;
-    color: var(--text-dim);
-    font-size: var(--text-md);
-    font-weight: 600;
-  }
-  .quiet:hover {
-    background: var(--pill);
-    color: var(--text);
-  }
   .close {
     flex: none;
     width: 28px;
@@ -712,9 +691,6 @@
   }
   .close :global(svg) {
     display: block;
-  }
-  .below .close {
-    margin-top: -2px;
   }
 
   /* Along the foot: how much time it has left, shrinking toward its start —

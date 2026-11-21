@@ -17,7 +17,7 @@ describe('stackPlaces', () => {
   it('keeps those past the third out of sight, without growing the stack', () => {
     const { places, height } = stackPlaces(order('e', 'd', 'c', 'b', 'a'), {});
     expect(['e', 'd', 'c', 'b', 'a'].map((id) => places[id].shown)).toEqual([true, true, true, false, false]);
-    expect(height).toBe(STACK.fallback + STACK.peek * 2);
+    expect(height).toBe(STACK.height + STACK.peek * 2);
   });
 
   it('stands them in a column when open, each at its own height', () => {
