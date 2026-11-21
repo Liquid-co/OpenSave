@@ -199,7 +199,7 @@
   .tile {
     position: relative;
     aspect-ratio: 2 / 3;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
@@ -229,7 +229,7 @@
     width: 32px;
     height: 32px;
     flex: none;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

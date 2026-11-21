@@ -1,11 +1,17 @@
-// Whole-app themes (the SettingsV3 board): the colours of every surface and
-// of text, and an accent of their own. A theme is a family of looks — dark,
-// light, or both — and the dark / light / match-system choice picks between
-// them where it has both. lib/appearance.js puts the one in use on the page.
+// Whole-app themes: the colours of every surface and of text, and an accent
+// of their own. A theme is a family of looks — dark, light, or both — and
+// the dark / light / match-system choice picks between them where it has
+// both. lib/appearance.js puts the one in use on the page; themes people
+// make themselves are lib/customthemes.js.
 //
-// A look gives the surfaces and text; everything that says what kind of
-// thing something is (success, warning, the device colours) stays the app's
-// own for dark or light (app.css), so it means the same in every theme.
+// OpenSave's own, each a different mood rather than the same dark grey in
+// another tint: borrowing nobody's names, though several nod to palettes
+// people love (Nord's ice, Gruvbox's warmth, Everforest's greens, Rosé Pine's
+// petals) and to hardware (a CRT's glow, a handheld's green screen).
+//
+// A look gives the surfaces and text; what says what kind of thing
+// something is (success, warning, the device colours) stays the app's own
+// for dark or light (app.css), so it means the same in every theme.
 
 /** The looks: their kind, surfaces from the page up, text, and accent. */
 export const LOOKS = {
@@ -39,7 +45,7 @@ export const LOOKS = {
     accent: '#7650e4'
   },
   // True black behind everything, for OLED screens and dark rooms.
-  oled: {
+  blackout: {
     kind: 'dark',
     bg: '#000000',
     sidebar: '#000000',
@@ -50,93 +56,203 @@ export const LOOKS = {
     borderStrong: '#2c2c32',
     text: '#ececef',
     textDim: '#a4a4ad',
-    textFaint: '#85858f',
-    accent: '#8a63f4'
+    textFaint: '#868690',
+    accent: '#e2e2e8'
   },
-  // Catppuccin's own colours: Mocha (base, mantle, surfaces, text, mauve)…
-  mocha: {
+  // A CRT left on in a dark arcade: indigo dark, a hot pink glow.
+  arcade: {
     kind: 'dark',
-    bg: '#1e1e2e',
-    sidebar: '#181825',
-    raised: '#252537',
-    hover: '#2d2d40',
-    active: '#313244',
-    border: '#313244',
-    borderStrong: '#45475a',
-    text: '#cdd6f4',
-    textDim: '#bac2de',
-    textFaint: '#9399b2',
-    accent: '#cba6f7'
+    bg: '#120f24',
+    sidebar: '#0e0b1d',
+    raised: '#1a1633',
+    hover: '#221d40',
+    active: '#2b2550',
+    border: '#2a2448',
+    borderStrong: '#3d3566',
+    text: '#f3efff',
+    textDim: '#bdb4e0',
+    textFaint: '#9d93c8',
+    accent: '#ff4f9a'
   },
-  // …and Latte.
-  latte: {
+  // An old handheld's screen: four shades of green, lit…
+  handheld: {
     kind: 'light',
-    bg: '#eff1f5',
-    sidebar: '#e6e9ef',
-    raised: '#fbfbfd',
-    hover: '#e6e9ef',
-    active: '#dce0e8',
-    border: '#dce0e8',
-    borderStrong: '#bcc0cc',
-    text: '#4c4f69',
-    textDim: '#5c5f77',
-    textFaint: '#64677c',
-    accent: '#8839ef'
+    bg: '#c8d3a2',
+    sidebar: '#bdc994',
+    raised: '#d6dfb4',
+    hover: '#c2ce9a',
+    active: '#b6c389',
+    border: '#aab97c',
+    borderStrong: '#8e9e60',
+    text: '#17220f',
+    textDim: '#2c3b22',
+    textFaint: '#3a4b2e',
+    accent: '#2e5a26'
   },
-  // Tokyo Night's storm blues.
-  tokyo: {
+  // …and with the lights off.
+  handheldDark: {
     kind: 'dark',
-    bg: '#1a1b26',
-    sidebar: '#16161e',
-    raised: '#1f2335',
-    hover: '#24283b',
-    active: '#292e42',
-    border: '#292e42',
-    borderStrong: '#3b4261',
-    text: '#c0caf5',
-    textDim: '#a9b1d6',
-    textFaint: '#8a92bb',
-    accent: '#7aa2f7'
+    bg: '#0e1910',
+    sidebar: '#0a130c',
+    raised: '#142116',
+    hover: '#1a2a1d',
+    active: '#213425',
+    border: '#1e3022',
+    borderStrong: '#2e4733',
+    text: '#dcf2c9',
+    textDim: '#a9c99a',
+    textFaint: '#88a97b',
+    accent: '#9bd65a'
   },
-  // Warm, low light: browns and an orange glow.
-  ember: {
+  // Arctic blue-greys, cool and quiet…
+  frost: {
     kind: 'dark',
-    bg: '#110e0c',
-    sidebar: '#15110e',
-    raised: '#1c1713',
-    hover: '#241e19',
-    active: '#2d261f',
-    border: '#2a231d',
-    borderStrong: '#3a3028',
-    text: '#f1e9e2',
-    textDim: '#bcafa3',
-    textFaint: '#998c80',
-    accent: '#f0954f'
+    bg: '#1c212b',
+    sidebar: '#181c25',
+    raised: '#232936',
+    hover: '#2a3141',
+    active: '#323a4c',
+    border: '#2c3343',
+    borderStrong: '#3e4759',
+    text: '#eceff4',
+    textDim: '#c5ccd8',
+    textFaint: '#a0aabb',
+    accent: '#88c0d0'
+  },
+  // …and snow in daylight.
+  frostDay: {
+    kind: 'light',
+    bg: '#eef2f6',
+    sidebar: '#e4e9f0',
+    raised: '#fafcfd',
+    hover: '#e4e9f0',
+    active: '#d8dfe8',
+    border: '#d8dfe8',
+    borderStrong: '#bcc6d3',
+    text: '#232a36',
+    textDim: '#3e4859',
+    textFaint: '#566175',
+    accent: '#3a7894'
+  },
+  // Warm, low light, like an old game by a fire…
+  campfire: {
+    kind: 'dark',
+    bg: '#1d1a17',
+    sidebar: '#181512',
+    raised: '#26221e',
+    hover: '#2f2a25',
+    active: '#39332c',
+    border: '#332d27',
+    borderStrong: '#4a4138',
+    text: '#f0e3cf',
+    textDim: '#c9b79b',
+    textFaint: '#ab9a80',
+    accent: '#f2a33c'
+  },
+  // …and the same warmth on old paper.
+  campfireDay: {
+    kind: 'light',
+    bg: '#f6efe2',
+    sidebar: '#efe5d3',
+    raised: '#fdf9f1',
+    hover: '#efe5d3',
+    active: '#e5d8c1',
+    border: '#e4d6be',
+    borderStrong: '#cdbb9c',
+    text: '#3a2f24',
+    textDim: '#5a4a38',
+    textFaint: '#6c5a45',
+    accent: '#a85c16'
+  },
+  // A forest floor: soft greens, easy on tired eyes…
+  moss: {
+    kind: 'dark',
+    bg: '#1b201c',
+    sidebar: '#171b18',
+    raised: '#222823',
+    hover: '#29302a',
+    active: '#313a32',
+    border: '#2c342d',
+    borderStrong: '#3e4a40',
+    text: '#e3e8dc',
+    textDim: '#b9c3b0',
+    textFaint: '#98a38f',
+    accent: '#a7c080'
+  },
+  // …and in sunlight.
+  mossDay: {
+    kind: 'light',
+    bg: '#f2f1e6',
+    sidebar: '#e9e8da',
+    raised: '#fbfaf3',
+    hover: '#e9e8da',
+    active: '#dddcc9',
+    border: '#ddddc9',
+    borderStrong: '#c3c2a8',
+    text: '#2f3a2c',
+    textDim: '#485645',
+    textFaint: '#5a6756',
+    accent: '#557638'
+  },
+  // Dusk and petals: muted plum, a rose accent…
+  petal: {
+    kind: 'dark',
+    bg: '#1d1820',
+    sidebar: '#18141b',
+    raised: '#261f2a',
+    hover: '#2e2633',
+    active: '#372e3d',
+    border: '#322a37',
+    borderStrong: '#473c4f',
+    text: '#f1e6ee',
+    textDim: '#cbb8c6',
+    textFaint: '#ab98a6',
+    accent: '#eb8fb4'
+  },
+  // …and blossom in the morning.
+  petalDay: {
+    kind: 'light',
+    bg: '#faf3f2',
+    sidebar: '#f3e9e8',
+    raised: '#fffaf9',
+    hover: '#f3e9e8',
+    active: '#ebdddc',
+    border: '#ecdedd',
+    borderStrong: '#d6c2c1',
+    text: '#3a2a33',
+    textDim: '#5b4651',
+    textFaint: '#715a66',
+    accent: '#b54677'
+  },
+  // The deep sea: near-black teal, an aqua light.
+  abyss: {
+    kind: 'dark',
+    bg: '#0b1418',
+    sidebar: '#081114',
+    raised: '#0f1c22',
+    hover: '#14252c',
+    active: '#1a2f37',
+    border: '#172a31',
+    borderStrong: '#234049',
+    text: '#def4f5',
+    textDim: '#a6c9cc',
+    textFaint: '#85aaae',
+    accent: '#3fd2c7'
   }
 };
 
-/**
- * The themes, in the order shown. Each is a family of looks; `card` is the
- * look its card shows when it stands for one kind only (OpenSave Night and
- * Daylight are one family, shown as two cards, as they always were two
- * choices).
- */
-export const THEMES_BUILT_IN = [
-  { id: 'night', family: 'opensave', look: 'night' },
-  { id: 'oled', family: 'oled', look: 'oled' },
-  { id: 'mocha', family: 'catppuccin', look: null },
-  { id: 'tokyo', family: 'tokyo', look: 'tokyo' },
-  { id: 'ember', family: 'ember', look: 'ember' },
-  { id: 'daylight', family: 'opensave', look: 'daylight' }
-];
-
-/** The families: their dark look and their light one, where they have it. */
+/** The families: their dark look and their light one, where they have it,
+ *  in the order their cards are shown. */
 export const FAMILIES = {
   opensave: { dark: 'night', light: 'daylight' },
-  oled: { dark: 'oled' },
-  catppuccin: { dark: 'mocha', light: 'latte' },
-  tokyo: { dark: 'tokyo' },
-  ember: { dark: 'ember' }
+  blackout: { dark: 'blackout' },
+  arcade: { dark: 'arcade' },
+  handheld: { dark: 'handheldDark', light: 'handheld' },
+  frost: { dark: 'frost', light: 'frostDay' },
+  campfire: { dark: 'campfire', light: 'campfireDay' },
+  moss: { dark: 'moss', light: 'mossDay' },
+  petal: { dark: 'petal', light: 'petalDay' },
+  abyss: { dark: 'abyss' }
 };
 
 export const DEFAULT_FAMILY = 'opensave';
@@ -154,25 +270,16 @@ export function lookFor(family, mode, prefersDark = true) {
   return f[kind] ?? f.dark ?? f.light;
 }
 
-/** Whether a theme's card is the one in use. */
-export function isCurrent(theme, family, look) {
-  return theme.family === family && (theme.look === null || theme.look === look);
+/** What picking a theme changes: the family, and its own accent. Light or
+ *  dark stays as chosen, for the family that has both. */
+export function pick(family, appearance) {
+  return { ...appearance, family, accent: 'theme' };
 }
 
-/** What picking a theme's card changes: its family, and — for a card that
- *  stands for one kind (Night, Daylight) — that kind, so it shows at once. */
-export function pick(theme, appearance) {
-  const next = { ...appearance, family: theme.family, accent: 'theme' };
-  if (theme.look) {
-    const kind = LOOKS[theme.look].kind;
-    if (hasBoth(theme.family)) next.theme = kind;
-  }
-  return next;
-}
-
-/** The CSS variables a look sets (app.css names them). */
+/** The CSS variables a look sets (app.css names them). `look` is an id in
+ *  LOOKS or a look itself (a theme of someone's own). */
 export function lookVars(look) {
-  const l = LOOKS[look] ?? LOOKS.night;
+  const l = typeof look === 'string' ? (LOOKS[look] ?? LOOKS.night) : look;
   return {
     '--bg': l.bg,
     '--bg-sidebar': l.sidebar,

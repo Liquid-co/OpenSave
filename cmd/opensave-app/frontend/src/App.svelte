@@ -410,7 +410,7 @@
   .boot-logo {
     width: 72px;
     height: 72px;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--round, 1));
     margin-bottom: 6px;
   }
   .pulse {

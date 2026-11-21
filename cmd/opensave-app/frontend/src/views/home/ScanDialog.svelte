@@ -482,7 +482,7 @@
   .core {
     width: 60px;
     height: 60px;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-fill);

@@ -177,7 +177,7 @@
     margin: -4px -6px;
     padding: 4px 6px;
     border: none;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: transparent;
     color: inherit;
     font: inherit;
@@ -243,7 +243,7 @@
     width: 28px;
     height: 38px;
     flex-shrink: 0;
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
   }
@@ -317,7 +317,7 @@
     }
   }
   .seg {
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     min-width: 4px;
     transition: flex 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
   }

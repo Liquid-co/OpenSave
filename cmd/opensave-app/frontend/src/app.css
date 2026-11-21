@@ -21,10 +21,10 @@
   --accent-fill: #825de5;
   --accent-fill-hover: #7554ce;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: calc(6px * var(--round, 1));
+  --radius: calc(10px * var(--round, 1));
+  --radius-lg: calc(14px * var(--round, 1));
+  --radius-xl: calc(20px * var(--round, 1));
   --sidebar-w: 224px;
   --sidebar-w-icons: 64px;
   --titlebar-h: 44px;
@@ -134,7 +134,8 @@ body,
 }
 
 body {
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Cantarell', 'Ubuntu', sans-serif;
+  /* A theme can choose another (lib/customthemes.js FONTS). */
+  font-family: var(--font-ui, 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Cantarell', 'Ubuntu', sans-serif);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -181,7 +182,7 @@ input[type='radio'] {
     box-shadow 0.13s ease;
 }
 input[type='checkbox'] {
-  border-radius: 5px;
+  border-radius: calc(5px * var(--round, 1));
 }
 input[type='radio'] {
   border-radius: 50%;
@@ -302,7 +303,7 @@ input[type='radio']:disabled {
   height: 34px;
   padding: 0 14px;
   border: 1px solid var(--btn-border);
-  border-radius: 9px;
+  border-radius: calc(9px * var(--round, 1));
   background: var(--btn-bg);
   color: var(--text);
   font: inherit;
@@ -365,7 +366,7 @@ input[type='radio']:disabled {
   height: 28px;
   padding: 0 10px;
   font-size: 0.84rem;
-  border-radius: 7px;
+  border-radius: calc(7px * var(--round, 1));
   gap: 6px;
 }
 .btn.icon {
@@ -392,7 +393,7 @@ input[type='radio']:disabled {
   gap: 7px;
   padding: 9px 14px 11px;
   border: none;
-  border-radius: 8px 8px 0 0;
+  border-radius: calc(8px * var(--round, 1)) calc(8px * var(--round, 1)) 0 0;
   background: transparent;
   color: var(--text-dim);
   font: inherit;
@@ -417,7 +418,7 @@ input[type='radio']:disabled {
   right: 10px;
   bottom: -1px;
   height: 2px;
-  border-radius: 2px;
+  border-radius: calc(2px * var(--round, 1));
   background: var(--accent);
 }
 
@@ -440,7 +441,7 @@ input[type='radio']:disabled {
 }
 .slide-underline {
   height: 2px;
-  border-radius: 2px;
+  border-radius: calc(2px * var(--round, 1));
   background: var(--accent);
 }
 .slide-fill {
@@ -448,7 +449,7 @@ input[type='radio']:disabled {
 }
 .slide-bar {
   width: 3px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 calc(3px * var(--round, 1)) calc(3px * var(--round, 1)) 0;
   background: var(--accent);
 }
 /* The moving mark stands in for each item's own. */
@@ -503,7 +504,7 @@ input[type='radio']:disabled {
   padding: 7px 12px;
   background-color: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border-radius: calc(9px * var(--round, 1));
   color: var(--text);
   font: inherit;
   font-size: var(--text-md);
@@ -648,7 +649,7 @@ h2.page-title {
 
 /* Placeholder shapes while something loads, in place of the word Loading. */
 .skeleton {
-  border-radius: 8px;
+  border-radius: calc(8px * var(--round, 1));
   background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-active) 50%, var(--bg-hover) 75%);
   background-size: 200% 100%;
   animation: skeleton 1.3s ease-in-out infinite;

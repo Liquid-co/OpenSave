@@ -177,12 +177,12 @@
   .swatch {
     width: 10px;
     height: 10px;
-    border-radius: 2px;
+    border-radius: calc(2px * var(--round, 1));
   }
   .tick-key {
     width: 2px;
     height: 12px;
-    border-radius: 1px;
+    border-radius: calc(1px * var(--round, 1));
     background: var(--text-dim);
   }
   .branch-key {
@@ -209,7 +209,7 @@
     height: 18px;
   }
   .lane {
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     background: rgba(255, 255, 255, 0.05);
   }
   :global([data-theme='light']) .lane {
@@ -220,7 +220,7 @@
     position: absolute;
     top: 3px;
     bottom: 3px;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     transform-origin: left;
     animation: grow 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
     animation-delay: calc(var(--lane) * 90ms + var(--d) * 30ms + 120ms);
@@ -246,7 +246,7 @@
     margin-left: -1px;
     padding: 0;
     border: 0;
-    border-radius: 2px 2px 0 0;
+    border-radius: calc(2px * var(--round, 1)) calc(2px * var(--round, 1)) 0 0;
     background: var(--text-faint);
     cursor: pointer;
     transform-origin: bottom;
@@ -344,7 +344,7 @@
     width: max-content;
     max-width: 240px;
     padding: 5px 9px;
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
     background: var(--bg-active);
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow);

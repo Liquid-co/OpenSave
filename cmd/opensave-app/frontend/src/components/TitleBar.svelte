@@ -110,7 +110,7 @@
     display: grid;
     place-items: center;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
@@ -138,7 +138,7 @@
   .logo {
     width: 20px;
     height: 20px;
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
   }
   .title {
     font-size: var(--text-md);
@@ -161,7 +161,7 @@
     height: 30px;
     padding: 0 6px 0 10px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-raised);
     color: var(--text-faint);
     font: inherit;
@@ -185,7 +185,7 @@
     font-size: var(--text-xs);
     padding: 1px 6px;
     border: 1px solid var(--border-strong);
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     color: var(--text-faint);
     flex-shrink: 0;
   }

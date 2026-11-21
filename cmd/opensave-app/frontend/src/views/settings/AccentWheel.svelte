@@ -123,7 +123,7 @@
     gap: 12px;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg, 12px);
+    border-radius: var(--radius-lg, calc(12px * var(--round, 1)));
     box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
   }
   .wheel {
@@ -174,7 +174,7 @@
     width: 100%;
     accent-color: var(--full);
     height: 10px;
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     appearance: none;
     background: linear-gradient(to right, #000, var(--full));
   }
@@ -195,7 +195,7 @@
   .preview {
     width: 34px;
     height: 34px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     display: grid;
     place-items: center;
     font-size: 0.8rem;
@@ -209,7 +209,7 @@
     padding: 7px 9px;
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     color: var(--text);
     font-family: ui-monospace, monospace;
     font-size: 0.86rem;

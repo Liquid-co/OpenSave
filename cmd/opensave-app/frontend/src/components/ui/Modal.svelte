@@ -76,7 +76,7 @@
     padding: 32px;
   }
   .panel {
-    --modal-r: 18px;
+    --modal-r: calc(18px * var(--round, 1));
     outline: none;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
@@ -107,7 +107,7 @@
     width: 40px;
     height: 40px;
     flex-shrink: 0;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-soft);
@@ -140,7 +140,7 @@
     display: grid;
     place-items: center;
     border: none;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;

@@ -295,7 +295,7 @@
     width: 34px;
     height: 34px;
     flex: none;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     display: grid;
     place-items: center;
     background: rgba(var(--game-accent-rgb, var(--accent-rgb)), 0.18);
@@ -516,7 +516,7 @@
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-faint);
     cursor: pointer;
@@ -543,7 +543,7 @@
   .empty-icon {
     width: 48px;
     height: 48px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

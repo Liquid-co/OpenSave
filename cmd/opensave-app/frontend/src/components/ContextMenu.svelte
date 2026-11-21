@@ -98,7 +98,7 @@
     padding: 5px;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     box-shadow: var(--shadow);
     animation: pop 0.1s ease-out;
   }
@@ -119,7 +119,7 @@
     width: 100%;
     padding: 7px 10px;
     border: none;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: transparent;
     color: var(--text);
     font: inherit;

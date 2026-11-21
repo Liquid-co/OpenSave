@@ -48,7 +48,7 @@
     grid-column: 1 / -1;
     background: var(--bg-elev, rgba(127, 127, 127, 0.08));
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     padding: 12px 14px;
     margin: 2px 0 10px;
   }

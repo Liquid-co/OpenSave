@@ -59,7 +59,7 @@
   .segmented {
     display: inline-flex;
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     overflow: hidden;
   }
   .segmented button {
@@ -110,7 +110,7 @@
     padding: 2px 7px;
     border: 1px solid var(--border-strong);
     border-bottom-width: 2px;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: var(--bg);
     color: var(--text);
     font: inherit;

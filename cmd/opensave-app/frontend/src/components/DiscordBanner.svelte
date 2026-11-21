@@ -53,7 +53,7 @@
     flex: none;
     width: 44px;
     height: 44px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: #5865f2;
     color: #fff;
   }
@@ -106,7 +106,7 @@
   .compact .mark {
     width: 36px;
     height: 36px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
   }
   .compact .title {
     font-size: 0.9rem;

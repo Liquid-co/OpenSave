@@ -207,7 +207,7 @@
     width: 40px;
     height: 40px;
     flex: none;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -286,7 +286,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-hover);
   }
   .cloud-facts div {

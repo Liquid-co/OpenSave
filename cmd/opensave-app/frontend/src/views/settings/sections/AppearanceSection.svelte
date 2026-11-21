@@ -54,7 +54,7 @@
   <SettingRow id="theme" label={$t('settings.appearance.themes')} hint={$t('settings.appearance.themesHint')} under>
     <ThemeCards />
   </SettingRow>
-  <SettingRow id="lightDark" label={$t('settings.appearance.lightDark')} hint={both ? $t('settings.appearance.lightDarkHint') : $t(look.kind === 'dark' ? 'settings.appearance.onlyDark' : 'settings.appearance.onlyLight', { theme: $t('theme.name.' + currentLook($appearance)) })}>
+  <SettingRow id="lightDark" label={$t('settings.appearance.lightDark')} hint={both ? $t('settings.appearance.lightDarkHint') : $t(look.kind === 'dark' ? 'settings.appearance.onlyDark' : 'settings.appearance.onlyLight', { theme: $t('theme.name.' + $appearance.family) })}>
     <Segmented options={themeOptions} value={$appearance.theme} disabled={!both} label={$t('settings.appearance.lightDark')} on:change={(e) => set({ theme: e.detail })} />
   </SettingRow>
   <SettingRow id="accent" label={$t('settings.appearance.accent')} under>

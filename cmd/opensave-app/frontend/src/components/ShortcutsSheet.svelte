@@ -66,7 +66,7 @@
     padding: 3px 7px;
     border: 1px solid var(--border-strong);
     border-bottom-width: 2px;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: var(--bg);
     color: var(--text);
   }

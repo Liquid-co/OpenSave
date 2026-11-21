@@ -295,7 +295,7 @@
     text-align: center;
     gap: 12px;
     padding: 26px 18px 22px;
-    border-radius: 16px;
+    border-radius: calc(16px * var(--round, 1));
     border: 1.5px solid var(--border);
     background: var(--bg-raised);
     color: inherit;
@@ -338,7 +338,7 @@
   .logo {
     width: 64px;
     height: 64px;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--round, 1));
     display: grid;
     place-items: center;
     background: #fff;
@@ -378,7 +378,7 @@
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     border: 1.5px solid var(--border);
     background: var(--bg-raised);
     color: inherit;
@@ -397,7 +397,7 @@
     width: 42px;
     height: 42px;
     flex: none;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -408,7 +408,7 @@
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border);
     color: var(--text-dim);
@@ -426,7 +426,7 @@
     max-width: 600px;
     margin-top: 20px;
     padding: 32px;
-    border-radius: 20px;
+    border-radius: calc(20px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border);
     display: flex;
@@ -443,7 +443,7 @@
   .big-logo {
     width: 72px;
     height: 72px;
-    border-radius: 20px;
+    border-radius: calc(20px * var(--round, 1));
   }
   .panel-head h1 {
     font-size: var(--text-xl);
@@ -507,7 +507,7 @@
     align-items: center;
     gap: 10px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--accent-soft);
     font-size: var(--text-md);
     font-weight: 600;
@@ -526,7 +526,7 @@
     }
   }
   .fallback {
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-hover);
     border: 1px solid var(--border-strong);
     padding: 0 14px;

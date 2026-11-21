@@ -19,7 +19,7 @@
     flex-shrink: 0;
     width: 38px;
     height: 38px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-hover);

@@ -159,7 +159,7 @@
     padding: 10px 12px;
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     color: var(--text);
     font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
     font-size: 0.82rem;
@@ -188,7 +188,7 @@
     max-height: 280px;
     overflow-y: auto;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg);
   }
   .file-row {

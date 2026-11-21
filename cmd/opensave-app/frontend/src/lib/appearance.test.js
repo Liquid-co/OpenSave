@@ -82,7 +82,7 @@ describe('sanitizeAppearance', () => {
   });
 
   it("keeps a theme it knows and its own accent, and starts anyone else on OpenSave's", () => {
-    expect(sanitizeAppearance({ family: 'catppuccin', accent: 'theme' })).toMatchObject({ family: 'catppuccin', accent: 'theme' });
+    expect(sanitizeAppearance({ family: 'frost', accent: 'theme' })).toMatchObject({ family: 'frost', accent: 'theme' });
     expect(sanitizeAppearance({ family: 'solarized' }).family).toBe('opensave');
     // Saved before themes: the same look as before.
     expect(sanitizeAppearance({ theme: 'light', accent: 'teal' })).toMatchObject({ family: 'opensave', theme: 'light', accent: 'teal' });
@@ -258,17 +258,17 @@ describe('applyAppearance', () => {
   it("puts a theme's colours and own accent on the page, and its background behind the window", () => {
     const root = fakeRoot();
     let windowBg = null;
-    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'catppuccin', theme: 'system', accent: 'theme' }, { root, prefersDark: true, setWindowBackground: (...rgb) => (windowBg = rgb) });
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'frost', theme: 'system', accent: 'theme' }, { root, prefersDark: true, setWindowBackground: (...rgb) => (windowBg = rgb) });
     expect(root.dataset.theme).toBe('dark');
-    expect(root.dataset.look).toBe('mocha');
-    expect(root.props['--bg']).toBe('#1e1e2e');
-    expect(root.props['--accent']).toBe('#cba6f7');
-    expect(windowBg).toEqual([30, 30, 46]);
-    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'catppuccin', theme: 'system', accent: 'theme' }, { root, prefersDark: false });
-    expect(root.dataset.look).toBe('latte');
+    expect(root.dataset.look).toBe('frost');
+    expect(root.props['--bg']).toBe('#1c212b');
+    expect(root.props['--accent']).toBe('#88c0d0');
+    expect(windowBg).toEqual([28, 33, 43]);
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'frost', theme: 'system', accent: 'theme' }, { root, prefersDark: false });
+    expect(root.dataset.look).toBe('frostDay');
     expect(root.dataset.theme).toBe('light');
     // A dark-only theme stays dark, whatever is asked.
-    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'oled', theme: 'light' }, { root });
+    applyAppearance({ ...DEFAULT_APPEARANCE, family: 'blackout', theme: 'light' }, { root });
     expect(root.dataset.theme).toBe('dark');
     expect(root.props['--bg']).toBe('#000000');
   });

@@ -328,7 +328,7 @@
     display: flex;
     overflow: hidden;
     outline: none;
-    border-radius: 16px;
+    border-radius: calc(16px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border-strong);
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
@@ -356,7 +356,7 @@
     gap: 9px;
     height: 38px;
     padding: 0 8px 0 11px;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     border: 1px solid var(--border-strong);
     background: var(--bg);
     color: var(--text-faint);
@@ -379,7 +379,7 @@
   kbd {
     padding: 1px 6px;
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     font: inherit;
     font-size: var(--text-xs);
     color: var(--text-faint);
@@ -390,7 +390,7 @@
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: var(--bg-hover);
     color: var(--text-dim);
     cursor: pointer;
@@ -410,7 +410,7 @@
     height: 38px;
     padding: 0 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -430,7 +430,7 @@
     color: var(--accent-text);
   }
   .sections :global(.nav-mark) {
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-active);
     box-shadow: inset 0 0 0 1px var(--border-strong);
   }
@@ -506,7 +506,7 @@
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
@@ -545,7 +545,7 @@
     gap: 12px;
     padding: 10px 12px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg-raised);
     color: var(--text);
     font: inherit;
@@ -563,7 +563,7 @@
     height: 30px;
     display: grid;
     place-items: center;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-active);
     color: var(--accent-text);
   }

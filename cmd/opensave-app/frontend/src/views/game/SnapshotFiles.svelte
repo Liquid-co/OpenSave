@@ -78,7 +78,7 @@
   .files {
     display: flex;
     flex-direction: column;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     border: 1px solid var(--border);
   }
   .file {

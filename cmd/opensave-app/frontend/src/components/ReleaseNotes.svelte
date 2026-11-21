@@ -198,7 +198,7 @@
     font-size: 0.82em;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     padding: 1px 5px;
   }
   .empty {

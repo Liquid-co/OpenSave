@@ -161,7 +161,7 @@
     height: 36px;
     padding: 0 10px 0 12px;
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: var(--bg);
     color: var(--text);
     font: inherit;
@@ -211,7 +211,7 @@
     gap: 2px;
     overflow-y: auto;
     padding: 5px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow);
@@ -224,7 +224,7 @@
     min-height: 34px;
     padding: 6px 10px;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text);
     font: inherit;

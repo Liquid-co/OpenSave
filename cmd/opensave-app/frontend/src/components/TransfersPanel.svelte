@@ -164,7 +164,7 @@
     width: 38px;
     height: 38px;
     flex: none;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -200,7 +200,7 @@
     display: grid;
     place-items: center;
     border: none;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
@@ -245,7 +245,7 @@
     width: 30px;
     height: 40px;
     flex: none;
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
@@ -295,7 +295,7 @@
   .bar {
     height: 3px;
     margin-top: 4px;
-    border-radius: 2px;
+    border-radius: calc(2px * var(--round, 1));
     background: var(--bg-active);
     overflow: hidden;
   }
@@ -359,7 +359,7 @@
   .empty-icon {
     width: 44px;
     height: 44px;
-    border-radius: 13px;
+    border-radius: calc(13px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

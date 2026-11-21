@@ -118,7 +118,7 @@
     display: grid;
     place-items: center;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg);
     color: var(--text-dim);
     cursor: pointer;

@@ -184,7 +184,7 @@
     height: 30px;
     padding: 0 8px 0 10px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text);
     font: inherit;
@@ -277,7 +277,7 @@
   .state-icon {
     width: 38px;
     height: 38px;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -308,7 +308,7 @@
   .dtile {
     width: 34px;
     height: 34px;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     display: grid;
     place-items: center;
     flex-shrink: 0;

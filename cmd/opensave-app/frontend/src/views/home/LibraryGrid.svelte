@@ -444,7 +444,7 @@
     height: 30px;
     padding: 0 10px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-raised);
     color: var(--text-faint);
     cursor: text;
@@ -472,7 +472,7 @@
     height: 30px;
     padding: 0 10px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -531,7 +531,7 @@
     align-items: center;
     gap: 2px;
     padding: 3px 6px 3px 3px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--accent-soft);
     border: 1px solid rgba(var(--accent-rgb), 0.35);
     flex-wrap: wrap;

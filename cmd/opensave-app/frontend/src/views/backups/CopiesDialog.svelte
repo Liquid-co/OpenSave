@@ -143,7 +143,7 @@
     font-size: var(--text-md);
     color: var(--text-dim);
     padding: 10px 12px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
@@ -153,7 +153,7 @@
   .rows {
     display: flex;
     flex-direction: column;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     border: 1px solid var(--border);
     overflow: hidden;
   }

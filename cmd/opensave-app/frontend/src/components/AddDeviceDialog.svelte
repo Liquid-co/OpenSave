@@ -249,7 +249,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 14px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     border: 1.5px solid var(--border);
     background: var(--bg);
     color: inherit;
@@ -271,7 +271,7 @@
     width: 42px;
     height: 42px;
     flex-shrink: 0;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -309,7 +309,7 @@
     position: relative;
     width: 340px;
     height: 320px;
-    border-radius: 16px;
+    border-radius: calc(16px * var(--round, 1));
     overflow: hidden;
     background: radial-gradient(circle at 50% 50%, rgba(var(--accent-rgb), 0.12), transparent 70%), var(--bg);
     border: 1px solid var(--border);
@@ -360,7 +360,7 @@
     width: 52px;
     height: 52px;
     transform: translate(-50%, -50%);
-    border-radius: 15px;
+    border-radius: calc(15px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-fill);
@@ -435,7 +435,7 @@
     height: 34px;
     padding: 0 10px;
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: var(--bg);
     color: var(--text-faint);
   }
@@ -482,7 +482,7 @@
     align-items: center;
     gap: 12px;
     padding: 9px 12px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
     transition: border-color 0.2s;
@@ -494,7 +494,7 @@
     width: 36px;
     height: 36px;
     flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -541,7 +541,7 @@
     gap: 14px;
     margin-top: 12px;
     padding: 12px 14px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     border: 1px solid rgba(var(--accent-rgb), 0.5);
     background: var(--bg);
   }
@@ -559,7 +559,7 @@
     min-height: 140px;
     padding: 16px;
     border: 1.5px dashed var(--border-strong);
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     text-align: center;
     color: var(--text-dim);
     font-size: var(--text-md);
@@ -584,7 +584,7 @@
     flex-direction: column;
     gap: 12px;
     padding: 16px;
-    border-radius: 16px;
+    border-radius: calc(16px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
@@ -600,14 +600,14 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 3px;
     padding: 4px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
     min-width: 0;
   }
   .g4 span {
     aspect-ratio: 5 / 7;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);
@@ -653,7 +653,7 @@
     height: 36px;
     padding: 0 12px;
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: var(--bg);
     color: var(--text);
     font: inherit;
@@ -699,7 +699,7 @@
     padding: 14px 20px 14px 22px;
     border-top: 1px solid var(--border);
     background: var(--bg-sidebar);
-    border-radius: 0 0 var(--modal-r, 14px) var(--modal-r, 14px);
+    border-radius: 0 0 var(--modal-r, calc(14px * var(--round, 1))) var(--modal-r, calc(14px * var(--round, 1)));
     color: var(--text-faint);
     font-size: var(--text-md);
   }

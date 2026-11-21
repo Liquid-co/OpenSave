@@ -114,7 +114,7 @@
     align-items: center;
     gap: 14px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
@@ -134,7 +134,7 @@
     flex-shrink: 0;
     width: 36px;
     height: 36px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-soft);

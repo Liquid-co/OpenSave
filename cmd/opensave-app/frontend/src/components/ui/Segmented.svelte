@@ -27,7 +27,7 @@
     flex-wrap: wrap;
     gap: 2px;
     padding: 3px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
@@ -40,7 +40,7 @@
     height: 28px;
     padding: 0 11px;
     border: 0;
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -59,7 +59,7 @@
   }
   /* The marker (lib/motion.js slidingIndicator) behind the one picked. */
   .seg :global(.seg-mark) {
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
     background: var(--bg-active);
     box-shadow: inset 0 0 0 1px var(--border-strong);
   }

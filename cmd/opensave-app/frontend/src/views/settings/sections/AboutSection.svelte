@@ -88,7 +88,7 @@
   }
   .support {
     padding: 18px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border);
   }
@@ -98,7 +98,7 @@
     gap: 16px;
     margin-bottom: 18px;
     padding: 16px 18px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background:
       radial-gradient(120% 160% at 0% 0%, var(--accent-soft), transparent 62%),
       var(--bg);
@@ -161,7 +161,7 @@
     display: grid;
     place-items: center;
     color: var(--text-dim);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-hover);
     border: 1px solid var(--border);
   }
@@ -187,14 +187,14 @@
     align-items: center;
     gap: 10px;
     padding: 14px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
   .plate {
     background: #fff;
     padding: 10px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     line-height: 0;
   }
   .plate :global(svg) {

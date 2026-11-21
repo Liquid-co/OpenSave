@@ -74,7 +74,7 @@
     margin-top: 12px;
     padding: 6px 10px;
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg);
     color: var(--text-faint);
   }
@@ -124,7 +124,7 @@
   .cover {
     position: relative;
     aspect-ratio: 2 / 3;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-hover);
     display: grid;

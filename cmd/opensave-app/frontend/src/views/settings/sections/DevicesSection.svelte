@@ -105,7 +105,7 @@
   .share {
     margin: 0 18px 14px;
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
     font-size: var(--text-md);

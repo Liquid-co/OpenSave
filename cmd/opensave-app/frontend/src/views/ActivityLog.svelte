@@ -304,7 +304,7 @@
     height: 34px;
     padding: 0 12px;
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: var(--bg-raised);
     color: var(--text);
     font: inherit;
@@ -380,7 +380,7 @@
     margin-top: 6px;
   }
   .seg {
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     min-width: 4px;
     transition: flex 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
   }

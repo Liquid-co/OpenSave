@@ -146,7 +146,7 @@
     padding: 8px 12px;
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     color: var(--text);
     font-size: 0.86rem;
     outline: none;

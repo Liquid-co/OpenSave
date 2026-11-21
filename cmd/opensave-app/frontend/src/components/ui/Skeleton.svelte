@@ -82,6 +82,6 @@
   .field {
     height: 36px;
     margin-bottom: 10px;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
   }
 </style>

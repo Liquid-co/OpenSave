@@ -33,7 +33,7 @@
   .label :global(code) {
     background: var(--bg);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     font-size: 0.78rem;
   }
   .bar {

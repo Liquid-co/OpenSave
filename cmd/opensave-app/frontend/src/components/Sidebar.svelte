@@ -219,7 +219,7 @@
     width: 36px;
     height: 36px;
     flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--accent-soft);
     color: var(--accent-text);
     display: flex;
@@ -398,12 +398,12 @@
     height: 27px;
     flex-shrink: 0;
     overflow: hidden;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
   }
   .icons .thumb {
     width: 28px;
     height: 38px;
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
   }
   .thumb :global(img) {
     position: absolute;

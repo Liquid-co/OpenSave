@@ -116,7 +116,7 @@
   .edge {
     position: absolute;
     inset: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg-active);
     border: 1px solid var(--border-strong);
     transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -147,7 +147,7 @@
     inset: 0;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     overflow: hidden;
     cursor: pointer;
     background: linear-gradient(160deg, var(--bg-active), var(--bg-raised));
@@ -201,7 +201,7 @@
     min-width: 24px;
     height: 22px;
     padding: 0 7px;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     background: rgba(10, 10, 12, 0.75);
@@ -229,7 +229,7 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: rgba(10, 10, 12, 0.5);
     pointer-events: none;
   }

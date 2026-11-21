@@ -100,7 +100,7 @@
     align-items: flex-start;
     gap: 14px;
     padding: 14px 16px 14px 14px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     border: 1.5px solid var(--border);
     background: var(--bg);
     color: inherit;
@@ -124,7 +124,7 @@
     width: 36px;
     height: 36px;
     flex: none;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

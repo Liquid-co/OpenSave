@@ -146,7 +146,7 @@
     width: 32px;
     height: 32px;
     flex-shrink: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

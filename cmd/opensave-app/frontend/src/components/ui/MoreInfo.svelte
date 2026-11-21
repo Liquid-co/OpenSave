@@ -22,7 +22,7 @@
     margin-left: 4px;
     padding: 0 5px;
     border: none;
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     background: var(--btn-bg);
     color: var(--text-dim);
     font: inherit;

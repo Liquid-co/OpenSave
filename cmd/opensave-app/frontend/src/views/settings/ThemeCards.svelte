@@ -4,7 +4,7 @@
   // what is picked can be seen before it is. The one in use is ringed.
   // Picking one changes the app at once (lib/themes.js pick).
   import { appearance, sanitizeAppearance } from '../../lib/appearance.js';
-  import { THEMES_BUILT_IN, LOOKS, FAMILIES, lookFor, isCurrent, pick } from '../../lib/themes.js';
+  import { LOOKS, FAMILIES, lookFor, pick } from '../../lib/themes.js';
   import { gameList } from '../../lib/stores.js';
   import { gameCover } from '../../lib/api.js';
   import CoverImage from '../../components/CoverImage.svelte';
@@ -14,31 +14,30 @@
   const prefersDark = () => globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
 
   $: a = sanitizeAppearance($appearance);
-  $: lookNow = lookFor(a.family, a.theme, prefersDark());
-  // The look each card shows: its own, or — for a family it stands for whole
-  // (Catppuccin) — the one it would show now.
-  const lookOf = (theme, a) => theme.look ?? lookFor(theme.family, a.theme, prefersDark());
+  // The look each card shows: the one it would show now, dark or light as
+  // chosen, where it has both.
+  const lookOf = (family, a) => lookFor(family, a.theme, prefersDark());
   // Your games, for the covers in every picture; the first four with art.
   $: covers = $gameList.slice(0, 4);
-  const sub = (theme) => {
-    if (theme.id === 'night') return $t('theme.sub.default');
-    const f = FAMILIES[theme.family];
-    if (!theme.look && f.dark && f.light) return $t('theme.sub.both');
-    return $t(LOOKS[theme.look ?? f.dark].kind === 'dark' ? 'theme.sub.dark' : 'theme.sub.light');
+  const sub = (family) => {
+    if (family === 'opensave') return $t('theme.sub.default');
+    const f = FAMILIES[family];
+    if (f.dark && f.light) return $t('theme.sub.both');
+    return $t(f.dark ? 'theme.sub.dark' : 'theme.sub.light');
   };
 </script>
 
 <div class="cards" role="radiogroup" aria-label={$t('settings.appearance.theme')}>
-  {#each THEMES_BUILT_IN as theme (theme.id)}
-    {@const look = LOOKS[lookOf(theme, a)]}
-    {@const on = isCurrent(theme, a.family, lookNow)}
+  {#each Object.keys(FAMILIES) as family (family)}
+    {@const look = LOOKS[lookOf(family, a)]}
+    {@const on = a.family === family}
     <button
       class="card"
       class:on
       role="radio"
       aria-checked={on}
       style="--l-bg: {look.bg}; --l-side: {look.sidebar}; --l-raised: {look.raised}; --l-active: {look.active}; --l-border: {look.border}; --l-text: {look.text}; --l-faint: {look.textFaint}; --l-accent: {look.accent}"
-      on:click={() => appearance.update((v) => pick(theme, v))}
+      on:click={() => appearance.update((v) => pick(family, v))}
     >
       <span class="pic" aria-hidden="true">
         <span class="side">
@@ -60,8 +59,8 @@
         {#if on}<span class="tick"><Check size={12} strokeWidth={3} /></span>{/if}
       </span>
       <span class="words">
-        <span class="name">{$t('theme.name.' + lookOf(theme, a))}</span>
-        <span class="sub">{sub(theme)}</span>
+        <span class="name">{$t('theme.name.' + family)}</span>
+        <span class="sub">{sub(family)}</span>
       </span>
     </button>
   {/each}
@@ -79,7 +78,7 @@
     gap: 8px;
     padding: 8px 8px 10px;
     border: 0;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg);
     box-shadow: inset 0 0 0 1px var(--border);
     color: var(--text);
@@ -107,7 +106,7 @@
     display: flex;
     height: 86px;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--l-bg);
     box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.18);
     transition: background 0.3s;
@@ -124,7 +123,7 @@
   .bar {
     height: 5px;
     width: 70%;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: var(--l-active);
   }
   .bar.accent {
@@ -145,7 +144,7 @@
   .title {
     height: 6px;
     width: 45%;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: var(--l-text);
     opacity: 0.85;
   }
@@ -158,7 +157,7 @@
   .cv {
     position: relative;
     overflow: hidden;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: var(--l-active);
   }
   .cv :global(img) {
@@ -175,14 +174,14 @@
   .panel {
     flex: 1;
     height: 11px;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: var(--l-raised);
     box-shadow: inset 0 0 0 1px var(--l-border);
   }
   .btn-mock {
     width: 24px;
     height: 11px;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: var(--l-accent);
   }
   .tick {

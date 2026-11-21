@@ -102,7 +102,7 @@
     padding: 14px 10px 12px;
     background: var(--bg);
     border: 1.5px solid var(--border);
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     color: var(--text-dim);
     font: inherit;
     cursor: pointer;
@@ -162,7 +162,7 @@
     grid-template-columns: repeat(5, 1fr);
   }
   .mini span {
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.5), rgba(var(--accent-rgb), 0.15));
     transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
@@ -185,7 +185,7 @@
     gap: 2px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
   }
   .seg button {
     flex: 1;
@@ -193,7 +193,7 @@
     height: 30px;
     padding: 0 6px;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -224,7 +224,7 @@
   .seg :global(.seg-mark) {
     background: var(--bg-active);
     border: 1px solid var(--border-strong);
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
   }
   .seg button:disabled {
     cursor: default;

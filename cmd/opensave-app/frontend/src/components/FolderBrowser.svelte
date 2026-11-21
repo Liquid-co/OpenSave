@@ -189,7 +189,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     border: 1px solid var(--border-strong);
     background: var(--bg);
   }
@@ -234,7 +234,7 @@
     flex-shrink: 0;
     display: grid;
     place-items: center;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     border: 1px solid var(--border);
     background: var(--bg-raised);
     color: var(--text-dim);
@@ -279,7 +279,7 @@
     min-height: 32px;
     padding: 0 8px;
     border: none;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text);
     font: inherit;
@@ -329,7 +329,7 @@
     align-items: center;
     gap: 8px;
     padding: 6px 6px 6px 10px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border);
   }

@@ -414,7 +414,7 @@
     margin: -4px 0 14px -8px;
     padding: 0 10px 0 6px;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -449,7 +449,7 @@
     width: 124px;
     height: 186px;
     flex: none;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     overflow: hidden;
     background: linear-gradient(160deg, var(--bg-active), var(--bg-raised));
     box-shadow:
@@ -576,7 +576,7 @@
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-faint);
     cursor: pointer;

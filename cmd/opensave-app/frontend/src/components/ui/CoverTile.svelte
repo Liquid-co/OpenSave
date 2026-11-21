@@ -112,7 +112,7 @@
   .art {
     position: relative;
     aspect-ratio: 600 / 900;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
     border: 2px solid transparent;

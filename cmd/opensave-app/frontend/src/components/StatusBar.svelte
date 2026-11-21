@@ -217,7 +217,7 @@
     position: relative;
     width: 18px;
     height: 24px;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     overflow: hidden;
     flex-shrink: 0;
     background: var(--bg-active);
@@ -260,7 +260,7 @@
     height: 22px;
     padding: 0 8px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     background: var(--bg-active);
     color: var(--text);
     font: inherit;
@@ -321,7 +321,7 @@
     height: 22px;
     align-self: center;
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
   }
   .bar-item:hover,
   .bar-item.on,
@@ -357,7 +357,7 @@
     right: 8px;
     bottom: 3px;
     height: 2px;
-    border-radius: 2px;
+    border-radius: calc(2px * var(--round, 1));
     background: rgba(var(--info-rgb), 0.2);
     overflow: hidden;
   }

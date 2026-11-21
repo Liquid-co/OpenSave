@@ -107,7 +107,7 @@
     width: 196px;
     height: 150px;
     margin: 0 auto;
-    border-radius: 16px 16px 8px 8px;
+    border-radius: calc(16px * var(--round, 1)) calc(16px * var(--round, 1)) calc(8px * var(--round, 1)) calc(8px * var(--round, 1));
     background: linear-gradient(180deg, #34343c, #1f1f25);
     border: 1px solid #45454f;
     box-shadow:
@@ -152,7 +152,7 @@
     right: 22px;
     top: 9px;
     height: 10px;
-    border-radius: 3px;
+    border-radius: calc(3px * var(--round, 1));
     background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0 3px, rgba(0, 0, 0, 0) 3px 8px);
   }
   .label {
@@ -161,7 +161,7 @@
     right: 16px;
     top: 26px;
     bottom: 30px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     overflow: hidden;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -206,7 +206,7 @@
     right: 26px;
     bottom: 0;
     height: 12px;
-    border-radius: 2px 2px 0 0;
+    border-radius: calc(2px * var(--round, 1)) calc(2px * var(--round, 1)) 0 0;
     background: repeating-linear-gradient(90deg, #c9a24a 0 6px, rgba(0, 0, 0, 0) 6px 10px);
   }
   .text {
@@ -226,7 +226,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-hover);
     font-size: var(--text-md);
   }

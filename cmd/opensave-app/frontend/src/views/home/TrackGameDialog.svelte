@@ -303,14 +303,14 @@
     padding: 8px 12px 8px 8px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     min-width: 0;
   }
   .ftile {
     width: 34px;
     height: 34px;
     flex-shrink: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-soft);
@@ -340,7 +340,7 @@
     height: 28px;
     padding: 0 10px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     font: inherit;
@@ -371,7 +371,7 @@
     padding: 0 12px;
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     color: var(--text-faint);
     transition:
       border-color 0.12s,
@@ -403,7 +403,7 @@
     padding: 4px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
   }
   .row {
     display: flex;
@@ -412,7 +412,7 @@
     padding: 6px 10px 6px 6px;
     background: none;
     border: none;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     color: var(--text);
     font: inherit;
     text-align: left;
@@ -441,7 +441,7 @@
     width: 30px;
     height: 40px;
     flex-shrink: 0;
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
   }
@@ -482,7 +482,7 @@
     width: 150px;
     aspect-ratio: 460 / 215;
     object-fit: cover;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), var(--shadow-lift);
   }
   /* A save folder to choose among several: a radio row, not a field label. */
@@ -499,6 +499,6 @@
     padding: 12px 14px;
     border: 1px solid rgba(var(--warn-rgb), 0.3);
     background: rgba(var(--warn-rgb), 0.08);
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
   }
 </style>

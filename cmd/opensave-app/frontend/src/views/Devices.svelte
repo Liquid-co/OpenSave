@@ -273,7 +273,7 @@
   .tile {
     width: 44px;
     height: 44px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -322,7 +322,7 @@
     height: 32px;
     padding: 0 10px;
     border: 1px solid var(--accent);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg);
     color: var(--text);
     font: inherit;
@@ -374,7 +374,7 @@
     width: 34px;
     height: 34px;
     flex-shrink: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

@@ -304,7 +304,7 @@
     width: 64px;
     height: 64px;
     margin: 0 auto 14px;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--accent-soft);

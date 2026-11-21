@@ -24,7 +24,7 @@
   .digits span {
     display: grid;
     place-items: center;
-    border-radius: 7px;
+    border-radius: calc(7px * var(--round, 1));
     background: var(--bg-active);
     border: 1px solid rgba(var(--accent-rgb), 0.45);
     color: var(--text);
@@ -41,6 +41,6 @@
     width: 34px;
     height: 42px;
     font-size: var(--text-xl);
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
   }
 </style>

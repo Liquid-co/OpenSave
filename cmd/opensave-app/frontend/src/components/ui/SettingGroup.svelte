@@ -22,7 +22,7 @@
     color: var(--text-dim);
   }
   .rows {
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     background: var(--bg-raised);
     border: 1px solid var(--border);
   }

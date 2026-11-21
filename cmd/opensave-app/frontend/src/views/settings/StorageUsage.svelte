@@ -194,7 +194,7 @@
     width: 100%;
     padding: 7px 8px;
     border: none;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text);
     font: inherit;
@@ -248,7 +248,7 @@
     align-items: center;
     gap: 12px;
     padding: 6px 8px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
   }
   .biggest li:hover {
     background: var(--bg-hover);

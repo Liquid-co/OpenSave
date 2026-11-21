@@ -13,6 +13,6 @@
     padding: 14px 20px 14px 22px;
     border-top: 1px solid var(--border);
     background: var(--bg-sidebar);
-    border-radius: 0 0 var(--modal-r, 14px) var(--modal-r, 14px);
+    border-radius: 0 0 var(--modal-r, calc(14px * var(--round, 1))) var(--modal-r, calc(14px * var(--round, 1)));
   }
 </style>

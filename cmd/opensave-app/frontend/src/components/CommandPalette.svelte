@@ -228,7 +228,7 @@
     font-size: 0.72rem;
     padding: 2px 6px;
     border: 1px solid var(--border-strong);
-    border-radius: 5px;
+    border-radius: calc(5px * var(--round, 1));
     color: var(--text-faint);
   }
   ul {
@@ -242,7 +242,7 @@
     align-items: center;
     gap: 10px;
     padding: 9px 12px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     font-size: 0.92rem;
     color: var(--text);
     cursor: pointer;

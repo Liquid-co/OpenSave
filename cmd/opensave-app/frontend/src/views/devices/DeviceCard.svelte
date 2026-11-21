@@ -174,7 +174,7 @@
   .tile {
     width: 44px;
     height: 44px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--round, 1));
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -205,7 +205,7 @@
     row-gap: 6px;
     margin: 0 12px 12px;
     padding: 9px 12px 10px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: rgba(var(--accent-rgb), 0.08);
     font-size: var(--text-md);
   }
@@ -256,14 +256,14 @@
   .track {
     grid-column: 1 / -1;
     height: 3px;
-    border-radius: 2px;
+    border-radius: calc(2px * var(--round, 1));
     background: rgba(var(--accent-rgb), 0.16);
     overflow: hidden;
   }
   .fill {
     display: block;
     height: 100%;
-    border-radius: 2px;
+    border-radius: calc(2px * var(--round, 1));
     background: var(--accent-text);
     transition: width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
@@ -307,7 +307,7 @@
     display: grid;
     place-items: center;
     border: none;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
@@ -323,7 +323,7 @@
     gap: 10px;
     margin: 0 12px 12px;
     padding: 9px 10px 9px 12px;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: rgba(var(--warn-rgb), 0.1);
     color: var(--text);
     font-size: var(--text-md);
@@ -386,7 +386,7 @@
     height: 38px;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: calc(4px * var(--round, 1));
     overflow: hidden;
     background: var(--bg-active);
     cursor: pointer;

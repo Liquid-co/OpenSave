@@ -308,7 +308,7 @@
     height: 36px;
     aspect-ratio: 460 / 215;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--round, 1));
     border: 1px solid var(--border);
   }
   .two {

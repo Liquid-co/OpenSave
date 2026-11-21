@@ -174,7 +174,7 @@
     align-items: center;
     gap: 12px;
     padding: 10px 12px 10px 10px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
   }
@@ -186,7 +186,7 @@
     width: 42px;
     height: 42px;
     flex: none;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     background: rgba(201, 162, 74, 0.16);
@@ -239,7 +239,7 @@
     align-items: flex-start;
     gap: 14px;
     padding: 14px 16px 14px 14px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--round, 1));
     border: 1.5px solid var(--border);
     background: var(--bg);
     color: inherit;
@@ -267,7 +267,7 @@
     width: 38px;
     height: 38px;
     flex: none;
-    border-radius: 11px;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
     background: var(--bg-active);

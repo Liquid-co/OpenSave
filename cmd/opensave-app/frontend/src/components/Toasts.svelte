@@ -439,7 +439,7 @@
     position: relative;
     box-sizing: border-box;
     height: var(--toast-h);
-    border-radius: 16px;
+    border-radius: calc(16px * var(--round, 1));
     background: linear-gradient(180deg, var(--toast-lift), transparent 70%), var(--toast-bg);
     background: linear-gradient(180deg, var(--toast-lift), transparent 70%), color-mix(in srgb, var(--toast-bg) 90%, transparent);
     /* Small, so cheap: the page shows through, softened, and the toast
@@ -534,7 +534,7 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: linear-gradient(140deg, var(--bg-active), var(--bg-raised));
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     animation: art-in 0.45s cubic-bezier(0.3, 1.3, 0.5, 1);
@@ -589,7 +589,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     background: var(--pill);
     background: color-mix(in srgb, var(--kind) 15%, transparent);
     color: var(--kind);
@@ -652,7 +652,7 @@
     height: 30px;
     padding: 0 12px;
     border: 0;
-    border-radius: 9px;
+    border-radius: calc(9px * var(--round, 1));
     background: var(--pill);
     color: var(--text);
     font-size: var(--text-md);
@@ -678,7 +678,7 @@
     margin-left: -4px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-faint);
     transition:

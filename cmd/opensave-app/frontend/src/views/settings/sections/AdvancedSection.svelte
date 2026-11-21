@@ -141,7 +141,7 @@
     flex: 1;
     min-width: 0;
     padding: 7px 10px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: var(--bg);
     border: 1px solid var(--border);
     font-size: var(--text-sm);
@@ -165,7 +165,7 @@
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--round, 1));
     background: transparent;
     color: var(--text-faint);
     cursor: pointer;

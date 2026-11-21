@@ -21,7 +21,7 @@
     padding: 0 12px;
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 10px;
+    border-radius: calc(10px * var(--round, 1));
     color: var(--text-faint);
     cursor: text;
     transition:
