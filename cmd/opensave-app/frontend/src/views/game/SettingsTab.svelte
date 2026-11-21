@@ -4,7 +4,6 @@
   // stopping tracking it. Changes wait for Save, in a bar that appears once
   // there is something to save.
   import { askConfirm } from '../../lib/stores.js';
-  import { untrackGame } from '../../lib/gameactions.js';
   import FolderBrowser from '../../components/FolderBrowser.svelte';
   import Switch from '../../components/ui/Switch.svelte';
   import { collapse } from '../../lib/motion.js';
@@ -50,7 +49,6 @@
     appIdError = '';
   }
   // Undone from the toast rather than confirmed first; see lib/undo.js.
-  const untrack = () => untrackGame(game);
 
   // No system picker in the browser build: the folder navigator instead.
   let browsingSave = false;
@@ -251,14 +249,6 @@
       <span class="hint">{$t('game.config.coverUrlHint')}</span>
     </div>
   </section>
-
-  <section class="card sec danger" style="--i: 3" aria-labelledby="set-stop">
-    <div class="danger-text">
-      <h3 id="set-stop">{$t('game.manage.stopTracking')}</h3>
-      <p>{$t('game.manage.stopTrackingDesc', { name: game.name })}</p>
-    </div>
-    <button class="btn danger" disabled={$busy} on:click={untrack}>{$t('game.manage.stopTrackingBtn')}</button>
-  </section>
 </div>
 
 {#if dirty}
@@ -358,21 +348,6 @@
   .device-settings {
     margin: 0;
     padding-left: 18px;
-    color: var(--text-dim);
-  }
-  .danger {
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    border-color: rgba(var(--danger-rgb), 0.35);
-  }
-  .danger-text {
-    flex: 1;
-    min-width: 0;
-  }
-  .danger-text p {
-    margin-top: 4px;
-    font-size: var(--text-md);
     color: var(--text-dim);
   }
   /* Appears once something is changed, along the foot of the page. */

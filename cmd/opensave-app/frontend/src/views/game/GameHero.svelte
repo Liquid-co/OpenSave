@@ -1,7 +1,8 @@
 <script>
   // The top of a game's page: its cover and name over its own art, where the
   // save stands with your other devices, what has been played, and Play and
-  // Sync now. The rest of what can be done is in the ⋯ menu.
+  // Sync now. The rest of what can be done is in the ⋯ menu, stopping
+  // tracking last.
   //
   // Underneath, anything that needs an answer first: the save emptied here,
   // its folder missing, or the same folder found on another drive.
@@ -22,7 +23,7 @@
   import { libraryView } from '../../lib/libraryview.js';
   import { timeAgoParts } from '../../lib/timeago.js';
   import { playLength } from '../../lib/format.js';
-  import { canLaunch, cleanGameName, renameGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
+  import { canLaunch, cleanGameName, renameGame, untrackGame, MAX_GAME_NAME } from '../../lib/gameactions.js';
   import { restoreProgressText } from '../../lib/restoreprogress.js';
   import { heroStatus, playedTotal } from '../../lib/gamepage.js';
   import { collections, isFavourite, toggleFavourite } from '../../lib/collections.js';
@@ -49,6 +50,7 @@
   import LoaderCircle from 'lucide-svelte/icons/loader-circle';
   import RectangleHorizontal from 'lucide-svelte/icons/rectangle-horizontal';
   import RectangleVertical from 'lucide-svelte/icons/rectangle-vertical';
+  import Trash2 from 'lucide-svelte/icons/trash-2';
 
   export let game;
   /** The page's shared runner (see lib/runner.js). */
@@ -174,7 +176,11 @@
       ? { label: $t('game.hero.showTall'), hint: $t('game.hero.coverEverywhere'), icon: RectangleVertical, run: () => setShape('tall') }
       : { label: $t('game.hero.showWide'), hint: $t('game.hero.coverEverywhere'), icon: RectangleHorizontal, run: () => setShape('wide') },
     null,
-    { label: $t('game.hero.settings'), icon: SlidersHorizontal, run: () => dispatch('tab', 'settings') }
+    { label: $t('game.hero.settings'), icon: SlidersHorizontal, run: () => dispatch('tab', 'settings') },
+    null,
+    // Not a deletion: the save and its snapshots stay on disk, and the toast
+    // offers Undo for a few seconds.
+    { label: $t('game.manage.stopTracking'), hint: $t('game.hero.stopTrackingHint'), icon: Trash2, danger: true, run: () => untrackGame(game) }
   ];
 
   // ── Questions that come first ──
