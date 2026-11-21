@@ -53,7 +53,7 @@ describe('createToasts', () => {
 
   it('holds a toast while it is pointed at, from where it was', () => {
     const id = toasts.show('Snapshot taken', 'success');
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(TOAST_LIFE - 1000);
     toasts.pause(id);
     vi.advanceTimersByTime(60_000);
     expect(shown()).toHaveLength(1);
@@ -116,6 +116,29 @@ describe('createToasts', () => {
     toasts.resume(id);
     vi.advanceTimersByTime(60_000);
     expect(shown()).toHaveLength(1);
+  });
+
+  it('lets a toast under way be closed, and shows it again only to say how it ended', () => {
+    const id = toasts.show('Restoring Hades', 'progress', { key: 'r', progress: { done: 1, total: 4 } });
+    toasts.close(id);
+    expect(toasts.show('Restoring Hades', 'progress', { key: 'r', progress: { done: 2, total: 4 } })).toBe(null);
+    expect(shown()).toHaveLength(0);
+    toasts.show('Hades restored', 'success', { key: 'r' });
+    expect(shown()).toMatchObject([{ kind: 'success', title: 'Hades restored' }]);
+    // A new restore later is shown again.
+    vi.advanceTimersByTime(TOAST_LIFE + 1);
+    toasts.show('Restoring Hades', 'progress', { key: 'r' });
+    expect(shown()).toHaveLength(1);
+  });
+
+  it('counts each time a countdown starts from the top, and not a hold', () => {
+    const id = toasts.show('Restoring', 'progress', { key: 'k' });
+    expect(shown()[0].round).toBe(0);
+    toasts.pause(id);
+    toasts.resume(id);
+    expect(shown()[0].round).toBe(0);
+    toasts.change(id, { kind: 'success', title: 'Done' });
+    expect(shown()[0].round).toBe(1);
   });
 
   it('keeps a changed toast in its place in the list', () => {

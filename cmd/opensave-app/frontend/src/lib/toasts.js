@@ -2,11 +2,13 @@
 // do next (the ToastsV4 board).
 //
 // The rules they keep:
-// - Done and info go after five seconds. Pointing at the toasts, or
+// - Done and info go after four seconds. Pointing at the toasts, or
 //   focusing one, holds them — and holds whatever waits on one: an Undo is carried out when
 //   its toast runs out, not on a clock of its own, so the countdown on the
 //   button is the truth.
-// - Errors and things under way stay until closed or finished.
+// - Errors and things under way stay until closed or finished. Any toast
+//   can be closed early; one under way that is closed stays closed for the
+//   rest of its progress, and comes back only to say how it ended.
 // - Something already under way updates its own toast (same `key`) rather
 //   than adding another, and ends as done in the same place.
 // - A title and a second line: given, or the message split at its dash.
@@ -20,7 +22,7 @@ import { writable } from 'svelte/store';
 export const restoreKey = (gameId) => `restore:${gameId}`;
 
 /** How long done and info toasts stay. */
-export const TOAST_LIFE = 5000;
+export const TOAST_LIFE = 4000;
 /** More than this many fold into a stack. */
 export const MAX_SHOWN = 3;
 
@@ -46,7 +48,8 @@ export function lifeOf(kind, ttl) {
 
 // What a toast shows, from a message and its options. Everything else a
 // toast carries is added by the store: `life`, and `left` as of `woundAt`
-// (for drawing a countdown), and `held` while pointed at or focused.
+// (for drawing a countdown), `round`, counting each time its countdown
+// starts again from the top, and `held` while pointed at or focused.
 function words(message, opts) {
   if (opts.title) return { title: opts.title, detail: opts.detail ?? '' };
   const w = splitMessage(message);
@@ -68,6 +71,9 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
   const clocks = new Map();
   // id -> { onExpire, onClose }, kept out of the store's objects.
   const hooks = new Map();
+  // Keys of toasts under way that were closed: their progress is not shown
+  // again, only how they end.
+  const quiet = new Set();
 
   const find = (id) => current.find((t) => t.id === id);
   const replace = (id, fn) => list.update((all) => all.map((t) => (t.id === id ? fn(t) : t)));
@@ -88,6 +94,10 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
   /** Shows a toast, or — given the `key` of one still shown — updates that
    *  one in place. Returns its id. */
   function show(message, kind = 'info', opts = {}) {
+    if (opts.key != null && quiet.has(opts.key)) {
+      if (kind === 'progress') return null;
+      quiet.delete(opts.key);
+    }
     const same = opts.key != null ? current.find((t) => t.key === opts.key) : null;
     if (same) {
       change(same.id, { ...opts, message, kind });
@@ -95,7 +105,7 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
     }
     const id = ++seq;
     const life = lifeOf(kind, opts.ttl);
-    const toast = { id, key: opts.key ?? null, kind, ...words(message, opts), life, left: life, woundAt: now(), held: false };
+    const toast = { id, key: opts.key ?? null, kind, ...words(message, opts), life, left: life, woundAt: now(), round: 0, held: false };
     for (const k of SHOWN) toast[k] = k === 'undo' ? !!opts.undo : (opts[k] ?? null);
     hooks.set(id, { onExpire: opts.onExpire, onClose: opts.onClose });
     list.update((all) => [...all, toast]);
@@ -105,7 +115,7 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
 
   /** Changes a toast where it is: new words, a new kind, progress. Its time
    *  starts again when the kind or ttl changes, so a toast that was under way
-   *  stays its full five seconds once it is done. */
+   *  stays its full time once it is done. */
   function change(id, patch) {
     const t = find(id);
     if (!t) return;
@@ -119,6 +129,7 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
       next.life = lifeOf(kind, patch.ttl);
       next.left = next.life;
       next.woundAt = now();
+      next.round = t.round + 1;
       wind(id, next.life, t.held);
     }
     replace(id, () => next);
@@ -129,7 +140,9 @@ export function createToasts({ setTimer = setTimeout, clearTimer = clearTimeout,
   }
 
   function end(id, why) {
-    if (!find(id)) return;
+    const t = find(id);
+    if (!t) return;
+    if (why === 'closed' && t.kind === 'progress' && t.key != null) quiet.add(t.key);
     wind(id, Infinity, true);
     const h = hooks.get(id);
     hooks.delete(id);

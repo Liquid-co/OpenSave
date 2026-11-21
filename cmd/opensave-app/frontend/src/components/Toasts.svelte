@@ -1,16 +1,17 @@
 <script>
-  // Feedback toasts, as the ToastsV4 board draws them (lib/toasts.js keeps
-  // the rules).
+  // Feedback toasts (lib/toasts.js keeps the rules).
   //
   // Where: bottom centre of the page, just above the status bar, never over
   // the sidebar. With a dialog open they move to the top of the window,
   // clear of the dialog's buttons.
   //
-  // What: about a game, its cover, with a small badge for what happened;
-  // otherwise a small tinted icon. The colour of the kind is only there — no
-  // coloured borders. A title, a second line, and the one thing to do next.
-  // Undo counts down on its own button. Something under way has a bar, and
-  // ends as done in the same place.
+  // What: about a game, its art, with a small badge for what happened;
+  // otherwise a tinted icon. The colour of the kind is only there and in the
+  // thin bar along the foot, which shrinks as the toast's time runs out (or
+  // fills, for something under way). A title, a second line, the one thing
+  // to do next, and a close button on every one.
+  //
+  // Away: the close button, Escape while it has focus, or a swipe sideways.
   //
   // More than three fold into a stack: the newest in front, the rest behind
   // it, all of them shown while the pointer is on the stack or focus is in it.
@@ -35,14 +36,15 @@
   import Info from 'lucide-svelte/icons/info';
   import CircleAlert from 'lucide-svelte/icons/circle-alert';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
-  import Clock from 'lucide-svelte/icons/clock';
-  import Download from 'lucide-svelte/icons/download';
+  import LoaderCircle from 'lucide-svelte/icons/loader-circle';
+  import ArrowDownToLine from 'lucide-svelte/icons/arrow-down-to-line';
   import RotateCw from 'lucide-svelte/icons/rotate-cw';
+  import Undo2 from 'lucide-svelte/icons/undo-2';
 
   /** Before the app has a page to sit in: over the whole window. */
   export let floating = false;
 
-  const TILE = { success: Check, received: Download, info: Info, warning: TriangleAlert, error: CircleAlert, progress: Clock };
+  const ICON = { success: Check, received: ArrowDownToLine, info: Info, warning: TriangleAlert, error: CircleAlert, progress: LoaderCircle };
 
   $: top = $openDialogs > 0;
   $: list = $toasts;
@@ -52,15 +54,14 @@
   $: shown = folded && !open ? list.slice(-1) : list;
   $: if (!folded) open = false;
 
-  const gameOf = (t) => (t.game == null ? null : typeof t.game === 'string' ? $games[t.game] ?? null : t.game);
-  // A game's cover for what happened to it; a tile for what went wrong or is
-  // still going, where the colour of the icon says more than the art.
-  const coverFor = (t) => (t.kind === 'success' || t.kind === 'received' || t.kind === 'info' ? gameOf(t) : null);
-  const closable = (t) => t.kind === 'error' || t.kind === 'warning' || (!!t.action && !t.undo && t.kind !== 'progress');
+  const gameOf = (t) => (t.game == null ? null : typeof t.game === 'string' ? ($games[t.game] ?? null) : t.game);
+  // A game's art for what happened to it; an icon for what went wrong or is
+  // still going, where the colour says more than the art.
+  const artFor = (t) => (t.kind === 'success' || t.kind === 'received' || t.kind === 'info' ? gameOf(t) : null);
   // Errors with something to try list their buttons under the words.
   const below = (t) => t.kind === 'error' && (!!t.retry || !!t.action);
   const pct = (p) => (p?.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0);
-  // How far an Undo's countdown has gone, so a toast drawn again (the stack
+  // How much of a toast's time has gone: the bar of one drawn again (a stack
   // opening) carries on from there.
   const spent = (t) => Math.min(t.life, t.life - t.left + (t.held ? 0 : Date.now() - t.woundAt));
 
@@ -71,6 +72,72 @@
   function retry(t) {
     toasts.remove(t.id);
     t.retry();
+  }
+
+  // The bar that shrinks as a toast's time runs out. Its timing is set once,
+  // when it is drawn and when its time starts again from the top (`round`),
+  // and only paused and resumed in between: changing the delay of a running
+  // animation moves it.
+  function countdown(node, t) {
+    let round = t.round;
+    const start = (t) => {
+      node.style.animation = 'none';
+      void node.offsetWidth;
+      node.style.animation = '';
+      node.style.animationDuration = `${t.life}ms`;
+      node.style.animationDelay = `-${spent(t)}ms`;
+    };
+    start(t);
+    node.style.animationPlayState = t.held ? 'paused' : 'running';
+    return {
+      update(next) {
+        if (next.round !== round) {
+          round = next.round;
+          start(next);
+        }
+        node.style.animationPlayState = next.held ? 'paused' : 'running';
+      }
+    };
+  }
+
+  // ── Swiping one away ──
+  // Sideways, from anywhere on it but its buttons; let go past a short way,
+  // or flicked, and it goes in that direction. Otherwise it springs back.
+  const swiped = new Map(); // id -> how far it had gone, for its way out
+  let drag = null;
+  function grab(e, t) {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    drag = { id: t.id, el: e.currentTarget, x0: e.clientX, dx: 0, at: performance.now() };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+  }
+  function pull(e) {
+    if (!drag) return;
+    drag.dx = e.clientX - drag.x0;
+    drag.el.style.transform = `translateX(${drag.dx}px)`;
+    drag.el.style.opacity = String(Math.max(0.2, 1 - Math.abs(drag.dx) / 260));
+  }
+  function letGo() {
+    if (!drag) return;
+    const { id, el, dx, at } = drag;
+    drag = null;
+    const speed = Math.abs(dx) / Math.max(performance.now() - at, 1);
+    if (Math.abs(dx) > 96 || (Math.abs(dx) > 24 && speed > 0.55)) {
+      swiped.set(id, dx);
+      toasts.close(id);
+      return;
+    }
+    el.style.transition = 'transform 0.3s cubic-bezier(0.3, 1.4, 0.5, 1), opacity 0.2s';
+    el.style.transform = '';
+    el.style.opacity = '';
+    setTimeout(() => (el.style.transition = ''), 320);
+  }
+  function keys(e, t) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      toasts.close(t.id);
+    }
   }
 
   // ── Screen readers ──
@@ -141,68 +208,98 @@
   });
 
   const settle = gated(flip);
-  // Out: a short drop toward the edge it came from, fading as it goes.
-  const away = gated((node, { dir = 1 } = {}) => ({
-    duration: 160,
-    easing: cubicOut,
-    css: (u) => `transform: translateY(${(1 - u) * 10 * dir}px) scale(${0.97 + 0.03 * u}); opacity: ${u}`
-  }));
+  // Out: swiped ones carry on sideways; the rest sink a little toward the
+  // edge they came from, shrinking as they fade.
+  const away = gated((node, { id }) => {
+    const dx = swiped.get(id);
+    swiped.delete(id);
+    if (dx) {
+      const dir = Math.sign(dx);
+      return { duration: 200, easing: cubicOut, css: (u) => `transform: translateX(${dir * (1 - u) * 180}px); opacity: ${u}` };
+    }
+    const dir = top ? -1 : 1;
+    return {
+      duration: 200,
+      easing: cubicOut,
+      css: (u) => `transform: translateY(${(1 - u) * 10 * dir}px) scale(${0.94 + 0.06 * u}); opacity: ${u}`
+    };
+  });
 </script>
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="toasts" class:top class:floating class:folded class:open bind:this={box} data-holding={holding} on:pointerenter={pointerEnter} on:pointerleave={hold.pointerOut} on:focusin={hold.focusIn} on:focusout={focusOut}>
+<div
+  class="toasts"
+  class:top
+  class:floating
+  class:folded
+  class:open
+  bind:this={box}
+  data-holding={holding}
+  on:pointerenter={pointerEnter}
+  on:pointerleave={hold.pointerOut}
+  on:focusin={hold.focusIn}
+  on:focusout={focusOut}
+>
   {#each shown as t (t.id)}
-    {@const g = coverFor(t)}
-    <div class="slot" out:away={{ dir: top ? -1 : 1 }} animate:settle={{ duration: 220 }}>
-      {#if folded && !open}
+    {@const g = artFor(t)}
+    {@const stacked = folded && !open}
+    <div class="slot" out:away={{ id: t.id }} animate:settle={{ duration: 240 }}>
+      {#if stacked}
         <span class="layer one" aria-hidden="true"></span>
         <span class="layer two" aria-hidden="true"></span>
       {/if}
-      <div class="toast k-{t.kind}" class:below={below(t)} class:bar={!!t.progress}>
-        {#if g}
-          {@const src = gameCover(g, true)}
-          <span class="cv" class:dim={t.undo}>
-            <span class="initial" aria-hidden="true">{g.name?.charAt(0) ?? ''}</span>
-            {#if src && isDaemonURL(src)}<CoverImage {src} alt="" />{:else if src}<img {src} alt="" />{/if}
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div
+        class="toast k-{t.kind}"
+        class:below={below(t)}
+        on:pointerdown={(e) => grab(e, t)}
+        on:pointermove={pull}
+        on:pointerup={letGo}
+        on:pointercancel={letGo}
+        on:keydown={(e) => keys(e, t)}
+      >
+        <span class="lead">
+          {#if g}
+            {@const src = gameCover(g, true)}
+            <span class="art" class:dim={t.undo}>
+              {#if src && isDaemonURL(src)}<CoverImage {src} alt="" />{:else if src}<img {src} alt="" />{/if}
+            </span>
             {#if !t.undo && (t.kind === 'success' || t.kind === 'received')}
-              <span class="badge"><svelte:component this={t.icon ?? TILE[t.kind]} size={12} strokeWidth={3} /></span>
+              <span class="mark"><svelte:component this={t.icon ?? ICON[t.kind]} size={11} strokeWidth={3.2} /></span>
             {/if}
-          </span>
-        {:else}
-          <span class="tile"><svelte:component this={t.icon ?? TILE[t.kind] ?? Info} size={16} /></span>
-        {/if}
+          {:else}
+            <span class="glyph" class:spin={t.kind === 'progress' && !t.icon}><svelte:component this={t.icon ?? ICON[t.kind] ?? Info} size={18} /></span>
+          {/if}
+        </span>
 
         <div class="words">
           <b>{t.title}</b>
-          {#if t.detail}<span>{t.detail}</span>{/if}
+          {#if t.detail}<span class="detail">{t.detail}</span>{/if}
           {#if below(t)}
             <span class="acts">
-              {#if t.retry}<button class="btn link" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>{/if}
-              {#if t.action}<button class="btn link quiet" on:click={() => act(t)}>{t.action.label}</button>{/if}
+              {#if t.retry}<button class="pill" on:click={() => retry(t)}><RotateCw size={13} />{$i18n('toast.retry')}</button>{/if}
+              {#if t.action}<button class="quiet" on:click={() => act(t)}>{t.action.label}</button>{/if}
             </span>
           {/if}
         </div>
 
-        {#if folded && !open}
-          <button class="more" on:click={() => (open = true)}>{$i18n('toast.more', { n: list.length - 1 })}</button>
-        {:else if !below(t) && t.action}
-          {#if t.undo}
-            <button class="btn undo" class:held={t.held} on:click={() => act(t)}>
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <circle class="track" cx="10" cy="10" r="8" />
-                <circle class="left" cx="10" cy="10" r="8" style="animation-duration: {t.life}ms; animation-delay: -{spent(t)}ms" />
-              </svg>{t.action.label}
-            </button>
-          {:else}
-            <button class="btn link" on:click={() => act(t)}>{t.action.label}</button>
-          {/if}
+        <!-- The one thing to do stays in reach in a stack too: an Undo
+             waits for nobody. -->
+        {#if !below(t) && t.action}
+          <button class="pill" on:click={() => act(t)}>{#if t.undo}<Undo2 size={14} />{/if}{t.action.label}</button>
         {/if}
-        {#if closable(t) && !(folded && !open)}
-          <button class="btn x" aria-label={$i18n('common.dismiss')} title={$i18n('common.dismiss')} on:click={() => toasts.close(t.id)}><X size={14} /></button>
+        {#if stacked}
+          <button class="count" aria-label={$i18n('toast.more', { n: list.length - 1 })} title={$i18n('toast.more', { n: list.length - 1 })} on:click={() => (open = true)}
+            >+{list.length - 1}</button
+          >
+        {:else}
+          <button class="close" aria-label={$i18n('common.dismiss')} title={$i18n('common.dismiss')} on:click={() => toasts.close(t.id)}><X size={15} /></button>
         {/if}
 
         {#if t.progress}
-          <span class="track-bar" role="progressbar" aria-label={t.title} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct(t.progress)}><span style="width: {pct(t.progress)}%"></span></span>
+          <span class="bar fill" role="progressbar" aria-label={t.title} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct(t.progress)}><span style="width: {pct(t.progress)}%"></span></span>
+        {:else if Number.isFinite(t.life)}
+          <span class="bar timer" aria-hidden="true" use:countdown={t}></span>
         {/if}
       </div>
     </div>
@@ -213,16 +310,33 @@
 
 <style>
   .toasts {
+    /* The surface, a step up from the page, lit faintly from above. */
+    --toast-bg: var(--bg-hover);
+    --toast-edge: rgba(255, 255, 255, 0.075);
+    --toast-lift: rgba(255, 255, 255, 0.04);
+    --toast-shade: rgba(0, 0, 0, 0.5);
+    --pill: rgba(255, 255, 255, 0.07);
+    --pill-hover: rgba(255, 255, 255, 0.13);
+    --layer-dark: rgba(0, 0, 0, 0.22);
     position: absolute;
     left: 50%;
     bottom: 16px;
     z-index: 100;
-    width: min(420px, calc(100% - 32px));
+    width: min(390px, calc(100% - 32px));
     display: flex;
     flex-direction: column;
     gap: 8px;
     transform: translateX(-50%);
     pointer-events: none;
+  }
+  :global([data-theme='light']) .toasts {
+    --toast-bg: #fff;
+    --toast-edge: rgba(20, 20, 40, 0.09);
+    --toast-lift: rgba(255, 255, 255, 0);
+    --toast-shade: rgba(20, 20, 40, 0.16);
+    --pill: rgba(20, 20, 40, 0.055);
+    --pill-hover: rgba(20, 20, 40, 0.1);
+    --layer-dark: rgba(20, 20, 40, 0.04);
   }
   .toasts.floating {
     position: fixed;
@@ -242,77 +356,6 @@
     padding: 14px 0 2px;
     margin-bottom: -2px;
   }
-  .slot {
-    position: relative;
-    pointer-events: auto;
-  }
-  .toast {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    border-radius: 14px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-strong);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
-    font-size: var(--text-base);
-    pointer-events: auto;
-    animation: toast-in 0.32s cubic-bezier(0.3, 1.25, 0.5, 1);
-  }
-  .top .toast {
-    animation-name: toast-in-top;
-  }
-  :global([data-theme='light']) .toast {
-    background: var(--bg-raised);
-    box-shadow: 0 14px 36px rgba(20, 20, 40, 0.18);
-  }
-  /* In: up from the edge, a little small, settling. Movement only — it reads
-     from its first frame. */
-  @keyframes toast-in {
-    from {
-      transform: translateY(16px) scale(0.96);
-    }
-  }
-  @keyframes toast-in-top {
-    from {
-      transform: translateY(-16px) scale(0.96);
-    }
-  }
-  .toast.below {
-    align-items: flex-start;
-  }
-  .toast.bar {
-    padding-bottom: 15px;
-  }
-
-  /* The stack's edges, peeking out behind the front toast. */
-  .layer {
-    position: absolute;
-    height: 100%;
-    border-radius: 14px;
-    border: 1px solid var(--border-strong);
-    pointer-events: none;
-  }
-  .layer.one {
-    left: 10px;
-    right: 10px;
-    top: -7px;
-    background: color-mix(in srgb, var(--bg-hover) 88%, black);
-  }
-  .layer.two {
-    left: 20px;
-    right: 20px;
-    top: -14px;
-    background: color-mix(in srgb, var(--bg-hover) 76%, black);
-  }
-  .top .layer.one {
-    top: 7px;
-  }
-  .top .layer.two {
-    top: 14px;
-  }
   .folded:not(.open) {
     padding-top: 14px;
   }
@@ -320,233 +363,347 @@
     padding: 0 0 14px;
   }
 
-  .tile {
-    width: 34px;
-    height: 34px;
-    flex: none;
-    display: grid;
-    place-items: center;
-    border-radius: 10px;
-    background: var(--bg-active);
-    color: var(--text-dim);
-  }
-  .k-success .tile {
-    background: rgba(var(--success-rgb), 0.14);
-    color: var(--success);
-  }
-  .k-received .tile {
-    background: rgba(94, 234, 212, 0.14);
-    color: #5eead4;
-  }
-  .k-progress .tile {
-    background: rgba(var(--info-rgb), 0.14);
-    color: var(--info);
-  }
-  .k-warning .tile {
-    background: rgba(var(--warn-rgb), 0.14);
-    color: var(--warn);
-  }
-  .k-error .tile {
-    background: rgba(var(--danger-rgb), 0.14);
-    color: var(--danger);
-  }
-
-  .cv {
+  .slot {
     position: relative;
-    width: 32px;
-    height: 44px;
-    flex: none;
-    margin-right: 4px;
-    border-radius: 5px;
-    background: var(--bg-active);
-    animation: cv-in 0.35s cubic-bezier(0.3, 1.3, 0.5, 1);
+    pointer-events: auto;
   }
-  @keyframes cv-in {
+  .toast {
+    --kind: var(--accent-text);
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    padding: 10px 8px 10px 10px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--toast-lift), transparent 70%), var(--toast-bg);
+    background: linear-gradient(180deg, var(--toast-lift), transparent 70%), color-mix(in srgb, var(--toast-bg) 88%, transparent);
+    /* Small, so cheap: the page shows through, softened, and the toast
+       reads as a layer above it. */
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid var(--toast-edge);
+    box-shadow:
+      0 1px 2px var(--toast-shade),
+      0 12px 32px -10px var(--toast-shade),
+      0 28px 56px -24px var(--toast-shade);
+    overflow: hidden;
+    font-size: var(--text-base);
+    touch-action: pan-y;
+    user-select: none;
+    animation: toast-in 0.42s cubic-bezier(0.2, 1.25, 0.4, 1);
+  }
+  .top .toast {
+    animation-name: toast-in-top;
+  }
+  /* In: up from the edge, a little small, settling. Movement only — it reads
+     from its first frame. */
+  @keyframes toast-in {
     from {
-      transform: scale(0.85);
+      transform: translateY(18px) scale(0.94);
     }
   }
-  .cv :global(img) {
+  @keyframes toast-in-top {
+    from {
+      transform: translateY(-18px) scale(0.94);
+    }
+  }
+  .toast.below {
+    align-items: flex-start;
+  }
+  .k-success,
+  .k-received {
+    --kind: var(--success);
+  }
+  .k-received {
+    --kind: #2dd4bf;
+  }
+  .k-progress {
+    --kind: var(--info);
+  }
+  .k-warning {
+    --kind: var(--warn);
+  }
+  .k-error {
+    --kind: var(--danger);
+  }
+
+  /* The stack's edges, peeking out behind the front toast. */
+  .layer {
+    position: absolute;
+    height: 100%;
+    border-radius: 16px;
+    background: var(--toast-bg);
+    border: 1px solid var(--toast-edge);
+    box-shadow: inset 0 0 0 999px var(--layer-dark);
+    pointer-events: none;
+  }
+  .layer.one {
+    left: 10px;
+    right: 10px;
+    top: -7px;
+  }
+  .layer.two {
+    left: 20px;
+    right: 20px;
+    top: -14px;
+    box-shadow: inset 0 0 0 999px var(--layer-dark), inset 0 0 0 999px var(--layer-dark);
+  }
+  .top .layer.one {
+    top: 7px;
+  }
+  .top .layer.two {
+    top: 14px;
+  }
+
+  /* What it is about: the game's art, or the kind's icon. */
+  .lead {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 40px;
+  }
+  .art {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 10px;
+    background: linear-gradient(140deg, var(--bg-active), var(--bg-raised));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    animation: art-in 0.4s cubic-bezier(0.3, 1.3, 0.5, 1);
+  }
+  @keyframes art-in {
+    from {
+      transform: scale(0.86);
+    }
+  }
+  .art :global(img) {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-    border-radius: 5px;
     object-fit: cover;
+    object-position: 50% 30%;
   }
-  .cv.dim :global(img),
-  .cv.dim .initial {
-    opacity: 0.55;
+  .art.dim :global(img) {
+    opacity: 0.45;
+    filter: grayscale(0.6);
   }
-  .initial {
+  .mark {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 19px;
+    height: 19px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--kind);
+    color: #04120a;
+    box-shadow: 0 0 0 2.5px var(--toast-bg);
+    animation: mark-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) 0.12s backwards;
+  }
+  :global([data-theme='light']) .mark {
+    color: #fff;
+  }
+  .mark :global(svg),
+  .glyph :global(svg) {
+    display: block;
+  }
+  @keyframes mark-in {
+    from {
+      transform: scale(0.2);
+    }
+  }
+  .glyph {
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
-    font-weight: 700;
-    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--pill);
+    background: color-mix(in srgb, var(--kind) 15%, transparent);
+    color: var(--kind);
   }
-  .badge {
-    position: absolute;
-    right: -6px;
-    bottom: -6px;
-    width: 20px;
-    height: 20px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: #22c55e;
-    color: #052e16;
-    box-shadow: 0 0 0 2px var(--bg-hover);
-    animation: badge-in 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) 0.08s backwards;
+  .k-info .glyph {
+    background: var(--pill);
+    color: var(--text-dim);
   }
-  :global([data-theme='light']) .badge {
-    box-shadow: 0 0 0 2px var(--bg-raised);
+  .glyph.spin :global(svg) {
+    animation: turn 1s linear infinite;
   }
-  .k-received .badge {
-    background: #5eead4;
-    color: #042f2e;
-  }
-  @keyframes badge-in {
-    from {
-      transform: scale(0.3);
+  @keyframes turn {
+    to {
+      transform: rotate(360deg);
     }
   }
 
   .words {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
   .words b {
-    display: block;
     font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.005em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     overflow-wrap: anywhere;
   }
-  .words > span {
-    display: block;
+  .detail {
     font-size: var(--text-md);
+    line-height: 1.35;
     color: var(--text-dim);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     overflow-wrap: anywhere;
+  }
+  .below .words {
+    padding-top: 2px;
   }
   .acts {
-    display: flex !important;
-    gap: 4px;
-    margin: 6px 0 0 -10px;
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
   }
 
-  .btn {
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+  .pill {
     flex: none;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 6px;
     height: 30px;
-    padding: 0 10px;
+    padding: 0 12px;
     border: 0;
-    border-radius: 6px;
-    background: transparent;
-    font: inherit;
+    border-radius: 9px;
+    background: var(--pill);
+    color: var(--text);
     font-size: var(--text-md);
     font-weight: 600;
     white-space: nowrap;
-    cursor: pointer;
+    transition:
+      background 0.15s,
+      transform 0.15s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
-  .link {
-    color: var(--accent-text);
+  .pill:hover {
+    background: var(--pill-hover);
   }
-  .link:hover {
-    background: rgba(var(--accent-rgb), 0.12);
+  .pill:active {
+    transform: scale(0.96);
   }
-  .link.quiet {
-    color: var(--text-dim);
-  }
-  .link.quiet:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-  .x {
-    width: 30px;
-    padding: 0;
-    color: var(--text-faint);
-  }
-  .x:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-  .more {
+  .count {
     flex: none;
-    padding: 4px 8px;
+    min-width: 30px;
+    height: 24px;
+    padding: 0 8px;
     border: 0;
-    border-radius: 6px;
-    background: transparent;
+    border-radius: 12px;
+    background: var(--pill);
     color: var(--text-dim);
-    font: inherit;
     font-size: var(--text-sm);
     font-weight: 600;
-    cursor: pointer;
+    font-variant-numeric: tabular-nums;
   }
-  .more:hover {
-    background: var(--bg-active);
+  .count:hover {
+    background: var(--pill-hover);
     color: var(--text);
+  }
+  .quiet {
+    height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: var(--text-md);
+    font-weight: 600;
+  }
+  .quiet:hover {
+    background: var(--pill);
+    color: var(--text);
+  }
+  .close {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: -4px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-faint);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .close:hover {
+    background: var(--pill);
+    color: var(--text);
+  }
+  .close :global(svg) {
+    display: block;
+  }
+  .below .close {
+    margin-top: -2px;
   }
 
-  /* Undo: the ring on the button empties as its time runs out, and stops
-     while the toast is held. */
-  .undo {
-    gap: 8px;
-    padding: 0 10px 0 6px;
-    background: var(--bg-active);
-    border: 1px solid var(--border-strong);
-    color: var(--text);
+  /* Along the foot: how much time it has left, shrinking toward its start —
+     or, for something under way, how far it has come. */
+  .bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    pointer-events: none;
   }
-  .undo:hover {
-    border-color: var(--accent);
-  }
-  .undo svg {
-    width: 20px;
-    height: 20px;
-    transform: rotate(-90deg);
-  }
-  .undo circle {
-    fill: none;
-    stroke-width: 2.5;
-  }
-  .undo .track {
-    stroke: var(--border-strong);
-  }
-  .undo .left {
-    stroke: var(--accent-text);
-    stroke-linecap: round;
-    stroke-dasharray: 50.27;
-    animation-name: drain;
+  .bar.timer {
+    background: var(--kind);
+    opacity: 0.75;
+    transform-origin: left center;
+    animation-name: shrink;
     animation-timing-function: linear;
     animation-fill-mode: both;
   }
-  .undo.held .left {
-    animation-play-state: paused;
+  .k-info .bar.timer {
+    background: var(--accent-text);
   }
-  @keyframes drain {
+  :global([data-motion='off']) .bar.timer {
+    display: none;
+  }
+  @keyframes shrink {
+    from {
+      transform: scaleX(1);
+    }
     to {
-      stroke-dashoffset: 50.27;
+      transform: scaleX(0);
     }
   }
-
-  /* Under way: a thin bar along the foot, under the words. */
-  .track-bar {
-    position: absolute;
-    left: 56px;
-    right: 14px;
-    bottom: 8px;
-    height: 3px;
-    border-radius: 2px;
-    background: var(--bg-active);
-    overflow: hidden;
+  .bar.fill {
+    background: var(--pill);
+    background: color-mix(in srgb, var(--kind) 18%, transparent);
   }
-  .track-bar > span {
+  .bar.fill > span {
     display: block;
     height: 100%;
-    border-radius: 2px;
-    background: var(--info);
+    background: var(--kind);
     transition: width 0.3s ease;
   }
 
