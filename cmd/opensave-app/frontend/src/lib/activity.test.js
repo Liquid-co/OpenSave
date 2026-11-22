@@ -95,3 +95,15 @@ describe('asText', () => {
     expect(t).toBe('2026-09-24T10:00:00Z WARN    cloud: failed');
   });
 });
+
+describe('highlights leave out routine uploads', () => {
+  it('keeps them under All and drops them from Highlights', () => {
+    const entries = [
+      { level: 'success', message: 'cloud: uploaded "game__main__snap_1.zip" to local' },
+      { level: 'success', message: 'auto-snapshot created for "game"' },
+      { level: 'warn', message: 'cloud: upload failed' }
+    ];
+    expect(filterEntries(entries, { show: 'highlights' }).map((e) => e.message)).toEqual(['auto-snapshot created for "game"', 'cloud: upload failed']);
+    expect(filterEntries(entries, { show: 'all' })).toHaveLength(3);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { waitingOn, checkDigits, ASK_WINDOW_MS } from './pairing.js';
+import { waitingOn, checkDigits, ASK_WINDOW_MS, addressProblem } from './pairing.js';
 
 describe('checkDigits', () => {
   it('splits four digits', () => {
@@ -22,5 +22,25 @@ describe('waitingOn', () => {
     expect(waitingOn(map, 'deck', at + ASK_WINDOW_MS)).toBeNull();
     expect(waitingOn(map, 'laptop', at)).toBeFalsy();
     expect(waitingOn(undefined, 'deck', at)).toBeFalsy();
+  });
+});
+
+describe('addressProblem', () => {
+  it('takes IP addresses and names', () => {
+    for (const ip of ['192.168.1.42', 'steamdeck.local', 'my-pc', 'fe80::1', '[fe80::1]', '  10.0.0.5  ']) {
+      expect(addressProblem(ip, 8383), ip).toBe('');
+    }
+  });
+  it('says nothing until something is typed', () => {
+    expect(addressProblem('', 8383)).toBe('');
+    expect(addressProblem('   ', 8383)).toBe('');
+  });
+  it('refuses what is no address', () => {
+    for (const ip of ['not an address', '999.1.1.1', 'pc_name', 'http://192.168.1.2', '192.168.1.2:8383']) {
+      expect(addressProblem(ip, 8383), ip).toBe('address');
+    }
+  });
+  it('refuses a port out of range', () => {
+    for (const port of [0, 70000, '', 'x', 1.5]) expect(addressProblem('192.168.1.2', port), String(port)).toBe('port');
   });
 });

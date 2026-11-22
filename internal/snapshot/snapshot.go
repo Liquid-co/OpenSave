@@ -1284,6 +1284,7 @@ func clearSavePath(savePath string) error {
 		return err
 	}
 	if !info.IsDir() {
+		markRemovedTree(savePath)
 		return os.Remove(savePath)
 	}
 	entries, err := os.ReadDir(savePath)
@@ -1291,7 +1292,9 @@ func clearSavePath(savePath string) error {
 		return err
 	}
 	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(savePath, e.Name())); err != nil {
+		full := filepath.Join(savePath, e.Name())
+		markRemovedTree(full)
+		if err := os.RemoveAll(full); err != nil {
 			return err
 		}
 	}

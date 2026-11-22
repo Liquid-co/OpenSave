@@ -131,26 +131,29 @@ func removeMatching(root string, keep ignore.Rules) error {
 	return walkMatching(root, keep, func(rel string) error {
 		path := filepath.Join(root, rel)
 		_ = os.Chmod(path, 0o666)
+		markRemovedTree(path)
 		return os.Remove(path)
 	})
 }
 
 func copyFile(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
+	if err := mkdirMarked(filepath.Dir(dst)); err != nil {
 		return err
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
+	return writeMarked(dst, func() error {
+		in, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := os.Create(dst)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
+	})
 }

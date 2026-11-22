@@ -40,3 +40,25 @@ export function checkDigits(code) {
   const s = String(code ?? '');
   return /^\d{4}$/.test(s) ? s.split('') : [];
 }
+
+/**
+ * What is wrong with an address typed in to pair with, or '' when it will do:
+ * 'address' for something that is no host or IP address (spaces, stray
+ * characters), 'port' for a port outside 1-65535. Not whether anything
+ * answers there: that only the request can tell.
+ */
+export function addressProblem(ip, port) {
+  const host = String(ip ?? '').trim();
+  if (!host) return '';
+  // An IPv4 address or a name (letters, digits, dots, hyphens), or an IPv6
+  // address, bare or in brackets.
+  const name = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$/;
+  const v6 = /^\[?[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]?$/;
+  const v4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+  if (v4.test(host) && host.split('.').some((n) => Number(n) > 255)) return 'address';
+  const isV6 = v6.test(host) && host.split(':').length >= 3;
+  if (!name.test(host) && !isV6) return 'address';
+  const p = Number(port);
+  if (!Number.isInteger(p) || p < 1 || p > 65535) return 'port';
+  return '';
+}

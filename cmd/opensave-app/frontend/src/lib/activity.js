@@ -17,12 +17,21 @@ export const SHOW = {
   problems: new Set(['warn', 'error'])
 };
 
+// Lines written as successes that are still routine: every backed-up snapshot
+// says it was uploaded, under its archive's file name. They stay in "All" and
+// in the technical log, where something watching for them still finds them,
+// but are no highlight.
+const ROUTINE = [/^cloud: uploaded "/];
+
 /** Entries matching the filters, in the order given. */
 export function filterEntries(entries, { show = 'all', query = '' } = {}) {
   const levels = SHOW[show] ?? null;
   const q = query.trim().toLowerCase();
   return (entries ?? []).filter(
-    (e) => (!levels || levels.has(e.level)) && (!q || (e.message ?? '').toLowerCase().includes(q))
+    (e) =>
+      (!levels || levels.has(e.level)) &&
+      !(show === 'highlights' && ROUTINE.some((r) => r.test(e.message ?? ''))) &&
+      (!q || (e.message ?? '').toLowerCase().includes(q))
   );
 }
 

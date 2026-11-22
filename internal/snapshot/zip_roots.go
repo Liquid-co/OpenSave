@@ -261,14 +261,15 @@ func UnzipRootsProgress(zipPath, primary string, extra map[string]string, progre
 	}
 	if primaryIsFile {
 		_ = os.Chmod(primary, 0o666)
+		markRemovedTree(primary)
 		if err := os.Remove(primary); err != nil {
 			return nil, fmt.Errorf("remove old save file: %w", err)
 		}
-		if err := os.MkdirAll(filepath.Dir(primary), 0o777); err != nil {
+		if err := mkdirMarked(filepath.Dir(primary)); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := os.MkdirAll(primary, 0o777); err != nil {
+		if err := mkdirMarked(primary); err != nil {
 			return nil, err
 		}
 		if err := clearSavePathGuarded(primary); err != nil {
@@ -297,7 +298,7 @@ func UnzipRootsProgress(zipPath, primary string, extra map[string]string, progre
 			}
 			target = path
 			if !cleared[name] {
-				if err := os.MkdirAll(target, 0o777); err != nil {
+				if err := mkdirMarked(target); err != nil {
 					return nil, err
 				}
 				if err := clearSavePathGuarded(target); err != nil {
@@ -308,7 +309,7 @@ func UnzipRootsProgress(zipPath, primary string, extra map[string]string, progre
 			entry = strings.TrimPrefix(f.Name, RootPrefix+name+"/")
 			if entry == "" {
 				// The location's own folder marker.
-				if err := os.MkdirAll(target, 0o777); err != nil {
+				if err := mkdirMarked(target); err != nil {
 					return nil, err
 				}
 				continue

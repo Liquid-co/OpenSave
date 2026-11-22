@@ -178,6 +178,10 @@ const descending = (value) => (a, b) => {
 
 const stamp = (s) => (s ? Date.parse(s) : null);
 const snapshotsOf = (game) => Object.values(game.branches ?? {}).flatMap((b) => b.snapshots ?? []);
+const firstSnapshotAt = (game) => {
+  const times = snapshotsOf(game).map((s) => stamp(s.timestamp)).filter((t) => t !== null && !Number.isNaN(t));
+  return times.length ? Math.min(...times) : null;
+};
 
 // What needs looking at, in the order the summary above the library reads it.
 const URGENCY = { missing: 0, emptied: 1, conflict: 2, error: 3, syncing: 4, restoring: 4, unsynced: 5, empty: 6, paused: 7, elsewhere: 10 }; // unlisted states (synced, local…) rank 9
@@ -211,7 +215,18 @@ export const SORTS = {
     label: 'Most space',
     compare: descending((r) => snapshotsOf(r.game).reduce((n, s) => n + (Number(s.sizeBytes) || 0), 0))
   },
-  added: { label: 'Recently added', compare: descending((r) => stamp(r.game.createdAt)) },
+  // When a game was tracked. Its own time is to the second, and a scan tracks
+  // several in the same second, which then fell back to A-Z; its first
+  // snapshot, taken as it is tracked and timed to the millisecond, tells
+  // those apart.
+  added: {
+    label: 'Recently added',
+    compare: (a, b) => {
+      const x = stamp(a.game.createdAt) ?? -Infinity;
+      const y = stamp(b.game.createdAt) ?? -Infinity;
+      return x !== y ? (x < y ? 1 : -1) : descending((r) => firstSnapshotAt(r.game))(a, b);
+    }
+  },
   // A game being played now first, then by when it was last played.
   played: {
     label: 'Recently played',

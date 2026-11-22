@@ -1,9 +1,18 @@
+<script context="module">
+  // A game's settings changed here and not saved, kept when its page is left
+  // (gameId -> the form as it was) and given back when its Settings tab is
+  // opened again. Leaving used to throw them away without a word.
+  const drafts = new Map();
+</script>
+
 <script>
   // Settings: how OpenSave treats this game, in groups — where its save is,
   // how it launches and looks, its snapshots and syncing — and, at the end,
   // stopping tracking it. Changes wait for Save, in a bar that appears once
   // there is something to save.
-  import { askConfirm } from '../../lib/stores.js';
+  import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
+  import { askConfirm, toast, navigate, games } from '../../lib/stores.js';
   import FolderBrowser from '../../components/FolderBrowser.svelte';
   import Switch from '../../components/ui/Switch.svelte';
   import { collapse } from '../../lib/motion.js';
@@ -48,6 +57,23 @@
     cfg = JSON.parse(saved);
     appIdError = '';
   }
+  // Changes left unsaved last time this game's page was open: back, still
+  // unsaved, with the bar that saves them.
+  if (drafts.has(game.id)) {
+    cfg = drafts.get(game.id);
+    drafts.delete(game.id);
+  }
+  // Leaving with changes not saved: they are kept for coming back to, and the
+  // toast says so, with a way straight back.
+  onDestroy(() => {
+    if (!dirty || !get(games)[game.id]) return;
+    const id = game.id;
+    drafts.set(id, cfg);
+    toast($t('game.settings.keptUnsaved', { name: game.name }), 'info', {
+      ttl: 10000,
+      action: { label: $t('game.settings.goBack'), run: () => navigate('game', { gameId: id, tab: 'settings' }) }
+    });
+  });
   // Undone from the toast rather than confirmed first; see lib/undo.js.
 
   // No system picker in the browser build: the folder navigator instead.

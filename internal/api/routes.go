@@ -184,6 +184,20 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// A device needs a name: it is how every other device lists this one, and
+	// a blank one was stored as it was and left this device unnamed on every
+	// screen. Only when the name is being changed, so a request about other
+	// settings is never refused over it.
+	var named struct {
+		DeviceName *string `json:"deviceName"`
+	}
+	if json.Unmarshal(raw, &named) == nil && named.DeviceName != nil {
+		current.DeviceName = strings.TrimSpace(*named.DeviceName)
+		if current.DeviceName == "" {
+			writeError(w, http.StatusBadRequest, "a device needs a name: it is how your other devices see this one")
+			return
+		}
+	}
 
 	var withCloud struct {
 		CloudSync *cloudSyncPatch `json:"cloudSync"`

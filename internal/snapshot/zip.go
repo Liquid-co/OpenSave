@@ -318,18 +318,19 @@ func UnzipToProgress(zipPath, targetPath string, progress Progress) error {
 	var destDir string
 	if isFile {
 		destDir = filepath.Dir(targetPath)
-		if err := os.MkdirAll(destDir, 0o777); err != nil {
+		if err := mkdirMarked(destDir); err != nil {
 			return err
 		}
 		if _, statErr := os.Stat(targetPath); statErr == nil {
 			_ = os.Chmod(targetPath, 0o666)
+			markRemovedTree(targetPath)
 			if err := os.Remove(targetPath); err != nil {
 				return fmt.Errorf("remove old save file: %w", err)
 			}
 		}
 	} else {
 		destDir = targetPath
-		if err := os.MkdirAll(destDir, 0o777); err != nil {
+		if err := mkdirMarked(destDir); err != nil {
 			return err
 		}
 		if err := clearSavePathGuarded(destDir); err != nil {

@@ -46,7 +46,10 @@
     { id: 'devices', label: 'game.tab.devices', component: DevicesTab },
     { id: 'settings', label: 'game.tab.settings', component: SettingsTab }
   ];
-  let tab = 'history';
+  // A link can open a tab of its own (params.tab), as the toast for unsaved
+  // settings does; otherwise the history.
+  const tabFor = (p) => (tabs.some((x) => x.id === p?.tab) ? p.tab : 'history');
+  let tab = tabFor(params);
   // Which way the last tab pick went, for the way the tab comes in: +18 from
   // the right, -18 from the left, 0 the first time.
   let from = 0;
@@ -70,7 +73,7 @@
   let shownFor = params.gameId;
   $: if (params.gameId !== shownFor) {
     shownFor = params.gameId;
-    tab = 'history';
+    tab = tabFor(params);
     from = 0;
     focusSnap = params.snapshot ?? null;
     opened = new Set([tab]);

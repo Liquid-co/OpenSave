@@ -229,3 +229,19 @@ describe('librarySummary', () => {
     });
   });
 });
+
+describe('Recently added', () => {
+  it('tells apart games tracked in the same second by their first snapshot', () => {
+    const game = (name, createdAt, firstMs) => ({
+      game: { id: name, name, createdAt, branches: { main: { snapshots: [{ timestamp: new Date(firstMs).toISOString() }, { timestamp: new Date(firstMs + 60_000).toISOString() }] } } },
+      status: {}
+    });
+    const rows = [
+      game('alpha', '2026-11-22 06:41:05', Date.UTC(2026, 10, 22, 6, 41, 5, 100)),
+      game('bravo', '2026-11-22 06:41:05', Date.UTC(2026, 10, 22, 6, 41, 5, 900)),
+      game('charlie', '2026-11-22 06:41:04', Date.UTC(2026, 10, 22, 6, 41, 4, 950)),
+      game('delta', '2026-11-22 06:41:06', Date.UTC(2026, 10, 22, 6, 41, 6, 0))
+    ];
+    expect(sortRows(rows, 'added').map((r) => r.game.name)).toEqual(['delta', 'bravo', 'alpha', 'charlie']);
+  });
+});

@@ -64,7 +64,7 @@ func extractAll(jobs []extractJob, onDrive string, progress Progress) error {
 	}
 	sort.Strings(ordered) // a parent before what is inside it
 	for _, d := range ordered {
-		if err := os.MkdirAll(d, 0o777); err != nil {
+		if err := mkdirMarked(d); err != nil {
 			return err
 		}
 	}
@@ -102,22 +102,24 @@ var copyBuffers = sync.Pool{New: func() any { b := make([]byte, 64<<10); return 
 
 // writeEntry writes one file entry to dest, whose folder exists.
 func writeEntry(f *zip.File, dest string) error {
-	src, err := f.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dst, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
-	if err != nil {
-		return err
-	}
-	buf := copyBuffers.Get().(*[]byte)
-	defer copyBuffers.Put(buf)
-	if _, err := io.CopyBuffer(dst, src, *buf); err != nil {
-		dst.Close()
-		return err
-	}
-	return dst.Close()
+	return writeMarked(dest, func() error {
+		src, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		dst, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o666)
+		if err != nil {
+			return err
+		}
+		buf := copyBuffers.Get().(*[]byte)
+		defer copyBuffers.Put(buf)
+		if _, err := io.CopyBuffer(dst, src, *buf); err != nil {
+			dst.Close()
+			return err
+		}
+		return dst.Close()
+	})
 }
 
 // progressFor is how a restore of gameID tells OnRestoreProgress how far it

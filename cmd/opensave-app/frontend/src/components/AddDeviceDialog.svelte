@@ -26,7 +26,7 @@
   import { generateRoomCode } from '../lib/roomcode.js';
   import { placeOnRadar, LABELLED_UP_TO } from '../lib/radar.js';
   import { rise, pop } from '../lib/motion.js';
-  import { sentPairings, pairClock, askToPair, waitingOn } from '../lib/pairing.js';
+  import { sentPairings, pairClock, askToPair, waitingOn, addressProblem } from '../lib/pairing.js';
   import { t } from '../lib/i18n.js';
 
   /** 'nearby', 'code' or 'address': which way to open on. */
@@ -83,7 +83,18 @@
   let ip = '';
   let port = 8383;
   $: typed = `${ip.trim()}:${port}`;
-  const pairAddress = () => run(() => askToPair(typed, typed, { address: ip.trim(), port: Number(port) }));
+  // Caught before anything is sent; and a device that cannot be reached is
+  // said so in words, not as the network library's message.
+  $: addrProblem = addressProblem(ip, port);
+  const pairAddress = () =>
+    run(async () => {
+      try {
+        await askToPair(typed, typed, { address: ip.trim(), port: Number(port) });
+      } catch (e) {
+        if (/^handshake to /i.test(e.message ?? '')) throw new Error($t('devices.add.unreachable', { address: typed }));
+        throw e;
+      }
+    });
   $: typedWait = wait(typed);
 
   const WAYS = [
@@ -215,8 +226,9 @@
         <div class="addr-row">
           <label class="field-l"><span>{$t('devices.add.ip')}</span><input placeholder="192.168.1.42" bind:value={ip} /></label>
           <label class="field-l port"><span>{$t('devices.add.port')}</span><input type="number" bind:value={port} /></label>
-          <button class="btn primary" disabled={busy || !ip.trim()} on:click={pairAddress}>{$t('devices.sendPairing')}</button>
+          <button class="btn primary" disabled={busy || !ip.trim() || !!addrProblem} on:click={pairAddress}>{$t('devices.sendPairing')}</button>
         </div>
+        {#if addrProblem}<p class="addr-problem" role="alert">{$t('devices.add.badAddress.' + addrProblem)}</p>{/if}
         {#if typedWait?.code}
           <div class="typed-check" in:rise={{ y: 4 }}>
             <CheckDigits code={typedWait.code} size="md" />
@@ -237,6 +249,11 @@
 </Modal>
 
 <style>
+  .addr-problem {
+    margin-top: 8px;
+    font-size: var(--text-sm);
+    color: var(--warn);
+  }
   .ways {
     flex-shrink: 0;
     display: flex;
