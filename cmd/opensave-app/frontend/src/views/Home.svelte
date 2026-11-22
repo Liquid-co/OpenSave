@@ -30,7 +30,9 @@
   import FolderPlus from 'lucide-svelte/icons/folder-plus';
   import Gamepad2 from 'lucide-svelte/icons/gamepad-2';
   import Plus from 'lucide-svelte/icons/plus';
-  import SquareCheckBig from 'lucide-svelte/icons/square-check-big';
+  import Pause from 'lucide-svelte/icons/pause';
+  import Play from 'lucide-svelte/icons/play';
+  import { pauseSync, resumeSync } from '../lib/syncpause.js';
 
   export let params = {};
 
@@ -87,9 +89,9 @@
   }
 
   // The Library's two buttons. Each does the usual thing; its arrow offers
-  // the rest. Choosing games to sync is the grid's own selecting, which has
-  // Sync among what it does to the games picked.
-  let grid;
+  // the rest. Under Sync, pausing it, or resuming it while it is paused —
+  // until resumed; the Sync panel and the palette offer set lengths.
+  // Choosing games to sync is the grid's own Select.
   $: addItems = [
     { label: $t('home.scanSaves'), icon: ScanSearch, run: () => scanner.start(), disabled: scanning, hint: $t('home.add.scanHint') },
     { label: $t('home.trackGame'), icon: Gamepad2, run: () => (showTrackGame = true), hint: $t('home.add.trackGameHint') },
@@ -97,7 +99,9 @@
   ];
   $: syncItems = [
     { label: $t('home.sync.all'), icon: RefreshCw, run: syncAll, disabled: $gameList.length === 0 || $syncPause.paused },
-    { label: $t('home.sync.choose'), icon: SquareCheckBig, run: () => grid?.chooseToSync(), disabled: $gameList.length === 0 }
+    $syncPause.paused
+      ? { label: $t('pause.resume'), icon: Play, run: resumeSync }
+      : { label: $t('home.sync.pause'), icon: Pause, run: () => pauseSync(null) }
   ];
 
   // Who played what, and where, from the activity report: it knows another
@@ -250,7 +254,7 @@
       <div transition:collapse><RecentlyPlayed items={recent} /></div>
     {/if}
   </div>
-  <LibraryGrid {rows} bind:this={grid} />
+  <LibraryGrid {rows} />
 {/if}
 </div>
 

@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { initApi, connectWS, native } from './lib/api.js';
-  import { applyMessage, wsConnected, view, appUpdate, toast, showAbout, cloudOffers, newGames, navigate, settings, games, availableUpdate } from './lib/stores.js';
+  import { applyMessage, wsConnected, view, toast, showAbout, cloudOffers, newGames, navigate, settings, games, availableUpdate } from './lib/stores.js';
+  import { justUpdated, updateNotice } from './lib/update.js';
   import { startController, controllerOn, padUsed, pageStep } from './lib/controller.js';
   import { startFocusRing } from './lib/focusring.js';
   import { appearance } from './lib/appearance.js';
@@ -20,6 +21,7 @@
   import PairingBanner from './components/PairingBanner.svelte';
   import CloudOfferBanner from './components/CloudOfferBanner.svelte';
   import NewGamesBanner from './components/NewGamesBanner.svelte';
+  import UpdateNotice from './components/UpdateNotice.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import Shortcuts from './components/Shortcuts.svelte';
@@ -34,30 +36,11 @@
   import SettingsMenu from './components/SettingsMenu.svelte';
   import { settingsMenu } from './lib/settingsmenu.js';
   import Changelog from './views/Changelog.svelte';
-  import WhatsNewModal from './components/WhatsNewModal.svelte';
   import ActivityLog from './views/ActivityLog.svelte';
-  import Download from 'lucide-svelte/icons/download';
-  import Wrench from 'lucide-svelte/icons/wrench';
-  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
-  import Sparkles from 'lucide-svelte/icons/sparkles';
-  import X from 'lucide-svelte/icons/x';
 
   let ready = false;
   let bootError = '';
   let retrying = false;
-  let update = null; // {available, latest, url, assetUrl?, notes?} when a newer release exists
-  let showNotes = false;
-  let installStarted = false;
-
-  async function installRelease() {
-    if (!update?.assetUrl || installStarted) return;
-    installStarted = true;
-    const err = await native.installFromUrl(update.assetUrl);
-    if (err) {
-      toast(err, 'error');
-      installStarted = false;
-    }
-  }
 
   async function boot() {
     bootError = '';
@@ -70,16 +53,6 @@
       bootError = e.message;
     }
     retrying = false;
-  }
-
-  let updatedTo = ''; // set when this launch is the first on a new build
-  let updatedFrom = '';
-  let whatsNew = []; // releases newer than the version we came from
-  let showWhatsNew = false;
-
-  function openWhatsNew() {
-    showWhatsNew = true;
-    updatedTo = '';
   }
 
   // Moving around with a controller, or the arrow keys the same way, when
@@ -144,11 +117,7 @@
       const g = await native.updateGreeting();
       if (g?.updatedFrom) {
         const info = await native.appInfo();
-        updatedTo = info?.version ?? '';
-        updatedFrom = g.updatedFrom;
-        // Only what changed since the version they were actually on — a
-        // first-run wall of every historical release is not a greeting.
-        whatsNew = (await native.whatsNew()) ?? [];
+        if (info?.version) justUpdated.set({ to: info.version, from: g.updatedFrom });
       }
     } catch {}
     // Non-blocking: never let an update check affect startup. Re-check
@@ -156,10 +125,7 @@
     const check = async () => {
       try {
         const res = await native.checkUpdate();
-        if (res?.available) {
-          update = res;
-          availableUpdate.set(res);
-        }
+        if (res?.available) availableUpdate.set(res);
       } catch {}
     };
     await check();
@@ -185,6 +151,12 @@
   // place.
   let mainEl;
   let shownPage = '';
+  // How much room the notices above the page take, for the cover behind the
+  // Library and a game's header (LibraryBackdrop) to reach up behind them —
+  // otherwise it began below them, with a hard edge under the card.
+  let noticesHeight = 0;
+  $: noticesShown = !!$updateNotice || $cloudOffers.length > 0 || $newGames.length > 0;
+  $: noticesSpace = noticesShown ? noticesHeight + 18 : 0;
   $: if (mainEl && $view.name !== shownPage) {
     if (shownPage) mainEl.scrollTop = 0;
     shownPage = $view.name;
@@ -193,60 +165,6 @@
 
 <div class="shell">
   <TitleBar />
-  {#if $appUpdate && $appUpdate.state !== 'error'}
-    <div class="update-banner installing">
-      <span class="with-icon">
-        {#if $appUpdate.state === 'downloading'}
-          <Download size={16} /> {$t('app.updatingDownloading', { n: $appUpdate.percentage ?? 0 })}
-        {:else if $appUpdate.state === 'installing'}
-          <Wrench size={16} /> {$t('app.installingUpdate')}
-        {:else}
-          <RefreshCw size={16} /> {$t('app.restartingVersion')}
-        {/if}
-        <em>{$t('app.restartsItself')}</em>
-      </span>
-    </div>
-  {:else if update}
-    <div class="update-banner">
-      <span class="with-icon"><Sparkles size={16} /> {$t('app.updateAvailable', { latest: update.latest, current: update.current })}</span>
-      <div class="update-actions">
-        {#if update.notes}
-          <button class="btn small ghost" on:click={() => (showNotes = !showNotes)}>
-            {showNotes ? $t('app.hideNotes') : $t('app.whatsNew')}
-          </button>
-        {/if}
-        {#if update.assetUrl}
-          <button class="btn small primary" disabled={installStarted} on:click={installRelease}>
-            {installStarted ? $t('app.starting') : $t('app.installRestart')}
-          </button>
-        {:else if update.flatpak}
-          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>{$t('app.getFlatpak')}</button>
-        {:else}
-          <button class="btn small primary" on:click={() => native.openExternal(update.url)}>{$t('app.download')}</button>
-        {/if}
-        <button class="btn small ghost icon" on:click={() => (update = null)} aria-label={$t('common.dismiss')} title={$t('common.dismiss')}><X size={15} /></button>
-      </div>
-    </div>
-    {#if showNotes && update.notes}
-      <div class="update-notes">{update.notes}</div>
-    {/if}
-  {:else if updatedTo}
-    <div class="update-banner">
-      <span class="with-icon"><Sparkles size={16} /> {$t('app.updatedTo', { version: updatedTo })}</span>
-      <div class="update-actions">
-        <button class="btn small primary" on:click={openWhatsNew}>{$t('app.whatsNew')}</button>
-        <button class="btn small ghost icon" on:click={() => (updatedTo = '')} aria-label={$t('common.dismiss')} title={$t('common.dismiss')}><X size={15} /></button>
-      </div>
-    </div>
-  {/if}
-  {#if showWhatsNew}
-    <WhatsNewModal
-      releases={whatsNew}
-      version={updatedTo || ''}
-      from={updatedFrom}
-      onClose={() => (showWhatsNew = false)}
-    />
-  {/if}
   <div class="body">
     {#if bootError}
       <div class="boot-error">
@@ -265,13 +183,14 @@
       <!-- The page and its toasts: they sit at the bottom centre of the page,
            above the status bar and never over the sidebar. -->
       <div class="page">
-      <main bind:this={mainEl}>
+      <main bind:this={mainEl} style="--notices: {noticesSpace}px">
         <!-- At the top of the page rather than floating over it: floating, they
              sat on the page's own header buttons for as long as they were
              shown. These wait for an answer; they should not take anything away
              while they do. -->
-        {#if $cloudOffers.length > 0 || $newGames.length > 0}
-          <div class="notices">
+        {#if noticesShown}
+          <div class="notices" bind:offsetHeight={noticesHeight}>
+            <UpdateNotice />
             <CloudOfferBanner />
             <NewGamesBanner />
           </div>
@@ -313,7 +232,10 @@
 </div>
 
 <style>
+  /* Above the page's cover art, which reaches up behind them. */
   .notices {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -372,40 +294,6 @@
   .boot-hint {
     color: var(--text-dim) !important;
     font-size: 0.8rem;
-  }
-  .update-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 16px;
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--accent);
-    color: var(--text);
-    font-size: 0.86rem;
-    flex-shrink: 0;
-  }
-  .update-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .update-banner.installing em {
-    color: var(--text-dim);
-    font-style: normal;
-    margin-left: 8px;
-    font-size: 0.8rem;
-  }
-  .update-notes {
-    max-height: 180px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    padding: 10px 16px;
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 0.82rem;
-    flex-shrink: 0;
   }
   .boot-logo {
     width: 72px;

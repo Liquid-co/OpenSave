@@ -30,11 +30,19 @@
   /** How far down the page it reaches, in pixels. */
   export let height = 460;
 
-  // The canvas's own size; the stretch to the page does the rest. Big enough
-  // that a cover is still recognisable, small enough to paint in a moment.
-  const W = 480;
-  const H = 216;
+  // The canvas is painted at the shape of the area it fills, so the cover is
+  // scaled evenly and cropped, never stretched: the area is far wider than a
+  // cover (about 3:1 to 4:1 against Steam's 2.1:1 art), and a canvas of the
+  // art's own shape, stretched to fill it, pulled every cover out sideways.
+  // Its width is the area's divided by SCALE, so the cover is softened the
+  // same at every window size; small enough to paint in a moment.
+  const SCALE = 2.8;
+  const MIN_W = 320;
+  const MAX_W = 960;
   const BLUR = 3;
+  // Where the crop sits, from the top: a little above the middle, where a
+  // game's header art keeps its title and its faces.
+  const FOCUS_Y = 0.4;
   // How long each cover stays, and how long one takes to become the next.
   const HOLD = 12_000;
   const FADE = 1_600;
@@ -126,6 +134,10 @@
     const img = new Image();
     img.onload = () => {
       if (!node.isConnected) return;
+      const box = node.getBoundingClientRect();
+      const aspect = box.width > 0 && box.height > 0 ? box.width / box.height : 460 / 215;
+      const W = Math.round(Math.min(MAX_W, Math.max(MIN_W, box.width / SCALE)));
+      const H = Math.max(1, Math.round(W / aspect));
       node.width = W;
       node.height = H;
       const c = node.getContext('2d');
@@ -138,7 +150,7 @@
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = 'high';
       c.filter = `blur(${BLUR}px) saturate(1.25) brightness(0.8)`;
-      c.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+      c.drawImage(img, (W - w) / 2, (H - h) * FOCUS_Y, w, h);
       requestAnimationFrame(() => node.classList.add('ready'));
     };
     img.onerror = () => bad.add(url);
@@ -151,7 +163,7 @@
 </script>
 
 {#if mode === 'cover'}
-  <div class="backdrop" aria-hidden="true" style="height: {height}px; --fade: {$motionOn ? FADE : 0}ms">
+  <div class="backdrop" aria-hidden="true" style="height: calc({height}px + var(--notices, 0px)); --fade: {$motionOn ? FADE : 0}ms">
     <div class="art">
       <!-- Directly in the key block, so its outro runs when the cover changes
            (transitions are local to the block that holds them). -->
@@ -169,8 +181,10 @@
 <style>
   .backdrop {
     position: absolute;
-    /* Out to the page's edges, past main's padding (App.svelte). */
-    top: -24px;
+    /* Out to the page's edges, past main's padding and up behind any notices
+       above the page (App.svelte), so the picture starts at the top of the
+       window rather than under them. */
+    top: calc(-24px - var(--notices, 0px));
     left: -28px;
     right: -28px;
     height: 460px;
@@ -188,11 +202,15 @@
   :global([data-theme='light']) .art {
     opacity: 0.3;
   }
+  /* Painted to this shape already; if the window changes shape afterwards,
+     scaled evenly and cropped rather than stretched. */
   canvas {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
+    object-fit: cover;
+    object-position: 50% 40%;
     opacity: 0;
     transition: opacity var(--fade) ease;
   }

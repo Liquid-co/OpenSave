@@ -61,7 +61,7 @@ func (a *App) CheckForUpdate() map[string]any {
 	if len(notes) > 4000 {
 		notes = notes[:4000] + "\n…"
 	}
-	return map[string]any{
+	out := map[string]any{
 		"available":  true,
 		"current":    AppVersion,
 		"latest":     latest,
@@ -71,6 +71,11 @@ func (a *App) CheckForUpdate() map[string]any {
 		"flatpak":    runningInFlatpak(),
 		"prerelease": rel.Prerelease,
 	}
+	// What it changes, from CHANGELOG.md at its tag, for "What's new".
+	if r := upcomingRelease(updateRepo, rel.TagName, latest); r != nil {
+		out["release"] = r
+	}
+	return out
 }
 
 // releaseAsset is the subset of a GitHub release asset the updater needs.
