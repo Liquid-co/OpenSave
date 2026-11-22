@@ -1,8 +1,9 @@
 <script>
   // Add a device: three ways for two devices to find each other. Nearby, on
-  // the same network, drawn on a radar (lib/radar.js) beside the list; with
-  // a code, over the internet, both joining the same 12-character room
-  // (lib/roomcode.js); or by typing the other device's address.
+  // the same network: the devices found, beside this one as they will see it
+  // and what happens next; with a code, over the internet, both joining the
+  // same 12-character room (lib/roomcode.js); or by typing the other
+  // device's address.
   //
   // Each way ends the same: this device asks, and the other device accepts.
   import { createEventDispatcher } from 'svelte';
@@ -17,6 +18,7 @@
   import Clock from 'lucide-svelte/icons/clock';
   import Check from 'lucide-svelte/icons/check';
   import Info from 'lucide-svelte/icons/info';
+  import LoaderCircle from 'lucide-svelte/icons/loader-circle';
   import MonitorSmartphone from 'lucide-svelte/icons/monitor-smartphone';
   import Modal from './ui/Modal.svelte';
   import CheckDigits from './ui/CheckDigits.svelte';
@@ -24,13 +26,15 @@
   import { api } from '../lib/api.js';
   import { isHandheld } from '../lib/devices.js';
   import { generateRoomCode } from '../lib/roomcode.js';
-  import { placeOnRadar, LABELLED_UP_TO } from '../lib/radar.js';
-  import { rise, pop } from '../lib/motion.js';
+  import { rise } from '../lib/motion.js';
   import { sentPairings, pairClock, askToPair, waitingOn, addressProblem } from '../lib/pairing.js';
   import { t } from '../lib/i18n.js';
 
   /** 'nearby', 'code' or 'address': which way to open on. */
   export let way = 'nearby';
+  /** Where others on this network reach this device ("192.168.1.5:8383"),
+   *  when known: the Devices page has already looked it up. */
+  export let address = '';
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
 
@@ -55,7 +59,8 @@
   // ── Nearby ──
   $: pairedIds = new Set(Object.keys($peers));
   $: nearby = $discoveredPeers.filter((d) => !d.isWan && !pairedIds.has(d.id));
-  $: radar = placeOnRadar(nearby.map((d) => ({ ...d, name: d.deviceName })), { width: 340, height: 320 });
+  // Search and the kind chips only once the list is long enough to need them.
+  const FILTER_FROM = 5;
   let query = '';
   let kind = 'all';
   const kindOf = (d) => (isHandheld(d.deviceType) ? 'handheld' : 'computer');
@@ -119,24 +124,29 @@
   <div class="body">
     {#if way === 'nearby'}
       <div class="split" in:rise={{ y: 6 }}>
-        <div class="radar-col">
-          <div class="radar" aria-hidden="true">
-            <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
-            <span class="sweep"></span>
-            <span class="me"><Monitor size={22} /></span>
-            {#each radar.placed as p (p.device.id)}
-              <span class="pip" class:asked={wait(p.device.id)} style="left: {p.x}px; top: {p.y}px" in:pop={{ start: 0.4 }}>
-                <svelte:component this={isHandheld(p.device.deviceType) ? Gamepad2 : Monitor} size={15} />
-              </span>
-              {#if radar.labelled}<span class="lbl" style="left: {p.x}px; top: {p.y + 20}px">{p.device.deviceName}</span>{/if}
-            {/each}
-            {#if radar.hidden > 0}<span class="more-pips">+{radar.hidden}</span>{/if}
+        <!-- This device, as the others will list it, and what pairing asks of
+             each side: the name to look for there, and the numbers to check. -->
+        <aside class="here">
+          <span class="kicker">{$t('devices.add.here.seenAs')}</span>
+          <div class="me">
+            <span class="me-tile"><svelte:component this={isHandheld($settings?.deviceType) ? Gamepad2 : Monitor} size={20} /></span>
+            <span class="dtext">
+              <span class="me-name">{$settings?.deviceName ?? '…'}</span>
+              {#if address}<span class="dsub">{address}</span>{/if}
+            </span>
           </div>
-          <p class="cap">{radar.hidden > 0 ? $t('devices.add.radarMore', { n: radar.placed.length, total: nearby.length }) : $t('devices.add.looking')}</p>
-        </div>
+          <ol class="steps">
+            <li>{$t('devices.add.step.open')}</li>
+            <li>{$t('devices.add.step.pair')}</li>
+            <li>{$t('devices.add.step.accept')}</li>
+          </ol>
+        </aside>
         <div class="list-col">
-          <div class="list-head"><h3>{nearby.length ? $t('devices.add.found', { n: nearby.length }) : $t('devices.add.noneYet')}</h3><span class="cap">{$t('devices.add.stillLooking')}</span></div>
-          {#if nearby.length > LABELLED_UP_TO}
+          <div class="list-head">
+            <h3>{nearby.length ? $t('devices.add.found', { n: nearby.length }) : $t('devices.add.noneYet')}</h3>
+            <span class="looking"><span class="spin"><LoaderCircle size={13} /></span>{$t('devices.add.stillLooking')}</span>
+          </div>
+          {#if nearby.length >= FILTER_FROM}
             <label class="find"><Search size={14} /><input placeholder={$t('devices.add.search')} bind:value={query} /></label>
             <div class="chips">
               {#each ['all', 'handheld', 'computer'] as k}
@@ -166,10 +176,7 @@
                 {/if}
               </div>
             {:else}
-              <div class="empty-rows">
-                <span class="dot-pulse"></span>
-                <p>{$t('devices.add.openOnOther')}</p>
-              </div>
+              <div class="empty-rows"><p>{$t('devices.add.nothingYet')}</p></div>
             {/each}
           </div>
         </div>
@@ -316,117 +323,82 @@
     gap: 20px;
     align-items: stretch;
   }
-  .radar-col {
-    flex: none;
+  /* This device, as the others list it: shaped like a row in the list beside
+     it, then the three steps of pairing. */
+  .here {
+    flex: 0 0 290px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-  .radar {
-    position: relative;
-    width: 340px;
-    height: 320px;
+    padding: 18px;
     border-radius: calc(16px * var(--round, 1));
-    overflow: hidden;
-    background: radial-gradient(circle at 50% 50%, rgba(var(--accent-rgb), 0.12), transparent 70%), var(--bg);
+    background: var(--bg);
     border: 1px solid var(--border);
   }
-  .ring {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    border-radius: 50%;
-    border: 1px solid rgba(var(--accent-rgb), 0.24);
-    transform: translate(-50%, -50%);
-  }
-  .r1 {
-    width: 120px;
-    height: 120px;
-  }
-  .r2 {
-    width: 220px;
-    height: 220px;
-  }
-  .r3 {
-    width: 300px;
-    height: 300px;
-    border-style: dashed;
-  }
-  /* The sweep: a wedge of accent turning once every few seconds while it
-     looks. Stilled with animations off. */
-  .sweep {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 300px;
-    height: 300px;
-    margin: -150px 0 0 -150px;
-    border-radius: 50%;
-    background: conic-gradient(from 0deg, rgba(var(--accent-rgb), 0.22), transparent 60deg);
-    animation: sweep 4s linear infinite;
-  }
-  @keyframes sweep {
-    to {
-      transform: rotate(360deg);
-    }
+  .kicker {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-faint);
   }
   .me {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 52px;
-    height: 52px;
-    transform: translate(-50%, -50%);
-    border-radius: calc(15px * var(--round, 1));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .me-tile {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: calc(11px * var(--round, 1));
     display: grid;
     place-items: center;
-    background: var(--accent-fill);
-    color: var(--on-accent);
-    box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.22);
+    background: var(--accent-soft);
+    color: var(--accent-text);
   }
-  .pip {
-    position: absolute;
-    width: 34px;
-    height: 34px;
-    margin: -17px 0 0 -17px;
+  .me-name {
+    font-size: 1.02rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 18px 0 0;
+    padding: 16px 0 0;
+    border-top: 1px solid var(--border);
+  }
+  .steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 10px;
+    font-size: var(--text-md);
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+  .steps li::before {
+    content: counter(step);
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    color: var(--success);
-  }
-  .pip.asked {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.28);
-  }
-  .lbl {
-    position: absolute;
-    transform: translateX(-50%);
-    max-width: 112px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-  .more-pips {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    padding: 2px 10px;
-    border-radius: 999px;
     background: var(--bg-active);
-    border: 1px solid var(--border-strong);
+    color: var(--text-faint);
     font-size: var(--text-sm);
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
   .cap {
     font-size: var(--text-sm);
     color: var(--text-faint);
-  }
-  .radar-col .cap {
-    text-align: center;
   }
   .list-col,
   .room-col {
@@ -493,6 +465,14 @@
     gap: 6px;
     max-height: 300px;
     overflow-y: auto;
+  }
+  /* Nearby: the list as tall as the panel beside it, so an empty one's
+     outline ends where the panel does. */
+  .list-col .rows {
+    flex: 1;
+  }
+  .list-col .empty-rows {
+    flex: 1;
   }
   .row {
     display: flex;
@@ -581,17 +561,22 @@
     color: var(--text-dim);
     font-size: var(--text-md);
   }
-  .dot-pulse {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    animation: pulse 1.6s ease-in-out infinite;
+  /* Still looking: a small turning ring by the heading, for as long as the
+     dialog is open. Kept turning with animations off, like every spinner. */
+  .looking {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-sm);
+    color: var(--text-faint);
   }
-  @keyframes pulse {
-    50% {
-      transform: scale(1.6);
-      opacity: 0.4;
+  .spin {
+    display: inline-flex;
+    animation: turn 1.4s linear infinite;
+  }
+  @keyframes turn {
+    to {
+      transform: rotate(360deg);
     }
   }
   .code-card {

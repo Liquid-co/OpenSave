@@ -210,7 +210,7 @@
 </div>
 
 {#if adding}
-  <AddDeviceDialog way={adding} on:close={() => (adding = '')} />
+  <AddDeviceDialog way={adding} {address} on:close={() => (adding = '')} />
 {/if}
 
 <style>
