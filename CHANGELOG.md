@@ -3,7 +3,42 @@
 All notable changes to OpenSave are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.5.0-beta.1] — 2026-11-19
+
+The first beta of 2.5.0. On a Steam Deck a game now starts with its newest
+save, and a game is not synced while it is being played. Games from your other
+devices set themselves up again, and your own devices can be trusted to choose
+folders. Saves of many files are much faster, OpenSave is in Chinese, and
+dozens of fixes make syncing safer, four of them security issues. Please try
+it, and tell us what breaks.
+
+### Security
+
+- **A sync can no longer reach outside a save folder through a link.** A
+  symbolic link or Windows junction inside a tracked save folder was
+  followed, so files outside the folder could be read, overwritten or
+  deleted by a sync with another device. Links inside a save folder are now
+  refused. Reported by Seagulls.
+- **A game from another device is never tracked at a folder holding
+  programs.** A save that sits beside a game's executable made the scan
+  note that folder, and a game arriving from another device, or chosen by a
+  device trusted to choose folders, could be tracked there, with that
+  device's files written among the game's own. Such a folder is now always
+  offered for you to place instead.
+- **A paired device's key can no longer be replaced without pairing again.**
+  A pairing confirmation this device had not asked for was accepted from
+  any device already paired, and it replaced that device's key and address.
+  Anyone in the same relay room, or running the relay, could then sync as
+  that device: read this device's saves and overwrite them. A device whose
+  key really changed now pairs again. Reported by GeneBO98. (#169)
+- **An update from another device is installed only if it is a release.**
+  An update taken from a paired device was checked only against a checksum
+  sent by that same device, so anyone able to answer as it could have their
+  own program installed. The download is now checked against the checksums
+  published with the release, and refused without one. This works on
+  Windows only; elsewhere, update from GitHub. The Windows installer now
+  installs exactly the released OpenSave.exe, so installed copies can pass
+  this check. Reported by GeneBO98. (#170, #172)
 
 ### Fixed
 
@@ -157,9 +192,105 @@ All notable changes to OpenSave are documented here. This project adheres to
   backup or an earlier install, it simply takes the newer save. (#106)
 - **A Steam folder holding only Steam's own file is not offered as a game
   with saves.** (#115)
+- **A game waiting for a folder no longer stays on Home once it syncs.** And
+  when a game is offered, OpenSave now looks for its folder straight away
+  rather than at the next hourly scan, so a game you have already played on
+  this device starts syncing within seconds.
+- **A game's extra save folders get the same protection as its main one.**
+  A sync no longer overwrites or deletes files in an additional save
+  location without a safety snapshot that holds them first, and resolving a
+  conflict there leaves it open if that snapshot, or the other device, is
+  not available. "Keep theirs" now takes exactly the other device's copy.
+  (#92, #93, issues #82 and #83)
+- **Two games can no longer claim the same save folder.** Tracking or moving
+  a game is refused when the folder, or one inside or above it, already
+  belongs to another game, through a link too; and when OpenSave cannot
+  check, it refuses rather than guessing. (#131, issue #130)
+- **A save folder OpenSave may not write to is said once.** One under Program
+  Files, say, showed the same "access denied" error at every sync. OpenSave
+  now says what to do, and tries again in half an hour; a file the game just
+  has open is retried as usual. (#114)
+- **The "After playing" snapshot is no longer taken twice** when the game
+  saved in the very moment its session began. (#125)
+- **Importing a backup no longer overwrites another game's save.** A backup
+  of a game this device doesn't track could be extracted into a folder that
+  belongs to another tracked game, replacing its files before the import was
+  refused. The folder is now checked first, and if another game owns it,
+  nothing is written. (#141, issue #138)
+- **Removing a save location waits for a sync that is writing into it.**
+  Removing or moving one of a game's save locations during a sync could
+  leave that sync writing into a folder no longer tracked. The change now
+  waits up to 30 seconds for the sync to finish, and says so if it is still
+  busy. (#139, issue #136)
+- **A game offered for a folder is said once.** While it waited on Home, the
+  log repeated the same warning at every sync from the other device. (#150)
+- **Cemu is found on Windows.** The scan looked in Documents\Cemu, where Cemu
+  never keeps its saves; a default install keeps them in %APPDATA%\Cemu.
+  (#151, issue #148)
+- **The Deck plugin says the version it was released as.** The 2.4.1
+  download said 2.4.0, so plugin managers offered the same update again and
+  again. (#151, issue #149)
+- **A sync that did not reach a device is no longer called "already in
+  sync".** `opensave sync` and the Deck plugin now say when another device is
+  playing the game, has syncing paused, or the sync with it failed. At a
+  launch on the Deck, a game being played on another device says so instead
+  of starting quietly. (#154)
+- **Copies kept before a save is replaced no longer push out its history.**
+  The copy taken before a restore, a sync that replaces files, "keep theirs"
+  or a branch switch counted against the game's limit of automatic
+  snapshots, so a device that syncs often, or a few restores in a row,
+  pruned the real ones. These copies now have a limit of their own: five
+  per branch, never more than the automatic limit, here and in cloud
+  backup. (#164)
+- **A game played on a Mac is not synced while it runs.** OpenSave could not
+  see running programs on macOS, so nothing held a game's sync back there.
+  (#165)
+- **"Keep theirs" waits until you close the game.** Chosen while the game ran
+  on this device, it wrote the other device's save under the running game.
+  It now asks you to close the game first, and the conflict stays open.
+  (#165)
+- **An untouched save no longer overwrites the other device's edit.** When
+  the only difference from the last agreed save was files the other device
+  had asked to delete, the direction of the sync fell back to file dates,
+  and a copy here with a later date could be sent over the edit made there.
+  (#165)
+- **"Running now" in Track game lists games, not browsers or build tools.**
+  A browser, an Office program, or a program in a folder named like build or
+  root could be listed as a game being played, because its folder name
+  matched a game in the catalogue. (#162)
 
 ### Changed
 
+- **The scan finds more games.** It reads more of the save catalogue: a
+  `**` in a save path matches folders at any depth, Documents is found where
+  Windows keeps it (in OneDrive, for example), Heroic, Lutris and Bottles
+  prefixes named after a game are searched, and so is Steam's library on a
+  Mac. The catalogue built into the app is from November 18. (#166)
+- **A game being played is not synced until you stop.** Its autosaves no
+  longer go to your other devices one by one while you play, and a game
+  running here never has a save written under it. When the session ends,
+  the save as you left it is kept and synced once. (#117)
+- **On Steam Deck, a game starts with its newest save.** The Game Mode
+  plugin holds a game's launch until its save has synced, for up to 30
+  seconds ("Wait for the save before starting", on by default), and tells
+  OpenSave when you start and stop playing, so each session gets its "After
+  playing" snapshot. (#109)
+
+- **Games from your other devices set themselves up again.** 2.4.1 stopped
+  another device from choosing folders on this one, and in doing so made
+  many games wait on Home for you to pick a folder. Now a game arriving from
+  another device is tracked by itself wherever this device can tell the
+  folder is that game's save: where the save catalogue or Steam says the game
+  keeps its saves here, even before you have played it (so a new PC fills
+  itself in, saves in place before first launch), in an emulator's save
+  folder, or a folder a scan has seen. The other device still chooses
+  nothing.
+- **Trust your own devices to choose folders.** For a folder this device
+  can't recognise, such as one you tracked by hand on the other device, the
+  game still waits on Home for you to place it. On Devices, "Trust it to
+  choose folders" lets one of your own devices decide instead, as every
+  device could before 2.4.1 (`opensave peers trust <device> on`). It is off
+  until you turn it on, asks first, and goes when the device is unpaired.
 - **Much faster with saves of many files.** Checking a 240,000-file save for
   changes went from 13–19 seconds to about 1.3, and a follow-up snapshot
   copies the unchanged files from the one before instead of compressing them
@@ -194,17 +325,23 @@ All notable changes to OpenSave are documented here. This project adheres to
 
 ### Added
 
-- **Chinese, Simplified and Traditional,** for the Home screen, the sidebar,
-  the title bar, the status bar, notifications, banners, the command palette
-  and the Transfers panel, and a Language
-  choice in Settings → Appearance, which follows the system by default:
-  Taiwan, Hong Kong and Macau get Traditional, the rest Simplified. (#48,
-  #77, #112, from #19 and #20)
+- **Chinese, Simplified and Traditional,** throughout the app, with a
+  Language choice in Settings → Appearance, which follows the system by
+  default: Taiwan, Hong Kong and Macau get Traditional, the rest Simplified.
+  Messages from the background service, such as the notes on automatic
+  snapshots, are still in English. (#48, #77, #112, #124, #145, #152, #153,
+  #158, #159, #160, #161, from #19 and #20)
+- **Any accent colour.** The last swatch in Settings → Appearance opens a
+  colour wheel. A colour you pick joins the swatches, up to eight of them,
+  and text on it stays readable. Slate, which the wheel replaces, stays for
+  anyone using it. (#157)
 - **Track a game from the save catalogue.** "Track game" beside "Track
   folder" finds a game by name, by the program you pick, or one that is
   running, and tracks it with its name, cover and save folder. A folder
   inside one that is already tracked is refused, with an offer to link the
-  two instead. (#73)
+  two instead. The games running now are listed first. (#73, #126)
+- **RetroDECK's saves are found by the scan,** wherever RetroDECK is
+  installed, as EmuDeck's are. (#121, #129)
 - **Rename a game.** A pencil beside a game's name on its page — or
   "Rename…" in its menu and Ctrl+K, or `opensave rename` — changes what this
   device calls it. Your other devices keep their own name, and syncing,

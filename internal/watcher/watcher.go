@@ -31,6 +31,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/opensave/opensave/internal/delta"
+	"github.com/opensave/opensave/internal/fsx"
 	"github.com/opensave/opensave/internal/ignore"
 	"github.com/opensave/opensave/internal/logging"
 	"github.com/opensave/opensave/internal/owntouch"
@@ -131,6 +132,11 @@ type Callbacks struct {
 	// SyncWritingNow reports whether a sync is writing the game at this
 	// moment: the watcher looks at the burst once it has finished. May be nil.
 	SyncWritingNow func(gameID string) bool
+	// HoldSnapshot reports whether a change should not be snapshotted now:
+	// the game is being played, and a checkpoint was taken recently. The
+	// change is not recorded as captured either, so the next one, or the end
+	// of the session, still sees it. May be nil.
+	HoldSnapshot func(gameID string) bool
 }
 
 // syncWriting reports whether a sync is or was just writing a game
@@ -979,6 +985,9 @@ func (e *Engine) handleChangeFrom(ctx context.Context, gw *gameWatch, ownOnly bo
 		}
 		return
 	}
+	if e.cb.HoldSnapshot != nil && e.cb.HoldSnapshot(gw.gameID) {
+		return // being played: kept by the session (a checkpoint, or its end)
+	}
 
 	for attempt := 1; attempt <= snapshotMaxRetries; attempt++ {
 		err = e.cb.CreateSnapshot(gw.gameID)
@@ -1129,7 +1138,10 @@ func (e *Engine) registerFolders(ctx context.Context, gw *gameWatch) {
 // looked up once per check, only when there are subfolders to look up. A
 // burst of Writes to one folder is one check (queueCheck).
 func (e *Engine) checkFolders(ctx context.Context, gw *gameWatch, dir string) bool {
-	entries, err := os.ReadDir(dir)
+	// Listed so that it can still be removed meanwhile: the Write that brought
+	// this here may be a restore, or the game, emptying the folder
+	// (fsx.ReadDirShared).
+	entries, err := fsx.ReadDirShared(dir)
 	if err != nil {
 		return false // gone again, or unreadable: its own events will tell
 	}

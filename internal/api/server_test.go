@@ -357,6 +357,18 @@ func TestDeckyPluginContract(t *testing.T) {
 	if _, ok := body["deck-game"]; !ok {
 		t.Errorf("/api/games should be keyed by game id, got keys %v", keysOf(body))
 	}
+	// Each game's App ID and whether it auto-syncs: the plugin keeps these to
+	// decide, the moment Steam reports a launch, whether to hold it for the
+	// game's save.
+	var deckGame map[string]json.RawMessage
+	if err := json.Unmarshal(body["deck-game"], &deckGame); err != nil {
+		t.Fatalf("/api/games deck-game: %v", err)
+	}
+	for _, key := range []string{"id", "name", "appId", "autoSync"} {
+		if _, ok := deckGame[key]; !ok {
+			t.Errorf("/api/games game missing %q", key)
+		}
+	}
 
 	// POST /api/games/sync-all — succeeds even with no online peers.
 	resp, body = ts.do(t, http.MethodPost, "/api/games/sync-all", nil)
@@ -439,6 +451,16 @@ func TestDeckyPluginContract(t *testing.T) {
 		map[string]any{"comment": "Steam Deck snapshot"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/api/games/{id}/snapshot = %d (%v)", resp.StatusCode, body)
+	}
+
+	// POST /api/games/{id}/session — the launch and exit hooks say when a
+	// game starts and stops, sending "start" or "end". Ending answers once
+	// the session's snapshot and sync are done.
+	for _, state := range []string{"start", "end"} {
+		resp, body = ts.do(t, http.MethodPost, "/api/games/"+gameID+"/session", map[string]any{"state": state})
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("/api/games/{id}/session %q = %d (%v)", state, resp.StatusCode, body)
+		}
 	}
 
 	// POST /api/games/{id}/resolve-conflict — the reason a conflict on a

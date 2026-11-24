@@ -1,5 +1,7 @@
 <script>
   // A provider's logo, or a plain glyph for the ones without a brand.
+  import { t } from '../../lib/i18n.js';
+
   export let provider;
   export let size = 34;
 
@@ -11,7 +13,7 @@
 </script>
 
 {#if provider?.img}
-  <img src={provider.img} alt={provider.label} style="width: {size}px; height: {size}px" />
+  <img src={provider.img} alt={provider ? $t('cloud.provider.' + provider.id) : ''} style="width: {size}px; height: {size}px" />
 {:else}
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor"><path d={paths[provider?.icon ?? 'cloud']} /></svg>
 {/if}

@@ -57,6 +57,10 @@ func (e *Engine) ResolveConflict(ctx context.Context, gameID, peerID, resolution
 		return "", nil
 
 	case "keep-remote":
+		// Not under a game that is running (playing.go).
+		if e.PlayingHere(gameID) {
+			return "", keepRemoteWhilePlaying{}
+		}
 		e.Log("info", fmt.Sprintf("conflict on %q resolved: keep REMOTE — overwriting local", gameID))
 		remoteData, err := e.peerStateForResolution(ctx, gameID, peer)
 		if err != nil {

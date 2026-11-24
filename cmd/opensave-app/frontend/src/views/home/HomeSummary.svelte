@@ -22,10 +22,18 @@
   import { spaceUsed } from '../../lib/overview.js';
   import { fmtSize } from '../../lib/format.js';
   import { api } from '../../lib/api.js';
-  import { timeAgo } from '../../lib/timeago.js';
+  import { timeAgoParts } from '../../lib/timeago.js';
   import { libraryView } from '../../lib/libraryview.js';
   import { t } from '../../lib/i18n.js';
   import RecentActivity from './RecentActivity.svelte';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
 
   /** [{game, status}] for every tracked game, from the library. */
   export let rows = [];
@@ -59,6 +67,59 @@
   const ICONS = { ok: Save, warn: TriangleAlert, busy: RefreshCw, muted: CircleDashed };
 
   $: summary = librarySummary(rows);
+
+  // The headline's wording is built in lib/gamestatus.js, in English; the
+  // same cases, in the same order, are mapped here to translated sentences.
+  const by = (state) => rows.filter((r) => r.status.state === state);
+  function headlineFor() {
+    const missing = by('missing');
+    const emptied = by('emptied');
+    const conflict = by('conflict');
+    const syncing = by('syncing');
+    const failed = by('error');
+    // From the snapshots, not the state — see librarySummary.
+    const empty = rows.filter((r) => latestSnapshotAt(r.game) === null);
+    const damaged = rows.flatMap((r) =>
+      Object.values(r.game.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem).map(() => r.game))
+    );
+    const paused = by('paused');
+    if (missing.length > 0)
+      return missing.length === 1
+        ? { key: 'home.summaryLine.missingOne', params: { name: missing[0].game.name } }
+        : { key: 'home.summaryLine.missingMany', params: { count: missing.length } };
+    if (emptied.length > 0)
+      return emptied.length === 1
+        ? { key: 'home.summaryLine.emptiedOne', params: { name: emptied[0].game.name } }
+        : { key: 'home.summaryLine.emptiedMany', params: { count: emptied.length } };
+    if (conflict.length > 0)
+      return conflict.length === 1
+        ? { key: 'home.summaryLine.conflictOne', params: { name: conflict[0].game.name } }
+        : { key: 'home.summaryLine.conflictMany', params: { count: conflict.length } };
+    if (syncing.length > 0)
+      return syncing.length === 1
+        ? { key: 'home.summaryLine.syncingOne', params: { name: syncing[0].game.name } }
+        : { key: 'home.summaryLine.syncingMany', params: { count: syncing.length } };
+    if (failed.length > 0)
+      return failed.length === 1
+        ? { key: 'home.summaryLine.failedOne', params: { name: failed[0].game.name } }
+        : { key: 'home.summaryLine.failedMany', params: { count: failed.length } };
+    if (damaged.length > 0)
+      return damaged.length === 1
+        ? { key: 'home.summaryLine.damagedOne', params: { name: damaged[0].name } }
+        : { key: 'home.summaryLine.damagedMany', params: { count: damaged.length } };
+    if (empty.length > 0)
+      return empty.length === 1
+        ? { key: 'home.summaryLine.emptyOne', params: { count: empty.length } }
+        : { key: 'home.summaryLine.emptyMany', params: { count: empty.length } };
+    if (paused.length > 0)
+      return paused.length === 1
+        ? { key: 'home.summaryLine.pausedOne', params: { count: paused.length } }
+        : { key: 'home.summaryLine.pausedMany', params: { count: paused.length } };
+    return rows.length === 1
+      ? { key: 'home.summaryLine.backedUpOne', params: {} }
+      : { key: 'home.summaryLine.backedUpMany', params: { count: rows.length } };
+  }
+  $: headline = headlineFor(rows);
   // The pause's countdown starts from the moment it changes.
   $: if ($syncPause) now = Date.now();
   // A pause outranks the quiet states, not a decision waiting or a sync in
@@ -80,8 +141,10 @@
   // Set up, not just switched on: a fresh install has backup on with no
   // folder chosen, which backs up nothing.
   $: cloudOn = !!$settings?.cloudSync?.ready;
+  // The provider's name in the reader's language ("cloud.provider." keys;
+  // see lib/cloudproviders.js for the ids).
   $: cloud = cloudOn
-    ? (providerById($settings.cloudSync.provider)?.label ?? $t('home.summary.cloudOn'))
+    ? ($settings?.cloudSync?.provider && providerById($settings.cloudSync.provider) ? $t('cloud.provider.' + $settings.cloudSync.provider) : $t('home.summary.cloudOn'))
     : $settings?.cloudSync?.enabled
       ? $t('home.summary.cloudNotSetUp')
       : $t('home.summary.cloudOff');
@@ -92,13 +155,14 @@
     const at = latestSnapshotAt(r.game);
     return at && (!best || at > best.at) ? { at, name: r.game.name } : best;
   }, null);
+  $: newestAgo = newest ? agoKey(newest.at, now) : null;
 </script>
 
 <section class="summary tone-{tone}">
   <div class="state">
     <div class="state-icon" class:spin={tone === 'busy'}><svelte:component this={icon} size={20} strokeWidth={2} /></div>
     <div class="state-text">
-      <p class="headline" role="status">{summary.headline}</p>
+      <p class="headline" role="status">{$t(headline.key, headline.params)}</p>
       {#if lowSpace !== null}
         <p class="detail warn">
           {$t('home.summary.lowSpace', { size: fmtSize(lowSpace) })}
@@ -128,7 +192,7 @@
       title={newest ? $t('home.summary.lastSnapshotTitle', { name: newest.name, when: new Date(newest.at).toLocaleString() }) : ''}
     >
       <span class="label">{$t('home.summary.lastSnapshot')}</span>
-      <span class="value" class:quiet={!newest}><span class="v">{newest ? timeAgo(newest.at, now) : $t('home.summary.noneYet')}</span></span>
+      <span class="value" class:quiet={!newest}><span class="v">{newestAgo ? (newestAgo.text ?? $t(newestAgo.key, newestAgo.params)) : $t('home.summary.noneYet')}</span></span>
     </div>
     <button
       class="fact link"

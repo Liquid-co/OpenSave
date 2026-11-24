@@ -3,8 +3,8 @@
   // a run kept apart from the main one.
   import { askConfirm } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
-  import { plural } from '../../lib/format.js';
   import NewBranchDialog from './NewBranchDialog.svelte';
+  import { t } from '../../lib/i18n.js';
   import Plus from 'lucide-svelte/icons/plus';
 
   export let game;
@@ -25,31 +25,30 @@
   }
   const createBranch = (copyCurrentSave) => {
     dialogOpen = false;
-    return run(copyCurrentSave ? 'Branch created from your current save' : 'Empty branch created', async () => {
+    return run(copyCurrentSave ? $t('game.branches.createdFromCurrent') : $t('game.branches.createdEmpty'), async () => {
       await api.post(`/api/games/${game.id}/branch`, { name: newBranch, copyCurrentSave });
       newBranch = '';
     });
   };
   const switchBranch = (name) =>
-    run(`Switched to "${name}"`, () => api.post(`/api/games/${game.id}/branch/switch`, { name }));
+    run($t('game.branches.switchedTo', { name }), () => api.post(`/api/games/${game.id}/branch/switch`, { name }));
   async function deleteBranch(name) {
-    if (!(await askConfirm(`Delete branch "${name}" and all its snapshots? Your current save and other branches aren't affected.`, { title: 'Delete branch?', confirmText: 'Delete', danger: true }))) return;
-    run(`Deleted branch "${name}"`, () => api.del(`/api/games/${game.id}/branch/${encodeURIComponent(name)}`));
+    if (!(await askConfirm($t('game.branches.deleteConfirm', { name }), { title: $t('game.branches.deleteTitle'), confirmText: $t('common.delete'), danger: true }))) return;
+    run($t('game.branches.deleted', { name }), () => api.del(`/api/games/${game.id}/branch/${encodeURIComponent(name)}`));
   }
 </script>
 
 <div class="card branch-new">
   <div class="new-row">
     <input
-      placeholder="New branch name (e.g. ng-plus)"
+      placeholder={$t('game.branches.namePlaceholder')}
       bind:value={newBranch}
       on:keydown={(e) => e.key === 'Enter' && openDialog()}
     />
-    <button class="btn primary" disabled={!newBranch || $busy} on:click={openDialog}><Plus size={15} />Create branch</button>
+    <button class="btn primary" disabled={!newBranch || $busy} on:click={openDialog}><Plus size={15} />{$t('game.branches.create')}</button>
   </div>
   <span class="hint">
-    A branch is a separate line of saves — a second playthrough, or a run you want to keep
-    apart from your main one. You'll be asked what it starts from.
+    {$t('game.branches.hint')}
   </span>
 </div>
 <div class="list">
@@ -58,18 +57,18 @@
       <div class="info">
         <div class="top">
           <span class="name">{branch.name}</span>
-          {#if branch.name === game.activeBranch}<span class="badge online">active</span>{/if}
+          {#if branch.name === game.activeBranch}<span class="badge online">{$t('game.branches.active')}</span>{/if}
         </div>
-        <div class="meta">{plural(branch.snapshots?.length ?? 0, 'snapshot')}</div>
+        <div class="meta">{$t('game.branches.snapshotCount', { n: branch.snapshots?.length ?? 0 })}</div>
       </div>
       {#if branch.name !== game.activeBranch}
         <div class="actions">
           <button class="btn small primary" disabled={$busy} on:click={() => switchBranch(branch.name)}>
-            Switch to
+            {$t('game.branches.switchTo')}
           </button>
           {#if branch.name !== 'main'}
             <button class="btn small danger" disabled={$busy} on:click={() => deleteBranch(branch.name)}>
-              Delete
+              {$t('common.delete')}
             </button>
           {/if}
         </div>
@@ -78,9 +77,7 @@
   {/each}
 </div>
 <p class="footnote">
-  Switching branches snapshots your current save first, then restores the other branch's latest
-  state. A branch you just created has no state of its own yet, so it starts from whatever is in
-  your save folder now — the two diverge from the first snapshot you take on it.
+  {$t('game.branches.footnote')}
 </p>
 
 {#if dialogOpen}

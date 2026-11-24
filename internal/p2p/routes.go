@@ -309,14 +309,21 @@ func (e *Engine) handleApproveConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := clientIP(r)
 
-	_, alreadyPaired := func() (store.Peer, bool) {
-		p, err := e.Store.GetPeer(body.PeerID)
-		return p, err == nil
-	}()
+	existing, err := e.Store.GetPeer(body.PeerID)
+	alreadyPaired := err == nil
 
-	if !e.Pairing.ValidateConfirm(body.PeerID, ip, body.Port, alreadyPaired) {
-		e.Log("warn", fmt.Sprintf("blocked unsolicited approve-confirm from %s (peer %s)", ip, body.PeerID))
-		jsonError(w, http.StatusBadRequest, "Pairing confirmation rejected: no matching handshake initiated.")
+	if !e.Pairing.ValidateConfirm(body.PeerID, ip, body.Port, false) {
+		if !alreadyPaired {
+			e.Log("warn", fmt.Sprintf("blocked unsolicited approve-confirm from %s (peer %s)", ip, body.PeerID))
+			jsonError(w, http.StatusBadRequest, "Pairing confirmation rejected: no matching handshake initiated.")
+			return
+		}
+		status, msg := e.reconfirmWithoutHandshake(existing, body.PublicKey, ip)
+		if status != http.StatusOK {
+			jsonError(w, status, msg)
+			return
+		}
+		jsonOK(w, map[string]any{"success": true, "message": msg})
 		return
 	}
 
@@ -529,7 +536,9 @@ func (e *Engine) backfillCover(game store.Game, q manifestGameQuery) store.Game 
 // peerID identifies the device asking. It is only needed when this device is
 // set to ask before tracking, to record who is waiting; empty is tolerated
 // (an unidentified caller simply produces an offer with no named device).
-func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID string) (store.Game, error) {
+// chooser is the device a signature proved made the request, or "": the only
+// one whose naming of a folder may be trusted (Devices, migration 0044).
+func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID, chooser string) (store.Game, error) {
 	if game, err := e.Store.GetGame(gameID); err == nil {
 		return e.backfillCover(game, q), nil
 	}
@@ -635,13 +644,30 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 	// drives and system folders.
 	//
 	// So a game arriving from a peer is tracked by itself only where this
-	// device's own scanner recognises a save folder: one it found and noted,
-	// or one inside an emulator's own save folder here. Anywhere else, it is
-	// offered, and the user picks the folder on this device.
-	if e.KnownSaveLocation == nil || !e.KnownSaveLocation(localPath) {
-		e.Log("warn", fmt.Sprintf(
-			"a paired device asked to sync %q at %s, which this device does not know as a save folder — "+
-				"it is offered on Home instead, for you to place", q.Name, logging.Quote(localPath)))
+	// device can vouch for the folder as that game's save: one its scan
+	// noted, an emulator's save folder here, or where the save catalogue or
+	// Steam says the game keeps its saves on this device. Anywhere else it is
+	// offered, and the user picks the folder on this device — unless the
+	// user has let that device choose folders (Devices), as for their own.
+	//
+	// And never at a folder holding programs, whatever vouches for it, a
+	// device trusted to choose folders included: a save that sits beside a
+	// game's executable makes a scan note that folder, and a peer's files
+	// must not be written among the game's own.
+	holdsPrograms := delta.HoldsPrograms(localPath)
+	known := !holdsPrograms && e.KnownSaveLocation != nil && e.KnownSaveLocation(q.Name, q.AppID, localPath)
+	if !known && !holdsPrograms && e.Store.PeerChoosesFolders(chooser) {
+		known = true
+		e.Log("info", fmt.Sprintf("tracking %q at %s, the folder a device you let choose folders named", q.Name, logging.Quote(localPath)))
+	}
+	if !known {
+		// Said once, when the offer is new: the other device asks again at
+		// every sync, every few seconds, for as long as the offer stands.
+		if !e.alreadyOffered(gameID, peerID) {
+			e.Log("warn", fmt.Sprintf(
+				"a paired device asked to sync %q at %s, which this device does not know as a save folder — "+
+					"it is offered on Home instead, for you to place", q.Name, logging.Quote(localPath)))
+		}
 		return e.offerGame(gameID, peerID, q)
 	}
 
@@ -673,6 +699,11 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 		_ = os.MkdirAll(localPath, 0o777)
 	}
 	e.Log("info", fmt.Sprintf("auto-tracked %q at %s from peer manifest request", q.Name, logging.Quote(localPath)))
+	// Offered before, while its folder was not yet known here: it is tracked
+	// now, so the offer is answered.
+	if err := e.Store.ClearOfferedGame(game.ID); err != nil {
+		e.Log("warn", fmt.Sprintf("could not clear the offer for %q: %v", q.Name, err))
+	}
 	if e.OnAutoTracked != nil {
 		e.OnAutoTracked(game)
 	}
@@ -684,6 +715,21 @@ func (e *Engine) ensureManifestGame(gameID string, q manifestGameQuery, peerID s
 // this device, and tells the peer this device is waiting rather than that the
 // game does not exist: the same answer, which the peer cannot see past, is
 // given for a game deliberately untracked.
+// alreadyOffered reports whether this device already offers the game as one
+// that device syncs.
+func (e *Engine) alreadyOffered(gameID, peerID string) bool {
+	offers, err := e.Store.OfferedGame(gameID)
+	if err != nil {
+		return false
+	}
+	for _, o := range offers {
+		if o.PeerID == peerID {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Game, error) {
 	if err := e.Store.RecordOfferedGame(store.OfferedGame{
 		GameID: gameID, PeerID: peerID, Name: q.Name,
@@ -692,6 +738,9 @@ func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Ga
 		e.Log("warn", fmt.Sprintf("could not record %q as an offered game: %v", q.Name, err))
 	} else {
 		e.notifyGamesUpdate()
+		if e.OnGameOffered != nil {
+			e.OnGameOffered()
+		}
 	}
 	return store.Game{}, fmt.Errorf("%s: %q", syncengine.AwaitingFolderMessage, q.Name)
 }
@@ -702,18 +751,30 @@ func (e *Engine) offerGame(gameID, peerID string, q manifestGameQuery) (store.Ga
 func (e *Engine) handleManifest(w http.ResponseWriter, r *http.Request) {
 	gameID := chi.URLParam(r, "gameId")
 
-	var askingPeer string
-	if peer, ok := e.peerByAddress(clientIP(r)); ok {
-		askingPeer = peer.ID
+	// Which device asked: what was served to it is recorded, and an offer
+	// names it. The address stands in for a caller that does not sign, as it
+	// always has. Only the device the signature proved, though, may be trusted
+	// to choose a folder (ensureManifestGame's chooser).
+	provenPeer := lanPeerID(r)
+	askingPeer := provenPeer
+	if askingPeer == "" {
+		if peer, ok := e.peerByAddress(clientIP(r)); ok {
+			askingPeer = peer.ID
+		}
 	}
 	query := manifestQueryFromURL(r.URL.Query())
-	game, err := e.ensureManifestGame(gameID, query, askingPeer)
+	game, err := e.ensureManifestGame(gameID, query, askingPeer, provenPeer)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	if e.holdingBack(game) {
 		jsonError(w, http.StatusNotFound, syncengine.HeldMessage)
+		return
+	}
+	// Being played here: synced when the session ends (syncengine/playing.go).
+	if e.Sync.PlayingHere(game.ID) {
+		jsonError(w, http.StatusServiceUnavailable, syncengine.PlayingMessage)
 		return
 	}
 	// Never describe a save a sync here is writing: part-way through, it is a
@@ -948,6 +1009,10 @@ func (e *Engine) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	game, err := e.trackedGameForPeer(gameID)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, "Game not found.")
+		return
+	}
+	if e.Sync.PlayingHere(game.ID) {
+		jsonError(w, http.StatusServiceUnavailable, syncengine.PlayingMessage)
 		return
 	}
 	base, ok := e.resolveServeRoot(gameID, game, body.Root)
@@ -1289,4 +1354,29 @@ func (e *Engine) holdingBack(game store.Game) bool {
 	}
 	held, err := e.Sync.CheckHold(game.ID, true)
 	return err == nil && held
+}
+
+// reconfirmWithoutHandshake answers an approve-confirm from a device that is
+// already paired, when this device started no handshake for it to confirm.
+//
+// That message proves nothing about who sent it. It is unauthenticated by
+// design — it is how a public key is delivered — and the peer id it names is
+// published to every device in a relay room. It used to be accepted as an
+// "idempotent re-confirm" that rewrote the peer's address and pinned whatever
+// key it carried, so anyone who knew a paired device's id could swap in a key
+// of their own, with the verified latch still set, and from then on sync with
+// this device as that one: reading its saves and writing to them.
+//
+// It now changes nothing. A repeat of a confirm already applied carries the
+// key already pinned and is answered as before; a different key is refused.
+// A device that really did get a new key pairs again, through a handshake the
+// user approves.
+func (e *Engine) reconfirmWithoutHandshake(existing store.Peer, publicKey, from string) (int, string) {
+	if publicKey != "" && existing.PublicKey != "" && publicKey != existing.PublicKey {
+		e.Log("warn", fmt.Sprintf(
+			"refused an approve-confirm from %s claiming to be %q with a different encryption key; pair again to change it",
+			from, existing.Name))
+		return http.StatusForbidden, "Pairing confirmation rejected: this device is paired with a different key. Pair again to replace it."
+	}
+	return http.StatusOK, "Already paired."
 }

@@ -471,9 +471,20 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		if err := json.Unmarshal(msg.Body, &body); err != nil || body.PeerID == "" {
 			return 400, map[string]string{"error": "peerId is required"}
 		}
-		if !w.engine.Pairing.ValidateConfirm(body.PeerID, "relay", body.Port, isPaired) {
-			w.engine.Log("warn", "blocked unsolicited WAN approve-confirm from "+body.PeerID)
-			return 400, map[string]string{"error": "Pairing confirmation rejected: no matching handshake initiated."}
+		// Paired is decided by the id being confirmed, not the message's
+		// sender field — the two are both the sender's to write, and need not
+		// agree.
+		existing, existingErr := w.engine.Store.GetPeer(body.PeerID)
+		if !w.engine.Pairing.ValidateConfirm(body.PeerID, "relay", body.Port, false) {
+			if existingErr != nil {
+				w.engine.Log("warn", "blocked unsolicited WAN approve-confirm from "+body.PeerID)
+				return 400, map[string]string{"error": "Pairing confirmation rejected: no matching handshake initiated."}
+			}
+			status, text := w.engine.reconfirmWithoutHandshake(existing, body.PublicKey, "the relay")
+			if status != 200 {
+				return status, map[string]string{"error": text}
+			}
+			return 200, map[string]any{"success": true, "message": text}
 		}
 		w.engine.Pairing.TakeIncoming(body.PeerID)
 		if err := w.engine.Store.UpsertPeer(store.Peer{
@@ -610,12 +621,16 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	// Same auto-track + cover-backfill behavior as the LAN route — relay
 	// peers were previously auto-tracked without cover art, which is why
 	// covers didn't propagate between WAN-paired devices.
-	game, err := w.engine.ensureManifestGame(gameID, query, peerID)
+	// Over the relay, the request's MAC proved the sender (routeRequest).
+	game, err := w.engine.ensureManifestGame(gameID, query, peerID, peerID)
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}
 	if w.engine.holdingBack(game) {
 		return 404, map[string]string{"error": syncengine.HeldMessage}
+	}
+	if w.engine.Sync.PlayingHere(game.ID) {
+		return 503, map[string]string{"error": syncengine.PlayingMessage}
 	}
 	// As on the LAN: a save a sync here is writing is not described
 	// (syncengine/settle.go). Each request runs on its own goroutine, so the
@@ -702,6 +717,9 @@ func (w *WanClient) serveDeleteFile(route string, rawBody json.RawMessage, fromP
 	game, err := w.engine.trackedGameForPeer(gameID)
 	if err != nil {
 		return 404, map[string]string{"error": "Game not found."}
+	}
+	if w.engine.Sync.PlayingHere(game.ID) {
+		return 503, map[string]string{"error": syncengine.PlayingMessage}
 	}
 	if !delta.IsSafePath(game.SavePath, body.RelPath) {
 		return 403, map[string]string{"error": "invalid path"}

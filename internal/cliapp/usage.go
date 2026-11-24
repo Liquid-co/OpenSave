@@ -45,6 +45,7 @@ var commandGroups = []commandGroup{
 		{"transfers", "What is moving between devices, and what moved lately"},
 		{"peers", "Paired, discovered and pending devices"},
 		{"peers games <peerId>", "What that device is tracking"},
+		{"peers trust <peerId> on|off", "Let your own device choose folders here"},
 		{"pair <host[:port]>", "Ask a device on your LAN to pair"},
 		{"pair <node id>", "Ask a device in your relay room to pair"},
 		{"pair requests|approve|reject", "Handle incoming pairing requests"},

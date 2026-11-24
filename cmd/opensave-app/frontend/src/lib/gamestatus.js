@@ -231,3 +231,26 @@ export function sessionLabel(since, now = Date.now()) {
   const ms = now - Date.parse(since);
   return Number.isFinite(ms) && ms >= 60_000 ? `In session for ${playLength(ms)}` : 'In session';
 }
+
+/**
+ * gameStatus's facts without its English words: the state and tone
+ * gameStatus returns, plus the pieces its label is built from — the moment
+ * 'synced' and 'local' are about, the moment the session began, or the
+ * percentage a running sync is at — so a view can say the line in its own
+ * language (see locales/en.json, "gameStatus.").
+ */
+export function gameStatusParts(game, ctx = {}) {
+  const status = gameStatus(game, ctx);
+  const parts = { ...status, when: null, pct: null };
+  if (status.state === 'synced') {
+    const paired = Object.fromEntries(Object.entries(game.lastSyncedWith ?? {}).filter(([id]) => id in (ctx.peers ?? {})));
+    parts.when = latestOf(paired);
+  } else if (status.state === 'local') {
+    parts.when = latestSnapshotAt(game);
+  } else if (status.state === 'playing') {
+    parts.when = game.playingSince ?? null;
+  } else if (status.state === 'syncing') {
+    parts.pct = ctx.activity?.percentage ?? 0;
+  }
+  return parts;
+}

@@ -15,7 +15,15 @@
   import { cloudOffers, toast } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import { t, segments } from '../lib/i18n.js';
-  import { timeAgo } from '../lib/timeago.js';
+  import { timeAgoParts } from '../lib/timeago.js';
+
+  // timeAgo's facts as a catalog key and its params, ready for $t.
+  const agoKey = (at, now = Date.now()) => {
+    const p = timeAgoParts(at, now);
+    if (p.kind === 'invalid') return { text: p.text };
+    const { kind, ...params } = p;
+    return { key: 'timeAgo.' + kind, params };
+  };
   import CloudDownload from 'lucide-svelte/icons/cloud-download';
 
   let busy = '';
@@ -58,16 +66,17 @@
 
 {#if $cloudOffers.length > 0}
   <div class="offer-wrap" transition:fly={{ y: -90, duration: 320 }}>
-    {#each $cloudOffers as offer (key(offer))}
-      <div class="offer-card" class:diverged={offer.diverged} transition:fly={{ y: -20, duration: 200 }}>
-        <div class="offer-icon"><CloudDownload size={19} /></div>
-        <div class="offer-body">
-          <div class="offer-title">
-            {#each segments($t('cloudOffer.title'), { device: offer.deviceName, game: offer.gameName }, ['device', 'game']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
-          </div>
-          <div class="offer-sub">
-            {$t('cloudOffer.sub', { when: timeAgo(offer.savedAt), place: where[offer.provider] ?? $t('cloudOffer.where.cloud') })}
-          </div>
+      {#each $cloudOffers as offer (key(offer))}
+        {@const w = agoKey(offer.savedAt)}
+        <div class="offer-card" class:diverged={offer.diverged} transition:fly={{ y: -20, duration: 200 }}>
+          <div class="offer-icon"><CloudDownload size={19} /></div>
+          <div class="offer-body">
+            <div class="offer-title">
+              {#each segments($t('cloudOffer.title'), { device: offer.deviceName, game: offer.gameName }, ['device', 'game']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}
+            </div>
+            <div class="offer-sub">
+              {$t('cloudOffer.sub', { when: w.text ?? $t(w.key, w.params), place: where[offer.provider] ?? $t('cloudOffer.where.cloud') })}
+            </div>
           {#if offer.diverged}
             <!-- Not "since the two last matched": two devices meeting through
                  the cloud for the first time never matched at all, and that
@@ -99,7 +108,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 13px 16px;
+    padding: 10px 14px;
     background: var(--bg-raised);
     border: 1px solid var(--accent);
     border-radius: var(--radius-lg);
@@ -118,8 +127,14 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
+  /* The buttons go under the text when a narrow window leaves the text
+     too little room beside them. */
+  .offer-card {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
   .offer-body {
-    flex: 1;
+    flex: 1 1 320px;
     min-width: 0;
   }
   .offer-title {
@@ -135,10 +150,11 @@
     color: var(--text-dim, var(--text-faint));
     margin-top: 6px;
   }
+  /* Side by side, as in NewGamesBanner. */
   .offer-actions {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+    margin-left: auto;
     flex-shrink: 0;
   }
 </style>

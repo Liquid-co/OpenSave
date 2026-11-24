@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -176,5 +177,54 @@ func TestRelocateToOtherDrive_AnOfferIsStaleOnceTheFolderIsSetByHand(t *testing.
 	}
 	if d.RelocateSuggestion("g") != "" {
 		t.Error("the stale offer is still offered")
+	}
+}
+
+// A drive that is there but not ready, an empty card reader, does not hold the
+// folder. It read as holding it: a second match, so nothing was ever offered.
+func TestRelocateToOtherDrive_ADriveNotReadyIsNoMatch(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("drive letters are a Windows thing")
+	}
+	free := freeDriveLetter()
+	if free == "" {
+		t.Skip("no free drive letter")
+	}
+	real := filepath.Join(t.TempDir(), "SteamLibrary", "save")
+	if err := os.MkdirAll(real, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	statSaveFolder = func(p string) (os.FileInfo, error) {
+		if strings.HasPrefix(strings.ToUpper(p), free+":") {
+			return nil, errors.New("The device is not ready.")
+		}
+		return os.Stat(p)
+	}
+	t.Cleanup(func() { statSaveFolder = os.Stat })
+
+	// Looked for from a third letter, as a peer's path arrives.
+	gone := "?"
+	for c := 'Y'; c >= 'D'; c-- {
+		l := string(c)
+		if l == free || strings.EqualFold(l, real[:1]) {
+			continue
+		}
+		if _, err := os.Stat(l + ":" + string(filepath.Separator)); err != nil {
+			gone = l
+			break
+		}
+	}
+	if gone == "?" {
+		t.Skip("no second free drive letter")
+	}
+	found := relocateCandidates(gone + ":" + real[2:])
+	var mine []string
+	for _, f := range found {
+		if strings.EqualFold(f, real) || strings.EqualFold(f[:1], free) {
+			mine = append(mine, f)
+		}
+	}
+	if len(mine) != 1 || !strings.EqualFold(mine[0], real) {
+		t.Errorf("found %v, want only %s", mine, real)
 	}
 }
