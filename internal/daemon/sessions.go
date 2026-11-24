@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/opensave/opensave/internal/fsx"
 	"github.com/opensave/opensave/internal/sessions"
 	"github.com/opensave/opensave/internal/store"
 )
@@ -744,30 +745,31 @@ func (d *Daemon) programsIn(dir string) []string {
 	d.sessions.mu.Unlock()
 
 	var names []string
-	root := filepath.Clean(dir)
-	depth := strings.Count(root, string(filepath.Separator))
-	_ = filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
+	// Listed through fsx.ReadDirShared, not filepath.WalkDir: on Windows a
+	// folder listed the usual way cannot be removed meanwhile, and an install
+	// folder is what a launcher updating or uninstalling the game empties
+	// (the same mistake as #100's, fixed in #134).
+	var walk func(folder string, level int)
+	walk = func(folder string, level int) {
+		entries, err := fsx.ReadDirShared(folder)
 		if err != nil {
-			return nil
+			return
 		}
-		if e.IsDir() {
-			if strings.Count(filepath.Clean(p), string(filepath.Separator))-depth >= 3 {
-				return filepath.SkipDir
+		for _, e := range entries {
+			if e.IsDir() {
+				if level+1 < 3 {
+					walk(filepath.Join(folder, e.Name()), level+1)
+				}
+				continue
 			}
-			return nil
-		}
-		name := strings.ToLower(e.Name())
-		if !strings.HasSuffix(name, ".exe") || len(names) >= 64 {
-			return nil
-		}
-		for _, w := range notTheGame {
-			if strings.Contains(name, w) {
-				return nil
+			name := strings.ToLower(e.Name())
+			if !strings.HasSuffix(name, ".exe") || len(names) >= 64 || anyOf(name, notTheGame) {
+				continue
 			}
+			names = append(names, name)
 		}
-		names = append(names, name)
-		return nil
-	})
+	}
+	walk(filepath.Clean(dir), 0)
 
 	d.sessions.mu.Lock()
 	if d.sessions.programs == nil {
@@ -1048,4 +1050,14 @@ func (d *Daemon) recognisedLocked(gameID string) bool {
 	}
 	st, err := d.Store.PlayStatsFor(gameID)
 	return err == nil && st.Sessions > 0
+}
+
+// anyOf reports whether name contains any of words.
+func anyOf(name string, words []string) bool {
+	for _, w := range words {
+		if strings.Contains(name, w) {
+			return true
+		}
+	}
+	return false
 }

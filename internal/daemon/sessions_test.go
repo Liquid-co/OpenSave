@@ -455,3 +455,40 @@ func TestActivity_ARecognisedGameIsNotHeldWhileClosed(t *testing.T) {
 		t.Error("a change to a recognised game, closed, was held as play")
 	}
 }
+
+// The programs in a game's install folder, three folders deep: the game's
+// own, never its installers or crash reporters, and nothing deeper.
+func TestProgramsIn_ThreeFoldersDeepLeavingOutHelpers(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := t.TempDir()
+	for _, rel := range []string{
+		"Game.exe",
+		"bin64/GameClient.exe",
+		"bin64/CrashReporter.exe",
+		"tools/x64/Editor.exe",
+		"a/b/c/TooDeep.exe",
+		"readme.txt",
+	} {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[string]bool{}
+	for _, n := range d.programsIn(dir) {
+		got[n] = true
+	}
+	for _, want := range []string{"game.exe", "gameclient.exe", "editor.exe"} {
+		if !got[want] {
+			t.Errorf("%s not found: %v", want, got)
+		}
+	}
+	for _, not := range []string{"crashreporter.exe", "toodeep.exe", "readme.txt"} {
+		if got[not] {
+			t.Errorf("%s listed: %v", not, got)
+		}
+	}
+}
