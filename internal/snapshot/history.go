@@ -1,6 +1,6 @@
 package snapshot
 
-import "fmt"
+import "github.com/opensave/opensave/internal/presets"
 
 // How often files changed along with a game's save, read from its
 // snapshots: a settings file is changed now and then, when someone changes a
@@ -24,8 +24,8 @@ const (
 // folder) that changed in more than half of the snapshots in which the rest
 // of the save changed, why it is judged a save. Paths with too little history
 // to tell are not in it.
-func (m *Manager) ChangesLikeASave(gameID string, paths []string) map[string]string {
-	out := map[string]string{}
+func (m *Manager) ChangesLikeASave(gameID string, paths []string) map[string]presets.SettingsReason {
+	out := map[string]presets.SettingsReason{}
 	if len(paths) == 0 {
 		return out
 	}
@@ -67,7 +67,7 @@ func (m *Manager) ChangesLikeASave(gameID string, paths []string) map[string]str
 	}
 	for p, n := range moved {
 		if 2*n > saves {
-			out[p] = fmt.Sprintf("changed in %d of the %d snapshots in which the save changed", n, saves)
+			out[p] = presets.SettingsReason{Code: presets.ReasonSnapshots, N: n, Of: saves}
 		}
 	}
 	return out
