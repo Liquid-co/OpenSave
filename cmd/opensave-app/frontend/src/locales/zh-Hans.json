@@ -1371,6 +1371,8 @@
   "notifications.waiting.missingDetail": "在它恢复之前，不会为它同步任何内容",
   "notifications.waiting.damaged": "{game} 有 {n} 个快照无法恢复",
   "notifications.waiting.damagedDetail": "读取时发现已损坏",
+  "notifications.waiting.settings": "{game} 有 {n} 个文件可能是本设备的设置",
+  "notifications.waiting.settingsDetail": "保留在本设备上，或继续同步",
   "notifications.waiting.new": "发现了 {n} 个新游戏",
   "notifications.waiting.update": "OpenSave {version} 已可用",
   "notifications.waiting.updateDetail": "你当前是 {current}——可从顶部横幅安装",

@@ -90,6 +90,27 @@ describe('a missing save folder found on another drive', () => {
   });
 });
 
+describe('files that may be settings for this device', () => {
+  const game = { id: 'ark', name: 'ARK', branches: {}, suggestedSettings: [{ pattern: '/GameUserSettings.ini' }, { pattern: '/Engine.ini' }] };
+
+  it('asks once per game, in the tab where it is answered', () => {
+    const w = waitingOnYou({ games: { ark: game } }).filter((x) => x.id.startsWith('settings:'));
+    expect(w).toHaveLength(1);
+    expect(w[0].title).toBe('2 files of ARK may be settings for this device');
+    expect(w[0].go).toEqual({ view: 'game', params: { gameId: 'ark', tab: 'config' } });
+  });
+
+  it('asks again when another file is suggested, after one was dismissed', () => {
+    const one = waitingOnYou({ games: { ark: { ...game, suggestedSettings: [{ pattern: '/Engine.ini' }] } } })[0];
+    const two = waitingOnYou({ games: { ark: game } })[0];
+    expect(one.id).not.toBe(two.id);
+  });
+
+  it('says nothing for a game with no suggestion', () => {
+    expect(waitingOnYou({ games: { ark: { ...game, suggestedSettings: [] } } })).toEqual([]);
+  });
+});
+
 describe('incompleteSnapshotsMessage', () => {
   const t = (key, params) => translate(en, key, params, new Intl.PluralRules('en'));
 
@@ -115,7 +136,7 @@ describe('clearing the bell', () => {
   };
 
   it('dismisses news but never a problem', () => {
-    for (const id of ['new:Hades', 'update:2.5.0', 'offer:hades:snap_1']) expect(canDismiss({ id }), id).toBe(true);
+    for (const id of ['new:Hades', 'update:2.5.0', 'offer:hades:snap_1', 'settings:hades:/a.ini']) expect(canDismiss({ id }), id).toBe(true);
     for (const id of ['conflict:hades', 'location:hades:config', 'emptied:hades', 'missing:hades', 'damaged:hades', 'pair:node_1', 'relocate:hades:E:/Games/x'])
       expect(canDismiss({ id }), id).toBe(false);
   });
@@ -166,7 +187,7 @@ describe('the bell says what waits on you', () => {
     games: {
       hades: { id: 'hades', name: 'Hades', emptied: { state: 'held' }, branches: { main: { snapshots: [{ id: 's1', problem: 'damaged' }] } } },
       tunic: { id: 'tunic', name: 'Tunic', savePathMissing: true, saveDriveMissing: true, relocateSuggestion: 'E:\SteamLibrary\Tunic', branches: {} },
-      celeste: { id: 'celeste', name: 'Celeste', savePathMissing: true, branches: {} }
+      celeste: { id: 'celeste', name: 'Celeste', savePathMissing: true, branches: {}, suggestedSettings: [{ pattern: '/settings.ini' }] }
     },
     conflicts: { hades: {} },
     locationConflicts: [{ gameId: 'hades', root: 'Saves' }],
@@ -190,7 +211,7 @@ describe('the bell says what waits on you', () => {
     expect(said).toHaveLength(listed.length);
     expect(said.map(caseOfSaid)).toEqual(listed.map((x) => x.id.split(':')[0]));
     expect(listed.map((x) => x.id.split(':')[0])).toEqual([
-      'conflict', 'location', 'emptied', 'pair', 'offer', 'relocate', 'missing', 'damaged', 'new', 'update'
+      'conflict', 'location', 'emptied', 'pair', 'offer', 'relocate', 'missing', 'damaged', 'settings', 'new', 'update'
     ]);
   });
 
