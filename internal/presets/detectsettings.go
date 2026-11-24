@@ -34,7 +34,7 @@ import (
 // DetectedSettings is one file found to be a game's settings.
 type DetectedSettings struct {
 	Path   string // relative to the save folder, slash-separated
-	Reason string
+	Reason SettingsReason
 }
 
 const (
@@ -234,17 +234,17 @@ func unrealSettings(rel string) bool {
 }
 
 // judgeSettings decides one file from its path and bytes.
-func judgeSettings(rel string, b []byte) (bool, string) {
+func judgeSettings(rel string, b []byte) (bool, SettingsReason) {
 	weight, saveWord, strongName := nameSignal(rel)
 	if saveWord && !strongName {
-		return false, ""
+		return false, SettingsReason{}
 	}
 	if unrealSettings(rel) && !saveWord {
-		return true, "Unreal Engine settings folder"
+		return true, SettingsReason{Code: ReasonUnrealConfig}
 	}
 	text, ok := textOf(b)
 	if !ok {
-		return false, ""
+		return false, SettingsReason{}
 	}
 	strong, score := contentScore(text)
 	switch {
@@ -252,20 +252,20 @@ func judgeSettings(rel string, b []byte) (bool, string) {
 		// "user_engine_option_save.xml": a strong settings word and a save
 		// word together. Taken only on overwhelming contents.
 		if strong >= 6 && score+weight >= 8 {
-			return true, "display settings in its contents"
+			return true, SettingsReason{Code: ReasonContents}
 		}
 	case len(b) > 32<<10:
 		// A long file holds a lot besides; a save with a settings section is
 		// long. Only a file that is mostly settings is taken.
 		if strong >= 6 {
-			return true, "display settings in its contents"
+			return true, SettingsReason{Code: ReasonContents}
 		}
 	case strong >= 3 && score+weight >= 4:
-		return true, "display settings in its contents"
+		return true, SettingsReason{Code: ReasonContents}
 	case strong >= 2 && weight >= 1.5 && score+weight >= 4:
-		return true, "display settings in its contents, and its name"
+		return true, SettingsReason{Code: ReasonContentsAndName}
 	}
-	return false, ""
+	return false, SettingsReason{}
 }
 
 // DetectSettings finds the settings files in root by what they hold. The

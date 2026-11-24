@@ -8,6 +8,7 @@ import (
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
+	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/store"
 	"github.com/opensave/opensave/internal/watcher"
 )
@@ -134,5 +135,27 @@ func TestObserveSettings_GivesBackWhatChangesLikeASave(t *testing.T) {
 		if f.Path == "progress.cfg" && f.Verdict != store.VerdictSave {
 			t.Errorf("verdict %q, want save", f.Verdict)
 		}
+	}
+
+	// The window is told why as a code it translates; a reason stored before
+	// there were codes is said as it is.
+	seen := 0
+	for _, s := range d.DeviceSettings(game) {
+		switch s.Pattern {
+		case "!/progress.cfg":
+			seen++
+			want := presets.SettingsReason{Code: presets.ReasonChanges, N: 3, Of: 3}
+			if s.Why == nil || *s.Why != want || s.Reason != want.Text() {
+				t.Errorf("given back: why %+v, reason %q; want %+v, %q", s.Why, s.Reason, want, want.Text())
+			}
+		case "/video.cfg":
+			seen++
+			if s.Why != nil || s.Reason != "test" {
+				t.Errorf("an older reason: why %+v, reason %q; want none, \"test\"", s.Why, s.Reason)
+			}
+		}
+	}
+	if seen != 2 {
+		t.Errorf("%d of the 2 entries listed: %+v", seen, d.DeviceSettings(game))
 	}
 }
