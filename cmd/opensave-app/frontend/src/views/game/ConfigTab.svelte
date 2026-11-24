@@ -35,6 +35,15 @@
   // Files found by what they hold: suggested, and still syncing, until
   // answered here. A wrong guess must not quietly stop part of a save syncing.
   $: suggested = game.suggestedSettings ?? [];
+  // Why a file was judged as it was, in the reader's language: the daemon
+  // sends a code with its counts. A reason stored before there were codes
+  // comes without one, and one this window has no words for is said as the
+  // daemon gave it.
+  $: why = (s) => {
+    const key = `game.config.why.${s.why?.code}`;
+    const said = s.why ? $t(key, { n: s.why.n ?? 0, of: s.why.of ?? 0 }) : key;
+    return said === key ? s.reason : said;
+  };
   let locations = [];
 
   function decide(s, keepHere) {
@@ -202,7 +211,7 @@
           {#each suggested as s (s.pattern)}
             <li>
               <code>{s.pattern.replace(/^\//, '')}</code>
-              <span class="source">{s.reason}</span>
+              <span class="source">{why(s)}</span>
               <span class="decide">
                 <button class="btn small primary" disabled={$busy} on:click={() => decide(s, true)}>
                   {$t('game.config.keepHere')}
@@ -225,7 +234,7 @@
             <li class:given-back={s.source === 'save'}>
               <code>{s.pattern.replace(/^!?\//, '')}</code>
               <span class="source">
-                {#if s.source === 'database'}{$t('game.config.sourceDatabase')}{:else if s.source === 'detected'}{$t('game.config.sourceDetected', { reason: s.reason })}{:else}{$t('game.config.sourceSave', { reason: s.reason })}{/if}
+                {#if s.source === 'database'}{$t('game.config.sourceDatabase')}{:else if s.source === 'detected'}{$t('game.config.sourceDetected', { reason: why(s) })}{:else}{$t('game.config.sourceSave', { reason: why(s) })}{/if}
               </span>
             </li>
           {/each}

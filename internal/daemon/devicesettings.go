@@ -57,7 +57,21 @@ type DeviceSetting struct {
 	// what it holds), or "save" (shown to change with the save, so it syncs
 	// whatever named it).
 	Source string `json:"source"`
-	Reason string `json:"reason,omitempty"`
+	// Reason is why, in English, for the CLI; Why is the same as a code the
+	// window says in the reader's language. Why is left out for a reason
+	// stored before there were codes, and the window says Reason.
+	Reason string                  `json:"reason,omitempty"`
+	Why    *presets.SettingsReason `json:"why,omitempty"`
+}
+
+// verdictSetting is a recorded verdict as an entry.
+func verdictSetting(pattern, source string, v store.SettingsFile) DeviceSetting {
+	r := presets.ParseSettingsReason(v.Reason)
+	s := DeviceSetting{Pattern: pattern, Source: source, Reason: r.Text()}
+	if r.Known() {
+		s.Why = &r
+	}
+	return s
 }
 
 // deviceSettingsList is every entry, in the order they apply: the game
@@ -87,12 +101,12 @@ func (d *Daemon) deviceSettingsList(game store.Game) []DeviceSetting {
 	}
 	for _, v := range verdicts {
 		if v.Verdict == store.VerdictSettings {
-			out = append(out, DeviceSetting{Pattern: "/" + v.Path, Source: "detected", Reason: v.Reason})
+			out = append(out, verdictSetting("/"+v.Path, "detected", v))
 		}
 	}
 	for _, v := range verdicts {
 		if v.Verdict == store.VerdictSave {
-			out = append(out, DeviceSetting{Pattern: "!/" + v.Path, Source: "save", Reason: v.Reason})
+			out = append(out, verdictSetting("!/"+v.Path, "save", v))
 		}
 	}
 	return out
@@ -175,7 +189,7 @@ func (d *Daemon) SuggestedSettings(game store.Game) []DeviceSetting {
 	var out []DeviceSetting
 	for _, v := range verdicts {
 		if v.Verdict == store.VerdictSuggested {
-			out = append(out, DeviceSetting{Pattern: "/" + v.Path, Source: "suggested", Reason: v.Reason})
+			out = append(out, verdictSetting("/"+v.Path, "suggested", v))
 		}
 	}
 	return out

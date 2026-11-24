@@ -9,6 +9,7 @@ import (
 
 	"github.com/opensave/opensave/internal/delta"
 	"github.com/opensave/opensave/internal/ignore"
+	"github.com/opensave/opensave/internal/presets"
 	"github.com/opensave/opensave/internal/store"
 )
 
@@ -116,9 +117,9 @@ func (d *Daemon) DetectSettings(game store.Game) {
 		if _, ok := known[f.Path]; ok {
 			continue
 		}
-		v := store.SettingsFile{GameID: game.ID, Path: f.Path, Verdict: store.VerdictSuggested, Reason: f.Reason}
+		v := store.SettingsFile{GameID: game.ID, Path: f.Path, Verdict: store.VerdictSuggested, Reason: f.Reason.Encode()}
 		if why, isSave := saves[f.Path]; isSave {
-			v.Verdict, v.Reason = store.VerdictSave, why
+			v.Verdict, v.Reason = store.VerdictSave, why.Encode()
 		} else {
 			offered = append(offered, f.Path)
 		}
@@ -132,13 +133,13 @@ func (d *Daemon) DetectSettings(game store.Game) {
 			continue
 		}
 		was := v.Verdict
-		v.Verdict, v.Reason, v.AtMs = store.VerdictSave, why, 0
+		v.Verdict, v.Reason, v.AtMs = store.VerdictSave, why.Encode(), 0
 		if d.Store.SetSettingsFile(v) != nil {
 			continue
 		}
 		if was == store.VerdictSettings {
 			excluded = true
-			given = append(given, p+" ("+why+")")
+			given = append(given, p+" ("+why.Text()+")")
 		} else {
 			suggested = true
 		}
@@ -237,9 +238,9 @@ func (d *Daemon) observeSettings(game store.Game, peerID string, m delta.Manifes
 			}
 		}
 		if moved >= observeMinMoved && moved > still {
-			why := fmt.Sprintf("changed in %d of the %d times the save changed", moved, moved+still)
-			if d.Store.SetSettingsFile(store.SettingsFile{GameID: game.ID, Path: p, Verdict: store.VerdictSave, Reason: why}) == nil {
-				given = append(given, p+" ("+why+")")
+			why := presets.SettingsReason{Code: presets.ReasonChanges, N: moved, Of: moved + still}
+			if d.Store.SetSettingsFile(store.SettingsFile{GameID: game.ID, Path: p, Verdict: store.VerdictSave, Reason: why.Encode()}) == nil {
+				given = append(given, p+" ("+why.Text()+")")
 			}
 		}
 	}
