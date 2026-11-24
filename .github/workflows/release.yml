@@ -75,9 +75,15 @@ jobs:
           go build -ldflags="$LD" -o dist/opensave-cli.exe ./cmd/opensave-cli
           go build -ldflags="$LD" -o dist/opensave-relay.exe ./cmd/opensave-relay
 
-      # Fail loudly if the NSIS installer was skipped, and give it a stable
-      # download name (the website's download buttons look for "Setup").
-      - name: Verify + rename installer
+      # The installer is packed again below, from OpenSave.exe as released:
+      # stamped, and signed when signing is on. Wails packs its installer
+      # straight after building, before either, so a copy installed by
+      # OpenSave.Setup.exe never matched the OpenSave.exe published beside
+      # it. An update from a paired device is checked against that published
+      # OpenSave.exe, so every installed copy has to be byte for byte the
+      # same file. Wails' own installer is only proof that NSIS ran and left
+      # its generated files (wails_tools.nsh, the WebView2 bootstrapper).
+      - name: Set aside the Wails installer
         shell: bash
         run: |
           ls -la cmd/opensave-app/build/bin/
@@ -87,12 +93,11 @@ jobs:
             echo "::error::NSIS installer was not produced by wails build"
             exit 1
           fi
-          size=$(stat -c%s "${inst[0]}")
-          if [ "$size" -lt 5000000 ]; then
-            echo "::error::installer is only $size bytes — payload missing"
+          if [ ! -f cmd/opensave-app/build/windows/installer/wails_tools.nsh ]; then
+            echo "::error::wails build left no wails_tools.nsh to pack the installer with"
             exit 1
           fi
-          mv "${inst[0]}" cmd/opensave-app/build/bin/OpenSave.Setup.exe
+          rm -f "${inst[@]}"
 
       # Wails 2.12 doesn't reliably embed Windows versioninfo, so stamp it
       # onto the built binaries with rcedit (what electron-builder uses).
@@ -123,7 +128,9 @@ jobs:
 
       # Optional Authenticode signing — runs only when the repo has a
       # WINDOWS_CERT_BASE64 (+ WINDOWS_CERT_PASSWORD) secret configured.
-      - name: Code sign (optional)
+      # The app is signed here, before the installer packs it; the installer
+      # is signed once it exists, below.
+      - name: Code sign the app (optional)
         if: env.HAS_SIGNING == 'true' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
@@ -136,6 +143,70 @@ jobs:
           Get-ChildItem cmd/opensave-app/build/bin/*.exe | ForEach-Object {
             & $signtool sign /f $pfx /p $env:WIN_CERT_PW /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
           }
+
+      # Packed the way wails build -nsis packs it (makensis in the installer
+      # folder, the binary passed as ARG_WAILS_AMD64_BINARY), from the final
+      # OpenSave.exe.
+      - name: Pack the installer
+        working-directory: cmd/opensave-app/build/windows/installer
+        shell: bash
+        run: |
+          export OPENSAVE_VERSION="${GITHUB_REF_NAME#v}"
+          makensis "-DARG_WAILS_AMD64_BINARY=$(cygpath -w "$PWD/../../bin/OpenSave.exe")" project.nsi
+
+      # Fail loudly if the NSIS installer was skipped, and give it a stable
+      # download name (the website's download buttons look for "Setup").
+      - name: Verify + rename installer
+        shell: bash
+        run: |
+          ls -la cmd/opensave-app/build/bin/
+          shopt -s nullglob
+          inst=(cmd/opensave-app/build/bin/*installer*.exe)
+          if [ ${#inst[@]} -eq 0 ]; then
+            echo "::error::NSIS installer was not produced"
+            exit 1
+          fi
+          size=$(stat -c%s "${inst[0]}")
+          if [ "$size" -lt 5000000 ]; then
+            echo "::error::installer is only $size bytes — payload missing"
+            exit 1
+          fi
+          mv "${inst[0]}" cmd/opensave-app/build/bin/OpenSave.Setup.exe
+
+      # What the installer puts on disk has to be the OpenSave.exe published
+      # beside it (see "Set aside the Wails installer"). 7-Zip reads NSIS
+      # installers.
+      - name: Check the installer carries the released OpenSave.exe
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/installer-payload"
+          rm -rf "$out" && mkdir -p "$out"
+          7z e -y -r -o"$out" cmd/opensave-app/build/bin/OpenSave.Setup.exe OpenSave.exe >/dev/null
+          if [ ! -f "$out/OpenSave.exe" ]; then
+            echo "::error::OpenSave.exe not found inside OpenSave.Setup.exe"
+            exit 1
+          fi
+          # From stdin: given a path with backslashes ($RUNNER_TEMP), Git
+          # Bash's sha256sum puts a "\" in front of the hash.
+          want=$(sha256sum < cmd/opensave-app/build/bin/OpenSave.exe | cut -d' ' -f1)
+          got=$(sha256sum < "$out/OpenSave.exe" | cut -d' ' -f1)
+          echo "OpenSave.exe $want; installed by OpenSave.Setup.exe $got"
+          if [ "$want" != "$got" ]; then
+            echo "::error::OpenSave.Setup.exe installs a different OpenSave.exe from the one released"
+            exit 1
+          fi
+
+      - name: Code sign the installer (optional)
+        if: env.HAS_SIGNING == 'true' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          WIN_CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WIN_CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = "$env:RUNNER_TEMP\cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_B64))
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1).FullName
+          & $signtool sign /f $pfx /p $env:WIN_CERT_PW /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 cmd/opensave-app/build/bin/OpenSave.Setup.exe
 
       - uses: actions/upload-artifact@v4
         with:
@@ -235,6 +306,17 @@ jobs:
           cp opensave-decky-plugin/package.json decky-pkg/OpenSave/
           cp opensave-decky-plugin/main.py      decky-pkg/OpenSave/
           cp opensave-decky-plugin/dist/index.js decky-pkg/OpenSave/dist/
+          # The zip says the version of the tag it is released under. Plugin
+          # managers compare the two, and a mismatch offers the same update
+          # again and again (#149). A manual run has no tag: it keeps the files'.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            for f in plugin.json package.json; do
+              jq --arg v "$V" '.version = $v' "decky-pkg/OpenSave/$f" > "$f.stamped"
+              mv "$f.stamped" "decky-pkg/OpenSave/$f"
+              test "$(jq -r .version "decky-pkg/OpenSave/$f")" = "$V"
+            done
+          fi
           (cd decky-pkg && zip -r ../OpenSave-decky-plugin.zip OpenSave)
           unzip -l OpenSave-decky-plugin.zip
 
@@ -559,6 +641,25 @@ jobs:
             -exec sha256sum {} + | sed 's| .*/| |' > SHA256SUMS
           cat SHA256SUMS
 
+      # The release description is kept short: the Discord invitation and a
+      # link to everything between the previous tag and this one. GitHub's
+      # generated notes listed every merged PR, which for a release built up
+      # over weeks ran to pages; CHANGELOG.md and the app's "What's new" are
+      # where the changes are told.
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          fetch-depth: 0
+      - name: Find the previous release tag
+        id: prev
+        run: |
+          prev=$(git -C src describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            echo "changes=https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -568,12 +669,7 @@ jobs:
           # are offered these: either the user ticked Settings -> Updates, or
           # they are already running a pre-release (see selfupdate).
           prerelease: ${{ contains(github.ref_name, '-') }}
-          # Note: re-publishing the same tag appends another generated-notes
-          # block; if a tag is ever re-cut, tidy the release body by hand.
-          generate_release_notes: true
-          # `body` is placed above the generated notes, so the invitation is
-          # the first thing in every release rather than buried under a
-          # commit list.
+          generate_release_notes: false
           body: |
             ### 💬 Questions, bug reports, or just want to say hello?
 
@@ -583,6 +679,9 @@ jobs:
             discussed before they ship.
 
             ---
+
+
+            **Full Changelog**: ${{ steps.prev.outputs.changes }}
           fail_on_unmatched_files: false
           files: |
             windows/**/*.exe

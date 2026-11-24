@@ -13,6 +13,7 @@
   import { toast, settings } from '../../lib/stores.js';
   import { api, native } from '../../lib/api.js';
   import { needsOwnApp } from '../../lib/cloudproviders.js';
+  import { t } from '../../lib/i18n.js';
   import Chevron from '../../components/ui/Chevron.svelte';
 
   export let config;
@@ -48,9 +49,9 @@
       );
       if (changed && wasConnected) {
         await api.post('/api/auth/disconnect');
-        toast('Saved. Sign in again — the old connection belonged to the previous app.', 'success');
+        toast($t('cloud.oauth.savedReconnect'), 'success');
       } else {
-        toast(ownAppID.trim() ? 'Saved. Sign in to use your own app.' : 'Cleared — the built-in app will be used.', 'success');
+        toast(ownAppID.trim() ? $t('cloud.oauth.savedSignIn') : $t('cloud.oauth.cleared'), 'success');
       }
       // Reload for the fresh tokens/ids, but keep this card selected. The
       // stored provider is whatever was last saved with "Save provider" — so
@@ -69,15 +70,11 @@
 <div class="own-app">
   {#if needsOwnApp(provider) && !ownAppID}
     <p class="quiet required">
-      <strong>OneDrive needs your own app registration.</strong> Microsoft doesn't allow a
-      shared one, so OpenSave can't ship credentials for it. Create a free app in the
-      <button class="linkish" on:click={() => native.openExternal('https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade')}>Azure portal</button>
-      with redirect URI <code>http://localhost/callback</code>, then paste its Application
-      (client) ID below.
+      <strong>{$t('cloud.oauth.onedriveStrong')}</strong>{$t('cloud.oauth.onedriveBody1')}<button class="linkish" on:click={() => native.openExternal('https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade')}>{$t('cloud.oauth.azurePortal')}</button>{$t('cloud.oauth.onedriveBody2')}<code>http://localhost/callback</code>{$t('cloud.oauth.onedriveBody3')}
     </p>
   {:else}
     <button class="linkish" on:click={() => (showOwnApp = !showOwnApp)}>
-      <Chevron open={showOwnApp} size={12} /> Use your own OAuth app{ownAppID ? ' (in use)' : ''}
+      <Chevron open={showOwnApp} size={12} /> {$t('cloud.oauth.toggle')}{ownAppID ? $t('cloud.oauth.inUse') : ''}
     </button>
   {/if}
 
@@ -85,47 +82,42 @@
     <div class="body">
       {#if provider === 'google_drive'}
         <p class="quiet">
-          OpenSave's built-in Google credentials are a shared app still in testing, so Drive
-          can ask you to sign in again every week. Your own Client ID stops that. Create one
-          in the
-          <button class="linkish" on:click={() => native.openExternal('https://console.cloud.google.com/apis/credentials')}>Google Cloud console</button>
-          as an OAuth client with redirect URI <code>http://localhost/callback</code>.
+          {$t('cloud.oauth.googleBody1')}<button class="linkish" on:click={() => native.openExternal('https://console.cloud.google.com/apis/credentials')}>{$t('cloud.oauth.googleConsole')}</button>{$t('cloud.oauth.googleBody2')}<code>http://localhost/callback</code>{$t('cloud.oauth.googleBody3')}
         </p>
       {:else if provider === 'dropbox'}
         <p class="quiet">
-          Only needed if you'd rather use your own Dropbox app than the built-in one.
+          {$t('cloud.oauth.dropboxNote')}
         </p>
       {/if}
       <div class="field">
-        <label for="cb-clientid">Client ID</label>
+        <label for="cb-clientid">{$t('cloud.oauth.clientId')}</label>
         <input
           id="cb-clientid"
           bind:value={ownAppID}
           spellcheck="false"
-          placeholder={provider === 'google_drive' ? '…apps.googleusercontent.com' : 'Application (client) ID'}
+          placeholder={provider === 'google_drive' ? $t('cloud.oauth.clientIdPlaceholderGoogle') : $t('cloud.oauth.clientIdPlaceholder')}
         />
       </div>
       <div class="field">
-        <label for="cb-clientsecret">Client secret <span class="quiet">— leave empty unless your app requires one</span></label>
+        <label for="cb-clientsecret">{$t('cloud.oauth.clientSecret')} <span class="quiet">{$t('cloud.oauth.clientSecretHint')}</span></label>
         <input id="cb-clientsecret" type="password" bind:value={ownAppSecret} spellcheck="false" />
       </div>
       <div class="path-row">
-        <button class="btn primary" disabled={$busy} on:click={save}>Save credentials</button>
+        <button class="btn primary" disabled={$busy} on:click={save}>{$t('cloud.oauth.saveCredentials')}</button>
         {#if ownAppID}
           <button
             class="btn small"
             disabled={$busy}
-            title="Go back to OpenSave's built-in credentials"
+            title={$t('cloud.oauth.builtinTitle')}
             on:click={() => { ownAppID = ''; ownAppSecret = ''; save(); }}
           >
-            Use the built-in app
+            {$t('cloud.oauth.useBuiltin')}
           </button>
         {/if}
       </div>
       {#if connected === provider}
         <p class="quiet">
-          You're signed in already — changing this disconnects you, because the existing
-          sign-in belongs to the old app.
+          {$t('cloud.oauth.signedInNote')}
         </p>
       {/if}
     </div>

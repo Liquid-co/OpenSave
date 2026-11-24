@@ -130,6 +130,8 @@ type Engine struct {
 	// on this device right now (settle.go).
 	settleMu sync.Mutex
 	gates    map[string]*saveGate
+	// Protected by mu, alongside activeSyncs/pendingSyncs/followUps.
+	topologyMutations map[string]bool
 	// writtenAt is when a sync last stopped writing each game (BeingWritten).
 	writtenAt map[string]time.Time
 	// servedMu guards served: the save states this device recently handed
@@ -142,6 +144,10 @@ type Engine struct {
 	loopMu    sync.Mutex
 	triggered map[string]time.Time
 	pushBacks map[string]pushBack
+	// unwritableMu guards unwritable: per game whose save folder refused a
+	// pull, until when pulls into it wait (unwritable.go).
+	unwritableMu sync.Mutex
+	unwritable   map[string]time.Time
 
 	mu           sync.Mutex
 	activeSyncs  map[string]bool
@@ -164,6 +170,13 @@ type Engine struct {
 	// manifest arrives, to watch how the files left out as the game's
 	// settings change (daemon/detectsettings.go). Set by the daemon.
 	ObserveSettings func(game store.Game, peerID string, remote delta.Manifest)
+	// Playing reports whether a game is being played on this device
+	// (playing.go). Set by the daemon from its play sessions.
+	Playing func(gameID string) bool
+	// playingMu guards playingSaid: per game and peer, whether its "playing"
+	// answer was said already this session (playing.go).
+	playingMu   sync.Mutex
+	playingSaid map[string]bool
 }
 
 // New creates an Engine.
@@ -256,6 +269,33 @@ func (e *Engine) SyncBusy(gameID string) bool {
 	return e.activeSyncs[gameID] || e.pendingSyncs[gameID] || e.followUps[gameID] > 0
 }
 
+func (e *Engine) launchQueuedSync(gameID string, peers []Peer) {
+	e.Log("info", fmt.Sprintf("running queued follow-up sync for %s", gameID))
+	go func() {
+		defer func() {
+			e.mu.Lock()
+			if e.followUps[gameID]--; e.followUps[gameID] <= 0 {
+				delete(e.followUps, gameID)
+			}
+			e.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if e.OnlinePeers != nil {
+			peers = e.OnlinePeers()
+		}
+		if len(peers) == 0 {
+			e.Log("warn", fmt.Sprintf(
+				"queued follow-up sync for %s found no reachable devices — "+
+					"it will go out on the next sync", gameID))
+			return
+		}
+		if _, err := e.SyncGame(ctx, gameID, peers); err != nil {
+			e.Log("warn", fmt.Sprintf("queued follow-up sync for %s: %v", gameID, err))
+		}
+	}()
+}
+
 func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer) (map[string]Result, error) {
 	// Every sync this device starts comes through here — a watched change, a
 	// peer coming online, the periodic reconcile, a sync asked for by hand or
@@ -263,16 +303,56 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 	if e.Paused != nil && e.Paused() {
 		return nil, ErrPaused
 	}
+	// A topology reservation excludes new syncs; queue their intent
+	// before checking hold state to avoid waiting behind the write gate.
+	e.mu.Lock()
+	topologyChanging := e.topologyMutations[gameID]
+	if topologyChanging {
+		if e.pendingSyncs == nil {
+			e.pendingSyncs = make(map[string]bool)
+		}
+		e.pendingSyncs[gameID] = true
+	}
+	e.mu.Unlock()
+	if topologyChanging {
+		return nil, ErrSyncQueued
+	}
+	// A game being played here is synced when the session ends (playing.go).
+	if e.PlayingHere(gameID) {
+		return nil, ErrPlayingHere
+	}
 	// A save emptied here is not synced until someone says whether that was
 	// meant (hold.go).
 	held, err := e.checkHoldSettled(ctx, gameID)
 	if err != nil && errors.Is(err, ErrSettling) {
+		// Topology may have started AFTER the early admission check and
+		// blocked the hold reader. Preserve the sync request for replay.
+		e.mu.Lock()
+		changing := e.topologyMutations[gameID]
+		if changing {
+			if e.pendingSyncs == nil {
+				e.pendingSyncs = make(map[string]bool)
+			}
+			e.pendingSyncs[gameID] = true
+		}
+		e.mu.Unlock()
+		if changing {
+			return nil, ErrSyncQueued
+		}
 		return nil, err
 	}
 	if err == nil && held {
 		return nil, ErrHeld
 	}
 	e.mu.Lock()
+	if e.topologyMutations[gameID] {
+		if e.pendingSyncs == nil {
+			e.pendingSyncs = make(map[string]bool)
+		}
+		e.pendingSyncs[gameID] = true
+		e.mu.Unlock()
+		return nil, ErrSyncQueued
+	}
 	if e.activeSyncs[gameID] {
 		e.pendingSyncs[gameID] = true
 		e.mu.Unlock()
@@ -294,42 +374,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		}
 		e.mu.Unlock()
 		if rerun {
-			e.Log("info", fmt.Sprintf("running queued follow-up sync for %s", gameID))
-			// Fresh context: the queued requester's may already be gone.
-			go func() {
-				defer func() {
-					e.mu.Lock()
-					if e.followUps[gameID]--; e.followUps[gameID] <= 0 {
-						delete(e.followUps, gameID)
-					}
-					e.mu.Unlock()
-				}()
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				defer cancel()
-
-				// Resolve peers now rather than reusing the list the earlier
-				// sync started with. That list describes the moment this
-				// follow-up was queued behind, which can be minutes old: a
-				// device may have dropped, come back on a different address,
-				// or moved between LAN and relay. Syncing a queued change to
-				// the wrong address fails in a goroutine nobody is watching,
-				// and the caller was told "queued and will sync right after".
-				peers := onlinePeers
-				if e.OnlinePeers != nil {
-					peers = e.OnlinePeers()
-				}
-				if len(peers) == 0 {
-					// Say so. Returning quietly here is indistinguishable from
-					// a completed sync, and the change simply never left.
-					e.Log("warn", fmt.Sprintf(
-						"queued follow-up sync for %s found no reachable devices — "+
-							"it will go out on the next sync", gameID))
-					return
-				}
-				if _, err := e.SyncGame(ctx, gameID, peers); err != nil {
-					e.Log("warn", fmt.Sprintf("queued follow-up sync for %s: %v", gameID, err))
-				}
-			}()
+			e.launchQueuedSync(gameID, onlinePeers)
 		}
 	}()
 
@@ -350,6 +395,11 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 			busy = true
 			continue
 		}
+		if errors.Is(err, errSaveUnwritable) {
+			// Said once when it was found (unwritable.go); waiting meanwhile.
+			results[peer.ID] = Result{Status: "unwritable", PeerID: peer.ID, PeerName: peer.Name}
+			continue
+		}
 		if errors.Is(err, ErrPeerPaused) {
 			e.Log("info", fmt.Sprintf("%s has paused syncing; %s will sync with it when it resumes", peer.Name, gameID))
 			results[peer.ID] = Result{Status: "peer_paused", PeerID: peer.ID, PeerName: peer.Name}
@@ -366,7 +416,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		// divergence from the NEXT sync, causing the peer to silently overwrite
 		// its own changes instead of detecting the conflict and asking.
 		switch res.Status {
-		case "conflict", "error":
+		case "conflict", "error", "unwritable", "peer_playing":
 		case "peer_missing", "peer_awaiting_folder", "peer_holding":
 			// The two devices talked and finished, which is what the
 			// per-device stamp has always recorded. But nothing of THIS game
@@ -460,6 +510,12 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		if isAwaitingFolder(err) {
 			return Result{Status: "peer_awaiting_folder", PeerID: peer.ID, PeerName: peer.Name}, nil
 		}
+		// Being played there: its save comes when the session ends, sent by
+		// that device. Before isSettling, whose message this one contains.
+		if isPlaying(err) {
+			e.notePeerPlaying(gameID, peer, game.Name)
+			return Result{Status: "peer_playing", PeerID: peer.ID, PeerName: peer.Name}, nil
+		}
 		// The peer is still writing this game for a sync of its own, and
 		// would otherwise have described a save half-way between two states
 		// (settle.go). SyncGame asks again once it has finished.
@@ -477,6 +533,7 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		}
 		return Result{}, fmt.Errorf("fetch remote manifest: %w", err)
 	}
+	e.peerNotPlaying(gameID, peer.ID)
 
 	// 2. Branch alignment: local follows the remote's active branch.
 	//
@@ -756,7 +813,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 			delete(deleted, path)
 		}
 	}
-	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, agreedHash, deleted)
+	//
+	// The base goes in as the conflict check above read it: a save here that
+	// differs from it only by the deletions the peer asked for is the side
+	// that has not moved (directionBase).
+	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, directionBase(agreedHash, judged, localManifest), deleted)
 
 	// The peer asked this device to pull, and this device would answer by
 	// asking it to pull again, with neither side changed since: the two
@@ -1572,7 +1633,7 @@ func (e *Engine) createPulledDirs(gameID string, game store.Game, dirsToPull []s
 	e.createPulledDirsIn(gameID, primaryRootOf(game), dirsToPull)
 }
 
-func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []string) {
+func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []string, intent ...pullIntent) {
 	defer e.Writing(gameID)() // settle.go
 	dirs := append([]string{}, dirsToPull...)
 	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) < len(dirs[j]) }) // parents first
@@ -1581,9 +1642,32 @@ func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []s
 			continue
 		}
 		full := filepath.Join(root.Path, filepath.FromSlash(relDir))
+		if adoptingRemote(intent) {
+			full = delta.LocalNameFor(root.Path, relDir)
+		}
 		owntouch.Mark(full)
 		_ = os.MkdirAll(full, 0o777)
 	}
+}
+
+// pullIntent selects how one pull treats recorded deletions and success
+// reporting. The zero value is ordinary bidirectional sync.
+type pullIntent int
+
+const (
+	// pullOrdinary is every sync except an explicit keep-remote adoption.
+	pullOrdinary pullIntent = iota
+	// pullAdoptRemote restores the selected peer's bytes even when this
+	// device recorded those bytes as deleted, and does not tell the peer the
+	// pull succeeded. The caller reports success only after the location
+	// matches that peer version. One intent, not a general success-event flag:
+	// the deletion override is part of adoption and must not be reusable as
+	// "just delay the event".
+	pullAdoptRemote
+)
+
+func adoptingRemote(intent []pullIntent) bool {
+	return len(intent) > 0 && intent[0] == pullAdoptRemote
 }
 
 // pullFiles downloads and patches every file in filesToPull with bounded
@@ -1594,7 +1678,13 @@ func (e *Engine) createPulledDirsIn(gameID string, root syncRoot, dirsToPull []s
 // decision belongs to the location — keeping them separate is what stops a
 // second location's files being written relative to the primary save path.
 func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game store.Game, root syncRoot,
-	localManifest delta.Manifest, remoteData ManifestResponse, filesToPull []string) (retErr error) {
+	localManifest delta.Manifest, remoteData ManifestResponse, filesToPull []string, intent ...pullIntent) (retErr error) {
+
+	// A folder that refused the last pull is left alone for a while
+	// (unwritable.go).
+	if until, waiting := e.unwritableUntil(gameID); waiting {
+		return fmt.Errorf("%w (trying again at %s)", errSaveUnwritable, until.Format("15:04"))
+	}
 
 	// This one is load-bearing, unlike the invalidations on the snapshot
 	// paths. Every pulled file is written and then stamped with the PEER'S
@@ -1631,6 +1721,9 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	for _, dir := range remoteData.Manifest.Dirs {
 		if delta.IsSafePath(root.Path, dir) {
 			full := filepath.Join(root.Path, filepath.FromSlash(dir))
+			if adoptingRemote(intent) {
+				full = delta.LocalNameFor(root.Path, dir)
+			}
 			if _, err := os.Stat(full); err != nil {
 				owntouch.Mark(full)
 				_ = os.MkdirAll(full, 0o777)
@@ -1745,7 +1838,10 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		// peer's copy differs from what was deleted they have edited it since,
 		// and that is a genuine new version to take rather than an echo of the
 		// deletion.
-		if rec, recorded := deletedNow[relPath]; recorded && rec.Hash == remoteData.Manifest.Files[relPath].Hash {
+		// Explicit keep-remote restores the selected peer copy, including a file
+		// this device recorded deleting. Ordinary sync must still refuse that.
+		if rec, recorded := deletedNow[relPath]; !adoptingRemote(intent) &&
+			recorded && rec.Hash == remoteData.Manifest.Files[relPath].Hash {
 			e.Log("info", fmt.Sprintf(
 				"not restoring %q: it was deleted here while this sync was running", relPath))
 			continue
@@ -1769,7 +1865,7 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 		}
 		if err := e.pullFile(ctx, peer, FileRef{GameID: gameID, Root: root.Name, RelPath: relPath}, localFilePath,
 			remoteFile, indices, throttle, tracker, reportProgress); err != nil {
-			return err
+			return e.noteUnwritable(gameID, game.Name, root.Path, filepath.Dir(localFilePath), err)
 		}
 		if remoteFile.MtimeMs > 0 {
 			mtime := time.UnixMilli(int64(remoteFile.MtimeMs))
@@ -1815,19 +1911,21 @@ func (e *Engine) pullFiles(ctx context.Context, peer Peer, gameID string, game s
 	// It used to learn them by re-fetching our whole manifest and re-walking
 	// its own disk, which under load is exactly when the window is widest.
 	// We already know what we wrote, so we say so.
-	e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
-		"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
-		// Which save location they were written into. The paths are relative
-		// to it, and recorded against the main save folder they name files
-		// that are not there. Empty for the main folder; older versions leave
-		// it out, which reads the same.
-		"root": root.Name,
-	})
+	if !adoptingRemote(intent) {
+		e.Transport.ReportSyncEvent(peer, gameID, "sync-complete", map[string]any{
+			"peerName": deviceName, "direction": "upload", "pulledFiles": pulled,
+			// Which save location they were written into. The paths are relative
+			// to it, and recorded against the main save folder they name files
+			// that are not there. Empty for the main folder; older versions leave
+			// it out, which reads the same.
+			"root": root.Name,
+		})
+	}
 	if len(pulled) > 0 {
 		e.RecordActivity(store.ActivityEvent{GameID: gameID, Kind: store.ActivityReceived, Device: peer.Name,
 			Files: len(pulled), Bytes: totalBytes, Detail: locationDetail(root.Name)})
 	}
-	if e.Progress.OnSyncComplete != nil {
+	if !adoptingRemote(intent) && e.Progress.OnSyncComplete != nil {
 		e.Progress.OnSyncComplete(gameID, ProgressEvent{PeerName: peer.Name, Direction: "download"})
 	}
 	return nil

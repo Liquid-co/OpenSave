@@ -188,13 +188,13 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 			base = remote.RootHash(delta.PrimaryRoot)
 		}
 	}
-	decision := ComputeWithDeletions(local, remote, lineageFiles, lineageDirs, base, deleted)
+	judged := e.unchangedButForPeerDeletions(gameID, sr.root.Name, local, base)
+	decision := ComputeWithDeletions(local, remote, lineageFiles, lineageDirs, directionBase(base, judged, local), deleted)
 	if !decision.HasChanges() {
 		e.persistRootLineage(gameID, peer.ID, sr.root.Name, local, remote)
 		_ = e.Store.SetAgreedHashForRoot(gameID, peer.ID, sr.root.Name, local.RootHash(delta.PrimaryRoot))
 		return nil
 	}
-	judged := e.unchangedButForPeerDeletions(gameID, sr.root.Name, local, base)
 	if DetectConflict(judged, remote, e.lastSyncTimeMs(peer.ID), base) &&
 		!OnlyBehind(judged, remote, lineageFiles) {
 		// Neither side is touched. There is no per-location resolution screen
@@ -226,6 +226,14 @@ func (e *Engine) syncOneRoot(ctx context.Context, gameID string, game store.Game
 	}
 
 	e.keepHeldFiles(gameID, sr.root.Name, game.Name, peer, &decision)
+	// Like the primary save, an additional location must never overwrite or
+	// delete existing bytes until their previous version is recoverable.
+	// New files with no existing local copy need no safety snapshot.
+	if atRisk := filesAtRisk(local, decision); len(atRisk) > 0 {
+		if err := e.requireRootSafety(gameID, sr.root.Name, "replace local files during sync", local, atRisk); err != nil {
+			return fmt.Errorf("%d local file(s) at risk: %w", len(atRisk), err)
+		}
+	}
 	e.handOverEmptying(gameID, peer, local.Files, &decision)
 
 	// Held across the whole apply, as for the main folder: from the first

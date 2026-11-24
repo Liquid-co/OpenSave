@@ -88,7 +88,18 @@ func (a *App) InstallUpdateFromPeer(peerID string) string {
 			a.updateEvent("error", 0, "download from peer failed: "+err.Error())
 			return
 		}
-		a.daemon.Log.Log("info", fmt.Sprintf("downloaded OpenSave %s (build %d) from peer; installing", build.AppVersion, build.BuildTimeMs))
+		// The checksum the peer sent only proves the transfer was intact;
+		// this proves the build is one the project published
+		// (selfupdate.PeerBuildAssetURL).
+		assetURL, err := selfupdate.PeerBuildAssetURL(updateRepo, runtime.GOOS, build.AppVersion)
+		if err == nil {
+			err = selfupdate.VerifyDownload(assetURL, dest)
+		}
+		if err != nil {
+			a.updateEvent("error", 0, "the update from that device could not be verified against an official release, so it was not installed: "+err.Error())
+			return
+		}
+		a.daemon.Log.Log("info", fmt.Sprintf("downloaded OpenSave %s (build %d) from peer; verified against the release; installing", build.AppVersion, build.BuildTimeMs))
 		a.finishInstall(dest)
 	}()
 	return ""

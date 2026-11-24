@@ -5,13 +5,40 @@
   import Moon from 'lucide-svelte/icons/moon';
   import Sun from 'lucide-svelte/icons/sun';
   import MonitorCog from 'lucide-svelte/icons/monitor-cog';
-  import { appearance, THEMES, ACCENTS, SCALES, onAccent } from '../../lib/appearance.js';
+  import Plus from 'lucide-svelte/icons/plus';
+  import X from 'lucide-svelte/icons/x';
+  import {
+    appearance,
+    THEMES,
+    ACCENTS,
+    SCALES,
+    onAccent,
+    accentHex,
+    withCustomAccent,
+    withoutCustomAccent
+  } from '../../lib/appearance.js';
   import { systemReducesMotion, slidingIndicator } from '../../lib/motion.js';
   import { locale, LOCALES, t, SYSTEM_LOCALE } from '../../lib/i18n.js';
+  import AccentWheel from './AccentWheel.svelte';
 
   const set = (patch) => appearance.update((v) => ({ ...v, ...patch }));
   const themeIcons = { dark: Moon, light: Sun, system: MonitorCog };
+
+  // The colour wheel, open beside its button until a colour is added or it is
+  // dismissed: Escape, or a click anywhere else.
+  let wheelOpen = false;
+  let pickerEl;
+  const addColour = (e) => {
+    appearance.update((v) => withCustomAccent(v, e.detail));
+    wheelOpen = false;
+  };
+  const removeColour = (hex) => appearance.update((v) => withoutCustomAccent(v, hex));
+  function outside(e) {
+    if (wheelOpen && pickerEl && !pickerEl.contains(e.target)) wheelOpen = false;
+  }
 </script>
+
+<svelte:window on:pointerdown={outside} on:keydown={(e) => wheelOpen && e.key === 'Escape' && (wheelOpen = false)} />
 
 <div class="options">
   <label class="group">
@@ -25,40 +52,74 @@
   </label>
 
   <div class="group">
-    <span class="label" id="ap-theme">Theme</span>
+    <span class="label" id="ap-theme">{$t('settings.appearance.theme')}</span>
     <div class="segmented" role="radiogroup" aria-labelledby="ap-theme" use:slidingIndicator={{ mode: 'fill' }}>
-      {#each Object.entries(THEMES) as [id, label]}
+      {#each Object.entries(THEMES) as [id]}
         <button role="radio" aria-checked={$appearance.theme === id} class:on={$appearance.theme === id} on:click={() => set({ theme: id })}>
-          <svelte:component this={themeIcons[id]} size={14} />{label}
+          <svelte:component this={themeIcons[id]} size={14} />{$t('appearance.theme.' + id)}
         </button>
       {/each}
     </div>
   </div>
 
   <div class="group">
-    <span class="label" id="ap-accent">Accent colour</span>
+    <span class="label" id="ap-accent">{$t('settings.appearance.accent')}</span>
     <div class="swatches" role="radiogroup" aria-labelledby="ap-accent">
       {#each Object.entries(ACCENTS) as [id, a]}
         <button
           class="swatch"
           role="radio"
           aria-checked={$appearance.accent === id}
-          aria-label={a.label}
-          title={a.label}
+          aria-label={$t('appearance.accent.' + id)}
+          title={$t('appearance.accent.' + id)}
           style="--swatch: {a.hex}; --swatch-on: {onAccent(a.hex)}"
           on:click={() => set({ accent: id })}
         >
           {#if $appearance.accent === id}<Check size={14} strokeWidth={3} />{/if}
         </button>
       {/each}
+      {#each $appearance.customAccents as hex (hex)}
+        <span class="custom">
+          <button
+            class="swatch"
+            role="radio"
+            aria-checked={$appearance.accent === hex}
+            aria-label={$t('settings.appearance.yourColour', { hex })}
+            title={$t('settings.appearance.colourDeleteHint', { hex })}
+            style="--swatch: {hex}; --swatch-on: {onAccent(hex)}"
+            on:click={() => set({ accent: hex })}
+            on:keydown={(e) => (e.key === 'Delete' || e.key === 'Backspace') && removeColour(hex)}
+          >
+            {#if $appearance.accent === hex}<Check size={14} strokeWidth={3} />{/if}
+          </button>
+          <button class="remove" tabindex="-1" aria-label={$t('settings.appearance.removeColour', { hex })} title={$t('settings.appearance.remove')} on:click={() => removeColour(hex)}>
+            <X size={10} strokeWidth={3} />
+          </button>
+        </span>
+      {/each}
+      <span class="picker" bind:this={pickerEl}>
+        <button
+          class="swatch wheel-button"
+          aria-label={$t('settings.appearance.pickAnyColour')}
+          title={$t('settings.appearance.pickAnyColour')}
+          aria-haspopup="dialog"
+          aria-expanded={wheelOpen}
+          on:click={() => (wheelOpen = !wheelOpen)}
+        >
+          <Plus size={14} strokeWidth={3} />
+        </button>
+        {#if wheelOpen}
+          <AccentWheel initial={accentHex($appearance.accent)} on:pick={addColour} on:close={() => (wheelOpen = false)} />
+        {/if}
+      </span>
     </div>
   </div>
 
   <label class="group">
-    <span class="label">Size</span>
+    <span class="label">{$t('settings.appearance.size')}</span>
     <select value={String($appearance.scale)} on:change={(e) => set({ scale: Number(e.currentTarget.value) })}>
       {#each SCALES as s}
-        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ' (default)' : ''}</option>
+        <option value={String(s)}>{Math.round(s * 100)}%{s === 1 ? ` ${$t('settings.appearance.scaleDefault')}` : ''}</option>
       {/each}
     </select>
   </label>
@@ -66,12 +127,12 @@
 
 <label class="check motion">
   <input type="checkbox" checked={$appearance.motion} on:change={(e) => set({ motion: e.currentTarget.checked })} />
-  Animations
+  {$t('settings.appearance.animations')}
 </label>
 <p class="hint">
-  Small movements as pages, dialogs and your library come into view, and as you point at a game.
+  {$t('settings.appearance.animationsHint')}
   {#if $systemReducesMotion}
-    Off for now whatever this says: Windows is asking apps to reduce motion.
+    {$t('settings.appearance.reducedMotion')}
   {/if}
 </p>
 
@@ -166,6 +227,52 @@
     box-shadow:
       0 0 0 2px var(--bg-raised),
       0 0 0 4px var(--swatch);
+  }
+  /* A picked colour: removable from a small cross that shows on hover. */
+  .custom,
+  .picker {
+    position: relative;
+    display: inline-flex;
+  }
+  .remove {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-raised);
+    color: var(--text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .custom:hover .remove,
+  .custom:focus-within .remove {
+    opacity: 1;
+  }
+  .remove:hover {
+    color: var(--text);
+  }
+  /* The wheel's own button: every hue, with a plus over it. */
+  .wheel-button {
+    background:
+      radial-gradient(closest-side, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0)),
+      conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+    color: #fff;
+  }
+  .wheel-button :global(svg) {
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+    animation: none;
+  }
+  .wheel-button[aria-expanded='true'] {
+    box-shadow:
+      0 0 0 2px var(--bg-raised),
+      0 0 0 4px var(--border-strong);
   }
   select {
     padding: 7px 10px;

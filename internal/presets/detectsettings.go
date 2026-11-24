@@ -2,6 +2,7 @@ package presets
 
 import (
 	"bytes"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -10,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/opensave/opensave/internal/fsx"
 )
 
 // Detecting a game's settings files by what they hold, for games the game
@@ -268,7 +271,7 @@ func judgeSettings(rel string, b []byte) (bool, string) {
 // DetectSettings finds the settings files in root by what they hold. The
 // game's save locations in the game database (by name or App ID) are never
 // taken, whatever they hold.
-func (ds *DeviceSettings) DetectSettings(name, appID, root string) []DetectedSettings {
+func (ds *DeviceSettings) DetectSettings(name, appID, root string, judged map[string]bool) []DetectedSettings {
 	var savePats []string
 	if ds != nil {
 		g, ok := ds.byID[appID]
@@ -287,7 +290,7 @@ func (ds *DeviceSettings) DetectSettings(name, appID, root string) []DetectedSet
 			}
 		}
 	}
-	return detectIn(root, savePats)
+	return detectIn(root, savePats, judged)
 }
 
 // isSaveLocation reports whether rel is, or is inside, one of the game
@@ -317,7 +320,7 @@ func isSaveLocation(rel string, savePats []string) bool {
 	return false
 }
 
-func detectIn(root string, savePats []string) []DetectedSettings {
+func detectIn(root string, savePats []string, judged map[string]bool) []DetectedSettings {
 	var out []DetectedSettings
 	read := 0
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -342,11 +345,17 @@ func detectIn(root string, savePats []string) []DetectedSettings {
 		if strings.Contains(strings.ToLower(rel), ".sync-conflict-") || isSaveLocation(rel, savePats) {
 			return nil
 		}
+		// A file judged before is not opened again: every read of a save
+		// folder is a moment in which the game cannot replace that file
+		// (fsx.OpenShared), so what has a verdict is left alone.
+		if judged[rel] {
+			return nil
+		}
 		info, err := d.Info()
 		if err != nil || info.Size() > detectMaxSize {
 			return nil
 		}
-		b, err := os.ReadFile(p)
+		b, err := readForJudging(p)
 		if err != nil {
 			return nil
 		}
@@ -359,3 +368,21 @@ func detectIn(root string, savePats []string) []DetectedSettings {
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }
+
+// readForJudging reads a file to judge it, through a handle that lets the
+// game delete it meanwhile (fsx.OpenShared), and no more than detectMaxSize
+// of it. Replacing it by renaming another file over it is still refused while
+// it is open — Windows allows that under no share mode — which is why files
+// are read as rarely as they are: once each, and not while their game is
+// played (daemon/detectsettings.go).
+func readForJudging(path string) ([]byte, error) {
+	f, err := openForJudging(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, detectMaxSize+1))
+}
+
+// openForJudging is the open readForJudging reads through.
+func openForJudging(path string) (*os.File, error) { return fsx.OpenShared(path) }

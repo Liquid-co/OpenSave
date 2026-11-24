@@ -121,6 +121,37 @@ class SyncAnswers(unittest.TestCase):
         self.assertEqual(mixed["message"], "Synced 2 games: 1 updated, 1 already in sync — 1 needs a decision")
         self.assertFalse(main.summarize_sync_all({"a": {"status": "error", "error": "boom"}})["success"])
 
+    def test_a_sync_that_did_not_reach_a_device_is_not_called_in_sync(self):
+        cases = {
+            "peer_playing": "being played on PC",
+            "peer_paused": "PC has syncing paused",
+            "unwritable": "can't be written",
+            "something_new": 'PC answered "something_new"',
+        }
+        for status, said in cases.items():
+            stub = StubDaemon({"POST /api/games/hades/sync": (200, {"results": {"p": {"status": status, "peerName": "PC"}}})})
+            try:
+                res = run(main.Plugin().sync_game("hades"))
+            finally:
+                stub.close()
+            self.assertEqual(res["outcome"], "waiting", status)
+            self.assertIn(said, res["detail"])
+
+        stub = StubDaemon({"POST /api/games/hades/sync": (200, {"results": {
+            "p": {"status": "error", "peerName": "PC"}, "q": {"status": "in_sync"}}})})
+        try:
+            res = run(main.Plugin().sync_game("hades"))
+        finally:
+            stub.close()
+        self.assertFalse(res["success"])
+        self.assertEqual(res["reason"], "error")
+
+        summary = main.summarize_sync_all({
+            "a": {"p": {"status": "in_sync"}},
+            "b": {"p": {"status": "peer_playing", "peerName": "PC"}},
+        })
+        self.assertEqual(summary["message"], "Synced 1 game: 1 already in sync — 1 waiting on another device")
+
     def test_sync_all_end_to_end(self):
         stub = StubDaemon({"POST /api/games/sync-all": (200, {"results": {
             "a": {"status": "error", "error": "no online peers available", "reason": "offline"}}})})
@@ -159,6 +190,29 @@ class Decisions(unittest.TestCase):
             {"peerId": "peer-1", "root": "Config", "resolution": "keep-remote"},
         )
         self.assertEqual(sum(1 for m, path, _ in stub.seen if path == "/api/games/hades/emptied"), 1)
+
+
+class PlaySessions(unittest.TestCase):
+    def test_a_game_starting_and_stopping_reaches_the_daemon(self):
+        stub = StubDaemon({"POST /api/games/hades/session": (200, {"ok": True})})
+        try:
+            p = main.Plugin()
+            self.assertTrue(run(p.mark_session("hades", "start"))["success"])
+            self.assertTrue(run(p.mark_session("hades", "end"))["success"])
+            self.assertFalse(run(p.mark_session("hades", "paused"))["success"])
+        finally:
+            stub.close()
+        bodies = [body for m, path, body in stub.seen if path == "/api/games/hades/session"]
+        self.assertEqual(bodies, [{"state": "start"}, {"state": "end"}])  # not the unknown one
+
+    def test_a_session_the_daemon_refuses_is_reported_not_raised(self):
+        stub = StubDaemon({"POST /api/games/gone/session": (404, {"error": "game not found"})})
+        try:
+            res = run(main.Plugin().mark_session("gone", "start"))
+        finally:
+            stub.close()
+        self.assertFalse(res["success"])
+        self.assertIn("game not found", res["error"])
 
 
 class FindingTheDaemon(unittest.TestCase):

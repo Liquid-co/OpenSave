@@ -13,6 +13,7 @@ import {
   saveCleared,
   saveSeenAt,
   waitingOnYou,
+  waitingText,
   ARRIVAL_QUIET_MS
 } from './notifications.js';
 import { translate } from './i18n.js';
@@ -150,5 +151,58 @@ describe('clearing the bell', () => {
     expect(loadCleared({ getItem: () => 'not json' })).toEqual({ before: 0, ids: [] });
     expect(loadCleared({ getItem: () => { throw new Error('no'); } })).toEqual({ before: 0, ids: [] });
     expect(() => saveCleared({ before: 1, ids: [] }, { setItem: () => { throw new Error('no'); } })).not.toThrow();
+  });
+});
+
+// waitingOnYou and waitingText build the same cases twice: once in English
+// words, once as catalog keys. The bell reads them by position, so the two
+// must agree case for case and in the same order. A case added to one, dropped
+// from the other, or listed in a different order fails here.
+describe('the bell says what waits on you', () => {
+  const t = (key, params) => translate(en, key, params, new Intl.PluralRules('en'));
+
+  // One of every case at once, so the full order is exercised.
+  const everything = {
+    games: {
+      hades: { id: 'hades', name: 'Hades', emptied: { state: 'held' }, branches: { main: { snapshots: [{ id: 's1', problem: 'damaged' }] } } },
+      tunic: { id: 'tunic', name: 'Tunic', savePathMissing: true, saveDriveMissing: true, relocateSuggestion: 'E:\SteamLibrary\Tunic', branches: {} },
+      celeste: { id: 'celeste', name: 'Celeste', savePathMissing: true, branches: {} }
+    },
+    conflicts: { hades: {} },
+    locationConflicts: [{ gameId: 'hades', root: 'Saves' }],
+    pairingRequests: [{ peerId: 'p', deviceName: 'Steam Deck' }],
+    cloudOffers: [{ gameId: 'celeste', snapshotId: 's9', gameName: 'Celeste', deviceName: 'Laptop' }],
+    newGames: [{ name: 'Balatro' }],
+    update: { latest: '2.5.0', current: '2.4.0' }
+  };
+
+  // Which case a waitingText piece speaks for, read back from its keys.
+  const caseOfSaid = (piece) => {
+    if (piece.title.key === 'notifications.waiting.conflict') {
+      return piece.detail.key === 'notifications.waiting.locationDetail' ? 'location' : 'conflict';
+    }
+    return piece.title.key.slice('notifications.waiting.'.length);
+  };
+
+  it('lists the same cases, in the same order, as waitingOnYou', () => {
+    const listed = waitingOnYou(everything);
+    const said = waitingText(everything, t);
+    expect(said).toHaveLength(listed.length);
+    expect(said.map(caseOfSaid)).toEqual(listed.map((x) => x.id.split(':')[0]));
+    expect(listed.map((x) => x.id.split(':')[0])).toEqual([
+      'conflict', 'location', 'emptied', 'pair', 'offer', 'relocate', 'missing', 'damaged', 'new', 'update'
+    ]);
+  });
+
+  it('names every piece with a key the catalog has', () => {
+    for (const piece of waitingText(everything, t)) {
+      expect(en[piece.title.key], piece.title.key).toBeTruthy();
+      if (piece.detail.key) expect(en[piece.detail.key], piece.detail.key).toBeTruthy();
+    }
+  });
+
+  it('says nothing when nothing waits', () => {
+    expect(waitingText({}, t)).toEqual([]);
+    expect(waitingOnYou({})).toEqual([]);
   });
 });

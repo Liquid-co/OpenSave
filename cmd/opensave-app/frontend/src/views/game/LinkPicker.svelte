@@ -7,6 +7,7 @@
   import Search from 'lucide-svelte/icons/search';
   import CoverImage from '../../components/CoverImage.svelte';
   import { gameCover } from '../../lib/api.js';
+  import { t } from '../../lib/i18n.js';
 
   /** Games tracked here, other than this one. */
   export let localGames = [];
@@ -29,23 +30,23 @@
 {#if many}
   <label class="search">
     <Search size={14} />
-    <input type="search" placeholder="Find a game…" bind:value={query} aria-label="Find a game to link" />
+    <input type="search" placeholder={$t('game.link.findPlaceholder')} bind:value={query} aria-label={$t('game.link.findAria')} />
   </label>
 {/if}
 
-{#each [['On this device', 'Its entry here merges into this one', local, false], ['On your other devices', 'Nothing is removed on either device', remote, true]] as [title, note, list, onPeer]}
+{#each [['game.link.onThisDevice', 'game.link.onThisDeviceNote', local, false], ['game.link.onOtherDevices', 'game.link.onOtherDevicesNote', remote, true]] as [titleKey, noteKey, list, onPeer]}
   {#if list.length}
     <div class="group-head">
-      <span class="title">{title}</span><span class="note">{note}</span>
+      <span class="title">{$t(titleKey)}</span><span class="note">{$t(noteKey)}</span>
     </div>
-    <div class="grid" role="radiogroup" aria-label={title}>
+    <div class="grid" role="radiogroup" aria-label={$t(titleKey)}>
       {#each list as g (g.id + (g.peerName ?? ''))}
         <button
           class="card-pick"
           role="radio"
           aria-checked={selected === g.id}
           class:on={selected === g.id}
-          title={onPeer ? `${g.name} on ${g.peerName}` : `${g.name} — ${g.savePath}`}
+          title={onPeer ? $t('game.link.onPeerTitle', { name: g.name, peer: g.peerName }) : $t('game.link.localTitle', { name: g.name, path: g.savePath })}
           on:click={() => (selected = selected === g.id ? '' : g.id)}
         >
           <span class="cover">
@@ -61,7 +62,7 @@
   {/if}
 {/each}
 {#if many && local.length === 0 && remote.length === 0}
-  <p class="none">No game matches “{query}”.</p>
+  <p class="none">{$t('game.link.noMatches', { query })}</p>
 {/if}
 
 <style>

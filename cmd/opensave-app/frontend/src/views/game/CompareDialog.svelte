@@ -11,6 +11,7 @@
   import { api } from '../../lib/api.js';
   import { fmtSize } from '../../lib/format.js';
   import { snapshotKind, whenLabel } from '../../lib/snapshots.js';
+  import { t } from '../../lib/i18n.js';
 
   export let game;
   /** Every snapshot of the game, newest first. */
@@ -46,18 +47,18 @@
     c.change === 'changed' ? `${fmtSize(c.fromSize)} → ${fmtSize(c.toSize)}` : fmtSize(c.change === 'added' ? c.toSize : c.fromSize);
 </script>
 
-<Modal title="Compare snapshots" icon={GitCompareArrows} {onClose} width={640} height="auto" maxHeight="min(80vh, 680px)">
+<Modal title={$t('game.compare.title')} icon={GitCompareArrows} {onClose} width={640} height="auto" maxHeight="min(80vh, 680px)">
   <svelte:fragment slot="sub">{game.name}</svelte:fragment>
   <div class="body">
     <div class="pick">
       <label class="field">
-        <span>From</span>
+        <span>{$t('game.compare.from')}</span>
         <select bind:value={from}>
           {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
         </select>
       </label>
       <label class="field">
-        <span>To</span>
+        <span>{$t('game.compare.to')}</span>
         <select bind:value={to}>
           {#each snapshots as s (s.id)}<option value={s.id}>{label(s)}</option>{/each}
         </select>
@@ -65,21 +66,21 @@
     </div>
 
     {#if error}
-      <p class="quiet">Couldn't compare them: {error}</p>
+      <p class="quiet">{$t('game.compare.failed', { error })}</p>
     {:else if !result}
-      <p class="quiet"><Spinner size={13} /> Comparing…</p>
+      <p class="quiet"><Spinner size={13} /> {$t('game.compare.comparing')}</p>
     {:else if result.changes.length === 0}
-      <p class="quiet">{from === to ? 'The same snapshot.' : `No difference: the same ${result.unchanged} file${result.unchanged === 1 ? '' : 's'} in both.`}</p>
+      <p class="quiet">{from === to ? $t('game.compare.same') : $t('game.compare.noDiff', { n: result.unchanged })}</p>
     {:else}
       <p class="count" class:stale={loading}>
-        {result.changes.length} file{result.changes.length === 1 ? '' : 's'} differ{result.changes.length === 1 ? 's' : ''}{#if result.unchanged}, {result.unchanged} the same{/if}
+        {$t('game.compare.count', { n: result.changes.length })}{#if result.unchanged}{$t('game.compare.countSame', { n: result.unchanged })}{/if}
       </p>
       <ul class:stale={loading}>
         {#each result.changes as c (c.location + '/' + c.path)}
           <li class="change {c.change}">
             <svelte:component this={icons[c.change]} size={14} />
             <span class="path" title={c.path}>{c.location ? `${c.location}/` : ''}{c.path}</span>
-            <span class="kind">{c.change}</span>
+            <span class="kind">{$t('game.compare.' + c.change)}</span>
             <span class="sizes">{sizes(c)}</span>
           </li>
         {/each}

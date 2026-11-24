@@ -54,3 +54,9 @@ func (s *Server) handleAnswerGameDBLink(w http.ResponseWriter, r *http.Request) 
 	s.BroadcastGamesUpdate()
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
+
+// GET /api/gamedb/running — the games the game database knows with a program
+// running now.
+func (s *Server) handleGameDBRunning(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"games": s.Daemon.RunningGames()})
+}

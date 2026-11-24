@@ -3,9 +3,9 @@
   // files; "overwrite" restores every save in the file onto disk — the daemon
   // takes safety copies of anything it replaces. Fires `close`.
   import { createEventDispatcher, onDestroy } from 'svelte';
-  import { plural } from '../../lib/format.js';
   import { toast, backupProgressEvent } from '../../lib/stores.js';
   import { api } from '../../lib/api.js';
+  import { t } from '../../lib/i18n.js';
   import Modal from '../../components/ui/Modal.svelte';
   import PackageOpen from 'lucide-svelte/icons/package-open';
   import ModalFoot from '../../components/ui/ModalFoot.svelte';
@@ -32,13 +32,13 @@
     try {
       const res = await api.post('/api/backup/restore', { sourcePath: source, mode });
       if (res.legacy) {
-        toast(`Imported ${plural(res.imported, 'snapshot')}, skipped ${res.skipped}`, 'success');
+        toast($t('cloud.import.legacyResult', { n: res.imported, skipped: res.skipped }), 'success');
       } else {
         const bits = [];
-        if (res.restored) bits.push(`${res.restored} restored`);
-        if (res.snapshots) bits.push(`${res.snapshots} added to snapshots`);
-        if (res.skipped) bits.push(`${res.skipped} skipped`);
-        toast(`Import finished: ${bits.join(', ') || 'nothing imported'} — details in Activity`, res.skipped ? 'info' : 'success');
+        if (res.restored) bits.push($t('cloud.import.restoredBits', { n: res.restored }));
+        if (res.snapshots) bits.push($t('cloud.import.addedBits', { n: res.snapshots }));
+        if (res.skipped) bits.push($t('cloud.import.skippedBits', { n: res.skipped }));
+        toast($t('cloud.import.finished', { details: bits.join(', ') || $t('cloud.import.nothing') }), res.skipped ? 'info' : 'success');
       }
       close();
     } catch (e) {
@@ -51,30 +51,25 @@
 
 <!-- Two choices and a footer don't need the full browser-modal height —
      sized to content so the dialog doesn't look hollow. -->
-<Modal title="Import backup" icon={PackageOpen} onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
+<Modal title={$t('cloud.import.title')} icon={PackageOpen} onClose={close} closable={!importing} width={560} height="auto" maxHeight="min(78vh, 720px)">
   <svelte:fragment slot="sub"><code>{source}</code></svelte:fragment>
 
   <div class="modes">
     <label class="mode" class:selected={mode === 'snapshots'}>
       <input type="radio" bind:group={mode} value="snapshots" />
       <div>
-        <div class="mode-title">Add to snapshots <span class="badge online">recommended</span></div>
+        <div class="mode-title">{$t('cloud.import.addToSnapshots')} <span class="badge online">{$t('cloud.import.recommended')}</span></div>
         <p class="quiet">
-          Each save in the file is added to its game's snapshot history. Nothing on disk
-          changes — restore individual games whenever you choose. Games not tracked on this
-          machine are reported in Activity and skipped.
+          {$t('cloud.import.snapshotsDesc')}
         </p>
       </div>
     </label>
     <label class="mode danger-mode" class:selected={mode === 'overwrite'}>
       <input type="radio" bind:group={mode} value="overwrite" />
       <div>
-        <div class="mode-title">Overwrite current saves</div>
+        <div class="mode-title">{$t('cloud.import.overwriteTitle')}</div>
         <p class="quiet">
-          Every save in the file is written to its location on this machine — tracked games to
-          their tracked folder, others to the path recorded in the backup. A safety copy of
-          whatever is there now is taken first. Check Activity afterwards for exactly what was
-          restored where.
+          {$t('cloud.import.overwriteDesc')}
         </p>
       </div>
     </label>
@@ -82,16 +77,16 @@
 
   {#if importing && prog}
     <ProgressBar done={prog.done} total={prog.total}>
-      Importing {Math.min(prog.done + 1, prog.total)} of {prog.total}
+      {$t('cloud.import.progress', { done: Math.min(prog.done + 1, prog.total), total: prog.total })}
       {#if prog.current}&nbsp;— <code>{prog.current}</code>{/if}
     </ProgressBar>
   {/if}
   <ModalFoot>
-    <span class="quiet">Nothing is ever overwritten without a safety copy.</span>
+    <span class="quiet">{$t('cloud.import.safetyNote')}</span>
     <div class="actions">
-      <button class="btn" disabled={importing} on:click={close}>Cancel</button>
+      <button class="btn" disabled={importing} on:click={close}>{$t('common.cancel')}</button>
       <button class="btn {mode === 'overwrite' ? 'danger' : 'primary'}" disabled={importing} on:click={run}>
-        {importing ? 'Importing…' : mode === 'overwrite' ? 'Overwrite saves' : 'Add to snapshots'}
+        {importing ? $t('cloud.import.importing') : mode === 'overwrite' ? $t('cloud.import.overwriteBtn') : $t('cloud.import.addToSnapshots')}
       </button>
     </div>
   </ModalFoot>

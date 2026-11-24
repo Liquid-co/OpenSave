@@ -76,11 +76,15 @@ type Engine struct {
 	// on this device (presets.Scanner.SwitchSaveFolder). Wired by the daemon.
 	// May be nil.
 	SwitchSaveFolder func(titleID, translated string) string
-	// KnownSaveLocation reports whether a folder is one this device's own
-	// scanner recognises as a save folder: the only kind a game arriving
-	// from a peer may be tracked at without the user's say-so (see
+	// KnownSaveLocation reports whether a folder is one this device can
+	// vouch for as the named game's save folder: the only kind a game
+	// arriving from a peer may be tracked at without the user's say-so (see
 	// ensureManifestGame). Wired by the daemon; nil knows of nothing.
-	KnownSaveLocation func(path string) bool
+	KnownSaveLocation func(name, appID, path string) bool
+	// OnGameOffered runs when a peer's game is offered rather than tracked,
+	// so the daemon can look for its folder now instead of at the next
+	// hourly scan. Wired by the daemon; may be nil.
+	OnGameOffered func()
 
 	// Failsafe: games whose last sync was interrupted (network error mid-
 	// transfer) are queued here and retried automatically, no prompt, until

@@ -7,6 +7,7 @@
   // how "I added the app ID but it doesn't do anything" gets asked.
   import { onDestroy } from 'svelte';
   import { api } from '../../lib/api.js';
+  import { t } from '../../lib/i18n.js';
   import MoreInfo from '../../components/ui/MoreInfo.svelte';
   import CircleCheck from 'lucide-svelte/icons/circle-check';
 
@@ -55,32 +56,27 @@
 </script>
 
 <div class="field">
-  <label for="c-appid">Steam App ID</label>
-  <input id="c-appid" placeholder="e.g. 1091500" bind:value />
+  <label for="c-appid">{$t('game.appId.label')}</label>
+  <input id="c-appid" placeholder={$t('game.appId.placeholder')} bind:value />
   <span class="hint">
-    The number in the game's Steam store URL. Used to launch it and fetch its cover art.
+    {$t('game.appId.hint')}
     <MoreInfo>
-      With “Match games by Steam App ID” turned on in Settings, it also lets this game sync
-      with a copy tracked under a different name on another device. Filled in automatically
-      when it can be worked out; a save under <code>AppData</code> often has nothing to work
-      it out from, so you can set it here.
+      {$t('game.appId.moreInfo1')}<code>AppData</code>{$t('game.appId.moreInfo2')}
     </MoreInfo>
   </span>
   {#if error}<span class="hint hint-error">{error}</span>{/if}
   {#if check?.state === 'checking'}
-    <span class="hint appid-check">Checking with Steam…</span>
+    <span class="hint appid-check">{$t('game.appId.checking')}</span>
   {:else if check?.state === 'found'}
-    <span class="hint appid-check ok"><CircleCheck size={13} class="inline-icon" />Steam: <strong>{check.name}</strong></span>
+    <span class="hint appid-check ok"><CircleCheck size={13} class="inline-icon" />{$t('game.appId.foundPrefix')} <strong>{check.name}</strong></span>
   {:else if check?.state === 'unknown'}
     <span class="hint appid-check warn">
-      No Steam game has this App ID. It's the number in the store page address —
-      <code>store.steampowered.com/app/<strong>1091500</strong>/…</code> — not the one
-      from another store.
+      {$t('game.appId.unknown1')}
+      <code>store.steampowered.com/app/<strong>1091500</strong>/…</code>{$t('game.appId.unknown2')}
     </span>
   {:else if check?.state === 'unreachable'}
     <span class="hint appid-check warn">
-      Couldn't reach Steam to check this number. If Steam's store or CDN is blocked on
-      this network, cover art won't load here either — the ID itself may well be right.
+      {$t('game.appId.unreachable')}
     </span>
   {/if}
 </div>

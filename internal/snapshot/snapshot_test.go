@@ -502,12 +502,13 @@ func TestCleanupSweepsAbandonedConflictBranches(t *testing.T) {
 // on demand.
 func TestCreateSnapshotsWithinOneMillisecond(t *testing.T) {
 	env := setup(t)
+	burstDir := t.TempDir()
 
 	// A separate game with generous retention: game1 keeps only 3, and
 	// pruning frees an id that the next snapshot may legitimately reuse,
 	// which would measure retention rather than collision handling.
 	if err := env.store.CreateGame(store.Game{
-		ID: "burst", Name: "Burst", SavePath: env.saveDir, MaxSnapshots: 50,
+		ID: "burst", Name: "Burst", SavePath: burstDir, MaxSnapshots: 50,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +518,7 @@ func TestCreateSnapshotsWithinOneMillisecond(t *testing.T) {
 	frozen := time.Now()
 	env.mgr.now = func() time.Time { return frozen }
 
-	writeSave(t, env.saveDir, "slot1.sav", "one")
+	writeSave(t, burstDir, "slot1.sav", "one")
 
 	ids := map[string]bool{}
 	for i := 0; i < 5; i++ {
@@ -551,12 +552,13 @@ func TestCreateSnapshotsWithinOneMillisecond(t *testing.T) {
 // so the collision survived a fix that only checked for a free id first.
 func TestConcurrentSnapshotsInOneMillisecond(t *testing.T) {
 	env := setup(t)
+	raceDir := t.TempDir()
 	if err := env.store.CreateGame(store.Game{
-		ID: "race", Name: "Race", SavePath: env.saveDir, MaxSnapshots: 100,
+		ID: "race", Name: "Race", SavePath: raceDir, MaxSnapshots: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	writeSave(t, env.saveDir, "slot1.sav", "one")
+	writeSave(t, raceDir, "slot1.sav", "one")
 
 	frozen := time.Now()
 	env.mgr.now = func() time.Time { return frozen }
