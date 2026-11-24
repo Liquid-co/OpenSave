@@ -75,6 +75,7 @@ var commandGroups = []commandGroup{
 		{"verify [<gameId>] [--repair|--remove-damaged]", "Check every snapshot can still be restored; repair from the cloud, or remove what cannot be"},
 		{"emptied [<gameId> delete|restore]", "Saves emptied here, held back from your other devices; answer for one"},
 		{"relocate <gameId> use|dismiss", "A missing save folder found on another drive here: use it, or not"},
+		{"settings <gameId> keep|sync <file>", "A file that may be this device's settings: keep it here, or keep syncing it"},
 		{"files <gameId> <snapId> [path]", "List a snapshot's contents, or restore one file"},
 		{"export <gameId> <dir>", "Copy the current save out to a folder"},
 		{"backup export <file.sscb>", "Write a portable backup archive"},
