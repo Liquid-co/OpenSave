@@ -227,9 +227,11 @@ func TestSync_PullNewRemoteFile(t *testing.T) {
 	if len(env.transport.syncEvents) == 0 || env.transport.syncEvents[0] != "sync-start" {
 		t.Errorf("expected sync-start event first, got %v", env.transport.syncEvents)
 	}
-	last := env.transport.syncEvents[len(env.transport.syncEvents)-1]
-	if last != "sync-complete" {
-		t.Errorf("expected sync-complete last, got %v", env.transport.syncEvents)
+	// sync-complete ends the progress; after a pure pull the peer is then told
+	// which state this side now holds (NotePeerHolds).
+	evs := env.transport.syncEvents
+	if len(evs) < 2 || evs[len(evs)-2] != "sync-complete" || evs[len(evs)-1] != "agreed" {
+		t.Errorf("expected sync-complete then agreed last, got %v", evs)
 	}
 }
 
