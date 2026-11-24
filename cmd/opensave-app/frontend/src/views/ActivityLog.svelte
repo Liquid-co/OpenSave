@@ -7,6 +7,7 @@
   import X from 'lucide-svelte/icons/x';
   import { logEntries, gameList, navigate, toast } from '../lib/stores.js';
   import { asText, feedByDay, filterEntries, linkGames } from '../lib/activity.js';
+  import { t as i18n } from '../lib/i18n.js';
   import SearchInput from '../components/ui/SearchInput.svelte';
   import FilterTabs from '../components/ui/FilterTabs.svelte';
   import Timeline from './activity/Timeline.svelte';
@@ -49,9 +50,9 @@
   async function copyShown() {
     try {
       await navigator.clipboard.writeText(asText(shown));
-      toast(`Copied ${shown.length} ${shown.length === 1 ? 'entry' : 'entries'}`, 'success');
+      toast($i18n('activity.copiedEntries', { n: shown.length }), 'success');
     } catch (e) {
-      toast(`Could not copy: ${e.message}`, 'error');
+      toast($i18n('activity.copyFailed', { error: e.message }), 'error');
     }
   }
 
@@ -68,26 +69,26 @@
 
 <div class="head">
   <div class="title-row">
-    <h2 class="page-title">Activity</h2>
-    <div class="segmented" role="tablist" aria-label="Activity view" use:slidingIndicator={{ mode: 'fill' }}>
-      <button role="tab" aria-selected={view === 'timeline'} class:on={view === 'timeline'} on:click={() => (view = 'timeline')}>Timeline</button>
-      <button role="tab" aria-selected={view === 'log'} class:on={view === 'log'} on:click={() => (view = 'log')}>Log</button>
+    <h2 class="page-title">{$i18n('sidebar.nav.activity')}</h2>
+    <div class="segmented" role="tablist" aria-label={$i18n('activity.viewAria')} use:slidingIndicator={{ mode: 'fill' }}>
+      <button role="tab" aria-selected={view === 'timeline'} class:on={view === 'timeline'} on:click={() => (view = 'timeline')}>{$i18n('activity.tabTimeline')}</button>
+      <button role="tab" aria-selected={view === 'log'} class:on={view === 'log'} on:click={() => (view = 'log')}>{$i18n('activity.tabLog')}</button>
     </div>
   </div>
   {#if view === 'log'}
   <div class="controls">
     <FilterTabs
-      options={[['highlights', 'Highlights'], ['all', 'Everything'], ['problems', 'Problems']]}
+      options={[['highlights', $i18n('activity.filterHighlights')], ['all', $i18n('activity.filterAll')], ['problems', $i18n('activity.filterProblems')]]}
       counts={{ problems: problemCount }}
       bind:value={show}
     />
-    <SearchInput placeholder="Search activity…" bind:value={query} />
-    <label class="toggle" title="Every entry exactly as logged, oldest first — what a bug report wants">
+    <SearchInput placeholder={$i18n('activity.searchPlaceholder')} bind:value={query} />
+    <label class="toggle" title={$i18n('activity.technicalTitle')}>
       <input type="checkbox" bind:checked={technical} />
-      Technical log
+      {$i18n('activity.technicalLog')}
     </label>
-    <button class="btn small" disabled={shown.length === 0} on:click={copyShown} title="Copy what is shown, for a bug report">
-      Copy
+    <button class="btn small" disabled={shown.length === 0} on:click={copyShown} title={$i18n('activity.copyTitle')}>
+      {$i18n('common.copy')}
     </button>
   </div>
   {/if}
@@ -96,10 +97,10 @@
 {#if view === 'timeline'}
   <Timeline />
 {:else if $logEntries.length === 0}
-  <div class="card"><div class="empty"><h3>Nothing yet</h3><p>Syncs, snapshots and anything that needs your attention show up here.</p></div></div>
+  <div class="card"><div class="empty"><h3>{$i18n('activity.emptyTitle')}</h3><p>{$i18n('activity.emptyBody')}</p></div></div>
 {:else if shown.length === 0}
-  <div class="card"><div class="empty"><h3>Nothing matches</h3><p>
-        {#if query}Try another search.{:else if show === 'problems'}No warnings or errors — all quiet.{:else}Nothing but routine so far — <button class="linklike" on:click={() => (show = 'all')}>show everything</button>.{/if}
+  <div class="card"><div class="empty"><h3>{$i18n('activity.noMatchTitle')}</h3><p>
+        {#if query}{$i18n('activity.tryAnotherSearch')}{:else if show === 'problems'}{$i18n('activity.allQuiet')}{:else}{$i18n('activity.routineBefore')}<button class="linklike" on:click={() => (show = 'all')}>{$i18n('activity.routineLink')}</button>{$i18n('activity.routineAfter')}{/if}
       </p></div></div>
 {:else if technical}
   <div class="card log" use:autoscroll={shown.length}>

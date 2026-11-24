@@ -26,13 +26,18 @@ type Snapshot struct {
 	// if it was not (migration 0032; internal/snapshot/verify.go).
 	CheckedMs int64  `db:"checked_ms" json:"checkedMs"`
 	Problem   string `db:"problem" json:"problem"`
+	// Safety marks a copy kept before the save was replaced — by a restore,
+	// a sync, a conflict, a branch switch (migration 0045). It is automatic
+	// too, but budgeted apart from the automatic history; see
+	// SnapshotsBeyondRetentionByKind.
+	Safety bool `db:"safety" json:"safety"`
 }
 
 // CreateSnapshot inserts a new snapshot record.
 func (s *Store) CreateSnapshot(snap Snapshot) error {
 	_, err := s.db.NamedExec(`
-		INSERT INTO snapshots (id, game_id, branch_name, timestamp, comment, is_system_auto, zip_path, size_bytes)
-		VALUES (:id, :game_id, :branch_name, :timestamp, :comment, :is_system_auto, :zip_path, :size_bytes)`,
+		INSERT INTO snapshots (id, game_id, branch_name, timestamp, comment, is_system_auto, zip_path, size_bytes, safety)
+		VALUES (:id, :game_id, :branch_name, :timestamp, :comment, :is_system_auto, :zip_path, :size_bytes, :safety)`,
 		snap)
 	if err != nil {
 		return fmt.Errorf("create snapshot %s: %w", snap.ID, err)
@@ -124,8 +129,14 @@ func (s *Store) BranchHasPinned(gameID, branchName string) (bool, error) {
 // precisely when it is wanted. Counting the two kinds independently means a
 // burst of auto-saves can only ever evict other auto-saves.
 //
+// Safety copies — kept before a restore, a sync or a conflict replaced the
+// save — are a third kind with a budget of their own (SafetySnapshotLimit).
+// Counted as automatic, they let a device that syncs often, or a run of
+// restores, push the real history out with copies of saves on their way out.
+//
 // Either limit at 0 or below keeps that kind entirely, matching the
-// convention used by the per-game limit elsewhere.
+// convention used by the per-game limit elsewhere; the safety budget follows
+// the automatic one there.
 //
 // Pinned snapshots are outside both budgets: never returned, and not counted
 // either, so pinning one keeps it without costing the unpinned ones a place.
@@ -134,12 +145,14 @@ func (s *Store) SnapshotsBeyondRetentionByKind(gameID, branchName string, maxAut
 	if err != nil {
 		return nil, err
 	}
-	var auto, manual []Snapshot
+	var auto, manual, safety []Snapshot
 	for _, snap := range all {
 		if snap.Pinned {
 			continue
 		}
-		if snap.IsSystemAuto {
+		if snap.Safety {
+			safety = append(safety, snap)
+		} else if snap.IsSystemAuto {
 			auto = append(auto, snap)
 		} else {
 			manual = append(manual, snap)
@@ -153,5 +166,25 @@ func (s *Store) SnapshotsBeyondRetentionByKind(gameID, branchName string, maxAut
 	if maxManual > 0 && len(manual) > maxManual {
 		beyond = append(beyond, manual[maxManual:]...)
 	}
+	if maxSafety := SafetySnapshotLimit(maxAuto); maxSafety > 0 && len(safety) > maxSafety {
+		beyond = append(beyond, safety[maxSafety:]...)
+	}
 	return beyond, nil
+}
+
+// maxSafetySnapshots is how many safety copies a branch keeps at most. A few
+// is what they are for: the newest is the way back from a restore or a sync
+// that went wrong, and one from a dozen replacements ago is history the
+// automatic snapshots already hold.
+const maxSafetySnapshots = 5
+
+// SafetySnapshotLimit is the per-branch budget for safety copies, given the
+// game's automatic limit: a few, never more than the automatic limit itself
+// (someone who keeps only two automatic snapshots to save disk did not ask
+// for five of these), and unlimited when the automatic limit is.
+func SafetySnapshotLimit(maxAuto int) int {
+	if maxAuto <= 0 {
+		return 0
+	}
+	return min(maxAuto, maxSafetySnapshots)
 }

@@ -174,7 +174,7 @@ func (m *Manager) CreateAutomatic(gameID string) (store.Snapshot, error) {
 	if err != nil {
 		return store.Snapshot{}, err
 	}
-	return m.createOnBranchFrom(gameID, game.ActiveBranch, "", "", true, true, true)
+	return m.createOnBranchFrom(gameID, game.ActiveBranch, "", "", true, true, true, false)
 }
 
 // CreateBeforeReplacing keeps a copy of a save that is about to be replaced —
@@ -185,12 +185,16 @@ func (m *Manager) CreateAutomatic(gameID string) (store.Snapshot, error) {
 // which is what OnCreated's current flag tells the cloud mirror. Taken with
 // Create, the copy was the newest snapshot a device had, and another device
 // reading the mirror would have been offered the old save under a new date.
+//
+// It is also kept as a safety copy (store.Snapshot.Safety), budgeted apart
+// from the automatic history: taken on every sync that replaces a file and
+// every restore, these would otherwise be what pushes that history out.
 func (m *Manager) CreateBeforeReplacing(gameID, comment string) (store.Snapshot, error) {
 	game, err := m.Store.GetGame(gameID)
 	if err != nil {
 		return store.Snapshot{}, err
 	}
-	return m.createOnBranch(gameID, game.ActiveBranch, comment, true, false)
+	return m.createOnBranchFrom(gameID, game.ActiveBranch, "", comment, true, false, false, true)
 }
 
 // createOnBranch snapshots the current save state onto a named branch, which
@@ -201,7 +205,7 @@ func (m *Manager) CreateBeforeReplacing(gameID, comment string) (store.Snapshot,
 // current reports whether the snapshot is of the save as it now stands and
 // will go on standing, as opposed to a copy kept before replacing it.
 func (m *Manager) createOnBranch(gameID, branch, comment string, isSystemAuto, current bool) (store.Snapshot, error) {
-	return m.createOnBranchFrom(gameID, branch, "", comment, isSystemAuto, current, false)
+	return m.createOnBranchFrom(gameID, branch, "", comment, isSystemAuto, current, false, false)
 }
 
 // CreateOnBranchFrom snapshots a folder that is not the game's save onto one
@@ -217,13 +221,13 @@ func (m *Manager) CreateOnBranchFrom(gameID, branch, dir, comment string) (store
 	if dir == "" {
 		return store.Snapshot{}, errors.New("no folder to snapshot")
 	}
-	return m.createOnBranchFrom(gameID, branch, dir, comment, true, false, false)
+	return m.createOnBranchFrom(gameID, branch, dir, comment, true, false, false, false)
 }
 
 // createOnBranchFrom is createOnBranch with the folder to archive given: ""
 // for the game's own save locations, as always. discardIncomplete is for
-// CreateAutomatic alone.
-func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSystemAuto, current, discardIncomplete bool) (store.Snapshot, error) {
+// CreateAutomatic alone, safety for CreateBeforeReplacing.
+func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSystemAuto, current, discardIncomplete, safety bool) (store.Snapshot, error) {
 	m.inFlight.Add()
 	defer m.inFlight.Done()
 
@@ -305,7 +309,7 @@ func (m *Manager) createOnBranchFrom(gameID, branch, from, comment string, isSys
 		}
 	}
 
-	snap, zipPath, err := m.claimAndInsert(gameID, branch, backupDir, stagingPath, comment, isSystemAuto)
+	snap, zipPath, err := m.claimAndInsert(gameID, branch, backupDir, stagingPath, comment, isSystemAuto, safety)
 	if err != nil {
 		return store.Snapshot{}, err
 	}
@@ -410,7 +414,7 @@ func zipFileCount(zipPath string) (int, error) {
 // Walking forward a millisecond keeps the id numeric, which snapIDToTimestamp
 // relies on to read the time back out of it. Being a millisecond out is
 // meaningless; not existing is not.
-func (m *Manager) claimAndInsert(gameID, branch, backupDir, stagingPath, comment string, isSystemAuto bool) (store.Snapshot, string, error) {
+func (m *Manager) claimAndInsert(gameID, branch, backupDir, stagingPath, comment string, isSystemAuto, safety bool) (store.Snapshot, string, error) {
 	info, err := os.Stat(stagingPath)
 	if err != nil {
 		return store.Snapshot{}, "", err
@@ -442,6 +446,7 @@ func (m *Manager) claimAndInsert(gameID, branch, backupDir, stagingPath, comment
 			IsSystemAuto: isSystemAuto,
 			ZipPath:      zipPath,
 			SizeBytes:    size,
+			Safety:       safety,
 		}
 		if err := m.Store.CreateSnapshot(snap); err != nil {
 			// Put the archive back under the staging name either way, so the
@@ -474,7 +479,7 @@ func (m *Manager) claimAndInsert(gameID, branch, backupDir, stagingPath, comment
 // held, or one the manager had moved ahead to, and then recorded nothing
 // while its archive replaced that snapshot's own (GitHub #89).
 func (m *Manager) AdoptArchive(gameID, branch, backupDir, stagingPath, comment string) (store.Snapshot, error) {
-	snap, _, err := m.claimAndInsert(gameID, branch, backupDir, stagingPath, comment, true)
+	snap, _, err := m.claimAndInsert(gameID, branch, backupDir, stagingPath, comment, true, false)
 	return snap, err
 }
 

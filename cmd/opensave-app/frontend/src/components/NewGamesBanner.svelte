@@ -73,7 +73,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 13px 16px;
+    padding: 10px 14px;
     background: var(--bg-raised);
     border: 1px solid var(--accent);
     border-radius: var(--radius-lg);
@@ -89,8 +89,14 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
+  /* The buttons go under the text when a narrow window leaves the text
+     too little room beside them. */
+  .new-card {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
   .new-body {
-    flex: 1;
+    flex: 1 1 320px;
     min-width: 0;
   }
   .new-title {
@@ -101,10 +107,12 @@
     color: var(--text-faint);
     margin-top: 2px;
   }
+  /* Side by side: stacked, the two buttons made the card twice the height
+     of its text. */
   .new-actions {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+    margin-left: auto;
     flex-shrink: 0;
   }
 </style>

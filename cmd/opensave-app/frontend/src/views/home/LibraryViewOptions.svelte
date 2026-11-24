@@ -24,7 +24,7 @@
           <span class="mini {id}" aria-hidden="true">
             {#each Array(id === 'wide' ? 3 : 5) as _}<span></span>{/each}
           </span>
-          <span class="style-name">{style.label}</span>
+          <span class="style-name">{$t('libraryView.cover.' + id)}</span>
         </button>
       {/each}
     </div>
@@ -43,13 +43,13 @@
     <div class="group">
       <span class="label">{$t('home.viewOptions.tileSize')}</span>
       <div class="segmented" class:off={$libraryView.columns !== 'auto'} use:slidingIndicator={{ mode: 'fill' }}>
-        {#each Object.entries(TILE_SIZES) as [id, label]}
+        {#each Object.entries(TILE_SIZES) as [id]}
           <button
             class:on={$libraryView.size === id}
             disabled={$libraryView.columns !== 'auto'}
             on:click={() => set({ size: id })}
           >
-            {label}
+            {$t('libraryView.tile.' + id)}
           </button>
         {/each}
       </div>

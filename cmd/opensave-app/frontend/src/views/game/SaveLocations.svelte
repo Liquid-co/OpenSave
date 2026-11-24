@@ -8,6 +8,7 @@
   // what makes that dangerous.
   import { api, native } from '../../lib/api.js';
   import { withUndo, hiddenKeys } from '../../lib/undo.js';
+  import { t } from '../../lib/i18n.js';
 
   export let game;
   export let runner;
@@ -29,9 +30,9 @@
   async function pick(name) {
     const label = String(name ?? '').trim();
     if (!label || $busy) return;
-    const dir = await native.selectDirectory(`Folder for “${label}” — ${game.name}`);
+    const dir = await native.selectDirectory($t('game.locations.folderFor', { label, game: game.name }));
     if (!dir) return;
-    await run(`“${label}” now covered`, async () => {
+    await run($t('game.locations.nowCovered', { label }), async () => {
       await api.post(`/api/games/${game.id}/roots`, { name: label, path: dir });
       newLocation = '';
       await load();
@@ -43,7 +44,7 @@
   const keyOf = (name) => `root:${game.id}:${name}`;
   function remove(name) {
     withUndo({
-      message: `The “${name}” folder is no longer covered. Its files are left where they are.`,
+      message: $t('game.locations.removedUndo', { name }),
       keys: [keyOf(name)],
       stillThere: () => locations.some((l) => l.name === name),
       run: async () => {
@@ -56,14 +57,12 @@
 </script>
 
 <div class="section">
-  <h4>Save locations</h4>
+  <h4>{$t('game.locations.title')}</h4>
   <p class="hint">
-    Some games keep their save split across more than one folder — the save data in one
-    place, settings or mods in another. Add each extra folder here and it is synced,
-    snapshotted and restored along with the main one.
+    {$t('game.locations.hint')}
   </p>
   <div class="row">
-    <span class="name">main save</span>
+    <span class="name">{$t('game.locations.mainSave')}</span>
     <span class="path" title={game.savePath}>{game.savePath}</span>
   </div>
   {#each shownLocations as loc (loc.name)}
@@ -73,27 +72,25 @@
         <span class="path" title={loc.path}>{loc.path}</span>
       {:else}
         <span class="path missing">
-          no folder on this device — this location isn't being synced
+          {$t('game.locations.noFolder')}
         </span>
       {/if}
       <button class="btn small" disabled={$busy} on:click={() => pick(loc.name)}>
-        {loc.mapped ? 'Change' : 'Choose folder'}
+        {loc.mapped ? $t('game.locations.change') : $t('game.locations.chooseFolder')}
       </button>
       <button class="btn small danger" disabled={$busy} on:click={() => remove(loc.name)}>
-        Remove
+        {$t('game.locations.remove')}
       </button>
     </div>
   {/each}
   <div class="add">
-    <input placeholder="Name for the folder (e.g. config)" bind:value={newLocation} />
+    <input placeholder={$t('game.locations.namePlaceholder')} bind:value={newLocation} />
     <button class="btn" disabled={!newLocation || $busy} on:click={() => pick(newLocation)}>
-      + Add a folder
+      {$t('game.locations.addFolder')}
     </button>
   </div>
   <span class="hint">
-    Give the same <strong>name</strong> on your other devices — that is what the two
-    sides match on, since the folder lives somewhere different on each machine. Removing
-    a location here never deletes its files.
+    {$t('game.locations.matchHint1')}<strong>{$t('game.locations.name')}</strong>{$t('game.locations.matchHint2')}
   </span>
 </div>
 

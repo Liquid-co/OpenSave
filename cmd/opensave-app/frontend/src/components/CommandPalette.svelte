@@ -16,6 +16,17 @@
   import { t } from '../lib/i18n.js';
   import { rank, snapshotEntries } from '../lib/palette.js';
 
+  // Page names, from the same keys the sidebar shows them by. PAGES in
+  // lib/shortcuts.js carries its labels in English; the ids map here.
+  const PAGE_LABEL_KEYS = {
+    home: 'home.title',
+    devices: 'home.devices',
+    cloud: 'home.cloudBackup',
+    activity: 'sidebar.nav.activity',
+    settings: 'sidebar.nav.settings',
+    changelog: 'about.changelog'
+  };
+
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
 
@@ -29,7 +40,7 @@
   const isDark = () => resolvedTheme($appearance.theme, globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true) === 'dark';
 
   $: entries = [
-    ...PAGES.map((p) => ({ label: $t('palette.goTo', { page: p.label }), kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
+    ...PAGES.map((p) => ({ label: $t('palette.goTo', { page: $t(PAGE_LABEL_KEYS[p.id]) }), kind: 'Page', idle: true, keywords: [p.id], run: () => navigate(p.id) })),
     { label: $t('palette.syncAll'), kind: 'Action', idle: true, run: syncAll },
     { label: $t('palette.snapshotAll'), kind: 'Action', idle: true, keywords: ['backup', 'save', 'all'], run: snapshotAll },
     { label: $t('home.welcome.scanForSaves'), kind: 'Action', idle: true, keywords: ['find', 'detect', 'auto-scan'], run: () => navigate('home', { scan: Date.now() }) },

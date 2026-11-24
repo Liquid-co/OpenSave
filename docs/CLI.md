@@ -37,9 +37,10 @@ The **daemon** is the background process that watches save folders, talks to
 peers and serves the local API. The desktop app runs one; on a headless box you
 run one yourself.
 
-- **Needs a daemon** — anything about live state: `sync`, `peers`, `pair`,
-  `relay`, `conflicts`, `resolve`, `cloud`, `daemon status`, `probe`, `launch`,
-  `prune`, `files`, `backup`.
+- **Needs a daemon** — anything about live state: `sync`, `pause`, `resume`,
+  `transfers`, `peers`, `pair`, `relay`, `conflicts`, `resolve`, `offers`,
+  `relocate`, `cloud`, `daemon status`, `probe`, `launch`, `wrap`, `prune`,
+  `files`, `backup`.
   Without one you get: *the OpenSave daemon isn't reachable at … — start it
   with `opensave daemon start`*.
 - **Works either way** — anything that only touches local data: `scan`, `add`,
@@ -198,7 +199,61 @@ save lands on a separate branch, so nothing is discarded while you work out
 which you wanted.
 
 Auto-sync means you rarely need `sync` by hand; it is there for when you want
-to be sure before shutting a machine down.
+to be sure before shutting a machine down. `sync` says what happened with each
+game: synced, already in sync, or why not — another device is playing it, has
+syncing paused, or is waiting for a folder.
+
+```bash
+opensave pause 30m                     # stop syncing for a while (or until resumed)
+opensave resume                        # start again and catch up
+opensave transfers                     # what is moving between devices now
+opensave activity elden-ring           # what happened to a save lately
+opensave sessions                      # when games were played here, and for how long
+opensave rename elden-ring "Elden Ring (main)"   # what this device calls it
+```
+
+Pausing still takes snapshots. Renaming changes only the name shown here; the
+game's ID, and how it syncs, stay as they are.
+
+## Task: games from your other devices
+
+When another device syncs a game this one doesn't have, OpenSave sets it up by
+itself only in a folder it recognises as that game's save folder here.
+Anywhere else, the game is **offered**, and you choose the folder:
+
+```bash
+opensave offers                                     # what is waiting for a folder
+opensave offers place elden-ring "D:/Saves/Elden Ring"
+opensave offers decline elden-ring                  # not offered again
+```
+
+For a device that is yours, you can let it choose folders here instead:
+
+```bash
+opensave peers trust <peerId> on     # off to take it back
+```
+
+Only do that for your own devices: its games then go in the folder it names.
+
+## Task: when a save goes missing
+
+If every save file of a game is deleted on this device, OpenSave holds that
+back instead of deleting the files on your other devices too, and asks:
+
+```bash
+opensave emptied                       # what is held back
+opensave emptied elden-ring restore    # put the files back here
+opensave emptied elden-ring delete     # it was meant: delete them everywhere
+```
+
+If a game's save folder is missing and the same path exists on another drive
+here — a renamed drive letter, a card in a different slot — it is offered, never
+switched to by itself:
+
+```bash
+opensave relocate elden-ring use       # use that folder
+opensave relocate elden-ring dismiss   # not that one
+```
 
 ## Task: snapshots and going back
 
@@ -209,6 +264,16 @@ opensave rollback elden-ring snap_1730000000000
 ```
 
 Rolling back snapshots your current save first, so it is always reversible.
+
+How much space they take, and whether they can all still be restored:
+
+```bash
+opensave storage                       # space per game, the biggest snapshots
+opensave storage --compact             # have older snapshots share unchanged files
+opensave verify                        # check every snapshot can be restored
+opensave verify --repair               # put damaged ones back from the cloud copy
+opensave verify --remove-damaged       # remove those that cannot be restored
+```
 
 One file rather than the lot:
 

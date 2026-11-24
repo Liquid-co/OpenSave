@@ -8,8 +8,9 @@
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import { api } from '../../lib/api.js';
   import { askConfirm, navigate, toast } from '../../lib/stores.js';
-  import { fmtSize, plural } from '../../lib/format.js';
+  import { fmtSize } from '../../lib/format.js';
   import { whenLabel } from '../../lib/snapshots.js';
+  import { t } from '../../lib/i18n.js';
 
   let report = null;
   let error = '';
@@ -32,7 +33,7 @@
     busy = true;
     try {
       const res = await api.post('/api/snapshots/prune', {});
-      toast(res.removed > 0 ? `Removed ${plural(res.removed, 'snapshot')}, freed ${fmtSize(res.freedBytes)}` : 'Nothing to clean up', 'success');
+      toast(res.removed > 0 ? $t('settings.storageUsage.cleanToast', { n: res.removed, size: fmtSize(res.freedBytes) }) : $t('settings.storageUsage.cleanNone'), 'success');
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -49,8 +50,8 @@
       const res = await api.post('/api/storage/compact', {});
       toast(
         res.compacted > 0
-          ? `${res.compacted} snapshot${res.compacted === 1 ? '' : 's'} now share${res.compacted === 1 ? 's' : ''} unchanged files · ${fmtSize(res.freed)} freed`
-          : 'Nothing more to share',
+          ? $t('settings.storageUsage.shareToast', { n: res.compacted, size: fmtSize(res.freed) })
+          : $t('settings.storageUsage.shareNone'),
         'success'
       );
     } catch (e) {
@@ -64,11 +65,11 @@
   $: saving = report && report.diskBytes > 0 ? Math.max(0, report.totalBytes - report.diskBytes) : 0;
 
   async function remove(s) {
-    const pinned = s.pinned ? ' It is pinned, so nothing else would ever have removed it.' : '';
-    if (!(await askConfirm(`Delete the ${fmtSize(s.bytes)} snapshot of ${s.gameName} from ${whenLabel(s.timestamp)}?${pinned} This can't be undone; the current save isn't affected.`, { title: 'Delete snapshot?', confirmText: 'Delete', danger: true }))) return;
+    const pinned = s.pinned ? ` ${$t('settings.storageUsage.pinnedNote')}` : '';
+    if (!(await askConfirm($t('settings.storageUsage.deleteConfirmBody', { size: fmtSize(s.bytes), game: s.gameName, when: whenLabel(s.timestamp), pinned }), { title: $t('settings.storageUsage.deleteConfirmTitle'), confirmText: $t('common.delete'), danger: true }))) return;
     try {
       await api.del(`/api/games/${s.gameId}/snapshot/${s.snapshotId}`);
-      toast(`Freed ${fmtSize(s.bytes)}`, 'success');
+      toast($t('settings.storageUsage.freedToast', { size: fmtSize(s.bytes) }), 'success');
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -77,51 +78,48 @@
 </script>
 
 {#if error}
-  <p class="hint">Couldn't read storage: {error}</p>
+  <p class="hint">{$t('settings.storageUsage.readError', { error })}</p>
 {:else if !report}
   <div class="skeleton" style="height: 120px"></div>
 {:else}
   <div class="summary">
     <div>
       <div class="total">{fmtSize(report.totalBytes)}</div>
-      <div class="hint">in {report.snapshots} snapshot{report.snapshots === 1 ? '' : 's'}{#if report.freeKnown}{' · '}{fmtSize(report.freeBytes)} free on that drive{/if}</div>
+      <div class="hint">{$t('settings.storageUsage.totalSub', { n: report.snapshots })}{#if report.freeKnown}{' · '}{$t('settings.storageUsage.freeOnDrive', { size: fmtSize(report.freeBytes) })}{/if}</div>
     </div>
     <button class="btn small" class:primary={report.reclaimable > 0} disabled={busy || report.reclaimable === 0} on:click={cleanUp}>
       <BrushCleaning size={14} />
-      {#if busy}Cleaning up…{:else if report.reclaimable > 0}Clean up now · frees {fmtSize(report.reclaimable)}{:else}Nothing to clean up{/if}
+      {#if busy}{$t('settings.storageUsage.cleaning')}{:else if report.reclaimable > 0}{$t('settings.storageUsage.cleanNow', { size: fmtSize(report.reclaimable) })}{:else}{$t('settings.storageUsage.cleanNone')}{/if}
     </button>
   </div>
   {#if report.reclaimable > 0}
     <p class="hint">
-      {report.reclaimableSnapshots} snapshot{report.reclaimableSnapshots === 1 ? ' is' : 's are'} past a game's limits, on an old
-      conflict branch, or past the age rule. Pinned snapshots are never among them.
+      {$t('settings.storageUsage.reclaimHint', { n: report.reclaimableSnapshots })}
     </p>
   {/if}
   <div class="sharing">
     <Layers size={14} />
     <p class="hint">
       {#if saving > 0}
-        <strong>{fmtSize(report.diskBytes)} on disk</strong> — {fmtSize(saving)} less, because older snapshots keep the files they
-        have in common once rather than each keeping its own copy.
+        <strong>{$t('settings.storageUsage.onDisk', { size: fmtSize(report.diskBytes) })}</strong> — {$t('settings.storageUsage.savingLess', { size: fmtSize(saving) })}
       {:else}
-        Older snapshots keep the files they have in common once rather than each keeping its own copy, so a game with many save slots
-        doesn't store every slot again in every snapshot.
+        {$t('settings.storageUsage.sharingExplain')}
       {/if}
-      The newest snapshot of each branch and pinned ones keep complete copies of their own.
+      {$t('settings.storageUsage.newestComplete')}
     </p>
-    <button class="btn small ghost" disabled={sharing} on:click={shareNow}>{sharing ? 'Sharing…' : 'Share now'}</button>
+    <button class="btn small ghost" disabled={sharing} on:click={shareNow}>{sharing ? $t('settings.storageUsage.sharing') : $t('settings.storageUsage.shareNow')}</button>
   </div>
 
   {#if report.games.length}
     <ul class="games">
       {#each report.games as g}
         <li>
-          <button class="game" on:click={() => navigate('game', { gameId: g.gameId })} title="Open {g.name}">
+          <button class="game" on:click={() => navigate('game', { gameId: g.gameId })} title={$t('settings.storageUsage.openGameTitle', { name: g.name })}>
             <span class="name">{g.name}</span>
             <span class="bar"><span style="width: {Math.max(2, (g.bytes / largest) * 100)}%"></span></span>
             <span class="size">{fmtSize(g.bytes)}</span>
             <span class="meta">
-              {g.snapshots} snapshot{g.snapshots === 1 ? '' : 's'}{#if g.pinned}{' · '}{g.pinned} pinned{/if}{#if g.diskBytes > 0 && g.diskBytes < g.bytes}{' · '}{fmtSize(g.diskBytes)} on disk{/if}{#if g.reclaimable}{' · '}{fmtSize(g.reclaimable)} to clean up{/if}
+              {$t('home.tile.snapshots', { n: g.snapshots })}{#if g.pinned}{' · '}{$t('settings.storageUsage.pinnedCount', { n: g.pinned })}{/if}{#if g.diskBytes > 0 && g.diskBytes < g.bytes}{' · '}{$t('settings.storageUsage.onDisk', { size: fmtSize(g.diskBytes) })}{/if}{#if g.reclaimable}{' · '}{$t('settings.storageUsage.toClean', { size: fmtSize(g.reclaimable) })}{/if}
             </span>
           </button>
         </li>
@@ -130,7 +128,7 @@
   {/if}
 
   {#if report.biggest.length}
-    <h4>Biggest snapshots</h4>
+    <h4>{$t('settings.storageUsage.biggest')}</h4>
     <ul class="biggest">
       {#each report.biggest as s}
         <li>
@@ -139,8 +137,8 @@
             <span class="name">{s.gameName}</span>
             <span class="meta">{whenLabel(s.timestamp)}{#if s.note}{' · '}{s.note}{/if}</span>
           </span>
-          {#if s.pinned}<span class="pinned"><Pin size={11} />Pinned</span>{/if}
-          <button class="btn small ghost icon" title="Delete this snapshot" aria-label="Delete snapshot" on:click={() => remove(s)}><Trash2 size={14} /></button>
+          {#if s.pinned}<span class="pinned"><Pin size={11} />{$t('settings.storageUsage.pinnedBadge')}</span>{/if}
+          <button class="btn small ghost icon" title={$t('settings.storageUsage.deleteSnapshotTitle')} aria-label={$t('settings.storageUsage.deleteSnapshotAria')} on:click={() => remove(s)}><Trash2 size={14} /></button>
         </li>
       {/each}
     </ul>

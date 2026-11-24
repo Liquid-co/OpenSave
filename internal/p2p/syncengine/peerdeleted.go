@@ -106,6 +106,23 @@ func (e *Engine) asBeforePeerDeletions(gameID, root string, local delta.Manifest
 	return before, ok
 }
 
+// directionBase is the base to settle direction by (ComputeWithDeletions),
+// given the side judged by unchangedButForPeerDeletions. When that judged this
+// side unchanged but for the other device's deletions, the save here, as it
+// is, stands for the agreed state: the side that has not moved.
+//
+// Without it the conflict check and the direction disagreed. The check saw
+// only the other device had changed; the direction saw that neither side
+// hashed to the base any more, fell back to dates, and a copy here of the
+// agreed file with a later date — touched, restored, or on a clock that runs
+// ahead — was sent over the other device's edit.
+func directionBase(agreed string, judged, local delta.Manifest) string {
+	if agreed != "" && judged.ManifestHash() == agreed {
+		return local.ManifestHash()
+	}
+	return agreed
+}
+
 // unchangedButForPeerDeletions is the manifest to judge this side by when
 // asking whether it changed since the agreed state: the one given, or — when
 // the only difference from the agreed state is deletions other devices asked

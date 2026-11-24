@@ -30,6 +30,7 @@ func TestRetroEmulatorPresetsResolveOnLinux(t *testing.T) {
 		"fceux":       ".fceux/sav",
 		"mesen":       ".local/share/Mesen2/Saves",
 		"blastem":     ".local/share/blastem",
+		"cemu":        ".local/share/Cemu/mlc01/usr/save",
 	}
 
 	for id, rel := range cases {
@@ -54,14 +55,29 @@ func TestRetroEmulatorPresetsResolveOnLinux(t *testing.T) {
 	}
 }
 
+// Cemu's own default on Windows is %APPDATA%\Cemu\mlc01 (CemuApp::DeterminePaths,
+// ActiveSettings::GetDefaultMLCPath). The preset named Documents\Cemu, a folder
+// Cemu never picks, so a default install was not found at all.
+func TestCemuWindowsPathIsCemusDefault(t *testing.T) {
+	for _, p := range presetDefs {
+		if p.ID == "cemu" {
+			if want := "%APPDATA%/Cemu/mlc01/usr/save"; p.Path != want {
+				t.Errorf("cemu Windows path = %q, want %q", p.Path, want)
+			}
+			return
+		}
+	}
+	t.Fatal("no cemu preset")
+}
+
 // Every preset must carry a Linux path unless the emulator genuinely is
-// Windows-only. A Windows-only entry is a real choice (Cemu, Xenia, Project64);
+// Windows-only. A Windows-only entry is a real choice (Xenia, Project64);
 // an accidentally Windows-only one silently excludes every Deck user, which is
 // the audience most likely to be running these.
 func TestRetroEmulatorPresetsCoverLinuxExceptWindowsOnlyOnes(t *testing.T) {
 	// Emulators with no Linux build worth detecting.
 	windowsOnly := map[string]bool{
-		"xenia": true, "cemu": true, "project64": true,
+		"xenia": true, "project64": true,
 	}
 
 	for _, p := range presetDefs {

@@ -256,6 +256,55 @@ func TestSnapshotsBeyondRetention(t *testing.T) {
 	}
 }
 
+// Safety copies are automatic snapshots with a budget of their own: however
+// many there are, they never cost a real automatic snapshot its place, and
+// beyond their own small limit the oldest of them go.
+func TestSafetySnapshotsHaveTheirOwnBudget(t *testing.T) {
+	s := openTestStore(t)
+	game := Game{ID: "g1", Name: "Game", SavePath: "/save", MaxSnapshots: 2}
+	if err := s.CreateGame(game); err != nil {
+		t.Fatal(err)
+	}
+	add := func(id, ts string, safety bool) {
+		t.Helper()
+		snap := Snapshot{ID: id, GameID: game.ID, BranchName: "main", Timestamp: ts, ZipPath: "/x.zip", IsSystemAuto: true, Safety: safety}
+		if err := s.CreateSnapshot(snap); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("snap_auto1", "2026-01-01T00:00:00Z", false)
+	add("snap_auto2", "2026-01-02T00:00:00Z", false)
+	add("snap_safe1", "2026-01-03T00:00:00Z", true)
+	add("snap_safe2", "2026-01-04T00:00:00Z", true)
+	add("snap_safe3", "2026-01-05T00:00:00Z", true)
+
+	got, err := s.GetSnapshot("snap_safe1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Safety {
+		t.Fatal("the safety flag did not survive a round trip through the database")
+	}
+
+	// Automatic limit 2, so the safety limit is 2 as well (never more than
+	// the automatic one): only the oldest safety copy is beyond it.
+	beyond, err := s.SnapshotsBeyondRetentionByKind(game.ID, "main", 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(beyond) != 1 || beyond[0].ID != "snap_safe1" {
+		t.Errorf("expected only the oldest safety copy beyond retention, got %+v", beyond)
+	}
+
+	// An unlimited automatic budget keeps the safety copies too.
+	if beyond, _ := s.SnapshotsBeyondRetentionByKind(game.ID, "main", 0, 0); len(beyond) != 0 {
+		t.Errorf("automatic limit 0 should keep everything, got %+v", beyond)
+	}
+	if got := SafetySnapshotLimit(20); got != maxSafetySnapshots {
+		t.Errorf("SafetySnapshotLimit(20) = %d, want %d", got, maxSafetySnapshots)
+	}
+}
+
 func TestPeerPairingAndSyncStateLifecycle(t *testing.T) {
 	s := openTestStore(t)
 	trackGames(t, s, "game1")

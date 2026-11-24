@@ -225,8 +225,8 @@
     <label class="sort">
       <span>{$t('home.library.sort')}</span>
       <select bind:value={$libraryView.sort}>
-        {#each Object.entries(SORTS) as [id, s]}
-          <option value={id}>{s.label}</option>
+        {#each Object.entries(SORTS) as [id]}
+          <option value={id}>{$t('game.sort.' + id)}</option>
         {/each}
       </select>
     </label>
@@ -258,7 +258,7 @@
 {#if filters.length > 1 || chips.length}
   <div class="chips">
     {#if filters.length > 1}
-      <FilterTabs options={filters.map((f) => [f.id, f.label])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
+      <FilterTabs options={filters.map((f) => [f.id, $t('game.statusFilter.' + f.id)])} counts={Object.fromEntries(filters.map((f) => [f.id, f.count]))} bind:value={status} />
     {/if}
     {#if chips.length}
       {#if filters.length > 1}<span class="chip-sep" aria-hidden="true"></span>{/if}

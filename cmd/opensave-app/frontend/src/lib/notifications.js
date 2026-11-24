@@ -235,3 +235,54 @@ export function exampleEvent(now = Date.now()) {
     go: null
   };
 }
+
+// The bell's entries' words, structured. waitingOnYou() above builds its
+// lines in English; this returns the same cases, in the same order, as
+// {title, detail} pieces — {key, params} for the catalog (see locales/en.json,
+// "notifications.waiting.") or {text} for words already in the reader's own
+// — for the bell (components/NotificationHub.svelte) to say.
+// @param t the translate function, for the pieces the catalog alone knows.
+export function waitingText({ games = {}, conflicts = {}, locationConflicts = [], pairingRequests = [], cloudOffers = [], newGames = [], update = null } = {}, t) {
+  const out = [];
+  const name = (id) => games[id]?.name ?? t('notifications.waiting.aGame');
+  for (const id of Object.keys(conflicts)) {
+    out.push({ title: { key: 'notifications.waiting.conflict', params: { game: name(id) } }, detail: { key: 'notifications.waiting.conflictDetail', params: {} } });
+  }
+  for (const c of locationConflicts) {
+    out.push({ title: { key: 'notifications.waiting.conflict', params: { game: name(c.gameId) } }, detail: { key: 'notifications.waiting.locationDetail', params: { root: c.root } } });
+  }
+  for (const g of Object.values(games)) {
+    if (g.emptied?.state === 'held') {
+      out.push({ title: { key: 'notifications.waiting.emptied', params: { game: g.name } }, detail: { key: 'notifications.waiting.emptiedDetail', params: {} } });
+    }
+  }
+  for (const r of pairingRequests) {
+    out.push({ title: { key: 'notifications.waiting.pair', params: { device: r.deviceName ?? t('notifications.waiting.aDevice') } }, detail: { key: 'notifications.waiting.pairDetail', params: {} } });
+  }
+  for (const o of cloudOffers) {
+    out.push({ title: { key: 'notifications.waiting.offer', params: { game: o.gameName ?? name(o.gameId) } }, detail: { key: 'notifications.waiting.offerDetail', params: { device: o.deviceName ?? t('notifications.waiting.anotherDevice') } } });
+  }
+  for (const g of Object.values(games)) {
+    if (g.savePathMissing && g.relocateSuggestion) {
+      out.push({ title: { key: 'notifications.waiting.relocate', params: { game: g.name, path: g.relocateSuggestion } }, detail: { key: 'notifications.waiting.relocateDetail', params: {} } });
+    }
+  }
+  for (const g of Object.values(games)) {
+    if (g.savePathMissing && !g.saveDriveMissing) {
+      out.push({ title: { key: 'notifications.waiting.missing', params: { game: g.name } }, detail: { key: 'notifications.waiting.missingDetail', params: {} } });
+    }
+  }
+  for (const g of Object.values(games)) {
+    const damaged = Object.values(g.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem)).length;
+    if (damaged) {
+      out.push({ title: { key: 'notifications.waiting.damaged', params: { n: damaged, game: g.name } }, detail: { key: 'notifications.waiting.damagedDetail', params: {} } });
+    }
+  }
+  if (newGames.length) {
+    out.push({ title: { key: 'notifications.waiting.new', params: { n: newGames.length } }, detail: { text: newGames.slice(0, 3).map((g) => g.name).join(', ') } });
+  }
+  if (update?.latest) {
+    out.push({ title: { key: 'notifications.waiting.update', params: { version: update.latest } }, detail: { key: 'notifications.waiting.updateDetail', params: { current: update.current ?? t('notifications.waiting.anOlderVersion') } } });
+  }
+  return out;
+}
