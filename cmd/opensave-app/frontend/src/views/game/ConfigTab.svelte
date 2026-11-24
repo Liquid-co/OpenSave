@@ -297,8 +297,10 @@
     color: var(--text-faint);
     margin-left: 6px;
   }
+  /* Dimmed, not struck through: in the file list below, struck through means
+     a file that will not sync, and these sync again. */
   .device-settings .given-back code {
-    text-decoration: line-through;
+    color: var(--text-faint);
   }
   /* A heading over a list, not a control: styled as the field labels are. */
   .device-block .label {
