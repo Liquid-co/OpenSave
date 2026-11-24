@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -22,9 +21,10 @@ func cmdSettings(args []string) int {
 		return 1
 	}
 	gameID := args[0]
-	// As status prints it, or as typed on Windows: the daemon keeps it
+	// As status prints it, or with backslashes as on Windows, on any system
+	// (filepath.ToSlash leaves them be off Windows): the daemon keeps it
 	// relative to the save folder, with forward slashes.
-	file := strings.TrimPrefix(filepath.ToSlash(args[2]), "/")
+	file := strings.TrimPrefix(strings.ReplaceAll(args[2], `\`, "/"), "/")
 	keep := args[1] == "keep"
 	raw, err := daemonRequest("POST", "/api/games/"+url.PathEscape(gameID)+"/suggested-settings", map[string]any{"path": file, "keepHere": keep})
 	if err != nil {
