@@ -128,7 +128,7 @@
             <span class="file-name">
               {#if f.location}<span class="file-loc">{f.location} ›</span>{/if}{f.path}
             </span>
-            <span class="verdict" title={f.reason ?? ''}>
+            <span class="verdict">
               {#if !f.excluded}{$t('game.ignore.syncs')}{:else if f.source === 'database'}{$t('game.ignore.wontSyncDatabase')}{:else if f.source === 'detected'}{$t('game.ignore.wontSyncKeptHere')}{:else}{$t('game.ignore.wontSync')}{/if}
             </span>
           </label>
