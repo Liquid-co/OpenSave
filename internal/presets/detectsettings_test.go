@@ -58,8 +58,24 @@ func TestDetectIn_SaveLocationsAreNeverTaken(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := detectIn(root, []string{"slots", "keep/video.ini"})
+	got := detectIn(root, []string{"slots", "keep/video.ini"}, nil)
 	if len(got) != 1 || got[0].Path != "video.ini" {
 		t.Errorf("detected %+v, want only video.ini", got)
+	}
+}
+
+// A file that already has a verdict is not opened again; the others still
+// are judged.
+func TestDetectIn_LeavesJudgedFilesAlone(t *testing.T) {
+	root := t.TempDir()
+	settings := "setting.fullscreen 1\nsetting.mat_vsync 0\nsetting.gamma 1\nsetting.defaultres 1920\nsetting.ssao 1\n"
+	for _, name := range []string{"videoconfig.txt", "display.cfg"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(settings), 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := detectIn(root, nil, map[string]bool{"videoconfig.txt": true})
+	if len(got) != 1 || got[0].Path != "display.cfg" {
+		t.Errorf("detected %+v, want display.cfg alone: videoconfig.txt has a verdict already", got)
 	}
 }

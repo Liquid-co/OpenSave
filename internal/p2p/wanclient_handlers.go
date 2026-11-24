@@ -470,9 +470,20 @@ func (w *WanClient) routeRequest(ctx context.Context, msg RelayMessage) (int, an
 		if err := json.Unmarshal(msg.Body, &body); err != nil || body.PeerID == "" {
 			return 400, map[string]string{"error": "peerId is required"}
 		}
-		if !w.engine.Pairing.ValidateConfirm(body.PeerID, "relay", body.Port, isPaired) {
-			w.engine.Log("warn", "blocked unsolicited WAN approve-confirm from "+body.PeerID)
-			return 400, map[string]string{"error": "Pairing confirmation rejected: no matching handshake initiated."}
+		// Paired is decided by the id being confirmed, not the message's
+		// sender field — the two are both the sender's to write, and need not
+		// agree.
+		existing, existingErr := w.engine.Store.GetPeer(body.PeerID)
+		if !w.engine.Pairing.ValidateConfirm(body.PeerID, "relay", body.Port, false) {
+			if existingErr != nil {
+				w.engine.Log("warn", "blocked unsolicited WAN approve-confirm from "+body.PeerID)
+				return 400, map[string]string{"error": "Pairing confirmation rejected: no matching handshake initiated."}
+			}
+			status, text := w.engine.reconfirmWithoutHandshake(existing, body.PublicKey, "the relay")
+			if status != 200 {
+				return status, map[string]string{"error": text}
+			}
+			return 200, map[string]any{"success": true, "message": text}
 		}
 		w.engine.Pairing.TakeIncoming(body.PeerID)
 		if err := w.engine.Store.UpsertPeer(store.Peer{
@@ -609,7 +620,8 @@ func (w *WanClient) serveManifest(route string, body json.RawMessage, peerID str
 	// Same auto-track + cover-backfill behavior as the LAN route — relay
 	// peers were previously auto-tracked without cover art, which is why
 	// covers didn't propagate between WAN-paired devices.
-	game, err := w.engine.ensureManifestGame(gameID, query, peerID)
+	// Over the relay, the request's MAC proved the sender (routeRequest).
+	game, err := w.engine.ensureManifestGame(gameID, query, peerID, peerID)
 	if err != nil {
 		return 404, map[string]string{"error": err.Error()}
 	}

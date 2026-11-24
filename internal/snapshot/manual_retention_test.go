@@ -231,3 +231,51 @@ func TestExistingGamesDefaultToKeepingManualSnapshots(t *testing.T) {
 		}
 	}
 }
+
+// The copies kept before a save is replaced — a restore's safety restore
+// point, the save a sync is about to overwrite, this device's side of a
+// conflict — are automatic snapshots, and they used to be counted as such. A
+// device that syncs often, or someone trying restore after restore, then
+// filled the automatic budget with copies of the save on its way out, and the
+// watcher's real history was pruned to make room for them.
+//
+// They have a budget of their own now: a flood of them must leave every real
+// automatic snapshot where it was, and must still be held to a limit.
+func TestSafetyCopiesDoNotPushOutTheHistory(t *testing.T) {
+	env := setup(t) // maxSnapshots = 3
+	var history []store.Snapshot
+	for i := 0; i < 3; i++ {
+		writeSave(t, env.saveDir, "slot1.sav", fmt.Sprintf("autosave %d", i))
+		snap, err := env.mgr.Create("game1", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history = append(history, snap)
+	}
+
+	for i := 0; i < 10; i++ {
+		writeSave(t, env.saveDir, "slot1.sav", fmt.Sprintf("about to be replaced %d", i))
+		if _, err := env.mgr.CreateBeforeReplacing("game1", "before sync replaced local files"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, snap := range history {
+		if _, err := env.store.GetSnapshot(snap.ID); err != nil {
+			t.Errorf("automatic snapshot %q was pruned to make room for safety copies: %v", snap.ID, err)
+		}
+		if _, err := os.Stat(snap.ZipPath); err != nil {
+			t.Errorf("automatic snapshot %q lost its archive: %v", snap.ID, err)
+		}
+	}
+
+	// Ten safety copies on a branch whose automatic limit is three: they are
+	// held to a limit of their own, not kept forever.
+	snaps, err := env.store.ListSnapshots("game1", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(snaps), len(history)+3; got != want {
+		t.Errorf("snapshots on the branch = %d, want %d (the 3 automatic ones and 3 safety copies)", got, want)
+	}
+}

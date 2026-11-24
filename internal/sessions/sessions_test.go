@@ -89,7 +89,7 @@ func TestTrackerSessions(t *testing.T) {
 
 // The real process list finds this test itself, by its program.
 func TestListFindsThisProcess(t *testing.T) {
-	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		t.Skip("not supported here")
 	}
 	procs, err := List()

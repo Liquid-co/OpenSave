@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -189,13 +190,18 @@ func TestResolveNames_UsesResolverAndCachesResult(t *testing.T) {
 	}
 
 	cacheFile := filepath.Join(t.TempDir(), "steam-app-cache.json")
-	calls := 0
+	// Only this game's lookups are counted. The scan also reads the real
+	// Steam install on the machine running the test (the registry is not
+	// isolated), and a game there that the offline dictionary lacks is
+	// looked up too, from other goroutines; counting it failed the test on
+	// any PC with such a game installed.
+	var calls atomic.Int32
 	sc := &Scanner{
 		CacheFile:          cacheFile,
 		SteamUserdataPaths: []string{userdata},
 		ResolveAppName: func(appID string) string {
-			calls++
 			if appID == "99999999" {
+				calls.Add(1)
 				return "Obscure Test Game"
 			}
 			return ""
@@ -212,8 +218,8 @@ func TestResolveNames_UsesResolverAndCachesResult(t *testing.T) {
 	if hit == nil || hit.Name != "Obscure Test Game" {
 		t.Fatalf("resolver name not applied: %+v", hit)
 	}
-	if calls != 1 {
-		t.Errorf("resolver called %d times, want 1", calls)
+	if n := calls.Load(); n != 1 {
+		t.Errorf("resolver called %d times, want 1", n)
 	}
 
 	// Second scan must hit the disk cache, not the resolver.
@@ -223,8 +229,8 @@ func TestResolveNames_UsesResolverAndCachesResult(t *testing.T) {
 			t.Errorf("cached name not used on second scan: %+v", found[i])
 		}
 	}
-	if calls != 1 {
-		t.Errorf("resolver should not be called again after caching, total calls = %d", calls)
+	if n := calls.Load(); n != 1 {
+		t.Errorf("resolver should not be called again after caching, total calls = %d", n)
 	}
 }
 

@@ -106,6 +106,11 @@ type Daemon struct {
 	incomplete            incompleteAutoSnapshots
 	// scanMu runs one save scan at a time. See ScanForSaves.
 	scanMu sync.Mutex
+	// A scan for a peer's offered game: one at a time, at most once a
+	// minute (scanForOffer).
+	offerScanMu      sync.Mutex
+	offerScanRunning bool
+	lastOfferScan    time.Time
 
 	// uploads counts cloud mirrors still running, so Stop can wait for them
 	// rather than letting process exit truncate one.
@@ -209,15 +214,19 @@ func New(opts Options) (*Daemon, error) {
 	d.P2P.OnAutoTracked = d.adoptAutoTracked
 	// A Switch save a peer syncs goes into this device's own emulator profile.
 	d.P2P.SwitchSaveFolder = d.Scanner.SwitchSaveFolder
-	// What a game arriving from a peer may be tracked at without asking:
-	// a folder this device's own scanner noted as a save, one inside an
-	// emulator's save folder here, or a Switch title's slot in a NAND here.
-	// Anything else is offered to the user.
-	d.P2P.KnownSaveLocation = func(path string) bool {
+	// What a game arriving from a peer may be tracked at without asking: a
+	// folder this device's own scanner noted as a save, one inside an
+	// emulator's save folder here, a Switch title's slot in a NAND here, or
+	// where the save catalogue or Steam says that game keeps its saves here,
+	// before it exists. Anything else is offered to the user.
+	d.P2P.OnGameOffered = d.scanForOffer
+	d.P2P.KnownSaveLocation = func(name, appID, path string) bool {
 		if known, err := d.Store.IsKnownSave(path); err == nil && known {
 			return true
 		}
-		return d.Scanner.InsideEmulatorSaveRoot(path) || presets.IsSwitchSaveSlot(path)
+		return d.Scanner.InsideEmulatorSaveRoot(path) || presets.IsSwitchSaveSlot(path) ||
+			d.Scanner.CatalogueSaveLocation(name, appID, path) ||
+			d.Scanner.SteamSaveLocation(appID, path)
 	}
 
 	// Every new snapshot mirrors to the configured cloud provider in the
@@ -698,6 +707,12 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 	// so it stays a candidate: that is the pre-existing behaviour, and
 	// treating unknowns as protected would make cloud storage grow without
 	// bound.
+	//
+	// Safety copies upload too, and are not candidates either: counted here a
+	// run of syncs would thin out the cloud's history the way it once did the
+	// local one. They need no budget of their own here — local retention
+	// already holds them to theirs, and once one is pruned locally its remote
+	// file is an unknown and falls back into this one.
 	prefix := fmt.Sprintf("%s__%s__", gameID, branch)
 	_, _ = d.Cloud.PruneGameBranch(func(name string) bool {
 		if !strings.HasPrefix(name, prefix) {
@@ -707,8 +722,8 @@ func (d *Daemon) runCloudUpload(zipPath, remoteFileName string, log *logging.Log
 		if !parsed {
 			return false
 		}
-		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && !snap.IsSystemAuto {
-			return false // a manual snapshot: not the automatic budget's to spend
+		if snap, sErr := d.Store.GetSnapshot(snapID); sErr == nil && (!snap.IsSystemAuto || snap.Safety) {
+			return false // manual, or a safety copy: not the automatic budget's to spend
 		}
 		return true
 	}, game.MaxSnapshots)
@@ -822,9 +837,43 @@ func isDuplicateGameID(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: games.id")
 }
 
+// withRootTopology holds this process's mapping reservation across a path write.
+// A second process cannot see the reservation; the CLI must use the running
+// daemon's HTTP API instead of opening its own store.
+func (d *Daemon) withRootTopology(gameID string, fn func() error) error {
+	if d.P2P == nil || d.P2P.Sync == nil {
+		return fmt.Errorf("root topology admission unavailable")
+	}
+	done, ok := d.P2P.Sync.TryTopologyMutation(gameID)
+	if !ok {
+		return fmt.Errorf("cannot change save locations while a sync is active")
+	}
+	defer done()
+	return fn()
+}
+
 // TrackGame adds a new game, takes its initial snapshot (when the save
 // location already has content), and starts watching it.
 func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
+	return d.TrackGameContext(context.Background(), game)
+}
+
+// TrackGameContext allows an abandoned interactive request to cancel while
+// waiting for another process's save-path claim.
+func (d *Daemon) TrackGameContext(ctx context.Context, game store.Game) (store.Game, error) {
+	return d.trackGameAdmitted(ctx, game, nil)
+}
+
+// TrackImportedGame reuses native tracking while retaining the cross-process
+// ownership admission acquired before the backup was extracted.
+func (d *Daemon) TrackImportedGame(game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
+	if admission == nil {
+		return store.Game{}, fmt.Errorf("missing import admission")
+	}
+	return d.trackGameAdmitted(context.Background(), game, admission)
+}
+
+func (d *Daemon) trackGameAdmitted(ctx context.Context, game store.Game, admission *store.ImportPathAdmission) (store.Game, error) {
 	abs, err := d.ValidateSavePath(game.SavePath)
 	if err != nil {
 		return store.Game{}, err
@@ -833,7 +882,11 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	// Nor a folder inside another game's, or holding one: the same files
 	// would be watched, snapshotted and synced twice, under two games that
 	// each think them theirs.
-	if other, ok := d.overlappingGame(abs); ok {
+	other, overlapping, checkErr := d.overlappingGame(abs)
+	if checkErr != nil {
+		return store.Game{}, checkErr
+	}
+	if overlapping {
 		return store.Game{}, fmt.Errorf("%q already tracks %s, which this folder is inside or holds — track one or the other", other.Name, other.SavePath)
 	}
 
@@ -846,6 +899,8 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 	if derivedID {
 		if existing, err := d.Store.FindGameBySavePath(abs); err == nil {
 			return store.Game{}, fmt.Errorf("this folder is already tracked (as %q)", existing.Name)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return store.Game{}, fmt.Errorf("inspect game for existing save path: %w", err)
 		}
 		base := store.SlugifyGameID(game.Name)
 		// A Switch game is tracked under its title id rather than its name:
@@ -860,20 +915,18 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		id := base
 		for n := 2; ; n++ {
 			if _, err := d.Store.GetGame(id); err != nil {
-				break // free
+				if !errors.Is(err, store.ErrNotFound) {
+					return store.Game{}, fmt.Errorf("inspect candidate game id %q: %w", id, err)
+				}
+				break // confirmed not found
 			}
 			id = fmt.Sprintf("%s-%d", base, n)
 		}
 		game.ID = id
 	}
 
-	// Explicit (re)tracking overrides any earlier untrack: clear the local
-	// tombstone, and tell peers to clear theirs too so a peer that mirrored
-	// an earlier untrack will accept this game again (otherwise its
-	// tombstone would block the sync-on-track below).
-	_ = d.Store.ClearUntrackedTombstone(game.ID)
-	d.P2P.NotifyRetrack(game.ID)
-
+	// Never clear tombstones or notify peers until the ownership decision
+	// has committed. Rejected or ambiguous writes must have no effects.
 	game.AutoSync = true
 	if game.ActiveBranch == "" {
 		game.ActiveBranch = "main"
@@ -896,7 +949,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		game.CoverURL = SteamCoverURL(game.AppID)
 	}
 
-	if err := d.Store.CreateGame(game); err != nil {
+	var createErr error
+	if admission != nil {
+		createErr = d.Store.CreateGameAdmitted(game, admission)
+	} else {
+		createErr = d.Store.CreateGameContext(ctx, game)
+	}
+	if err := createErr; err != nil {
 		// The id was free a moment ago. If it is taken now, a paired device
 		// that syncs this same game reached us in between and auto-tracked
 		// it — the two sides create the game concurrently when both people
@@ -915,6 +974,13 @@ func (d *Daemon) TrackGame(game store.Game) (store.Game, error) {
 		}
 		return store.Game{}, err
 	}
+
+	// Only a committed native game may clear prior untrack state or be
+	// announced to peers. A failed insert leaves existing owners untouched.
+	if err := d.Store.ClearUntrackedTombstone(game.ID); err != nil {
+		return store.Game{}, fmt.Errorf("game created but tombstone clearance failed; inspect native state: %w", err)
+	}
+	d.P2P.NotifyRetrack(game.ID)
 
 	// Some games keep their saves in the registry — 430 in the manifest, and
 	// for 303 of them it is the only place a save exists. Set up before the
@@ -1015,7 +1081,10 @@ func (d *Daemon) ValidateSavePath(rawPath string) (string, error) {
 	norm := strings.ToLower(abs)
 	absInfo, absStatErr := os.Stat(abs)
 	games, err := d.Store.ListGames()
-	if err == nil {
+	if err != nil {
+		return "", fmt.Errorf("inspect tracked save-path ownership: %w", err)
+	}
+	{
 		for _, g := range games {
 			if strings.ToLower(filepath.Clean(g.SavePath)) == norm {
 				return "", fmt.Errorf("%q already tracks this folder", g.Name)
@@ -1274,7 +1343,9 @@ func (d *Daemon) LinkGames(canonicalID, aliasID string) error {
 				}
 				var addErr error
 				if root.Mapped() {
-					addErr = d.Store.AddGameRoot(canonicalID, root.Name, root.Path)
+					addErr = d.withRootTopology(canonicalID, func() error {
+						return d.Store.AddGameRoot(canonicalID, root.Name, root.Path)
+					})
 				} else {
 					addErr = d.Store.NoteGameRoot(canonicalID, root.Name)
 				}

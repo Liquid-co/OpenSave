@@ -51,6 +51,12 @@ func (d *Daemon) detectSettingsDue(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// Not while it is played: that is when the game writes its saves, and
+		// a file being read cannot be replaced (presets.readForJudging). Its
+		// turn comes at the next run after the session.
+		if !d.PlayingSince(game.ID).IsZero() {
+			continue
+		}
 		mark := d.Store.Mark(settingsDetectMark(game.ID))
 		want := detectorVersion + "|" + game.SavePath
 		if prev, at, ok := strings.Cut(mark, "@"); ok && prev == want {
@@ -79,7 +85,11 @@ func (d *Daemon) DetectSettings(game store.Game) {
 			known[v.Path] = v
 		}
 	}
-	found := db.DetectSettings(game.Name, game.AppID, game.SavePath)
+	judged := make(map[string]bool, len(known))
+	for p := range known {
+		judged[p] = true
+	}
+	found := db.DetectSettings(game.Name, game.AppID, game.SavePath, judged)
 	var ask []string
 	for _, f := range found {
 		if _, ok := known[f.Path]; !ok {

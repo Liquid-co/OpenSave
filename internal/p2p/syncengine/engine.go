@@ -130,6 +130,8 @@ type Engine struct {
 	// on this device right now (settle.go).
 	settleMu sync.Mutex
 	gates    map[string]*saveGate
+	// Protected by mu, alongside activeSyncs/pendingSyncs/followUps.
+	topologyMutations map[string]bool
 	// writtenAt is when a sync last stopped writing each game (BeingWritten).
 	writtenAt map[string]time.Time
 	// servedMu guards served: the save states this device recently handed
@@ -164,6 +166,10 @@ type Engine struct {
 	// settings (presets/devicesettings.go), set by the daemon; nil leaves
 	// them syncing. See IgnoreText.
 	DeviceSettingsFor func(store.Game) []string
+	// ObserveSettings is told what another device holds of a game, as its
+	// manifest arrives, to watch how the files left out as the game's
+	// settings change (daemon/detectsettings.go). Set by the daemon.
+	ObserveSettings func(game store.Game, peerID string, remote delta.Manifest)
 	// Playing reports whether a game is being played on this device
 	// (playing.go). Set by the daemon from its play sessions.
 	Playing func(gameID string) bool
@@ -171,10 +177,6 @@ type Engine struct {
 	// answer was said already this session (playing.go).
 	playingMu   sync.Mutex
 	playingSaid map[string]bool
-	// ObserveSettings is told what another device holds of a game, as its
-	// manifest arrives, to watch how the files left out as the game's
-	// settings change (daemon/detectsettings.go). Set by the daemon.
-	ObserveSettings func(game store.Game, peerID string, remote delta.Manifest)
 }
 
 // New creates an Engine.
@@ -267,12 +269,53 @@ func (e *Engine) SyncBusy(gameID string) bool {
 	return e.activeSyncs[gameID] || e.pendingSyncs[gameID] || e.followUps[gameID] > 0
 }
 
+func (e *Engine) launchQueuedSync(gameID string, peers []Peer) {
+	e.Log("info", fmt.Sprintf("running queued follow-up sync for %s", gameID))
+	go func() {
+		defer func() {
+			e.mu.Lock()
+			if e.followUps[gameID]--; e.followUps[gameID] <= 0 {
+				delete(e.followUps, gameID)
+			}
+			e.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if e.OnlinePeers != nil {
+			peers = e.OnlinePeers()
+		}
+		if len(peers) == 0 {
+			e.Log("warn", fmt.Sprintf(
+				"queued follow-up sync for %s found no reachable devices — "+
+					"it will go out on the next sync", gameID))
+			return
+		}
+		if _, err := e.SyncGame(ctx, gameID, peers); err != nil {
+			e.Log("warn", fmt.Sprintf("queued follow-up sync for %s: %v", gameID, err))
+		}
+	}()
+}
+
 func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer) (map[string]Result, error) {
 	// Every sync this device starts comes through here — a watched change, a
 	// peer coming online, the periodic reconcile, a sync asked for by hand or
 	// by a peer — so this is the one place a pause has to stop them.
 	if e.Paused != nil && e.Paused() {
 		return nil, ErrPaused
+	}
+	// A topology reservation excludes new syncs; queue their intent
+	// before checking hold state to avoid waiting behind the write gate.
+	e.mu.Lock()
+	topologyChanging := e.topologyMutations[gameID]
+	if topologyChanging {
+		if e.pendingSyncs == nil {
+			e.pendingSyncs = make(map[string]bool)
+		}
+		e.pendingSyncs[gameID] = true
+	}
+	e.mu.Unlock()
+	if topologyChanging {
+		return nil, ErrSyncQueued
 	}
 	// A game being played here is synced when the session ends (playing.go).
 	if e.PlayingHere(gameID) {
@@ -282,12 +325,34 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 	// meant (hold.go).
 	held, err := e.checkHoldSettled(ctx, gameID)
 	if err != nil && errors.Is(err, ErrSettling) {
+		// Topology may have started AFTER the early admission check and
+		// blocked the hold reader. Preserve the sync request for replay.
+		e.mu.Lock()
+		changing := e.topologyMutations[gameID]
+		if changing {
+			if e.pendingSyncs == nil {
+				e.pendingSyncs = make(map[string]bool)
+			}
+			e.pendingSyncs[gameID] = true
+		}
+		e.mu.Unlock()
+		if changing {
+			return nil, ErrSyncQueued
+		}
 		return nil, err
 	}
 	if err == nil && held {
 		return nil, ErrHeld
 	}
 	e.mu.Lock()
+	if e.topologyMutations[gameID] {
+		if e.pendingSyncs == nil {
+			e.pendingSyncs = make(map[string]bool)
+		}
+		e.pendingSyncs[gameID] = true
+		e.mu.Unlock()
+		return nil, ErrSyncQueued
+	}
 	if e.activeSyncs[gameID] {
 		e.pendingSyncs[gameID] = true
 		e.mu.Unlock()
@@ -309,42 +374,7 @@ func (e *Engine) SyncGame(ctx context.Context, gameID string, onlinePeers []Peer
 		}
 		e.mu.Unlock()
 		if rerun {
-			e.Log("info", fmt.Sprintf("running queued follow-up sync for %s", gameID))
-			// Fresh context: the queued requester's may already be gone.
-			go func() {
-				defer func() {
-					e.mu.Lock()
-					if e.followUps[gameID]--; e.followUps[gameID] <= 0 {
-						delete(e.followUps, gameID)
-					}
-					e.mu.Unlock()
-				}()
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				defer cancel()
-
-				// Resolve peers now rather than reusing the list the earlier
-				// sync started with. That list describes the moment this
-				// follow-up was queued behind, which can be minutes old: a
-				// device may have dropped, come back on a different address,
-				// or moved between LAN and relay. Syncing a queued change to
-				// the wrong address fails in a goroutine nobody is watching,
-				// and the caller was told "queued and will sync right after".
-				peers := onlinePeers
-				if e.OnlinePeers != nil {
-					peers = e.OnlinePeers()
-				}
-				if len(peers) == 0 {
-					// Say so. Returning quietly here is indistinguishable from
-					// a completed sync, and the change simply never left.
-					e.Log("warn", fmt.Sprintf(
-						"queued follow-up sync for %s found no reachable devices — "+
-							"it will go out on the next sync", gameID))
-					return
-				}
-				if _, err := e.SyncGame(ctx, gameID, peers); err != nil {
-					e.Log("warn", fmt.Sprintf("queued follow-up sync for %s: %v", gameID, err))
-				}
-			}()
+			e.launchQueuedSync(gameID, onlinePeers)
 		}
 	}()
 
@@ -783,7 +813,11 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 			delete(deleted, path)
 		}
 	}
-	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, agreedHash, deleted)
+	//
+	// The base goes in as the conflict check above read it: a save here that
+	// differs from it only by the deletions the peer asked for is the side
+	// that has not moved (directionBase).
+	decision := ComputeWithDeletions(localManifest, remoteData.Manifest, lineageFiles, lineageDirs, directionBase(agreedHash, judged, localManifest), deleted)
 
 	// The peer asked this device to pull, and this device would answer by
 	// asking it to pull again, with neither side changed since: the two

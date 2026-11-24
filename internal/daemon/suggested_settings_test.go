@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/opensave/opensave/internal/ignore"
 	"github.com/opensave/opensave/internal/store"
@@ -75,5 +77,37 @@ func TestSuggestedSettings_SyncUntilConfirmed(t *testing.T) {
 	}
 	if err := d.DecideSuggestedSettings(game, "display.cfg", true); err != ErrNotSuggested {
 		t.Errorf("answering a file that is not suggested: %v, want ErrNotSuggested", err)
+	}
+}
+
+// A game's files are not read for detection while it is played — that is
+// when it writes its saves, and a file being read cannot be replaced — and
+// are once the session is over.
+func TestDetectSettings_NotWhileTheGameIsPlayed(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := t.TempDir()
+	settings := "setting.fullscreen 1\nsetting.mat_vsync 0\nsetting.gamma 1\nsetting.defaultres 1920\nsetting.ssao 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "videoconfig.txt"), []byte(settings), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	game := store.Game{ID: "played", Name: "No Such Game In The Database", SavePath: dir, ActiveBranch: "main", MaxSnapshots: 5}
+	if err := d.Store.CreateGame(game); err != nil {
+		t.Fatal(err)
+	}
+	d.devMu.Lock()
+	d.dev = devSettingsCache{loaded: true, patterns: map[string][]string{}, verdicts: map[string][]store.SettingsFile{}}
+	d.devMu.Unlock()
+
+	start := time.Now()
+	d.sessions.tracker.Begin(game.ID, start)
+	d.detectSettingsDue(context.Background())
+	if v, _ := d.Store.SettingsFiles(game.ID); len(v) != 0 {
+		t.Fatalf("detection ran while the game was played: %+v", v)
+	}
+
+	d.sessions.tracker.Finish(game.ID, start.Add(time.Minute))
+	d.detectSettingsDue(context.Background())
+	if len(d.SuggestedSettings(game)) != 1 {
+		t.Errorf("after the session, detection did not run: %+v", d.SuggestedSettings(game))
 	}
 }

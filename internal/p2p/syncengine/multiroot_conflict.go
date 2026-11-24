@@ -173,6 +173,10 @@ func (e *Engine) ResolveRootConflict(ctx context.Context, gameID, peerID, root, 
 	if resolution != "keep-local" && resolution != "keep-remote" {
 		return fmt.Errorf("unknown resolution %q", resolution)
 	}
+	// Not under a game that is running (playing.go).
+	if resolution == "keep-remote" && e.PlayingHere(gameID) {
+		return keepRemoteWhilePlaying{}
+	}
 
 	// A failed protective capture is a hard stop, not a warning. In particular,
 	// neither the conflict nor its agreed hash/lineage may be cleared.

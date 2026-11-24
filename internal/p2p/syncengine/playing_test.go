@@ -47,3 +47,41 @@ func TestPlaying_PeerPlayingIsWaitedFor(t *testing.T) {
 		t.Error("the playing answer is not recognisable as busy by older builds")
 	}
 }
+
+// Keeping the other device's version of a conflict replaces this device's
+// save, so it waits for a game being played here to close, as a sync does.
+// The conflict stays, to be resolved once the game is closed.
+func TestPlaying_KeepRemoteWaitsForTheSession(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "save.dat", "local version")
+	write(t, env.remoteDir, "save.dat", "remote version")
+	if err := env.store.SetSyncState("game1", env.peer.ID, []string{"save.dat"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.UpdatePeerLastSynced(env.peer.ID, "2026-01-01T00:00:00.000Z"); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil || res.Status != "conflict" {
+		t.Fatalf("setup: %+v, %v; want a conflict", res, err)
+	}
+
+	playing := true
+	env.engine.Playing = func(string) bool { return playing }
+	if _, err := env.engine.ResolveConflict(context.Background(), "game1", env.peer.ID, "keep-remote"); !errors.Is(err, ErrPlayingHere) {
+		t.Fatalf("err = %v, want ErrPlayingHere", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(env.localDir, "save.dat")); string(got) != "local version" {
+		t.Fatalf("the save of a running game was replaced: %q", got)
+	}
+	if len(env.engine.ActiveConflicts()) != 1 {
+		t.Fatal("the conflict was dropped; it should wait to be resolved")
+	}
+
+	playing = false
+	if _, err := env.engine.ResolveConflict(context.Background(), "game1", env.peer.ID, "keep-remote"); err != nil {
+		t.Fatalf("after the session: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(env.localDir, "save.dat")); string(got) != "remote version" {
+		t.Errorf("after the session, local = %q, want remote version", got)
+	}
+}

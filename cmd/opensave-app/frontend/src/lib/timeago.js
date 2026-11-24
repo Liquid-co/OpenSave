@@ -37,3 +37,27 @@ export function latestOf(stamps) {
   }
   return best;
 }
+
+/**
+ * timeAgo's facts, not its words: what a view needs to say the same thing
+ * in its own language (see locales/en.json, "timeAgo."). The thresholds are
+ * timeAgo's, so the two never disagree; `text` carries what has no
+ * translation — an unparseable stamp as it came, or the date past a week,
+ * said the viewer's way.
+ */
+export function timeAgoParts(iso, now = Date.now()) {
+  if (!iso) return { kind: 'never' };
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return { kind: 'invalid', text: String(iso) };
+  const d = now - t;
+  // A stamp a few seconds in the future is a peer's clock running slightly
+  // ahead, not a negative age — as timeAgo says.
+  if (d < 45 * SEC) return { kind: 'justNow' };
+  if (d < 90 * SEC) return { kind: 'aMinuteAgo' };
+  if (d < HOUR) return { kind: 'minutesAgo', n: Math.round(d / MIN) };
+  if (d < 90 * MIN) return { kind: 'anHourAgo' };
+  if (d < DAY) return { kind: 'hoursAgo', n: Math.round(d / HOUR) };
+  if (d < 36 * HOUR) return { kind: 'yesterday' };
+  if (d < 7 * DAY) return { kind: 'daysAgo', n: Math.round(d / DAY) };
+  return { kind: 'onDate', date: new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) };
+}

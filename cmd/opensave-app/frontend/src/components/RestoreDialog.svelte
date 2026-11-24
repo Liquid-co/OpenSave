@@ -14,6 +14,7 @@
   import { fmtSize } from '../lib/format.js';
   import { whenLabel } from '../lib/snapshots.js';
   import { restoreRequest, answerRestore, summarize, describeSummary } from '../lib/restore.js';
+  import { t } from '../lib/i18n.js';
 
   let preview = null;
   let error = '';
@@ -48,26 +49,26 @@
 </script>
 
 {#if req}
-  <Modal title="Restore this snapshot?" icon={RotateCcw} onClose={() => answer(false)} width={600} height="auto" maxHeight="min(80vh, 680px)">
+  <Modal title={$t('restore.title')} icon={RotateCcw} onClose={() => answer(false)} width={600} height="auto" maxHeight="min(80vh, 680px)">
     <svelte:fragment slot="sub">
-      {req.game.name} · the snapshot from {whenLabel(req.snap.timestamp)}
+      {req.game.name} · {$t('restore.snapshotFrom', { when: whenLabel(req.snap.timestamp) })}
     </svelte:fragment>
 
     <div class="body">
       {#if !preview && !error}
-        <p class="quiet"><Spinner size={13} /> Comparing it with your save…</p>
+        <p class="quiet"><Spinner size={13} /> {$t('restore.comparing')}</p>
       {:else if error}
-        <p class="quiet">Couldn't compare it with your save first ({error}). Restoring is still safe.</p>
+        <p class="quiet">{$t('restore.compareError', { error })}</p>
       {:else if preview.identical}
-        <p class="lead">Your save already matches this snapshot — restoring it would change nothing.</p>
+        <p class="lead">{$t('restore.identical')}</p>
       {:else}
-        <p class="lead">{describeSummary(preview)}{#if preview.unchanged}; {preview.unchanged} {preview.unchanged === 1 ? 'stays' : 'stay'} as {preview.unchanged === 1 ? 'it is' : 'they are'}{/if}.</p>
+        <p class="lead">{describeSummary(preview)}{#if preview.unchanged}{$t('restore.unchanged', { n: preview.unchanged })}{/if}</p>
         <ul class="files">
           {#each preview.changes as c}
             <li class="file {c.change}">
               <span class="kind"><svelte:component this={icons[c.change]} size={14} /></span>
               <span class="path" title={c.path}>{#if c.location}<span class="loc">{c.location}</span>{/if}{c.path}</span>
-              <span class="what">{c.change === 'changed' ? 'changes' : c.change === 'restored' ? 'comes back' : 'removed'}</span>
+              <span class="what">{c.change === 'changed' ? $t('restore.changes') : c.change === 'restored' ? $t('restore.comesBack') : $t('restore.removed')}</span>
               <span class="size">{sizes(c)}</span>
             </li>
           {/each}
@@ -75,18 +76,17 @@
       {/if}
       {#if preview?.unplaced?.length}
         <p class="quiet">
-          It also has files for {preview.unplaced.map((n) => `“${n}”`).join(', ')}, which has no folder on this
-          device; they are left out.
+          {$t('restore.unplaced', { names: preview.unplaced.map((n) => `“${n}”`).join(', ') })}
         </p>
       {/if}
-      <p class="safe"><History size={14} class="inline-icon" />Your current save is kept as a snapshot first, so this can be undone.</p>
+      <p class="safe"><History size={14} class="inline-icon" />{$t('restore.safe')}</p>
     </div>
 
     <ModalFoot>
       <span></span>
       <div class="actions">
-        <button class="btn" on:click={() => answer(false)}>Cancel</button>
-        <button class="btn primary" on:click={() => answer(true)}>{preview?.identical ? 'Restore anyway' : 'Restore'}</button>
+        <button class="btn" on:click={() => answer(false)}>{$t('common.cancel')}</button>
+        <button class="btn primary" on:click={() => answer(true)}>{preview?.identical ? $t('restore.anyway') : $t('restore.restore')}</button>
       </div>
     </ModalFoot>
   </Modal>
