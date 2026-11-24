@@ -1387,11 +1387,5 @@
   "snapshots.kind.automatic": "自动",
   "snapshots.kind.snapshot": "快照",
   "settings.appearance.scaleDefault": "(默认)",
-  "devices.linkLan": "家庭网络",
-  "devices.linkVpn": "VPN（如 Tailscale）",
-  "devices.linkRelay": "互联网中继",
-  "devices.linkInternet": "互联网",
-  "devices.linkUnmeasured": "{kind} · 尚未测速",
-  "devices.linkMeasured": "{kind} · {rate}（测于 {when}）",
-  "devices.linkTitle": "存档会优先通过最快的连接发送；落后的设备会从拥有较新存档的设备中最快的那台获取。"
+  "devices.linkSpeedTitle": "测于 {when}。存档会优先通过最快的连接发送；落后的设备会从拥有较新存档的设备中最快的那台获取。"
 }

@@ -98,15 +98,10 @@
 
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString() : $t('devices.never'));
 
-  // How this device reaches the peer, and how fast it has found that to be.
-  // linkLabel is given $t, so the line follows a change of language.
-  const linkKinds = { lan: 'devices.linkLan', vpn: 'devices.linkVpn', relay: 'devices.linkRelay', internet: 'devices.linkInternet' };
+  // How fast this device has found its connection to the peer. How the peer
+  // is reached is the protection badge's to say, so only the speed is shown,
+  // and only once something has measured it.
   const fmtRate = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : Math.max(1, Math.round(b / 1024)) + ' KB/s');
-  function linkLabel(link, tr) {
-    const kind = linkKinds[link.kind] ? tr(linkKinds[link.kind]) : link.kind;
-    if (!link.bytesPerSec) return tr('devices.linkUnmeasured', { kind });
-    return tr('devices.linkMeasured', { kind, rate: fmtRate(link.bytesPerSec), when: fmtTime(link.measuredMs) });
-  }
 </script>
 
 <div class="head">
@@ -135,12 +130,12 @@
             {peer.address === 'relay' ? $t('devices.internetRelay') : `${peer.address}:${peer.port}`}
             · {$t('devices.lastSynced', { time: fmtTime(peer.lastSynced) })}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
+            {#if peer.link?.bytesPerSec}
+              <span title={$t('devices.linkSpeedTitle', { when: fmtTime(peer.link.measuredMs) })}>
+                · {fmtRate(peer.link.bytesPerSec)}
+              </span>
+            {/if}
           </div>
-          {#if peer.link}
-            <div class="peer-meta" title={$t('devices.linkTitle')}>
-              {linkLabel(peer.link, $t)}
-            </div>
-          {/if}
           <!-- Per device, next to how it is reached, because that is the
                context the answer depends on. -->
           <div class="peer-protection">
