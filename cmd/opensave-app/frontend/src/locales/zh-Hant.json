@@ -513,7 +513,7 @@
   "home.findGame.title": "從遊戲資料庫跟蹤遊戲",
   "home.findGame.runningNow": "正在執行",
   "home.findGame.lookingAtRunning": "正在查看正在執行的程式…",
-  "home.findGame.nothingRunning": "目前沒有遊戲資料庫收錄的遊戲在執行。",
+  "home.findGame.nothingRunning": "目前沒有正在執行、且已被遊戲資料庫收錄的遊戲。",
   "home.findGame.findByName": "按名稱查詢",
   "home.findGame.searchPlaceholder": "例如：Crimson Desert",
   "home.findGame.searching": "搜尋中…",
