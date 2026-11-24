@@ -1387,5 +1387,5 @@
   "snapshots.kind.automatic": "自動",
   "snapshots.kind.snapshot": "快照",
   "settings.appearance.scaleDefault": "(預設)",
-  "devices.linkSpeedTitle": "測於 {when}。存檔會優先透過最快的連線傳送；落後的裝置會從擁有較新存檔的裝置中最快的那臺取得。"
+  "devices.linkSpeedTitle": "{when} 測得。存檔會優先透過最快的連線傳送；落後的裝置會從擁有較新存檔的裝置中最快的那臺取得。"
 }
