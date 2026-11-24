@@ -204,7 +204,7 @@
               <code>{s.pattern.replace(/^\//, '')}</code>
               <span class="source">{s.reason}</span>
               <span class="decide">
-                <button class="btn small" disabled={$busy} on:click={() => decide(s, true)}>
+                <button class="btn small primary" disabled={$busy} on:click={() => decide(s, true)}>
                   {$t('game.config.keepHere')}
                 </button>
                 <button class="btn small ghost" disabled={$busy} on:click={() => decide(s, false)}>
