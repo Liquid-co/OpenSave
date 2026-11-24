@@ -76,6 +76,7 @@ var commandGroups = []commandGroup{
 		{"emptied [<gameId> delete|restore]", "Saves emptied here, held back from your other devices; answer for one"},
 		{"relocate <gameId> use|dismiss", "A missing save folder found on another drive here: use it, or not"},
 		{"settings <gameId> keep|sync <file>", "A file that may be this device's settings: keep it here, or keep syncing it"},
+		{"gamedb <gameId> link|dismiss", "A game tracked without an App ID that looks like one in the game database: link it, or not"},
 		{"files <gameId> <snapId> [path]", "List a snapshot's contents, or restore one file"},
 		{"export <gameId> <dir>", "Copy the current save out to a folder"},
 		{"backup export <file.sscb>", "Write a portable backup archive"},

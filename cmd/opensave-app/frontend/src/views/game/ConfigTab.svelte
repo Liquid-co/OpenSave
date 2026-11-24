@@ -50,7 +50,7 @@
   function answerLink(accept) {
     const s = dbSuggestion;
     if (!s) return;
-    const done = accept ? $t('game.config.dbLinked', { name: s.name }) : $t('game.config.dbNotLinked');
+    const done = $t(accept ? 'game.config.dbLinked' : 'game.config.dbNotLinked', { game: game.name, name: s.name });
     return run(done, async () => {
       await api.post(`/api/games/${game.id}/gamedb-link`, { accept });
       // The form holds the App ID as the tab opened; saving it would undo this.

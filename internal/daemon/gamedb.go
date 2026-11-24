@@ -130,7 +130,7 @@ func (d *Daemon) suggestGameDatabaseLink(game store.Game) {
 	if d.Store.SetMark(gameDBSuggestionMark(game.ID), m.AppID+"\n"+m.Name) != nil {
 		return
 	}
-	d.Log.Log("info", fmt.Sprintf("%q looks like %s in the game database — link it from the game's configuration tab for its cover art, settings and seeing it played", game.Name, m.Name))
+	d.Log.Log("info", fmt.Sprintf("%q looks like %s in the game database — link it from the game's Config tab or with `opensave gamedb %s link` for its cover art, settings and seeing it played", game.Name, m.Name, game.ID))
 	if d.OnGameChanged != nil {
 		d.OnGameChanged(game.ID)
 	}
