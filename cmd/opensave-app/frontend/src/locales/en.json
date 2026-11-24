@@ -1570,6 +1570,8 @@
     "other": "{n} files of {game} may be settings for this device"
   },
   "notifications.waiting.settingsDetail": "Keep them on this device, or keep them syncing",
+  "notifications.waiting.gamedb": "{game} may be {name} in the game database",
+  "notifications.waiting.gamedbDetail": "Link it for cover art, launching and its settings files",
   "notifications.waiting.new": {
     "one": "1 new game found",
     "other": "{n} new games found"

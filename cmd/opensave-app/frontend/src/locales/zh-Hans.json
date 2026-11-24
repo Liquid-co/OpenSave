@@ -1378,6 +1378,8 @@
   "notifications.waiting.damagedDetail": "读取时发现已损坏",
   "notifications.waiting.settings": "{game} 有 {n} 个文件可能是本设备的设置",
   "notifications.waiting.settingsDetail": "保留在本设备上，或继续同步",
+  "notifications.waiting.gamedb": "{game} 可能是游戏数据库中的 {name}",
+  "notifications.waiting.gamedbDetail": "关联后可获得封面、启动和它的设置文件",
   "notifications.waiting.new": "发现了 {n} 个新游戏",
   "notifications.waiting.update": "OpenSave {version} 已可用",
   "notifications.waiting.updateDetail": "你当前是 {current}——可从顶部横幅安装",

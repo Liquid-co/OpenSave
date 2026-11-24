@@ -111,6 +111,17 @@ describe('files that may be settings for this device', () => {
   });
 });
 
+describe('a game database link to confirm', () => {
+  it('asks in the tab where it is answered, and again for another match', () => {
+    const game = { id: 'duck', name: 'Duck', branches: {}, gameDBSuggestion: { appId: '312530', name: 'Duck Game' } };
+    const w = waitingOnYou({ games: { duck: game } });
+    expect(w.map((x) => x.id)).toEqual(['gamedb:duck:312530']);
+    expect(w[0].title).toBe('Duck may be Duck Game in the game database');
+    expect(w[0].go).toEqual({ view: 'game', params: { gameId: 'duck', tab: 'config' } });
+    expect(canDismiss(w[0])).toBe(true);
+  });
+});
+
 describe('incompleteSnapshotsMessage', () => {
   const t = (key, params) => translate(en, key, params, new Intl.PluralRules('en'));
 
@@ -187,7 +198,8 @@ describe('the bell says what waits on you', () => {
     games: {
       hades: { id: 'hades', name: 'Hades', emptied: { state: 'held' }, branches: { main: { snapshots: [{ id: 's1', problem: 'damaged' }] } } },
       tunic: { id: 'tunic', name: 'Tunic', savePathMissing: true, saveDriveMissing: true, relocateSuggestion: 'E:\SteamLibrary\Tunic', branches: {} },
-      celeste: { id: 'celeste', name: 'Celeste', savePathMissing: true, branches: {}, suggestedSettings: [{ pattern: '/settings.ini' }] }
+      celeste: { id: 'celeste', name: 'Celeste', savePathMissing: true, branches: {}, suggestedSettings: [{ pattern: '/settings.ini' }] },
+      duck: { id: 'duck', name: 'Duck', branches: {}, gameDBSuggestion: { appId: '312530', name: 'Duck Game' } }
     },
     conflicts: { hades: {} },
     locationConflicts: [{ gameId: 'hades', root: 'Saves' }],
@@ -211,7 +223,7 @@ describe('the bell says what waits on you', () => {
     expect(said).toHaveLength(listed.length);
     expect(said.map(caseOfSaid)).toEqual(listed.map((x) => x.id.split(':')[0]));
     expect(listed.map((x) => x.id.split(':')[0])).toEqual([
-      'conflict', 'location', 'emptied', 'pair', 'offer', 'relocate', 'missing', 'damaged', 'settings', 'new', 'update'
+      'conflict', 'location', 'emptied', 'pair', 'offer', 'relocate', 'missing', 'damaged', 'settings', 'gamedb', 'new', 'update'
     ]);
   });
 

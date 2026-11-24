@@ -3,7 +3,7 @@
   import { askConfirm } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
   import { savePathChange } from '../../lib/savepath.js';
-  import { t } from '../../lib/i18n.js';
+  import { t, segments } from '../../lib/i18n.js';
   import AppIdField from './AppIdField.svelte';
   import SyncIgnoreEditor from './SyncIgnoreEditor.svelte';
   import SaveLocations from './SaveLocations.svelte';
@@ -150,9 +150,9 @@
     </div>
     {#if dbSuggestion}
       <div class="db-suggestion">
-        <span class="hint">{$t('game.config.dbSuggestion', { name: dbSuggestion.name })}</span>
+        <span class="hint">{#each segments($t('game.config.dbSuggestion'), { name: dbSuggestion.name }, ['name']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}</span>
         <span class="decide">
-          <button class="btn small" disabled={$busy} on:click={() => answerLink(true)}>
+          <button class="btn small primary" disabled={$busy} on:click={() => answerLink(true)}>
             {$t('game.config.dbLink')}
           </button>
           <button class="btn small ghost" disabled={$busy} on:click={() => answerLink(false)}>
