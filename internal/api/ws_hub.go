@@ -64,7 +64,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// upgrade is reached, so this is the second wall, not the first. A
 		// request with no Origin (the CLI, the Deck plugin) is not a browser
 		// and passes.
-		OriginPatterns: []string{"wails.localhost", "wails", "localhost:34115"},
+		OriginPatterns: []string{"wails.localhost", "wails", "localhost:34115", "wails.localhost:34115"},
 	})
 	if err != nil {
 		return

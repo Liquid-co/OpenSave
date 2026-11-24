@@ -118,6 +118,32 @@ func TestAPI_TheAppsOwnOriginIsAllowed(t *testing.T) {
 	}
 }
 
+// A build run with `wails dev` must reach its daemon too, from a browser and
+// from its own window. On Windows that window says it is wails.localhost on
+// the dev server's port; refused, it showed "OpenSave failed to start" over a
+// daemon that was running fine. The port is exact: wails.localhost on any
+// other port is still refused.
+func TestAPI_TheDevBuildsOriginsAreAllowed(t *testing.T) {
+	ts := startTestServer(t)
+	for _, origin := range []string{"http://localhost:34115", "http://wails.localhost:34115"} {
+		resp := doFrom(t, ts, origin, http.MethodGet, "/api/settings", nil)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("the dev build's origin %s was refused: HTTP %d", origin, resp.StatusCode)
+		}
+		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != origin {
+			t.Errorf("origin %s: Access-Control-Allow-Origin = %q, want it echoed back", origin, got)
+		}
+	}
+	for _, origin := range []string{"http://wails.localhost:8080", "http://localhost:5173", "http://127.0.0.1:34115"} {
+		resp := doFrom(t, ts, origin, http.MethodGet, "/api/settings", nil)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("origin %s, not the app's, was answered: HTTP %d", origin, resp.StatusCode)
+		}
+	}
+}
+
 // The CLI and the Steam Deck plugin are not browsers and send no Origin.
 // They must pass exactly as before.
 func TestAPI_NoOriginIsNotABrowserAndPasses(t *testing.T) {
