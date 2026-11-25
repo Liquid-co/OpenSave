@@ -417,11 +417,15 @@ func (d *Daemon) sessionEnded(gameID string, started, ended time.Time) {
 		return
 	}
 	// Onward to the other devices, so it is there on the next one picked up.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	// As a sync of the engine's (GoSync), which shutdown cancels and waits
+	// for: started on a goroutine of its own, it went on reading the
+	// database after Stop had returned, and a game closed just before the app
+	// was raced its shutdown.
+	d.P2P.GoSync(func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 		_, _ = d.P2P.SyncGame(ctx, gameID)
-	}()
+	})
 }
 
 // markSessionEnd keeps the save as a session left it. The watcher has usually

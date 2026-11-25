@@ -378,3 +378,46 @@ func TestQuietSession_ASessionBegunFromOutsideIsNotEnded(t *testing.T) {
 		t.Error("a session begun by the Deck plugin was ended as quiet")
 	}
 }
+
+// A session that changed the save sends it on to the other devices in the
+// background. Shutting down straight after waits for that: it went on
+// reading the database after Stop had returned, and on Windows the test's
+// folder could not be removed while it did (CI, dev-public, Nov 18).
+func TestSessionEnd_ItsSyncDoesNotOutliveShutdown(t *testing.T) {
+	home := t.TempDir()
+	d, err := New(Options{HomeOverride: home, DisableDiscovery: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Scanner.ManifestURL = ""
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			d.Stop()
+		}
+	})
+	g, dir := sessionGame(t, d, "quit")
+	start := time.Now()
+	d.sessions.tracker.Begin(g.ID, start)
+	if err := os.WriteFile(filepath.Join(dir, "slot1.sav"), []byte("saved, then quit"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	d.sessions.tracker.Finish(g.ID, start.Add(30*time.Minute))
+
+	d.Stop()
+	stopped = true
+	var db string
+	_ = filepath.Walk(home, func(p string, info os.FileInfo, err error) error {
+		if err == nil && info.Name() == "opensave.db" {
+			db = p
+		}
+		return nil
+	})
+	if db == "" {
+		t.Fatal("setup: no database found")
+	}
+	// Renaming an open file fails on Windows; elsewhere this passes anyway.
+	if err := os.Rename(db, db+".moved"); err != nil {
+		t.Fatalf("the database was still in use once Stop had returned: %v", err)
+	}
+}
