@@ -97,6 +97,7 @@ func (s *Store) SnapshotFiles(snapshotID string) ([]CapturedFile, error) {
 type SnapshotFileCount struct {
 	SnapshotID string `db:"snapshot_id"`
 	Files      int    `db:"files"`
+	Timestamp  string `db:"timestamp"`
 }
 
 // SnapshotFileCounts lists a game's snapshots that captured at least minFiles
@@ -106,10 +107,10 @@ type SnapshotFileCount struct {
 func (s *Store) SnapshotFileCounts(gameID, root string, minFiles int) ([]SnapshotFileCount, error) {
 	var rows []SnapshotFileCount
 	if err := s.db.Select(&rows, `
-		SELECT sf.snapshot_id, COUNT(*) AS files FROM snapshot_files sf
+		SELECT sf.snapshot_id, COUNT(*) AS files, s.timestamp FROM snapshot_files sf
 		JOIN snapshots s ON s.id = sf.snapshot_id
 		WHERE s.game_id = ? AND sf.root = ?
-		GROUP BY sf.snapshot_id
+		GROUP BY sf.snapshot_id, s.timestamp
 		HAVING COUNT(*) >= ?
 		ORDER BY s.timestamp DESC, s.id DESC`, gameID, root, minFiles); err != nil {
 		return nil, fmt.Errorf("count snapshot files of %s: %w", gameID, err)

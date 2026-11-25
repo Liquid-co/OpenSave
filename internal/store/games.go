@@ -361,7 +361,24 @@ func (s *Store) ForgetGameSyncState(gameID string) error {
 	if _, err := tx.Exec(`DELETE FROM peer_notes WHERE game_id = ?`, gameID); err != nil {
 		return fmt.Errorf("forget peer notes for %s: %w", gameID, err)
 	}
+	// And when, so that the game's snapshots from before now — kept, for
+	// restoring — no longer prove to a peer that this device held its save
+	// (SyncForgottenAt).
+	if _, err := tx.Exec(`INSERT INTO game_sync_forgotten (game_id, forgotten_ms) VALUES (?, ?)
+		ON CONFLICT(game_id) DO UPDATE SET forgotten_ms = excluded.forgotten_ms`, gameID, time.Now().UnixMilli()); err != nil {
+		return fmt.Errorf("record forgetting %s: %w", gameID, err)
+	}
 	return tx.Commit()
+}
+
+// SyncForgottenAt is when a game last forgot what it agreed with its peers
+// (ForgetGameSyncState), or the zero time if it never has.
+func (s *Store) SyncForgottenAt(gameID string) time.Time {
+	var ms int64
+	if err := s.db.Get(&ms, `SELECT forgotten_ms FROM game_sync_forgotten WHERE game_id = ?`, gameID); err != nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms)
 }
 
 // IsUntracked reports whether a game id carries an untrack tombstone.
