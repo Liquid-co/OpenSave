@@ -232,6 +232,9 @@ type gameWatch struct {
 	// OpenSave applied itself (owntouch), anything else, or both. Read and
 	// written only by the event loop.
 	ownEvents, otherEvents bool
+	// pendingChange is set while a change made here (not by a sync) waits
+	// out the debounce, for ChangePending: read from other goroutines.
+	pendingChange atomic.Bool
 	// foreignFolders: a folder queued for watching since the last rescan was
 	// not one OpenSave created, or the watch started on a busy folder. The
 	// rescan that follows registration counts as someone else's change only
@@ -577,6 +580,15 @@ func (e *Engine) Unwatch(gameID string) {
 	}
 }
 
+// ChangePending reports whether a change made here to a game's save is
+// waiting out the debounce: seen, and not yet judged.
+func (e *Engine) ChangePending(gameID string) bool {
+	e.mu.Lock()
+	gw, ok := e.games[gameID]
+	e.mu.Unlock()
+	return ok && gw.pendingChange.Load()
+}
+
 // Stop shuts down every watch goroutine.
 func (e *Engine) Stop() {
 	if e.stopCatch != nil {
@@ -763,6 +775,7 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 				gw.ownEvents = true
 			} else {
 				gw.otherEvents = true
+				gw.pendingChange.Store(true)
 			}
 			// New subdirectory in directory mode: extend the watch — on
 			// registerFolders, never here. See registerFolders.
@@ -796,6 +809,7 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			// folders they were: what OpenSave created, it also filled.
 			if gw.foreignFolders {
 				gw.otherEvents = true
+				gw.pendingChange.Store(true)
 			} else {
 				gw.ownEvents = true
 			}
@@ -837,6 +851,7 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 					gw.ownEvents = true
 				} else {
 					gw.otherEvents = true
+					gw.pendingChange.Store(true)
 				}
 			} else {
 				e.log("warn", fmt.Sprintf("watching %q: %v", gw.gameID, err))
@@ -886,6 +901,7 @@ func (e *Engine) run(ctx context.Context, gw *gameWatch) {
 			}
 			ownOnly := gw.ownEvents && !gw.otherEvents
 			gw.ownEvents, gw.otherEvents = false, false
+			gw.pendingChange.Store(false)
 			e.handleChangeFrom(ctx, gw, ownOnly)
 		}
 	}

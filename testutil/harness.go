@@ -112,7 +112,7 @@ func NewTestDaemon(t *testing.T, name string) *TestDaemon {
 	if err := os.MkdirAll(home, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	d, err := daemon.New(daemon.Options{HomeOverride: home, DisableDiscovery: true})
+	d, err := daemon.New(daemon.Options{HomeOverride: home, DisableDiscovery: true, SyncEveryChange: true})
 	if err != nil {
 		t.Fatalf("daemon.New(%s): %v", name, err)
 	}

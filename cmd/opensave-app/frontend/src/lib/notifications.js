@@ -63,6 +63,14 @@ export function waitingOnYou({ games = {}, conflicts = {}, locationConflicts = [
       out.push({ id: `damaged:${g.id}`, tone: 'warn', gameId: g.id, title: `${n(damaged, 'snapshot', 'snapshots')} of ${g.name} can't be restored`, detail: 'Found damaged when read back', go: { view: 'game', params: { gameId: g.id } } });
     }
   }
+  for (const g of Object.values(games)) {
+    // Files that look like this device's settings: they sync until answered,
+    // so nothing is wrong meanwhile, but the answer is asked where it is seen.
+    const files = (g.suggestedSettings ?? []).map((s) => s.pattern);
+    if (files.length) {
+      out.push({ id: `settings:${g.id}:${files.join(',')}`, tone: 'info', gameId: g.id, title: `${n(files.length, 'file', 'files')} of ${g.name} may be settings for this device`, detail: 'Keep them on this device, or keep them syncing', go: { view: 'game', params: { gameId: g.id, tab: 'config' } } });
+    }
+  }
   if (newGames.length) {
     out.push({ id: `new:${newGames.map((g) => g.name).join(',')}`, tone: 'info', title: `${n(newGames.length, 'new game', 'new games')} found`, detail: newGames.slice(0, 3).map((g) => g.name).join(', '), go: { view: 'home' } });
   }
@@ -122,9 +130,9 @@ export function saveSeenAt(ms, storage = globalThis.localStorage) {
 
 // Clearing the bell. What happened can be dismissed one by one or all at
 // once, and of what waits on you, only what is news rather than a problem:
-// games found, an update, a newer save offered from the cloud. A conflict, an
-// emptied or missing save folder, a damaged snapshot or a device asking to pair
-// stays until it is dealt with — hiding one would hide a game that is not
+// games found, an update, a newer save offered from the cloud, files that may
+// be this device's settings. A conflict, an emptied or missing save folder, a
+// damaged snapshot or a device asking to pair stays until it is dealt with — hiding one would hide a game that is not
 // syncing. Clearing only takes things out of the bell: Activity still has
 // them. Kept per device, like what has been read.
 
@@ -153,7 +161,7 @@ export function saveCleared(cleared, storage = globalThis.localStorage) {
 }
 
 /** Whether an item that waits on you can be dismissed: news, not a problem. */
-export const canDismiss = (item) => /^(new|update|offer):/.test(item?.id ?? '');
+export const canDismiss = (item) => /^(new|update|offer|settings):/.test(item?.id ?? '');
 
 /** The items still to show: those not cleared. An item waiting on you has no
  *  time, so only "Clear all" of what happened passes it by. */
@@ -276,6 +284,12 @@ export function waitingText({ games = {}, conflicts = {}, locationConflicts = []
     const damaged = Object.values(g.branches ?? {}).flatMap((b) => (b.snapshots ?? []).filter((s) => s.problem)).length;
     if (damaged) {
       out.push({ title: { key: 'notifications.waiting.damaged', params: { n: damaged, game: g.name } }, detail: { key: 'notifications.waiting.damagedDetail', params: {} } });
+    }
+  }
+  for (const g of Object.values(games)) {
+    const files = g.suggestedSettings ?? [];
+    if (files.length) {
+      out.push({ title: { key: 'notifications.waiting.settings', params: { n: files.length, game: g.name } }, detail: { key: 'notifications.waiting.settingsDetail', params: {} } });
     }
   }
   if (newGames.length) {

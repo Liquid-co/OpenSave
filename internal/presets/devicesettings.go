@@ -49,7 +49,7 @@ func (sc *Scanner) deviceSettings(idx []indexedGame) *DeviceSettings {
 	}
 	ds := &DeviceSettings{sc: sc, byID: map[string]indexedGame{}, byName: map[string]indexedGame{}}
 	for _, g := range idx {
-		if len(g.Config) == 0 {
+		if len(g.Config) == 0 && len(g.Paths) == 0 {
 			continue
 		}
 		if g.SteamID != "" {
@@ -106,4 +106,20 @@ func (ds *DeviceSettings) Patterns(name, appID string, roots []string) []string 
 func coversEverything(rel string) bool {
 	first := strings.SplitN(rel, "/", 2)[0]
 	return strings.Trim(first, "*") == "" || first == "*.*"
+}
+
+// InstallNames returns the names the game database knows a game's install
+// folder by ("Crimson Desert"), found by App ID or name.
+func (ds *DeviceSettings) InstallNames(name, appID string) []string {
+	if ds == nil {
+		return nil
+	}
+	g, ok := ds.byID[appID]
+	if !ok || appID == "" {
+		g, ok = ds.byName[normalizeGameName(stripNameSuffixes(name))]
+	}
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), g.Installs...)
 }
