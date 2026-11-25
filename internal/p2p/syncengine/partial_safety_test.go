@@ -15,7 +15,7 @@ import (
 // its partial copy back, the missing files were read as "deleted over there",
 // and 23k files were deleted on the device that still had them. 2.4 records
 // as shared only what both manifests showed (persistLineage), which should
-// rule that out; these hold it there.
+// rule that out; these hold it there, for the per-file and the batched pull.
 
 func countFiles(t *testing.T, dir string) int {
 	t.Helper()
@@ -77,6 +77,18 @@ func interruptedThenResumed(t *testing.T, env *engineEnv, total, stopAfter int) 
 func TestPartialPull_InterruptedThenResumed(t *testing.T) {
 	env := setupEngine(t)
 	interruptedThenResumed(t, env, 200, 60)
+}
+
+func TestPartialPull_InterruptedThenResumed_Batched(t *testing.T) {
+	// One batch in flight, so the first batch of 256 is written before the
+	// interruption lands in the second: a deterministic partial copy.
+	old := batchWorkers
+	batchWorkers = 1
+	t.Cleanup(func() { batchWorkers = old })
+	env, _ := setupBatchEngine(t, ProtoBatchFiles)
+	// Batches fetch through the same fake reader, one call per file; the
+	// 300th is inside the second batch.
+	interruptedThenResumed(t, env, 600, 300)
 }
 
 // The other side of the same situation: this device has everything, the peer

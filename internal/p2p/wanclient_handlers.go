@@ -172,6 +172,7 @@ func (w *WanClient) handleMessage(ctx context.Context, msg RelayMessage) {
 			if w.engine.Sync.Progress.OnSyncError != nil {
 				w.engine.Sync.Progress.OnSyncError(msg.GameID, ev)
 			}
+			w.engine.Sync.NotePeerPulled(msg.GameID, msg.From)
 		}
 
 	case "request":

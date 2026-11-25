@@ -1578,5 +1578,6 @@
   "controller.mode.off": "Off",
   "snapshots.kind.automatic": "Automatic",
   "snapshots.kind.snapshot": "Snapshot",
-  "settings.appearance.scaleDefault": "(default)"
+  "settings.appearance.scaleDefault": "(default)",
+  "devices.linkSpeedTitle": "Measured {when}. Saves go to the fastest connections first, and a device that is behind takes the newer save from the fastest device that has it."
 }

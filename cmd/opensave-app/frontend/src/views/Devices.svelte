@@ -97,6 +97,11 @@
   };
 
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString() : $t('devices.never'));
+
+  // How fast this device has found its connection to the peer. How the peer
+  // is reached is the protection badge's to say, so only the speed is shown,
+  // and only once something has measured it.
+  const fmtRate = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB/s' : Math.max(1, Math.round(b / 1024)) + ' KB/s');
 </script>
 
 <div class="head">
@@ -125,6 +130,11 @@
             {peer.address === 'relay' ? $t('devices.internetRelay') : `${peer.address}:${peer.port}`}
             · {$t('devices.lastSynced', { time: fmtTime(peer.lastSynced) })}
             {#if peer.appVersion}· OpenSave {peer.appVersion}{/if}
+            {#if peer.link?.bytesPerSec}
+              <span title={$t('devices.linkSpeedTitle', { when: fmtTime(peer.link.measuredMs) })}>
+                · {fmtRate(peer.link.bytesPerSec)}
+              </span>
+            {/if}
           </div>
           <!-- Per device, next to how it is reached, because that is the
                context the answer depends on. -->
