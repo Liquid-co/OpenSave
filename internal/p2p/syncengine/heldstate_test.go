@@ -176,3 +176,100 @@ func TestHeldState_ReadsOnlySnapshotsLargeEnoughToMatch(t *testing.T) {
 		t.Error("a malformed key matched")
 	}
 }
+
+// A game untracked and tracked again: this device held both files before the
+// untrack, and its folder lost one while nothing tracked it. Its snapshots
+// from then are kept, for restoring, but they are not proof of a shared
+// starting point any more: taken as one, the lost file read as a deletion
+// this device made, and the peer deleted its own copy. Now the file is
+// simply one the peer has and this device does not.
+func TestHeldState_SnapshotsFromBeforeAnUntrackProveNothing(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "a.sav", "alpha")
+	write(t, env.localDir, "b.sav", "bravo")
+	if _, err := env.engine.Snapshots.Create("game1", "", true); err != nil {
+		t.Fatal(err)
+	}
+	write(t, env.remoteDir, "a.sav", "alpha")
+	write(t, env.remoteDir, "b.sav", "bravo")
+	both, _ := delta.BuildManifest(env.remoteDir)
+	if !env.engine.HeldState("game1", manifestHeldKey(both)) {
+		t.Fatal("setup: the snapshot does not hold both files")
+	}
+
+	// Untracked (daemon.UntrackGame), b.sav lost, tracked again.
+	if err := env.store.ForgetGameSyncState("game1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(env.localDir, "b.sav")); err != nil {
+		t.Fatal(err)
+	}
+	env.transport.heldByPeer = func(string) bool { return false }
+
+	if env.engine.HeldState("game1", manifestHeldKey(both)) {
+		t.Error("a snapshot from before the untrack still proves this device held the peer's save")
+	}
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSaveFile(t, env.remoteDir, "b.sav"); got != "bravo" {
+		t.Errorf("the peer's b.sav became %q: the file lost while untracked was taken for a deletion", got)
+	}
+	if got := readSaveFile(t, env.localDir, "b.sav"); got != "bravo" {
+		t.Errorf("b.sav here is %q, want the peer's copy pulled back", got)
+	}
+}
+
+// What this device has held since it was tracked again still counts.
+func TestHeldState_SnapshotsSinceTheUntrackStillCount(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "a.sav", "alpha")
+	if err := env.store.ForgetGameSyncState("game1"); err != nil {
+		t.Fatal(err)
+	}
+	// A later millisecond than the untrack's: both times are kept to the
+	// millisecond, and a snapshot in the untrack's own does not count.
+	forgotten := env.store.SyncForgottenAt("game1")
+	for time.Now().UnixMilli() <= forgotten.UnixMilli() {
+		time.Sleep(time.Millisecond)
+	}
+	if _, err := env.engine.Snapshots.Create("game1", "", true); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := delta.BuildManifest(env.localDir)
+	if !env.engine.HeldState("game1", manifestHeldKey(m)) {
+		t.Error("a snapshot taken after the game was tracked again does not count")
+	}
+}
+
+// The peer answers about its save as it is when asked, and may have synced
+// since this device read it: here it took the file it was missing from this
+// device in between, and so truly has held this device's save by the time it
+// answers. That answer says nothing about the save this device read first.
+// Taken against it, the file the peer had not got yet read as one it deleted,
+// and this device deleted its own copy.
+func TestHeldState_AnAnswerAboutALaterSaveIsNotTakenForTheFirst(t *testing.T) {
+	env := setupEngine(t)
+	write(t, env.localDir, "a.sav", "alpha")
+	write(t, env.localDir, "b.sav", "bravo")
+	write(t, env.remoteDir, "a.sav", "alpha")
+	mine, _ := delta.BuildManifest(env.localDir)
+	calls := 0
+	env.transport.onFetchManifest = func() {
+		calls++
+		if calls == 2 { // the peer synced between this device's two requests
+			write(t, env.remoteDir, "b.sav", "bravo")
+		}
+	}
+	env.transport.heldByPeer = func(h string) bool { return h == manifestHeldKey(mine) }
+
+	if _, err := env.engine.SyncWithPeer(context.Background(), "game1", env.peer); err != nil {
+		t.Fatal(err)
+	}
+	if calls < 2 {
+		t.Fatalf("setup: the peer was asked %d times, want the held question asked", calls)
+	}
+	if got := readSaveFile(t, env.localDir, "b.sav"); got != "bravo" {
+		t.Errorf("b.sav here became %q: a file the peer had not got yet was taken for one it deleted", got)
+	}
+}

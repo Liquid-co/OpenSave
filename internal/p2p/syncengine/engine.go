@@ -868,6 +868,12 @@ func (e *Engine) SyncWithPeer(ctx context.Context, gameID string, peer Peer) (Re
 		}
 	}
 
+	// Deleting here what the peer no longer has: only if it still does not
+	// (peermoved.go). Nothing has been changed yet; SyncGame runs it again.
+	if e.peerRegainedDeletions(ctx, gameID, peer, query, ignoreRules, decision) {
+		return Result{Status: "peer_busy", PeerID: peer.ID, PeerName: peer.Name}, nil
+	}
+
 	// Nothing below is about files arriving, only about local files leaving.
 	// A pull that brings files this device never held destroys nothing.
 	atRisk := filesAtRisk(localManifest, decision)

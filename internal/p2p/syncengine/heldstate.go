@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/opensave/opensave/internal/delta"
 )
@@ -67,6 +68,14 @@ func manifestHeldKey(m delta.Manifest) string {
 // can hold hundreds of thousands of files and a game dozens of snapshots, so
 // at most one snapshot's files are in memory. A snapshot with fewer files than
 // the key is passed over unread — exclusion rules only take files away.
+//
+// Only snapshots taken since the game last forgot what it agreed with its
+// peers, at an untrack (store.SyncForgottenAt), count. One from before held a
+// folder that may have changed while nothing tracked it: a file removed then
+// is not a deletion this device made, but with that snapshot as the shared
+// starting point the peer read it as one, and deleted its own copy. A
+// snapshot whose time cannot be read is passed over too, the safe direction:
+// with no proof the two devices are asked, as before.
 func (e *Engine) HeldState(gameID, key string) bool {
 	count, _, ok := strings.Cut(key, ":")
 	want, err := strconv.Atoi(count)
@@ -78,7 +87,14 @@ func (e *Engine) HeldState(gameID, key string) bool {
 		return false
 	}
 	rules := e.rulesFor(gameID)
+	forgotten := e.Store.SyncForgottenAt(gameID)
 	for _, snap := range snaps {
+		if !forgotten.IsZero() {
+			at, err := time.Parse(time.RFC3339, snap.Timestamp)
+			if err != nil || !at.After(forgotten) {
+				continue
+			}
+		}
 		files, err := e.Store.SnapshotRootFiles(snap.SnapshotID, delta.PrimaryRoot)
 		if err != nil {
 			continue
@@ -98,6 +114,13 @@ func (e *Engine) HeldState(gameID, key string) bool {
 // heldBase is the merge base two devices with no agreed state have after all:
 // the peer's save when this device has held it, this device's when the peer
 // has. "" when neither has held the other's, or either holds nothing.
+//
+// The peer's answer is about its save as it is when it answers, which it
+// sends again with it; it counts only while that is still the save this sync
+// compares against. A peer that synced in between — took this device's
+// missing file from it, say, and snapshotted the result — truly has held this
+// device's save by then. Banked against the save it had before, a file it did
+// not have yet read as one it deleted, and this device deleted its own copy.
 func (e *Engine) heldBase(ctx context.Context, gameID string, peer Peer, q ManifestQuery, local, remote delta.Manifest) string {
 	if len(local.Files) == 0 || len(remote.Files) == 0 || sameFiles(local, remote) {
 		return ""
@@ -107,7 +130,7 @@ func (e *Engine) heldBase(ctx context.Context, gameID string, peer Peer, q Manif
 	}
 	q.Held = manifestHeldKey(local)
 	again, err := e.Transport.FetchManifest(ctx, peer, gameID, q)
-	if err == nil && again.HeldYours {
+	if err == nil && again.HeldYours && sameFiles(filterManifest(again.Manifest, e.rulesFor(gameID)), remote) {
 		return local.ManifestHash()
 	}
 	return ""
