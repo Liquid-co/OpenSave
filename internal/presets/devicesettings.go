@@ -49,7 +49,7 @@ func (sc *Scanner) deviceSettings(idx []indexedGame) *DeviceSettings {
 	}
 	ds := &DeviceSettings{sc: sc, byID: map[string]indexedGame{}, byName: map[string]indexedGame{}}
 	for _, g := range idx {
-		if len(g.Config) == 0 {
+		if len(g.Config) == 0 && len(g.Paths) == 0 {
 			continue
 		}
 		if g.SteamID != "" {

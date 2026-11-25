@@ -29,7 +29,9 @@
     { id: 'config', label: 'game.tab.config', icon: SlidersHorizontal, component: ConfigTab },
     { id: 'danger', label: 'game.tab.manage', icon: Wrench, component: ManageTab }
   ];
-  let tab = 'snapshots';
+  // Opened from the bell on a question asked in one tab: that tab.
+  const startTab = (p) => (tabs.some((x) => x.id === p.tab) ? p.tab : 'snapshots');
+  let tab = startTab(params);
 
   // A tab is built the first time it is opened and then kept, hidden, while
   // another is shown: half-typed configuration or an open file list should
@@ -42,11 +44,12 @@
   let opened = new Set([tab]);
   // Opened on a snapshot (from Ctrl+K): the list it is in.
   $: if (params.snapshot) tab = 'snapshots';
+  $: if (params.tab) tab = startTab(params);
 
   let shownFor = params.gameId;
   $: if (params.gameId !== shownFor) {
     shownFor = params.gameId;
-    tab = 'snapshots';
+    tab = startTab(params);
     opened = new Set([tab]);
   }
   $: if (!opened.has(tab)) opened = new Set(opened).add(tab);

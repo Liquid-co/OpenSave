@@ -3,7 +3,7 @@
   import { askConfirm } from '../../lib/stores.js';
   import { api, native, coverURL } from '../../lib/api.js';
   import { savePathChange } from '../../lib/savepath.js';
-  import { t } from '../../lib/i18n.js';
+  import { t, segments } from '../../lib/i18n.js';
   import AppIdField from './AppIdField.svelte';
   import SyncIgnoreEditor from './SyncIgnoreEditor.svelte';
   import SaveLocations from './SaveLocations.svelte';
@@ -32,7 +32,40 @@
   // The files the game database names as this game's settings rather than its
   // save (graphics, resolution): left out of syncing unless asked for.
   $: deviceSettings = game.deviceSettings ?? [];
+  // Files found by what they hold: suggested, and still syncing, until
+  // answered here. A wrong guess must not quietly stop part of a save syncing.
+  $: suggested = game.suggestedSettings ?? [];
+  // Why a file was judged as it was, in the reader's language: the daemon
+  // sends a code with its counts. A reason stored before there were codes
+  // comes without one, and one this window has no words for is said as the
+  // daemon gave it.
+  $: why = (s) => {
+    const key = `game.config.why.${s.why?.code}`;
+    const said = s.why ? $t(key, { n: s.why.n ?? 0, of: s.why.of ?? 0 }) : key;
+    return said === key ? s.reason : said;
+  };
   let locations = [];
+
+  function decide(s, keepHere) {
+    const path = s.pattern.replace(/^\//, '');
+    const done = $t(keepHere ? 'game.config.keptHere' : 'game.config.keptSyncing', { file: path });
+    return run(done, () => api.post(`/api/games/${game.id}/suggested-settings`, { path, keepHere }));
+  }
+
+  // The game in the game database this one looks like, for a game tracked
+  // without an App ID: linked only when confirmed here, as the App ID brings
+  // its settings files with it, left out of syncing.
+  $: dbSuggestion = game.gameDBSuggestion ?? null;
+  function answerLink(accept) {
+    const s = dbSuggestion;
+    if (!s) return;
+    const done = $t(accept ? 'game.config.dbLinked' : 'game.config.dbNotLinked', { game: game.name, name: s.name });
+    return run(done, async () => {
+      await api.post(`/api/games/${game.id}/gamedb-link`, { accept });
+      // The form holds the App ID as the tab opened; saving it would undo this.
+      if (accept) cfg.appId = s.appId;
+    });
+  }
 
   // Cover preview: a custom URL wins, else the proxied Steam art for the App
   // ID being edited.
@@ -124,6 +157,19 @@
         </span>
       {/if}
     </div>
+    {#if dbSuggestion}
+      <div class="db-suggestion">
+        <span class="hint">{#each segments($t('game.config.dbSuggestion'), { name: dbSuggestion.name }, ['name']) as part}{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}{/each}</span>
+        <span class="decide">
+          <button class="btn small primary" disabled={$busy} on:click={() => answerLink(true)}>
+            {$t('game.config.dbLink')}
+          </button>
+          <button class="btn small ghost" disabled={$busy} on:click={() => answerLink(false)}>
+            {$t('game.config.dbNotThis')}
+          </button>
+        </span>
+      </div>
+    {/if}
     <AppIdField bind:value={cfg.appId} error={appIdError} />
     <div class="field">
       <label for="c-exe">{$t('game.config.exePath')}</label>
@@ -158,12 +204,39 @@
         {$t('game.config.manualHint1')}<strong>{$t('game.config.manualHintStrong')}</strong>{$t('game.config.manualHint2')}
       </span>
     </div>
+    {#if suggested.length > 0}
+      <div class="field device-block">
+        <span class="label">{$t('game.config.suggestedSettings')}</span>
+        <ul class="device-settings">
+          {#each suggested as s (s.pattern)}
+            <li>
+              <code>{s.pattern.replace(/^\//, '')}</code>
+              <span class="source">{why(s)}</span>
+              <span class="decide">
+                <button class="btn small primary" disabled={$busy} on:click={() => decide(s, true)}>
+                  {$t('game.config.keepHere')}
+                </button>
+                <button class="btn small ghost" disabled={$busy} on:click={() => decide(s, false)}>
+                  {$t('game.config.keepSyncing')}
+                </button>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+      <span class="hint device-hint">{$t('game.config.suggestedHint')}</span>
+    {/if}
     {#if deviceSettings.length > 0}
       <div class="field device-block">
         <label for="c-devsettings">{$t('game.config.deviceSettings')}</label>
         <ul class="device-settings">
-          {#each deviceSettings as p}
-            <li><code>{p.replace(/^\//, '')}</code></li>
+          {#each deviceSettings as s}
+            <li class:given-back={s.source === 'save'}>
+              <code>{s.pattern.replace(/^!?\//, '')}</code>
+              <span class="source">
+                {#if s.source === 'database'}{$t('game.config.sourceDatabase')}{:else if s.source === 'detected'}{$t('game.config.sourceDetected', { reason: why(s) })}{:else}{$t('game.config.sourceSave', { reason: why(s) })}{/if}
+              </span>
+            </li>
           {/each}
         </ul>
       </div>
@@ -172,6 +245,7 @@
         {$t('game.config.syncDeviceSettings')}
       </label>
       <span class="hint device-hint">{$t('game.config.deviceSettingsHint')}</span>
+      <span class="hint device-hint">{$t('game.config.deviceSettingsDetectedHint')}</span>
     {/if}
     <SyncIgnoreEditor {game} bind:value={cfg.syncIgnore} severalFolders={locations.length > 0} />
     <SaveLocations {game} {runner} bind:locations />
@@ -226,6 +300,38 @@
   }
   .device-settings code {
     font-size: 0.9em;
+  }
+  .device-settings .source {
+    font-size: 0.82em;
+    color: var(--text-faint);
+    margin-left: 6px;
+  }
+  /* Dimmed, not struck through: in the file list below, struck through means
+     a file that will not sync, and these sync again. */
+  .device-settings .given-back code {
+    color: var(--text-faint);
+  }
+  /* A heading over a list, not a control: styled as the field labels are. */
+  .device-block .label {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .db-suggestion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .db-suggestion .decide {
+    display: inline-flex;
+    gap: 6px;
+  }
+  .device-settings .decide {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: 8px;
   }
   .device-block {
     margin-bottom: 4px !important;

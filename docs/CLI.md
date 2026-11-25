@@ -39,7 +39,7 @@ run one yourself.
 
 - **Needs a daemon** — anything about live state: `sync`, `pause`, `resume`,
   `transfers`, `peers`, `pair`, `relay`, `conflicts`, `resolve`, `offers`,
-  `relocate`, `cloud`, `daemon status`, `probe`, `launch`, `wrap`, `prune`,
+  `relocate`, `settings`, `gamedb`, `cloud`, `daemon status`, `probe`, `launch`, `wrap`, `prune`,
   `files`, `backup`.
   Without one you get: *the OpenSave daemon isn't reachable at … — start it
   with `opensave daemon start`*.
@@ -253,6 +253,26 @@ switched to by itself:
 ```bash
 opensave relocate elden-ring use       # use that folder
 opensave relocate elden-ring dismiss   # not that one
+```
+
+## Task: settings kept on each device
+
+A game's graphics and resolution settings are left out of syncing when the
+game database names them. A file found by what it holds is only suggested: it
+keeps syncing until you answer. `opensave status` lists each one under its game.
+
+```bash
+opensave settings elden-ring keep GraphicsConfig.xml   # keep it on this device
+opensave settings elden-ring sync GraphicsConfig.xml   # keep syncing it
+```
+
+A game tracked without an App ID that looks like one in the game database is
+suggested a link, which brings cover art, launching, seeing it played and the
+database's settings files. It is never linked by itself:
+
+```bash
+opensave gamedb my-game link      # link it
+opensave gamedb my-game dismiss   # not that one
 ```
 
 ## Task: snapshots and going back

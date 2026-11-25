@@ -67,3 +67,36 @@ Project Things:
 		t.Error("an unrelated program was taken for a game")
 	}
 }
+
+// Naming a game nobody asked about: a folder one level above its save
+// location counts, a folder holding many games' does not.
+func TestGameDB_IdentifyFolderStrictly(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("templates below use Windows placeholders")
+	}
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	low := filepath.Join(home, "AppData", "LocalLow")
+	if err := os.MkdirAll(filepath.Join(low, "Soda", "Duck", "Saves"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	sc := manifestScanner(t, `
+Duck Game:
+  files:
+    "<home>/AppData/LocalLow/Soda/Duck/Saves/*.sav":
+      tags: [save]
+  steam:
+    id: 3167020
+`)
+	ds := sc.GameDB()
+	if m, ok := ds.IdentifyFolderStrictly(filepath.Join(low, "Soda", "Duck")); !ok || m.AppID != "3167020" {
+		t.Errorf("the folder above the save location: %+v %v", m, ok)
+	}
+	if _, ok := ds.IdentifyFolderStrictly(low); ok {
+		t.Error("a folder holding many games' saves was named after one")
+	}
+	if _, ok := ds.IdentifyFolder(low); !ok {
+		t.Error("asked about, a folder holding the save location further down is not recognised")
+	}
+}

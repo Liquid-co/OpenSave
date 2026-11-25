@@ -67,6 +67,10 @@ func Run(args []string) int {
 		return cmdResolve(rest)
 	case "relocate":
 		return cmdRelocate(rest)
+	case "settings":
+		return cmdSettings(rest)
+	case "gamedb":
+		return cmdGameDB(rest)
 	case "offers":
 		return cmdOffers(rest)
 	case "backup":
@@ -670,6 +674,12 @@ type statusReportGame struct {
 	// Every save file was deleted here and the game is held back until
 	// someone says whether that was meant (daemon.EmptiedSave).
 	Emptied *daemon.EmptiedSave `json:"emptied,omitempty"`
+	// Files that may be this device's settings, syncing until answered
+	// (`opensave settings`): relative to the save folder.
+	SuggestedSettings []string `json:"suggestedSettings,omitempty"`
+	// The game database's match for a game tracked without an App ID,
+	// linked only when answered (`opensave gamedb`).
+	GameDBSuggestion *daemon.GameDBSuggestion `json:"gameDBSuggestion,omitempty"`
 	// Play on this device: total time, and when it was last played (ISO
 	// 8601, empty when never). See `opensave sessions`.
 	PlaytimeMs   int64  `json:"playtimeMs"`
@@ -718,6 +728,8 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 				MaxManualSnapshots: g.MaxManualSnapshots,
 				SavePathMissing:    daemon.SaveFolderMissing(g.SavePath),
 				Emptied:            emptiedOrNil(d, g.ID),
+				SuggestedSettings:  suggestedSettingsOf(d, g),
+				GameDBSuggestion:   d.SuggestedGameDBLink(g),
 				Installed:          d.InstallState(g),
 			}
 			if st, err := d.Store.PlayStatsFor(g.ID); err == nil && st.Sessions > 0 {
@@ -777,6 +789,12 @@ func cmdStatus(d *daemon.Daemon, args []string) int {
 		}
 		if e, held := d.EmptiedSaveOf(g.ID); held && e.State == "held" {
 			fmt.Printf("      %s\n", warnText(fmt.Sprintf("every save file was deleted here — not synced until you answer (opensave emptied %s delete|restore)", g.ID)))
+		}
+		for _, file := range suggestedSettingsOf(d, g) {
+			fmt.Printf("      %s\n", faint(fmt.Sprintf("%s may be this device's settings — it syncs until you answer (opensave settings %s keep|sync %s)", file, g.ID, file)))
+		}
+		if s := d.SuggestedGameDBLink(g); s != nil {
+			fmt.Printf("      %s\n", faint(fmt.Sprintf("may be %s in the game database — link it? (opensave gamedb %s link|dismiss)", s.Name, g.ID)))
 		}
 		if d.InstallState(g) == daemon.InstallNotFound {
 			fmt.Printf("      %s\n", faint("not found on this device — Steam does not have it, and it is in no folder games are kept in"))
@@ -1065,6 +1083,16 @@ func emptiedOrNil(d *daemon.Daemon, gameID string) *daemon.EmptiedSave {
 // runningDaemonRelocations is, per game, the folder the running daemon offers
 // for a save folder that is missing (the same path on another drive). Empty
 // when no daemon is running: the offer lives there.
+// suggestedSettingsOf is the files of a game that may be this device's
+// settings, waiting for an answer, relative to the save folder.
+func suggestedSettingsOf(d *daemon.Daemon, g store.Game) []string {
+	var out []string
+	for _, s := range d.SuggestedSettings(g) {
+		out = append(out, strings.TrimPrefix(s.Pattern, "/"))
+	}
+	return out
+}
+
 func runningDaemonRelocations() map[string]string {
 	out := map[string]string{}
 	raw, err := daemonRequest("GET", "/api/games", nil)
