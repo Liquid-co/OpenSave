@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -35,6 +37,24 @@ func getCallback(t *testing.T, query string) (int, string, error) {
 	defer r.Body.Close()
 	b, _ := io.ReadAll(r.Body)
 	return r.StatusCode, string(b), nil
+}
+
+// refusingTokenEndpoint stands in for Dropbox's token endpoint and refuses
+// every code, as Dropbox does a made-up one. A callback with a code exchanges
+// it there before answering the browser: against the real endpoint, a slow
+// answer from Dropbox outlasted getCallback's 3 seconds and failed the test.
+// It returns how many exchanges reached it.
+func refusingTokenEndpoint(t *testing.T, ts *testServer) *atomic.Int32 {
+	t.Helper()
+	var hits atomic.Int32
+	token := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+	}))
+	t.Cleanup(token.Close)
+	ts.daemon.Cloud.Endpoints.DropboxToken = token.URL
+	return &hits
 }
 
 func pending() string {
@@ -69,6 +89,7 @@ func TestSignIn_AnOldAttemptsTimerLeavesTheNewListener(t *testing.T) {
 func TestSignIn_AStrayRequestUsesNothingUp(t *testing.T) {
 	t.Cleanup(func() { activeAuthListener.stop() })
 	ts := startTestServer(t)
+	exchanges := refusingTokenEndpoint(t, ts)
 	startSignIn(t, ts)
 
 	if _, _, err := getCallback(t, ""); err != nil {
@@ -84,6 +105,9 @@ func TestSignIn_AStrayRequestUsesNothingUp(t *testing.T) {
 	// on success or at its timeout.
 	if _, _, err := getCallback(t, "?code=again"); err != nil {
 		t.Errorf("the listener closed after a failed exchange: %v", err)
+	}
+	if n := exchanges.Load(); n != 1 {
+		t.Errorf("%d exchanges reached the stand-in token endpoint, want 1: the first code is exchanged, the used-up flow sends nothing", n)
 	}
 }
 
