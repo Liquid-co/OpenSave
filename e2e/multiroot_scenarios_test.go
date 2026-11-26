@@ -422,7 +422,14 @@ func TestMultiRootScenario_ResolveALocationConflictKeepingTheirs(t *testing.T) {
 	}) {
 		t.Fatalf("adopting the peer's version never applied: %q", readIn(aConfig, "settings.ini"))
 	}
-	if len(a.Daemon.P2P.Sync.ActiveRootConflicts()) != 0 {
+	// The files land before the conflict clears: adopting asks the peer once
+	// more whether its copy is unchanged, and the conflict stays open until
+	// that and the files here are both verified (root_adopt.go). Checked once,
+	// the moment the file changed, this failed under the race detector on CI,
+	// where that round trip outlasts a poll.
+	if !testutil.WaitFor(45*time.Second, func() bool {
+		return len(a.Daemon.P2P.Sync.ActiveRootConflicts()) == 0
+	}) {
 		t.Error("the conflict is still open after being resolved")
 	}
 	// Undoable: a snapshot was taken before anything was overwritten.
