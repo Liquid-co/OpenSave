@@ -128,12 +128,15 @@
             <span class="file-name">
               {#if f.location}<span class="file-loc">{f.location} ›</span>{/if}{f.path}
             </span>
-            <span class="verdict">{f.excluded ? $t('game.ignore.wontSync') : $t('game.ignore.syncs')}</span>
+            <span class="verdict">
+              {#if !f.excluded}{$t('game.ignore.syncs')}{:else if f.source === 'database'}{$t('game.ignore.wontSyncDatabase')}{:else if f.source === 'detected'}{$t('game.ignore.wontSyncKeptHere')}{:else}{$t('game.ignore.wontSync')}{/if}
+            </span>
           </label>
         {/each}
       </div>
       <span class="hint">
         {$t('game.ignore.tickHint1')}<code>!</code>{$t('game.ignore.tickHint2')}
+        {$t('game.ignore.settingsHint')}
         {#if severalFolders}
           {$t('game.ignore.multiFolder1')}<strong>{$t('game.ignore.multiFolderStrong')}</strong>{$t('game.ignore.multiFolder2')}
         {/if}

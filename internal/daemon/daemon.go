@@ -191,6 +191,7 @@ func New(opts Options) (*Daemon, error) {
 
 	// A game's device settings are left out of syncing (devicesettings.go).
 	d.P2P.Sync.DeviceSettingsFor = d.deviceSettingsFor
+	d.P2P.Sync.ObserveSettings = d.observeSettings
 	// A game being played here is synced when its session ends
 	// (syncengine/playing.go).
 	d.P2P.Sync.Playing = func(gameID string) bool { return !d.PlayingSince(gameID).IsZero() }
@@ -287,6 +288,9 @@ func New(opts Options) (*Daemon, error) {
 		},
 		HoldSnapshot: d.holdSnapshotWhilePlaying,
 		OnChanged: func(gameID string) {
+			// How the files left out as its settings changed with it
+			// (detectsettings.go).
+			d.observeLocalSettings(gameID)
 			// An emptied save is noticed as it happens, and said on screen,
 			// even with no other device online to hold it back from.
 			_, _ = d.P2P.Sync.CheckHold(gameID, false)
@@ -468,6 +472,29 @@ func (d *Daemon) Start() error {
 				return
 			case <-ticker.C:
 				d.Store.Compact()
+			}
+		}
+	})
+
+	// Find each game's settings by what they hold (detectsettings.go): a few
+	// minutes after start, then hourly for whatever is due.
+	d.P2P.GoSync(func(ctx context.Context) {
+		first := time.NewTimer(newGameFirstScan)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			d.detectSettingsDue(ctx)
+		}
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.detectSettingsDue(ctx)
 			}
 		}
 	})
